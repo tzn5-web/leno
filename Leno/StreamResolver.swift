@@ -241,7 +241,7 @@ final class StreamResolver: @unchecked Sendable {
         session: URLSession
     ) async -> ResolvedMedia? {
         guard let requestURL = URL(
-            string: "/api/v1/videos/\(videoID)?region=RO",
+            string: "/api/v1/videos/\(videoID)?region=RO&local=true",
             relativeTo: baseURL
         )?.absoluteURL else {
             return nil
