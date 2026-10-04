@@ -115,6 +115,13 @@ final class V9MPVPiPBridge:
             false
     }
 
+    var shouldKeepRendering:
+        Bool
+    {
+        pendingStart ||
+        isActive
+    }
+
     func setup(
         service:
             V9PlayerService,
