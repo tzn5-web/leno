@@ -20,6 +20,8 @@ targets:
       path: Leno/Info.plist
       properties:
         CFBundleDisplayName: Leno
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
         UIBackgroundModes:
           - audio

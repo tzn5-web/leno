@@ -13,13 +13,12 @@ Minimal iOS YouTube client scaffold for iPhone, targeting iOS 27+ and built enti
 - Lock Screen / Control Center play, pause and ±15 second commands
 - Picture in Picture request bridge
 - Automatic WebKit/navigation recovery with bounded retries
-- Native AVPlayer direct-media fallback
 - No analytics or third-party SDKs
 - Unsigned device build packaged as an IPA artifact in CI
 
 ## Reliability model
 
-The Tizen package uses a health gate plus fallback architecture. Leno mirrors that philosophy on iOS with explicit loading/recovery states, bounded retries, WebKit process recovery, and a separate native player path.
+The Tizen package uses a health gate plus fallback architecture. Leno mirrors that philosophy on iOS with explicit loading/recovery states, bounded retries, WebKit process recovery, and one authoritative media-session path to avoid competing remote-control handlers.
 
 ## Build
 
