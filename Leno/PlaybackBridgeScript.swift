@@ -251,6 +251,285 @@ enum PlaybackBridgeScript {
         );
       } catch (_) {}
 
+      const nativeFetch =
+        window.fetch.bind(window);
+
+      const hlsProbeState = {
+        lastVideoID: "",
+        lastManifestHost: "",
+        lastProbeAt: 0
+      };
+
+      const reportHLSProbe =
+        async (
+          hlsManifestUrl,
+          videoID,
+          source
+        ) => {
+          try {
+            if (
+              !hlsManifestUrl ||
+              typeof hlsManifestUrl !==
+                "string"
+            ) {
+              return;
+            }
+
+            const url =
+              new URL(
+                hlsManifestUrl,
+                location.href
+              );
+
+            const now =
+              Date.now();
+
+            if (
+              hlsProbeState
+                .lastVideoID ===
+                videoID &&
+              hlsProbeState
+                .lastManifestHost ===
+                url.host &&
+              now -
+                hlsProbeState
+                  .lastProbeAt <
+                15000
+            ) {
+              return;
+            }
+
+            hlsProbeState.lastVideoID =
+              videoID || "";
+
+            hlsProbeState
+              .lastManifestHost =
+              url.host;
+
+            hlsProbeState.lastProbeAt =
+              now;
+
+            const response =
+              await nativeFetch(
+                url.href,
+                {
+                  credentials:
+                    "include",
+                  cache:
+                    "no-store"
+                }
+              );
+
+            const text =
+              await response.text();
+
+            const nMatch =
+              text.match(
+                /\/n\/([A-Za-z0-9_-]{10,})\//
+              );
+
+            window.webkit
+              ?.messageHandlers
+              ?.hlsProbe
+              ?.postMessage({
+                videoID:
+                  videoID || "",
+                source:
+                  source || "unknown",
+                manifestHost:
+                  url.host,
+                status:
+                  response.status,
+                isM3U8:
+                  text.includes(
+                    "#EXTM3U"
+                  ),
+                hasSPC:
+                  url.searchParams
+                    .has("spc"),
+                hasNChallenge:
+                  !!nMatch,
+                nLength:
+                  nMatch
+                    ? nMatch[1]
+                        .length
+                    : 0,
+                hasVariants:
+                  text.includes(
+                    "#EXT-X-STREAM-INF"
+                  ),
+                byteCount:
+                  text.length
+              });
+          } catch (error) {
+            window.webkit
+              ?.messageHandlers
+              ?.hlsProbe
+              ?.postMessage({
+                videoID:
+                  videoID || "",
+                source:
+                  source || "unknown",
+                error:
+                  String(
+                    error?.message ||
+                    error ||
+                    "probe failed"
+                  )
+              });
+          }
+        };
+
+      const inspectPlayerPayload =
+        (
+          payload,
+          source,
+          videoID
+        ) => {
+          try {
+            const object =
+              typeof payload ===
+                "string"
+                ? JSON.parse(
+                    payload
+                  )
+                : payload;
+
+            const hls =
+              object
+                ?.streamingData
+                ?.hlsManifestUrl;
+
+            if (
+              typeof hls ===
+              "string" &&
+              hls
+            ) {
+              reportHLSProbe(
+                hls,
+                videoID ||
+                  currentVideoID(),
+                source
+              );
+            }
+          } catch (_) {}
+        };
+
+      window.fetch =
+        async function(...args) {
+          const input =
+            args[0];
+
+          const requestURL =
+            typeof input ===
+              "string"
+              ? input
+              : input?.url || "";
+
+          const response =
+            await nativeFetch(
+              ...args
+            );
+
+          if (
+            String(
+              requestURL
+            ).includes(
+              "youtubei/v1/player"
+            )
+          ) {
+            try {
+              const clone =
+                response.clone();
+
+              const text =
+                await clone.text();
+
+              inspectPlayerPayload(
+                text,
+                "fetch",
+                currentVideoID()
+              );
+            } catch (_) {}
+          }
+
+          return response;
+        };
+
+      const nativeXHROpen =
+        XMLHttpRequest
+          .prototype
+          .open;
+
+      const nativeXHRSend =
+        XMLHttpRequest
+          .prototype
+          .send;
+
+      XMLHttpRequest
+        .prototype
+        .open =
+        function(
+          method,
+          url,
+          ...rest
+        ) {
+          try {
+            this
+              .__youtubeVcdURL =
+              String(
+                url || ""
+              );
+          } catch (_) {}
+
+          return nativeXHROpen
+            .call(
+              this,
+              method,
+              url,
+              ...rest
+            );
+        };
+
+      XMLHttpRequest
+        .prototype
+        .send =
+        function(...args) {
+          try {
+            if (
+              String(
+                this
+                  .__youtubeVcdURL ||
+                ""
+              ).includes(
+                "youtubei/v1/player"
+              )
+            ) {
+              this.addEventListener(
+                "load",
+                () => {
+                  try {
+                    inspectPlayerPayload(
+                      this.responseText,
+                      "xhr",
+                      currentVideoID()
+                    );
+                  } catch (_) {}
+                },
+                {
+                  once: true
+                }
+              );
+            }
+          } catch (_) {}
+
+          return nativeXHRSend
+            .apply(
+              this,
+              args
+            );
+        };
+
       const state = {
         video: null,
         wantsPlayback: false,
