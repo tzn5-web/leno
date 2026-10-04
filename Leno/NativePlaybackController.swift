@@ -200,7 +200,11 @@ final class NativePlaybackController:
 
         pipPossibleObservation?.invalidate()
 
-        let pip = AVPictureInPictureController(playerLayer: playerLayer)
+        guard let pip = AVPictureInPictureController(playerLayer: playerLayer) else {
+            isPiPPossible = false
+            return
+        }
+
         pip.delegate = self
         pip.canStartPictureInPictureAutomaticallyFromInline = true
         pictureInPictureController = pip

@@ -71,7 +71,7 @@ struct YouTubeWebView: UIViewRepresentable {
     }
 
     private func installRules(on webView: WKWebView) {
-        let store = WKContentRuleListStore.default()
+        guard let store = WKContentRuleListStore.default() else { return }
         let identifier = "YoutubeVcdAdRules-v4"
 
         store.lookUpContentRuleList(forIdentifier: identifier) { cached, _ in
