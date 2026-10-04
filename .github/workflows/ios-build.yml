@@ -30,80 +30,12 @@ jobs:
           xcrun swift Scripts/GenerateAppIcon.swift Leno/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
           test -s Leno/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
 
-      - name: WebKit V4 source audit
+      - name: WebKit V4 structural source audit
         run: |
           set -euo pipefail
-
-          grep -q 'MARKETING_VERSION: "0.4.4"' project.yml
-          grep -q 'CURRENT_PROJECT_VERSION: "9"' project.yml
-          grep -q 'UIBackgroundModes:' project.yml
-          grep -q -- '- audio' project.yml
-
-          test ! -f Leno/BackgroundAudioHandoff.swift
-
-          grep -q '__YOUTUBE_VCD_PLAYBACK_BRIDGE_V4__' Leno/PlaybackBridgeScript.swift
-          grep -q 'blockedLifecycleEvents' Leno/PlaybackBridgeScript.swift
-          grep -q 'nativeHiddenDescriptor' Leno/PlaybackBridgeScript.swift
-          grep -q 'spoofDocumentProperty' Leno/PlaybackBridgeScript.swift
-          grep -q 'document.hasFocus = () => true' Leno/PlaybackBridgeScript.swift
-          grep -q 'userPauseUntil' Leno/PlaybackBridgeScript.swift
-          grep -q 'transitionRecoveryUntil' Leno/PlaybackBridgeScript.swift
-          grep -q 'nativeBackground' Leno/PlaybackBridgeScript.swift
-          grep -q 'findWatchVideo' Leno/PlaybackBridgeScript.swift
-          grep -q 'html5-main-video' Leno/PlaybackBridgeScript.swift
-          grep -q 'navigator.audioSession.type' Leno/PlaybackBridgeScript.swift
-          grep -q 'setActionHandler' Leno/PlaybackBridgeScript.swift
-          grep -q 'setPositionState' Leno/PlaybackBridgeScript.swift
-          grep -q 'webkitpresentationmodechanged' Leno/PlaybackBridgeScript.swift
-          grep -q 'event.stopPropagation()' Leno/PlaybackBridgeScript.swift
-          grep -q 'enterBackgroundCall' Leno/PlaybackBridgeScript.swift
-          grep -q 'resumeForegroundCall' Leno/PlaybackBridgeScript.swift
-
-          grep -q 'AVAudioSession' Leno/YouTubeSession.swift
-          grep -q 'MPRemoteCommandCenter' Leno/YouTubeSession.swift
-          grep -q 'applicationWillResignActive' Leno/YouTubeSession.swift
-          grep -q 'enterBackgroundCall' Leno/YouTubeSession.swift
-          grep -q 'resumeForegroundCall' Leno/YouTubeSession.swift
-
-          grep -q 'applicationWillResignActive()' Leno/YouTubeView.swift
-          grep -q 'allowsPictureInPictureMediaPlayback = true' Leno/YouTubeWebView.swift
-          grep -q 'allowsInlineMediaPlayback = true' Leno/YouTubeWebView.swift
-          grep -Fq 'mediaTypesRequiringUserActionForPlayback = []' Leno/YouTubeWebView.swift
-
-          if grep -q 'BackgroundAudioHandoff' project.yml Leno/*.swift; then
-            echo "AVPlayer handoff must not return."
-            exit 1
-          fi
-
-          if grep -q 'mediaCandidate' Leno/*.swift; then
-            echo "Direct media URL handoff must not return."
-            exit 1
-          fi
-
-          if grep -q 'StreamResolver.swift' project.yml; then
-            echo "External stream resolver must stay inactive."
-            exit 1
-          fi
-
-          if grep -q 'YouTubeKit' project.yml; then
-            echo "YouTubeKit must stay inactive."
-            exit 1
-          fi
-
-          if grep -q 'setAllMediaPlaybackSuspended' Leno/YouTubeSession.swift; then
-            echo "Manual WebKit suspension is forbidden in V4."
-            exit 1
-          fi
-
-          if grep -Fq 'messageHandlers?.mediaState' Leno/AdBlockScript.swift; then
-            echo "AdBlockScript must not compete for media-state ownership."
-            exit 1
-          fi
-
-          if grep -Fq 'document.querySelector("video")' Leno/YouTubeSession.swift; then
-            echo "Native transport must use the active-video bridge, not first-video selection."
-            exit 1
-          fi
+          python3 Scripts/audit_playback_v4.py
+          node --check build/source-audit/PlaybackBridgeScript.js
+          node --check build/source-audit/AdBlockScript.js
 
       - name: Generate Xcode project
         run: xcodegen generate
@@ -172,7 +104,7 @@ jobs:
           test "$BUNDLE_ID" = "com.tzn5web.leno"
           test "$BACKGROUND_MODE" = "audio"
           test "$VERSION" = "0.4.4"
-          test "$BUILD" = "9"
+          test "$BUILD" = "10"
 
       - name: Package unsigned IPA
         run: |
