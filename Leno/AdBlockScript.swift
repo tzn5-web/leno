@@ -168,7 +168,6 @@ enum AdBlockScript {
                   "ytm-open-in-app-button-renderer",
                   "ytm-app-promo",
                   "ytm-promo",
-                  "ytm-mobile-topbar-renderer",
                   "[class*='app-promo']",
                   "[class*='open-app']"
                 ].join(",")
