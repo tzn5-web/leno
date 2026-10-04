@@ -41,6 +41,11 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     private var mediaNetworkState = 0
     private var mediaElementInDOM = false
     private var lastMediaHealthSignature = ""
+    private var lastStablePlaybackTime: Double = 0
+    private var frozenRepairWorkItem: DispatchWorkItem?
+    private var lastFrozenRepairDate = Date.distantPast
+    private var pendingRepairResumeTime: Double?
+    private var pendingRepairShouldPlay = false
 
     private static let homeURL = URL(string: "https://m.youtube.com/")!
 
@@ -126,6 +131,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             self.state = .ready
             self.isLoading = false
             self.progress = 1
+            self.resumeAfterFrozenMediaRepairIfNeeded()
         }
     }
 
@@ -180,6 +186,8 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
     func applicationDidEnterBackground() {
         appIsBackground = true
+        frozenRepairWorkItem?.cancel()
+        frozenRepairWorkItem = nil
         activateAudioSession()
 
         if isPlaying {
@@ -352,11 +360,131 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             self.currentTime = max(0, newCurrentTime)
             self.duration = max(0, newDuration)
 
+            if mediaExists &&
+               newReadyState > 0 &&
+               newCurrentTime > 0 {
+                self.lastStablePlaybackTime =
+                    newCurrentTime
+            }
+
+            let frozenForegroundMedia =
+                mediaExists &&
+                bridgeWantsPlayback &&
+                !self.appIsBackground &&
+                !bridgeReallyHidden &&
+                newInDOM &&
+                newReadyState == 0
+
+            self.updateFrozenMediaRepair(
+                needed: frozenForegroundMedia
+            )
+
             if mediaExists {
                 self.updateNowPlaying()
             } else if !bridgeReallyHidden {
                 self.wantsPlayback = false
                 MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            }
+        }
+    }
+
+    private func updateFrozenMediaRepair(
+        needed: Bool
+    ) {
+        guard needed else {
+            frozenRepairWorkItem?.cancel()
+            frozenRepairWorkItem = nil
+            return
+        }
+
+        guard frozenRepairWorkItem == nil,
+              !isLoading,
+              Date().timeIntervalSince(
+                lastFrozenRepairDate
+              ) > 15 else {
+            return
+        }
+
+        let workItem = DispatchWorkItem {
+            [weak self] in
+
+            guard let self else {
+                return
+            }
+
+            self.frozenRepairWorkItem = nil
+
+            guard !self.appIsBackground,
+                  self.wantsPlayback,
+                  self.hasMedia,
+                  self.mediaElementInDOM,
+                  self.mediaReadyState == 0,
+                  !self.isLoading,
+                  Date().timeIntervalSince(
+                    self.lastFrozenRepairDate
+                  ) > 15 else {
+                return
+            }
+
+            self.repairFrozenWebMedia()
+        }
+
+        frozenRepairWorkItem = workItem
+
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + 2.0,
+            execute: workItem
+        )
+    }
+
+    private func repairFrozenWebMedia() {
+        guard let webView,
+              webView.url != nil else {
+            return
+        }
+
+        lastFrozenRepairDate = Date()
+        pendingRepairResumeTime =
+            max(
+                lastStablePlaybackTime,
+                currentTime
+            )
+        pendingRepairShouldPlay =
+            wantsPlayback
+
+        print(
+            "Repairing frozen WebKit media: " +
+            "videoID=\(bridgeVideoID) " +
+            "resume=\(pendingRepairResumeTime ?? 0)"
+        )
+
+        markLoading()
+        webView.reload()
+    }
+
+    private func resumeAfterFrozenMediaRepairIfNeeded() {
+        guard let resumeTime =
+                pendingRepairResumeTime else {
+            return
+        }
+
+        let shouldPlay =
+            pendingRepairShouldPlay
+
+        pendingRepairResumeTime = nil
+        pendingRepairShouldPlay = false
+
+        for delay in [0.25, 0.7, 1.4, 2.4] {
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + delay
+            ) { [weak self] in
+                self?.evaluate(
+                    PlaybackBridgeScript
+                        .restoreAfterReloadCall(
+                            seconds: resumeTime,
+                            shouldPlay: shouldPlay
+                        )
+                )
             }
         }
     }
