@@ -3,6 +3,7 @@ import Combine
 import Libmpv
 import MediaPlayer
 import QuartzCore
+import SwiftUI
 
 @MainActor
 final class V9PlayerService:
@@ -84,14 +85,6 @@ final class V9PlayerService:
 
     private weak var metalLayer:
         CAMetalLayer?
-
-    private let eventQueue =
-        DispatchQueue(
-            label:
-                "com.tzn5web.v9.mpv.events",
-            qos:
-                .userInitiated
-        )
 
     private var remoteTargets:
         [(MPRemoteCommand, Any)] =
@@ -272,8 +265,12 @@ final class V9PlayerService:
                     )
                     .takeUnretainedValue()
 
-                service
-                    .scheduleEventDrain()
+                Task {
+                    @MainActor in
+
+                    service
+                        .drainEvents()
+                }
             },
             Unmanaged
                 .passUnretained(
@@ -751,68 +748,52 @@ final class V9PlayerService:
             return
         }
 
-        eventQueue.async {
-            var storage =
-                arguments.map {
-                    strdup(
+        var storage =
+            arguments.map {
+                strdup(
+                    $0
+                )
+            }
+
+        storage.append(
+            nil
+        )
+
+        defer {
+            for pointer in storage
+                where pointer != nil {
+                free(
+                    pointer
+                )
+            }
+        }
+
+        var pointers =
+            storage.map {
+                $0.map {
+                    UnsafePointer(
                         $0
                     )
                 }
+            }
 
-            storage.append(
-                nil
+        let result =
+            pointers
+                .withUnsafeMutableBufferPointer {
+                    buffer in
+
+                    mpv_command(
+                        mpv,
+                        buffer.baseAddress
+                    )
+                }
+
+        if result < 0 {
+            fail(
+                mpvErrorString(
+                    result
+                )
             )
-
-            defer {
-                for pointer in storage
-                    where pointer != nil {
-                    free(
-                        pointer
-                    )
-                }
-            }
-
-            var pointers =
-                storage.map {
-                    $0.map {
-                        UnsafePointer(
-                            $0
-                        )
-                    }
-                }
-
-            let result =
-                pointers
-                    .withUnsafeMutableBufferPointer {
-                        buffer in
-
-                        mpv_command(
-                            mpv,
-                            buffer.baseAddress
-                        )
-                    }
-
-            if result < 0 {
-                let message =
-                    self
-                        .mpvErrorString(
-                            result
-                        )
-
-                DispatchQueue.main.async {
-                    self.fail(
-                        message
-                    )
-                }
-            }
-        }
-    }
-
-    fileprivate func scheduleEventDrain() {
-        eventQueue.async {
-            [weak self] in
-
-            self?.drainEvents()
         }
     }
 
