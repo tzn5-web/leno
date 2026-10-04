@@ -61,18 +61,28 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             self.state = .recovering(attempt)
 
             let delay = min(1.5 * Double(attempt), 4.5)
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                self.webView?.reload()
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self else { return }
+
+                if self.webView?.url == nil {
+                    self.reloadFromHome()
+                } else {
+                    self.webView?.reload()
+                }
             }
         }
     }
 
     func reloadFromHome() {
-        retryCount = 0
-        state = .loading
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
 
-        guard let url = URL(string: "https://www.youtube.com/") else { return }
-        webView?.load(URLRequest(url: url))
+            self.retryCount = 0
+            self.state = .loading
+
+            guard let url = URL(string: "https://www.youtube.com/") else { return }
+            self.webView?.load(URLRequest(url: url))
+        }
     }
 
     func togglePlayback() {
@@ -80,7 +90,11 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         (() => {
           const v = document.querySelector("video");
           if (!v) return false;
-          if (v.paused) v.play(); else v.pause();
+          if (v.paused) {
+            v.play().catch(() => {});
+          } else {
+            v.pause();
+          }
           return true;
         })();
         """#)
@@ -91,7 +105,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         (() => {
           const v = document.querySelector("video");
           if (!v) return false;
-          v.play();
+          v.play().catch(() => {});
           return true;
         })();
         """#)
@@ -114,7 +128,22 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         (() => {
           const v = document.querySelector("video");
           if (!v) return false;
-          v.currentTime = Math.max(0, v.currentTime + ((safeSeconds)));
+          const duration = Number.isFinite(v.duration) ? v.duration : Number.POSITIVE_INFINITY;
+          const target = Math.max(0, Math.min(duration, v.currentTime + \(safeSeconds)));
+          v.currentTime = target;
+          return true;
+        })();
+        """)
+    }
+
+    func seek(to seconds: Double) {
+        let safeSeconds = max(0, seconds)
+        evaluate("""
+        (() => {
+          const v = document.querySelector("video");
+          if (!v) return false;
+          const duration = Number.isFinite(v.duration) ? v.duration : Number.POSITIVE_INFINITY;
+          v.currentTime = Math.max(0, Math.min(duration, \(safeSeconds)));
           return true;
         })();
         """)
@@ -168,7 +197,11 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
     private func evaluate(_ script: String) {
         DispatchQueue.main.async { [weak self] in
-            self?.webView?.evaluateJavaScript(script)
+            self?.webView?.evaluateJavaScript(script) { _, error in
+                if let error {
+                    print("JavaScript bridge error: \(error.localizedDescription)")
+                }
+            }
         }
     }
 
@@ -188,30 +221,45 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
         let center = MPRemoteCommandCenter.shared()
 
+        center.playCommand.isEnabled = true
         center.playCommand.addTarget { [weak self] _ in
             self?.play()
             return .success
         }
 
+        center.pauseCommand.isEnabled = true
         center.pauseCommand.addTarget { [weak self] _ in
             self?.pause()
             return .success
         }
 
+        center.togglePlayPauseCommand.isEnabled = true
         center.togglePlayPauseCommand.addTarget { [weak self] _ in
             self?.togglePlayback()
             return .success
         }
 
+        center.skipForwardCommand.isEnabled = true
         center.skipForwardCommand.preferredIntervals = [15]
         center.skipForwardCommand.addTarget { [weak self] _ in
             self?.seek(by: 15)
             return .success
         }
 
+        center.skipBackwardCommand.isEnabled = true
         center.skipBackwardCommand.preferredIntervals = [15]
         center.skipBackwardCommand.addTarget { [weak self] _ in
             self?.seek(by: -15)
+            return .success
+        }
+
+        center.changePlaybackPositionCommand.isEnabled = true
+        center.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let event = event as? MPChangePlaybackPositionCommandEvent else {
+                return .commandFailed
+            }
+
+            self?.seek(to: event.positionTime)
             return .success
         }
     }
@@ -220,6 +268,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: title,
             MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
+            MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: currentTime
         ]
 
@@ -227,6 +276,8 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             info[MPMediaItemPropertyPlaybackDuration] = duration
         }
 
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        let nowPlaying = MPNowPlayingInfoCenter.default()
+        nowPlaying.nowPlayingInfo = info
+        nowPlaying.playbackState = isPlaying ? .playing : .paused
     }
 }
