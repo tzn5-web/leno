@@ -173,62 +173,80 @@ enum DesktopBackendScript {
       // transport. The YouTube page is not allowed to install a second
       // remote-command layer.
       const disablePageMediaSession = () => {
+        let session = null;
+        let proto = null;
+
         try {
-          const session =
+          session =
             navigator.mediaSession;
 
-          if (!session) return;
+          proto =
+            session
+              ? Object.getPrototypeOf(
+                  session
+                )
+              : null;
+        } catch (_) {
+          return;
+        }
 
-          const proto =
-            Object.getPrototypeOf(
-              session
-            );
+        if (!session || !proto) {
+          return;
+        }
 
+        try {
           if (
-            proto &&
             typeof proto
               .setActionHandler ===
               "function" &&
             !proto
-              .__youtubeVcdSetActionHandler
+              .__youtubeVcdSetActionHandlerBlocked
           ) {
-            const native =
-              proto.setActionHandler;
-
             Object.defineProperty(
               proto,
-              "__youtubeVcdSetActionHandler",
+              "__youtubeVcdSetActionHandlerBlocked",
               {
                 configurable: false,
                 enumerable: false,
                 writable: false,
-                value: native
+                value: true
               }
             );
 
-            proto.setActionHandler =
+            Object.defineProperty(
+              proto,
+              "setActionHandler",
+              {
+                configurable: true,
+                enumerable: false,
+                writable: true,
+                value:
+                  function() {
+                    return undefined;
+                  }
+              }
+            );
+          }
+        } catch (_) {
+          try {
+            session.setActionHandler =
               function() {
                 return undefined;
               };
-          }
+          } catch (_) {}
+        }
 
-          const metadataDescriptor =
-            proto
-              ? Object.getOwnPropertyDescriptor(
-                  proto,
-                  "metadata"
-                )
-              : null;
-
+        try {
           if (
-            proto &&
-            metadataDescriptor?.set &&
+            typeof proto
+              .setPositionState ===
+              "function" &&
             !proto
-              .__youtubeVcdMetadataBlocked
+              .__youtubeVcdSetPositionStateBlocked
           ) {
             Object.defineProperty(
               proto,
-              "__youtubeVcdMetadataBlocked",
+              "__youtubeVcdSetPositionStateBlocked",
               {
                 configurable: false,
                 enumerable: false,
@@ -239,68 +257,62 @@ enum DesktopBackendScript {
 
             Object.defineProperty(
               proto,
-              "metadata",
+              "setPositionState",
               {
-                configurable:
-                  metadataDescriptor
-                    .configurable,
-                enumerable:
-                  metadataDescriptor
-                    .enumerable,
-                get:
-                  metadataDescriptor
-                    .get
-                    ? function() {
-                        return metadataDescriptor
-                          .get
-                          .call(this);
-                      }
-                    : undefined,
-                set() {}
-              }
-            );
-          }
-
-          const playbackDescriptor =
-            proto
-              ? Object.getOwnPropertyDescriptor(
-                  proto,
-                  "playbackState"
-                )
-              : null;
-
-          if (
-            proto &&
-            playbackDescriptor?.set &&
-            !proto
-              .__youtubeVcdPlaybackStateBlocked
-          ) {
-            Object.defineProperty(
-              proto,
-              "__youtubeVcdPlaybackStateBlocked",
-              {
-                configurable: false,
+                configurable: true,
                 enumerable: false,
-                writable: false,
-                value: true
+                writable: true,
+                value:
+                  function() {
+                    return undefined;
+                  }
               }
             );
+          }
+        } catch (_) {
+          try {
+            session.setPositionState =
+              function() {
+                return undefined;
+              };
+          } catch (_) {}
+        }
+
+        for (
+          const property of
+          [
+            "metadata",
+            "playbackState"
+          ]
+        ) {
+          try {
+            const descriptor =
+              Object.getOwnPropertyDescriptor(
+                proto,
+                property
+              );
+
+            if (
+              !descriptor?.set
+            ) {
+              continue;
+            }
 
             Object.defineProperty(
               proto,
-              "playbackState",
+              property,
               {
                 configurable:
-                  playbackDescriptor
+                  descriptor
                     .configurable,
                 enumerable:
-                  playbackDescriptor
+                  descriptor
                     .enumerable,
                 get:
-                  playbackDescriptor
+                  descriptor
                     .get
                     ? function() {
-                        return playbackDescriptor
+                        return descriptor
                           .get
                           .call(this);
                       }
@@ -308,8 +320,8 @@ enum DesktopBackendScript {
                 set() {}
               }
             );
-          }
-        } catch (_) {}
+          } catch (_) {}
+        }
       };
 
       const installDesktopShellStyle =
@@ -333,11 +345,13 @@ enum DesktopBackendScript {
           style.textContent = [
             "html,body{width:100%!important;min-width:0!important;max-width:100vw!important;overflow-x:hidden!important;}",
             "ytd-app,#content,#page-manager{width:100%!important;min-width:0!important;max-width:100vw!important;}",
-            "ytd-mini-guide-renderer,ytd-guide-renderer,#guide,#guide-button,ytd-masthead #voice-search-button,ytd-masthead #buttons ytd-button-renderer,ytd-masthead ytd-topbar-menu-button-renderer,ytd-masthead #end #buttons,ytd-miniplayer,ytd-player-minimized,ytd-banner-promo-renderer,ytd-statement-banner-renderer,[class*='app-promo'],[class*='open-app']{display:none!important;visibility:hidden!important;}",
+            "ytd-mini-guide-renderer,ytd-masthead #voice-search-button,ytd-masthead #buttons ytd-button-renderer,ytd-masthead ytd-topbar-menu-button-renderer,ytd-masthead #end #buttons,ytd-miniplayer,ytd-player-minimized,ytd-banner-promo-renderer,ytd-statement-banner-renderer,[class*='app-promo'],[class*='open-app']{display:none!important;visibility:hidden!important;}",
             "ytd-masthead{position:sticky!important;top:0!important;width:100%!important;min-width:0!important;z-index:2020!important;}",
             "ytd-masthead #container{min-width:0!important;padding-left:max(10px,env(safe-area-inset-left))!important;padding-right:max(10px,env(safe-area-inset-right))!important;}",
             "ytd-masthead #center{flex:1 1 auto!important;min-width:0!important;max-width:none!important;}",
             "ytd-masthead #search{min-width:0!important;}",
+            "ytd-guide-renderer,#guide{max-width:min(86vw,340px)!important;}",
+            "tp-yt-app-drawer#guide{z-index:2500!important;}",
             "ytd-watch-flexy,ytd-watch-grid,ytd-browse,ytd-search{width:100%!important;min-width:0!important;max-width:100vw!important;}",
             "ytd-watch-flexy #columns,ytd-watch-flexy #primary,ytd-watch-flexy #secondary,ytd-watch-grid #columns{width:100%!important;min-width:0!important;max-width:100%!important;}",
             "ytd-watch-flexy #columns{display:block!important;padding:0!important;}",
@@ -381,9 +395,27 @@ enum DesktopBackendScript {
 
       reconcileDesktopShell();
 
+      let reconcileScheduled = false;
+
+      const scheduleReconcile = () => {
+        if (reconcileScheduled) {
+          return;
+        }
+
+        reconcileScheduled = true;
+
+        nativeSetTimeout(
+          () => {
+            reconcileScheduled = false;
+            reconcileDesktopShell();
+          },
+          120
+        );
+      };
+
       const observer =
         new MutationObserver(
-          reconcileDesktopShell
+          scheduleReconcile
         );
 
       const start = () => {
@@ -427,9 +459,17 @@ enum DesktopBackendScript {
         900
       );
 
+      document.addEventListener(
+        "yt-navigate-finish",
+        () => {
+          scheduleReconcile();
+        },
+        true
+      );
+
       nativeSetInterval(
         reconcileDesktopShell,
-        2500
+        3000
       );
     })();
     """#
