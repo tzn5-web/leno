@@ -518,10 +518,13 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                   Date() <=
                     self.foregroundRepairWindowUntil,
                   self.wantsPlayback,
-                  self.hasMedia,
-                  self.mediaElementInDOM,
+                  self.hasPlaybackContext,
                   (
-                      self.mediaReadyState == 0 ||
+                      (
+                          self.hasMedia &&
+                          self.mediaElementInDOM &&
+                          self.mediaReadyState == 0
+                      ) ||
                       self.nativeMediaPlaybackState ==
                           .suspended
                   ),
