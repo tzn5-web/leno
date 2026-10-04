@@ -52,6 +52,19 @@ jobs:
           grep -q '__YOUTUBE_VCD_MEDIA_CONTROL__' Leno/PlaybackBridgeScript.swift
           grep -q 'armBackgroundCall' Leno/PlaybackBridgeScript.swift
           grep -q 'userPauseCall' Leno/PlaybackBridgeScript.swift
+          grep -Fq 'HTMLMediaElement.prototype.pause' Leno/PlaybackBridgeScript.swift
+          grep -q 'videoScore' Leno/PlaybackBridgeScript.swift
+          grep -q 'observeApplicationLifecycle' Leno/YouTubeSession.swift
+
+          if grep -Fq 'messageHandlers?.mediaState' Leno/AdBlockScript.swift; then
+            echo "AdBlockScript must not compete with PlaybackBridgeScript for media state."
+            exit 1
+          fi
+
+          if grep -q 'scenePhase' Leno/YouTubeView.swift; then
+            echo "SwiftUI scenePhase must not duplicate the notification lifecycle path."
+            exit 1
+          fi
 
           if grep -q 'StreamResolver.swift' project.yml; then
             echo "Stream resolver must not be part of this WebKit playback build."
@@ -138,10 +151,14 @@ jobs:
           DISPLAY_NAME="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$PLIST")"
           BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$PLIST")"
           BACKGROUND_MODE="$(/usr/libexec/PlistBuddy -c 'Print :UIBackgroundModes:0' "$PLIST")"
+          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST")"
+          BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$PLIST")"
 
           test "$DISPLAY_NAME" = "YoutubeVcd"
           test "$BUNDLE_ID" = "com.tzn5web.leno"
           test "$BACKGROUND_MODE" = "audio"
+          test "$VERSION" = "0.4.2"
+          test "$BUILD" = "7"
 
           find "$APP_PATH" -maxdepth 1 -iname '*AppIcon*' -print             | tee app-icon-files.log
 
@@ -161,7 +178,7 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v7
         with:
-          name: YoutubeVcd-v1-background-lifecycle-ipa
+          name: YoutubeVcd-v2-background-engine-ipa
           path: YoutubeVcd-unsigned.ipa
           if-no-files-found: error
 
