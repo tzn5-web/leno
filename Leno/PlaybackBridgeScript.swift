@@ -12,33 +12,98 @@ enum PlaybackBridgeScript {
         window.__YOUTUBE_VCD_MEDIA_STATE__ =
           window.__YOUTUBE_VCD_MEDIA_STATE__ || {
             wantsPlayback: false,
-            backgroundArmed: false
+            backgroundArmed: false,
+            nativeHandoff: false
           };
 
       let lastKnownTime = 0;
-      let nativePauseAllowed = 0;
+      let handoffPause = false;
 
       const videos = () =>
-        Array.from(document.querySelectorAll("video"));
+        Array.from(
+          document.querySelectorAll(
+            "video"
+          )
+        );
+
+      const videoIDFromLocation = () => {
+        try {
+          const url =
+            new URL(
+              location.href
+            );
+
+          if (
+            url.pathname === "/watch"
+          ) {
+            const id =
+              url.searchParams.get(
+                "v"
+              ) || "";
+
+            return /^[A-Za-z0-9_-]{11}$/.test(id)
+              ? id
+              : "";
+          }
+
+          const parts =
+            url.pathname
+              .split("/")
+              .filter(Boolean);
+
+          if (
+            parts.length >= 2 &&
+            [
+              "shorts",
+              "live",
+              "embed"
+            ].includes(parts[0]) &&
+            /^[A-Za-z0-9_-]{11}$/.test(
+              parts[1]
+            )
+          ) {
+            return parts[1];
+          }
+        } catch (_) {}
+
+        return "";
+      };
 
       const videoScore = (video) => {
-        if (!video || video.ended) return -1;
+        if (!video || video.ended) {
+          return -1;
+        }
 
         let score = 0;
 
-        if (!video.paused) score += 1_000_000;
-        if (video.readyState >= 2) score += 20_000;
-        if (video.currentSrc) score += 10_000;
+        if (!video.paused) {
+          score += 1_000_000;
+        }
 
-        if (Number.isFinite(video.duration) && video.duration > 0) {
+        if (video.readyState >= 2) {
+          score += 20_000;
+        }
+
+        if (video.currentSrc) {
+          score += 10_000;
+        }
+
+        if (
+          Number.isFinite(
+            video.duration
+          ) &&
+          video.duration > 0
+        ) {
           score += 5_000;
         }
 
         try {
-          const mode = video.webkitPresentationMode;
+          const mode =
+            video.webkitPresentationMode;
 
           if (
-            mode === "picture-in-picture" ||
+            mode ===
+              "picture-in-picture" ||
             mode === "fullscreen"
           ) {
             score += 2_000_000;
@@ -46,13 +111,24 @@ enum PlaybackBridgeScript {
         } catch (_) {}
 
         try {
-          const rect = video.getBoundingClientRect();
+          const rect =
+            video.getBoundingClientRect();
+
           const area =
-            Math.max(0, rect.width) *
-            Math.max(0, rect.height);
+            Math.max(
+              0,
+              rect.width
+            ) *
+            Math.max(
+              0,
+              rect.height
+            );
 
           score +=
-            Math.min(area, 1_000_000) / 100;
+            Math.min(
+              area,
+              1_000_000
+            ) / 100;
         } catch (_) {}
 
         return score;
@@ -63,7 +139,10 @@ enum PlaybackBridgeScript {
         let bestScore = -1;
 
         for (const video of videos()) {
-          const score = videoScore(video);
+          const score =
+            videoScore(
+              video
+            );
 
           if (score > bestScore) {
             best = video;
@@ -74,24 +153,23 @@ enum PlaybackBridgeScript {
         return best;
       };
 
-      const nativePlay =
-        HTMLMediaElement.prototype.play;
-
-      const nativePause =
-        HTMLMediaElement.prototype.pause;
-
       const safePlay = (video) => {
-        if (!video) return false;
+        if (!video) {
+          return false;
+        }
 
         try {
           const result =
-            nativePlay.call(video);
+            video.play();
 
           if (
             result &&
-            typeof result.catch === "function"
+            typeof result.catch ===
+              "function"
           ) {
-            result.catch(() => {});
+            result.catch(
+              () => {}
+            );
           }
 
           return true;
@@ -100,65 +178,122 @@ enum PlaybackBridgeScript {
         }
       };
 
-      HTMLMediaElement.prototype.pause =
-        function(...args) {
-          try {
-            const active = currentVideo();
+      const pauseVideo = (
+        video,
+        preserveIntent = false
+      ) => {
+        if (!video) {
+          return false;
+        }
 
-            if (
-              nativePauseAllowed === 0 &&
-              state.backgroundArmed &&
-              state.wantsPlayback &&
-              active === this &&
-              !this.ended
-            ) {
-              return;
-            }
-          } catch (_) {}
+        if (preserveIntent) {
+          handoffPause = true;
+        }
 
-          return nativePause.apply(
-            this,
-            args
-          );
-        };
+        try {
+          video.pause();
+          return true;
+        } catch (_) {
+          return false;
+        } finally {
+          if (preserveIntent) {
+            Promise.resolve().then(
+              () => {
+                handoffPause = false;
+              }
+            );
+          }
+        }
+      };
 
       const postState = () => {
         try {
-          const bridge = window.webkit?.messageHandlers?.mediaState;
+          const bridge =
+            window.webkit
+              ?.messageHandlers
+              ?.mediaState;
+
           if (!bridge) return;
 
-          const video = currentVideo();
+          const video =
+            currentVideo();
 
           if (!video) {
             bridge.postMessage({
               title: "YouTube",
+              videoID:
+                videoIDFromLocation(),
               paused: true,
               hasMedia: false,
               currentTime: 0,
               duration: 0
             });
+
             return;
           }
 
           bridge.postMessage({
-            title: (document.title || "YouTube").replace(/\s*-\s*YouTube\s*$/, ""),
-            paused: !!video.paused,
+            title:
+              (
+                document.title ||
+                "YouTube"
+              ).replace(
+                /\s*-\s*YouTube\s*$/,
+                ""
+              ),
+            videoID:
+              videoIDFromLocation(),
+            paused:
+              !!video.paused,
             hasMedia: true,
-            currentTime: Number.isFinite(video.currentTime) ? video.currentTime : 0,
-            duration: Number.isFinite(video.duration) ? video.duration : 0
+            currentTime:
+              Number.isFinite(
+                video.currentTime
+              )
+                ? video.currentTime
+                : 0,
+            duration:
+              Number.isFinite(
+                video.duration
+              )
+                ? video.duration
+                : 0
           });
         } catch (_) {}
       };
 
-      const resumeIfNeeded = () => {
+      const resumeWebIfNeeded = () => {
         try {
-          const video = currentVideo();
-          if (!video || !state.wantsPlayback) return;
+          if (
+            state.nativeHandoff ||
+            !state.wantsPlayback
+          ) {
+            return;
+          }
 
-          if (video.paused || video.ended) {
-            if (Number.isFinite(lastKnownTime) &&
-                Math.abs((video.currentTime || 0) - lastKnownTime) > 2) {
-              video.currentTime = lastKnownTime;
+          const video =
+            currentVideo();
+
+          if (!video) return;
+
+          if (
+            video.paused ||
+            video.ended
+          ) {
+            if (
+              Number.isFinite(
+                lastKnownTime
+              ) &&
+              Math.abs(
+                (
+                  video.currentTime ||
+                  0
+                ) -
+                lastKnownTime
+              ) > 2
+            ) {
+              video.currentTime =
+                lastKnownTime;
             }
 
             safePlay(video);
@@ -166,21 +301,126 @@ enum PlaybackBridgeScript {
         } catch (_) {}
       };
 
+      const requestPiP = () => {
+        const video =
+          currentVideo();
+
+        if (!video) {
+          return false;
+        }
+
+        try {
+          if (
+            typeof video
+              .webkitSetPresentationMode ===
+            "function"
+          ) {
+            const mode =
+              video.webkitPresentationMode;
+
+            video.webkitSetPresentationMode(
+              mode ===
+                "picture-in-picture"
+                ? "inline"
+                : "picture-in-picture"
+            );
+
+            return true;
+          }
+        } catch (_) {}
+
+        try {
+          if (
+            document
+              .pictureInPictureElement
+          ) {
+            document
+              .exitPictureInPicture
+              ?.();
+
+            return true;
+          }
+
+          if (
+            document
+              .pictureInPictureEnabled &&
+            typeof video
+              .requestPictureInPicture ===
+              "function"
+          ) {
+            video
+              .requestPictureInPicture()
+              .catch(
+                () => {}
+              );
+
+            return true;
+          }
+        } catch (_) {}
+
+        return false;
+      };
+
+      const requestFullscreen = () => {
+        const video =
+          currentVideo();
+
+        if (!video) {
+          return false;
+        }
+
+        try {
+          if (
+            typeof video
+              .webkitEnterFullscreen ===
+            "function"
+          ) {
+            video.webkitEnterFullscreen();
+            return true;
+          }
+        } catch (_) {}
+
+        try {
+          const player =
+            document.querySelector(
+              ".html5-video-player"
+            ) ||
+            video.parentElement ||
+            video;
+
+          if (
+            typeof player
+              .requestFullscreen ===
+            "function"
+          ) {
+            player
+              .requestFullscreen()
+              .catch(
+                () => {}
+              );
+
+            return true;
+          }
+
+          if (
+            typeof player
+              .webkitRequestFullscreen ===
+            "function"
+          ) {
+            player
+              .webkitRequestFullscreen();
+
+            return true;
+          }
+        } catch (_) {}
+
+        return false;
+      };
+
       window.__YOUTUBE_VCD_MEDIA_CONTROL__ = {
         armBackground() {
           state.backgroundArmed = true;
-
-          const video = currentVideo();
-          if (!video) return false;
-
-          if (!video.paused && !video.ended) {
-            state.wantsPlayback = true;
-          }
-
-          if (state.wantsPlayback) {
-            resumeIfNeeded();
-          }
-
+          resumeWebIfNeeded();
           postState();
           return true;
         },
@@ -191,14 +431,102 @@ enum PlaybackBridgeScript {
           return true;
         },
 
+        prepareNativeHandoff() {
+          const video =
+            currentVideo();
+
+          if (!video) {
+            return false;
+          }
+
+          state.nativeHandoff = true;
+          state.backgroundArmed = false;
+
+          if (
+            !video.paused &&
+            !video.ended
+          ) {
+            state.wantsPlayback = true;
+          }
+
+          if (
+            Number.isFinite(
+              video.currentTime
+            )
+          ) {
+            lastKnownTime =
+              video.currentTime;
+          }
+
+          pauseVideo(
+            video,
+            true
+          );
+
+          postState();
+          return true;
+        },
+
+        resumeFromNative(
+          seconds,
+          shouldPlay
+        ) {
+          const video =
+            currentVideo();
+
+          state.nativeHandoff = false;
+          state.backgroundArmed = false;
+          state.wantsPlayback =
+            !!shouldPlay;
+
+          if (!video) {
+            postState();
+            return false;
+          }
+
+          const safeSeconds =
+            Number.isFinite(
+              Number(seconds)
+            )
+              ? Math.max(
+                  0,
+                  Number(seconds)
+                )
+              : 0;
+
+          try {
+            video.currentTime =
+              safeSeconds;
+
+            lastKnownTime =
+              safeSeconds;
+          } catch (_) {}
+
+          if (shouldPlay) {
+            safePlay(video);
+          } else {
+            pauseVideo(
+              video,
+              false
+            );
+          }
+
+          postState();
+          return true;
+        },
+
         play() {
           state.wantsPlayback = true;
 
-          const video = currentVideo();
-          if (!video) return false;
+          if (state.nativeHandoff) {
+            postState();
+            return true;
+          }
 
           const started =
-            safePlay(video);
+            safePlay(
+              currentVideo()
+            );
 
           postState();
           return started;
@@ -207,98 +535,264 @@ enum PlaybackBridgeScript {
         pause() {
           state.wantsPlayback = false;
 
-          const video = currentVideo();
-          if (!video) return false;
-
-          nativePauseAllowed += 1;
-
-          try {
-            nativePause.call(video);
+          if (state.nativeHandoff) {
             postState();
             return true;
-          } catch (_) {
-            return false;
-          } finally {
-            nativePauseAllowed =
-              Math.max(
-                0,
-                nativePauseAllowed - 1
-              );
           }
+
+          const paused =
+            pauseVideo(
+              currentVideo(),
+              false
+            );
+
+          postState();
+          return paused;
+        },
+
+        seekTo(seconds) {
+          const video =
+            currentVideo();
+
+          if (!video) {
+            return false;
+          }
+
+          const safeSeconds =
+            Number.isFinite(
+              Number(seconds)
+            )
+              ? Math.max(
+                  0,
+                  Number(seconds)
+                )
+              : 0;
+
+          const maximum =
+            Number.isFinite(
+              video.duration
+            )
+              ? video.duration
+              : Number
+                  .POSITIVE_INFINITY;
+
+          video.currentTime =
+            Math.max(
+              0,
+              Math.min(
+                maximum,
+                safeSeconds
+              )
+            );
+
+          lastKnownTime =
+            video.currentTime;
+
+          postState();
+          return true;
+        },
+
+        seekBy(seconds) {
+          const video =
+            currentVideo();
+
+          if (!video) {
+            return false;
+          }
+
+          const delta =
+            Number.isFinite(
+              Number(seconds)
+            )
+              ? Number(seconds)
+              : 0;
+
+          return this.seekTo(
+            (
+              Number.isFinite(
+                video.currentTime
+              )
+                ? video.currentTime
+                : 0
+            ) + delta
+          );
         },
 
         keepAlive() {
-          if (state.wantsPlayback) {
-            resumeIfNeeded();
-          }
-
+          resumeWebIfNeeded();
           return state.wantsPlayback;
-        }
+        },
+
+        requestPiP,
+        requestFullscreen
       };
 
-      document.addEventListener("play", (event) => {
-        if (event.target?.tagName !== "VIDEO") return;
-        state.wantsPlayback = true;
-        postState();
-      }, true);
+      document.addEventListener(
+        "play",
+        (event) => {
+          if (
+            event.target?.tagName !==
+            "VIDEO"
+          ) {
+            return;
+          }
 
-      document.addEventListener("pause", (event) => {
-        if (event.target?.tagName !== "VIDEO") return;
+          if (!state.nativeHandoff) {
+            state.wantsPlayback = true;
+          }
 
-        const video = event.target;
-        if (Number.isFinite(video.currentTime)) {
-          lastKnownTime = video.currentTime;
-        }
-
-        if ((document.hidden || state.backgroundArmed) && state.wantsPlayback) {
-          event.stopImmediatePropagation();
-          Promise.resolve().then(resumeIfNeeded);
-        } else {
-          state.wantsPlayback = false;
-        }
-
-        postState();
-      }, true);
-
-      document.addEventListener("timeupdate", (event) => {
-        if (event.target?.tagName !== "VIDEO") return;
-
-        const video = event.target;
-        if (Number.isFinite(video.currentTime)) {
-          lastKnownTime = video.currentTime;
-        }
-
-        const now = Date.now();
-        if (!window.__YOUTUBE_VCD_LAST_MEDIA_REPORT__ ||
-            now - window.__YOUTUBE_VCD_LAST_MEDIA_REPORT__ > 1000) {
-          window.__YOUTUBE_VCD_LAST_MEDIA_REPORT__ = now;
           postState();
+        },
+        true
+      );
+
+      document.addEventListener(
+        "pause",
+        (event) => {
+          if (
+            event.target?.tagName !==
+            "VIDEO"
+          ) {
+            return;
+          }
+
+          const video =
+            event.target;
+
+          if (
+            Number.isFinite(
+              video.currentTime
+            )
+          ) {
+            lastKnownTime =
+              video.currentTime;
+          }
+
+          if (
+            !handoffPause &&
+            !state.nativeHandoff
+          ) {
+            if (
+              document.hidden &&
+              state.backgroundArmed &&
+              state.wantsPlayback
+            ) {
+              Promise.resolve()
+                .then(
+                  resumeWebIfNeeded
+                );
+            } else {
+              state.wantsPlayback =
+                false;
+            }
+          }
+
+          postState();
+        },
+        true
+      );
+
+      document.addEventListener(
+        "timeupdate",
+        (event) => {
+          if (
+            event.target?.tagName !==
+            "VIDEO"
+          ) {
+            return;
+          }
+
+          const video =
+            event.target;
+
+          if (
+            Number.isFinite(
+              video.currentTime
+            )
+          ) {
+            lastKnownTime =
+              video.currentTime;
+          }
+
+          const now = Date.now();
+
+          if (
+            !window
+              .__YOUTUBE_VCD_LAST_MEDIA_REPORT__ ||
+            now -
+              window
+                .__YOUTUBE_VCD_LAST_MEDIA_REPORT__ >
+              1000
+          ) {
+            window
+              .__YOUTUBE_VCD_LAST_MEDIA_REPORT__ =
+              now;
+
+            postState();
+          }
+        },
+        true
+      );
+
+      [
+        "playing",
+        "loadedmetadata",
+        "durationchange",
+        "emptied"
+      ].forEach(
+        (eventName) => {
+          document.addEventListener(
+            eventName,
+            postState,
+            true
+          );
         }
-      }, true);
+      );
 
-      document.addEventListener("playing", postState, true);
-      document.addEventListener("loadedmetadata", postState, true);
-      document.addEventListener("durationchange", postState, true);
-      document.addEventListener("emptied", postState, true);
+      document.addEventListener(
+        "visibilitychange",
+        () => {
+          if (
+            document.hidden &&
+            state.backgroundArmed &&
+            state.wantsPlayback &&
+            !state.nativeHandoff
+          ) {
+            Promise.resolve()
+              .then(
+                resumeWebIfNeeded
+              );
+          }
+        },
+        true
+      );
 
-      document.addEventListener("visibilitychange", (event) => {
-        if ((document.hidden || state.backgroundArmed) && state.wantsPlayback) {
-          event.stopImmediatePropagation();
-          Promise.resolve().then(resumeIfNeeded);
-          setTimeout(resumeIfNeeded, 80);
-          setTimeout(resumeIfNeeded, 300);
+      const makeButton = (
+        id,
+        title,
+        symbol,
+        action
+      ) => {
+        let button =
+          document.getElementById(
+            id
+          );
+
+        if (button) {
+          return button;
         }
-      }, true);
 
-      const makeButton = (id, title, symbol, action) => {
-        let button = document.getElementById(id);
-        if (button) return button;
+        button =
+          document.createElement(
+            "button"
+          );
 
-        button = document.createElement("button");
         button.id = id;
         button.type = "button";
         button.title = title;
-        button.textContent = symbol;
+        button.textContent =
+          symbol;
+
         button.style.cssText = [
           "width:44px",
           "height:44px",
@@ -316,89 +810,49 @@ enum PlaybackBridgeScript {
           "touch-action:manipulation"
         ].join(";");
 
-        button.addEventListener("click", (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          event.stopImmediatePropagation();
-          action();
-        }, true);
+        button.addEventListener(
+          "click",
+          (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            event
+              .stopImmediatePropagation();
+
+            action();
+          },
+          true
+        );
 
         return button;
       };
 
-      const requestPiP = () => {
-        const video = currentVideo();
-        if (!video) return false;
-
-        try {
-          if (typeof video.webkitSetPresentationMode === "function") {
-            const mode = video.webkitPresentationMode;
-            video.webkitSetPresentationMode(
-              mode === "picture-in-picture" ? "inline" : "picture-in-picture"
-            );
-            return true;
-          }
-        } catch (_) {}
-
-        try {
-          if (document.pictureInPictureElement) {
-            document.exitPictureInPicture?.();
-            return true;
-          }
-
-          if (document.pictureInPictureEnabled &&
-              typeof video.requestPictureInPicture === "function") {
-            video.requestPictureInPicture().catch(() => {});
-            return true;
-          }
-        } catch (_) {}
-
-        return false;
-      };
-
-      const requestFullscreen = () => {
-        const video = currentVideo();
-        if (!video) return false;
-
-        try {
-          if (typeof video.webkitEnterFullscreen === "function") {
-            video.webkitEnterFullscreen();
-            return true;
-          }
-        } catch (_) {}
-
-        try {
-          const player =
-            document.querySelector(".html5-video-player") ||
-            video.parentElement ||
-            video;
-
-          if (typeof player.requestFullscreen === "function") {
-            player.requestFullscreen().catch(() => {});
-            return true;
-          }
-
-          if (typeof player.webkitRequestFullscreen === "function") {
-            player.webkitRequestFullscreen();
-            return true;
-          }
-        } catch (_) {}
-
-        return false;
-      };
-
       const ensureControls = () => {
-        const video = currentVideo();
-        let root = document.getElementById("__youtube_vcd_media_controls__");
+        const video =
+          currentVideo();
+
+        let root =
+          document.getElementById(
+            "__youtube_vcd_media_controls__"
+          );
 
         if (!video) {
-          if (root) root.style.display = "none";
+          if (root) {
+            root.style.display =
+              "none";
+          }
+
           return;
         }
 
         if (!root) {
-          root = document.createElement("div");
-          root.id = "__youtube_vcd_media_controls__";
+          root =
+            document.createElement(
+              "div"
+            );
+
+          root.id =
+            "__youtube_vcd_media_controls__";
+
           root.style.cssText = [
             "position:fixed",
             "right:12px",
@@ -409,55 +863,83 @@ enum PlaybackBridgeScript {
             "pointer-events:auto"
           ].join(";");
 
-          const pip = makeButton(
-            "__youtube_vcd_pip__",
-            "Picture in Picture",
-            "◱",
-            requestPiP
+          root.appendChild(
+            makeButton(
+              "__youtube_vcd_pip__",
+              "Picture in Picture",
+              "◱",
+              requestPiP
+            )
           );
 
-          const fullscreen = makeButton(
-            "__youtube_vcd_fullscreen__",
-            "Fullscreen",
-            "⛶",
-            requestFullscreen
+          root.appendChild(
+            makeButton(
+              "__youtube_vcd_fullscreen__",
+              "Fullscreen",
+              "⛶",
+              requestFullscreen
+            )
           );
 
-          root.appendChild(pip);
-          root.appendChild(fullscreen);
-          (document.body || document.documentElement)?.appendChild(root);
+          (
+            document.body ||
+            document.documentElement
+          )?.appendChild(
+            root
+          );
         }
 
-        root.style.display = "flex";
+        root.style.display =
+          "flex";
       };
 
-      const observer = new MutationObserver(() => {
-        ensureControls();
-        postState();
-      });
+      const observer =
+        new MutationObserver(
+          () => {
+            ensureControls();
+            postState();
+          }
+        );
 
       const begin = () => {
         if (document.documentElement) {
-          observer.observe(document.documentElement, {
-            childList: true,
-            subtree: true
-          });
+          observer.observe(
+            document.documentElement,
+            {
+              childList: true,
+              subtree: true
+            }
+          );
         }
 
         ensureControls();
         postState();
       };
 
-      if (document.documentElement) begin();
-      else document.addEventListener("DOMContentLoaded", begin, { once: true });
+      if (document.documentElement) {
+        begin();
+      } else {
+        document.addEventListener(
+          "DOMContentLoaded",
+          begin,
+          { once: true }
+        );
+      }
 
       setInterval(() => {
         ensureControls();
-        if ((document.hidden || state.backgroundArmed) && state.wantsPlayback) {
-          resumeIfNeeded();
+
+        if (
+          document.hidden &&
+          state.backgroundArmed &&
+          state.wantsPlayback &&
+          !state.nativeHandoff
+        ) {
+          resumeWebIfNeeded();
         }
+
         postState();
-      }, 1200);
+      }, 1500);
     })();
     """#
 
@@ -466,8 +948,9 @@ enum PlaybackBridgeScript {
       const control =
         window.__YOUTUBE_VCD_MEDIA_CONTROL__;
 
-      if (!control) return false;
-      return control.armBackground();
+      return control
+        ? control.armBackground()
+        : false;
     })();
     """#
 
@@ -476,8 +959,20 @@ enum PlaybackBridgeScript {
       const control =
         window.__YOUTUBE_VCD_MEDIA_CONTROL__;
 
-      if (!control) return false;
-      return control.disarmBackground();
+      return control
+        ? control.disarmBackground()
+        : false;
+    })();
+    """#
+
+    static let prepareNativeHandoffCall = #"""
+    (() => {
+      const control =
+        window.__YOUTUBE_VCD_MEDIA_CONTROL__;
+
+      return control
+        ? control.prepareNativeHandoff()
+        : false;
     })();
     """#
 
@@ -486,8 +981,9 @@ enum PlaybackBridgeScript {
       const control =
         window.__YOUTUBE_VCD_MEDIA_CONTROL__;
 
-      if (!control) return false;
-      return control.play();
+      return control
+        ? control.play()
+        : false;
     })();
     """#
 
@@ -496,8 +992,9 @@ enum PlaybackBridgeScript {
       const control =
         window.__YOUTUBE_VCD_MEDIA_CONTROL__;
 
-      if (!control) return false;
-      return control.pause();
+      return control
+        ? control.pause()
+        : false;
     })();
     """#
 
@@ -506,68 +1003,86 @@ enum PlaybackBridgeScript {
       const control =
         window.__YOUTUBE_VCD_MEDIA_CONTROL__;
 
-      if (!control) return false;
-      return control.keepAlive();
+      return control
+        ? control.keepAlive()
+        : false;
     })();
     """#
 
     static let requestPiPCall = #"""
     (() => {
-      const video = document.querySelector("video");
-      if (!video) return false;
+      const control =
+        window.__YOUTUBE_VCD_MEDIA_CONTROL__;
 
-      try {
-        if (typeof video.webkitSetPresentationMode === "function") {
-          const mode = video.webkitPresentationMode;
-          video.webkitSetPresentationMode(
-            mode === "picture-in-picture" ? "inline" : "picture-in-picture"
-          );
-          return true;
-        }
-      } catch (_) {}
-
-      try {
-        if (document.pictureInPictureElement) {
-          document.exitPictureInPicture?.();
-          return true;
-        }
-
-        if (document.pictureInPictureEnabled &&
-            typeof video.requestPictureInPicture === "function") {
-          video.requestPictureInPicture().catch(() => {});
-          return true;
-        }
-      } catch (_) {}
-
-      return false;
+      return control
+        ? control.requestPiP()
+        : false;
     })();
     """#
 
     static let requestFullscreenCall = #"""
     (() => {
-      const video = document.querySelector("video");
-      if (!video) return false;
+      const control =
+        window.__YOUTUBE_VCD_MEDIA_CONTROL__;
 
-      try {
-        if (typeof video.webkitEnterFullscreen === "function") {
-          video.webkitEnterFullscreen();
-          return true;
-        }
-      } catch (_) {}
-
-      try {
-        const player =
-          document.querySelector(".html5-video-player") ||
-          video.parentElement ||
-          video;
-
-        if (typeof player.requestFullscreen === "function") {
-          player.requestFullscreen().catch(() => {});
-          return true;
-        }
-      } catch (_) {}
-
-      return false;
+      return control
+        ? control.requestFullscreen()
+        : false;
     })();
     """#
+
+    static func resumeFromNativeCall(
+        time: Double,
+        shouldPlay: Bool
+    ) -> String {
+        let safeTime = max(0, time)
+        let playLiteral =
+            shouldPlay ? "true" : "false"
+
+        return """
+        (() => {
+          const control =
+            window.__YOUTUBE_VCD_MEDIA_CONTROL__;
+
+          return control
+            ? control.resumeFromNative(
+                \(safeTime),
+                \(playLiteral)
+              )
+            : false;
+        })();
+        """
+    }
+
+    static func seekByCall(
+        seconds: Double
+    ) -> String {
+        """
+        (() => {
+          const control =
+            window.__YOUTUBE_VCD_MEDIA_CONTROL__;
+
+          return control
+            ? control.seekBy(\(seconds))
+            : false;
+        })();
+        """
+    }
+
+    static func seekToCall(
+        seconds: Double
+    ) -> String {
+        let safe = max(0, seconds)
+
+        return """
+        (() => {
+          const control =
+            window.__YOUTUBE_VCD_MEDIA_CONTROL__;
+
+          return control
+            ? control.seekTo(\(safe))
+            : false;
+        })();
+        """
+    }
 }
