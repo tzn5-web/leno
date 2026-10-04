@@ -190,6 +190,67 @@ enum PlaybackBridgeScript {
         "visible"
       );
 
+      // Keep YouTube from registering page-lifecycle handlers that can
+      // explicitly pause the watch player. The bridge captured pristine
+      // addEventListener functions above, so our own real lifecycle listeners
+      // still receive the native events.
+      const originalEventTargetAddEventListener =
+        EventTarget.prototype.addEventListener;
+
+      const blockedLifecycleEvents =
+        new Set([
+          "visibilitychange",
+          "webkitvisibilitychange",
+          "pagehide",
+          "freeze"
+        ]);
+
+      EventTarget.prototype.addEventListener =
+        function(type, listener, options) {
+          if (
+            blockedLifecycleEvents.has(
+              String(type)
+            )
+          ) {
+            return;
+          }
+
+          return originalEventTargetAddEventListener.call(
+            this,
+            type,
+            listener,
+            options
+          );
+        };
+
+      try {
+        document.hasFocus = () => true;
+      } catch (_) {}
+
+      try {
+        Object.defineProperty(
+          document,
+          "onvisibilitychange",
+          {
+            configurable: true,
+            get: () => null,
+            set: () => {}
+          }
+        );
+      } catch (_) {}
+
+      try {
+        Object.defineProperty(
+          document,
+          "onwebkitvisibilitychange",
+          {
+            configurable: true,
+            get: () => null,
+            set: () => {}
+          }
+        );
+      } catch (_) {}
+
       const state = {
         video: null,
         wantsPlayback: false,
@@ -485,6 +546,9 @@ enum PlaybackBridgeScript {
                 ),
               presentationMode:
                 "none",
+              readyState: 0,
+              networkState: 0,
+              inDOM: false,
               currentTime: 0,
               duration: 0
             });
@@ -515,6 +579,12 @@ enum PlaybackBridgeScript {
             realHidden:
               isReallyHidden(),
             presentationMode,
+            readyState:
+              video.readyState,
+            networkState:
+              video.networkState,
+            inDOM:
+              document.contains(video),
             currentTime:
               Number.isFinite(
                 video.currentTime
@@ -1667,7 +1737,14 @@ enum PlaybackBridgeScript {
             presentationMode:
               video
                 ?.webkitPresentationMode ||
-              "inline"
+              "inline",
+            readyState:
+              video?.readyState ?? 0,
+            networkState:
+              video?.networkState ?? 0,
+            inDOM:
+              !!video &&
+              document.contains(video)
           };
         }
       };
