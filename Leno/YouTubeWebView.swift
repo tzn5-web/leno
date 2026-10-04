@@ -164,11 +164,12 @@ struct YouTubeWebView: UIViewRepresentable {
                 return
             }
 
-            let scheme = url.scheme?.lowercased()
-            switch scheme {
-            case "http", "https", "about", "data", "blob":
+            let scheme = url.scheme?.lowercased() ?? ""
+            let allowedSchemes = ["http", "https", "about", "data", "blob"]
+
+            if allowedSchemes.contains(scheme) {
                 decisionHandler(.allow)
-            default:
+            } else {
                 decisionHandler(.cancel)
             }
         }

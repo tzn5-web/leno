@@ -1,60 +1,63 @@
-import AppKit
+import CoreGraphics
+import CoreText
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 
 let defaultOutput = "Leno/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
 let outputPath = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : defaultOutput
 
-let size = 1024
+let width = 1024
+let height = 1024
+let colorSpace = CGColorSpaceCreateDeviceRGB()
 
-guard let bitmap = NSBitmapImageRep(
-    bitmapDataPlanes: nil,
-    pixelsWide: size,
-    pixelsHigh: size,
-    bitsPerSample: 8,
-    samplesPerPixel: 3,
-    hasAlpha: false,
-    isPlanar: false,
-    colorSpaceName: .deviceRGB,
-    bytesPerRow: 0,
-    bitsPerPixel: 0
+guard let context = CGContext(
+    data: nil,
+    width: width,
+    height: height,
+    bitsPerComponent: 8,
+    bytesPerRow: width * 4,
+    space: colorSpace,
+    bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
 ) else {
-    fatalError("Could not create bitmap")
+    fatalError("Could not create CoreGraphics context")
 }
 
-guard let context = NSGraphicsContext(bitmapImageRep: bitmap) else {
-    fatalError("Could not create graphics context")
-}
+context.setFillColor(CGColor(red: 1.0, green: 0.0, blue: 0.0, alpha: 1.0))
+context.fill(CGRect(x: 0, y: 0, width: width, height: height))
 
-NSGraphicsContext.saveGraphicsState()
-NSGraphicsContext.current = context
-
-let canvas = NSRect(x: 0, y: 0, width: size, height: size)
-NSColor(calibratedRed: 1.0, green: 0.0, blue: 0.0, alpha: 1.0).setFill()
-canvas.fill()
-
-let plate = NSRect(x: 150, y: 320, width: 724, height: 384)
-let platePath = NSBezierPath(roundedRect: plate, xRadius: 104, yRadius: 104)
-NSColor.white.setFill()
-platePath.fill()
-
-let paragraph = NSMutableParagraphStyle()
-paragraph.alignment = .center
-
-let attributes: [NSAttributedString.Key: Any] = [
-    .font: NSFont.systemFont(ofSize: 300, weight: .black),
-    .foregroundColor: NSColor(calibratedRed: 1.0, green: 0.0, blue: 0.0, alpha: 1.0),
-    .paragraphStyle: paragraph
-]
-
-("A" as NSString).draw(
-    in: NSRect(x: 150, y: 342, width: 724, height: 330),
-    withAttributes: attributes
+let plateRect = CGRect(x: 150, y: 320, width: 724, height: 384)
+let platePath = CGPath(
+    roundedRect: plateRect,
+    cornerWidth: 104,
+    cornerHeight: 104,
+    transform: nil
 )
 
-NSGraphicsContext.restoreGraphicsState()
+context.addPath(platePath)
+context.setFillColor(CGColor(gray: 1.0, alpha: 1.0))
+context.fillPath()
 
-guard let data = bitmap.representation(using: .png, properties: [:]) else {
-    fatalError("Could not encode PNG")
+let font = CTFontCreateUIFontForLanguage(.system, 300, nil)
+let textColor = CGColor(red: 1.0, green: 0.0, blue: 0.0, alpha: 1.0)
+
+let attributes: [NSAttributedString.Key: Any] = [
+    NSAttributedString.Key(kCTFontAttributeName as String): font,
+    NSAttributedString.Key(kCTForegroundColorAttributeName as String): textColor
+]
+
+let attributed = NSAttributedString(string: "A", attributes: attributes)
+let line = CTLineCreateWithAttributedString(attributed)
+let bounds = CTLineGetBoundsWithOptions(line, [.useOpticalBounds])
+
+let textX = (CGFloat(width) - bounds.width) / 2.0 - bounds.minX
+let textY = (CGFloat(height) - bounds.height) / 2.0 - bounds.minY - 8
+
+context.textPosition = CGPoint(x: textX, y: textY)
+CTLineDraw(line, context)
+
+guard let image = context.makeImage() else {
+    fatalError("Could not create image")
 }
 
 let outputURL = URL(fileURLWithPath: outputPath)
@@ -62,6 +65,20 @@ try FileManager.default.createDirectory(
     at: outputURL.deletingLastPathComponent(),
     withIntermediateDirectories: true
 )
-try data.write(to: outputURL, options: .atomic)
+
+guard let destination = CGImageDestinationCreateWithURL(
+    outputURL as CFURL,
+    UTType.png.identifier as CFString,
+    1,
+    nil
+) else {
+    fatalError("Could not create PNG destination")
+}
+
+CGImageDestinationAddImage(destination, image, nil)
+
+guard CGImageDestinationFinalize(destination) else {
+    fatalError("Could not write PNG")
+}
 
 print("Generated app icon: \(outputURL.path)")
