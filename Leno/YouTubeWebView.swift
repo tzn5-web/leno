@@ -39,6 +39,11 @@ struct YouTubeWebView: UIViewRepresentable {
             name: "mediaIntent"
         )
 
+        userContentController.add(
+            session,
+            name: "browseRequest"
+        )
+
         let configuration = WKWebViewConfiguration()
         configuration.userContentController =
             userContentController
@@ -97,6 +102,11 @@ struct YouTubeWebView: UIViewRepresentable {
                 forName: "mediaIntent"
             )
 
+        uiView.configuration.userContentController
+            .removeScriptMessageHandler(
+                forName: "browseRequest"
+            )
+
         uiView.navigationDelegate = nil
         uiView.uiDelegate = nil
     }
@@ -107,7 +117,8 @@ struct YouTubeWebView: UIViewRepresentable {
     ) {
         guard let store =
                 WKContentRuleListStore.default() else {
-            session.loadHome()
+            coordinator.didStartInitialLoad = true
+            session.playerDidBecomeReady()
             return
         }
 
@@ -127,7 +138,7 @@ struct YouTubeWebView: UIViewRepresentable {
                         .add(cached)
 
                     coordinator.didStartInitialLoad = true
-                    session.loadHome()
+                    session.playerDidBecomeReady()
                     return
                 }
 
@@ -152,7 +163,7 @@ struct YouTubeWebView: UIViewRepresentable {
                         }
 
                         coordinator.didStartInitialLoad = true
-                        session.loadHome()
+                        session.playerDidBecomeReady()
                     }
                 }
             }
@@ -321,6 +332,22 @@ struct YouTubeWebView: UIViewRepresentable {
 
             if isYouTubeAppPromotion(url) {
                 decisionHandler(.cancel)
+                return
+            }
+
+            if session
+                .shouldRoutePlayerNavigationToBrowser(
+                    url
+                ) {
+                decisionHandler(.cancel)
+
+                DispatchQueue.main.async {
+                    self.session
+                        .routePlayerNavigationToBrowser(
+                            url
+                        )
+                }
+
                 return
             }
 
