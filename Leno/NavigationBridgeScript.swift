@@ -14,27 +14,53 @@ enum NavigationBridgeScript {
 
       const videoIDFromURL = (rawURL) => {
         try {
-          const url = new URL(rawURL, window.location.href);
-          const host = url.hostname.toLowerCase();
+          const url = new URL(
+            rawURL,
+            window.location.href
+          );
 
-          if (host === "youtu.be" || host.endsWith(".youtu.be")) {
-            const candidate = url.pathname.split("/").filter(Boolean)[0] || "";
-            return validID(candidate) ? candidate : null;
+          const host =
+            url.hostname.toLowerCase();
+
+          if (
+            host === "youtu.be" ||
+            host.endsWith(".youtu.be")
+          ) {
+            const candidate =
+              url.pathname
+                .split("/")
+                .filter(Boolean)[0] || "";
+
+            return validID(candidate)
+              ? candidate
+              : null;
           }
 
-          if (!(host === "youtube.com" || host.endsWith(".youtube.com"))) {
+          if (!(
+            host === "youtube.com" ||
+            host.endsWith(".youtube.com")
+          )) {
             return null;
           }
 
           if (url.pathname === "/watch") {
-            const candidate = url.searchParams.get("v") || "";
-            return validID(candidate) ? candidate : null;
+            const candidate =
+              url.searchParams.get("v") || "";
+
+            return validID(candidate)
+              ? candidate
+              : null;
           }
 
-          const parts = url.pathname.split("/").filter(Boolean);
+          const parts =
+            url.pathname
+              .split("/")
+              .filter(Boolean);
+
           if (
             parts.length >= 2 &&
-            ["shorts", "embed", "live"].includes(parts[0]) &&
+            ["shorts", "embed", "live"]
+              .includes(parts[0]) &&
             validID(parts[1])
           ) {
             return parts[1];
@@ -50,20 +76,27 @@ enum NavigationBridgeScript {
         "click",
         (event) => {
           try {
-            const anchor = event.target?.closest?.("a[href]");
+            const anchor =
+              event.target?.closest?.("a[href]");
+
             if (!anchor) return;
 
-            const videoID = videoIDFromURL(anchor.href);
+            const videoID =
+              videoIDFromURL(anchor.href);
+
             if (!videoID) return;
 
             event.preventDefault();
             event.stopPropagation();
             event.stopImmediatePropagation();
 
-            window.webkit?.messageHandlers?.openVideo?.postMessage({
-              videoID,
-              href: anchor.href
-            });
+            window.webkit
+              ?.messageHandlers
+              ?.openVideo
+              ?.postMessage({
+                videoID,
+                href: anchor.href
+              });
           } catch (_) {}
         },
         true
