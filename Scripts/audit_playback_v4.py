@@ -154,6 +154,7 @@ require("MPRemoteCommandCenter.shared()" in session, "native remote commands mis
 require("MPNowPlayingInfoCenter.default()" in session, "native Now Playing owner missing")
 require("appIsBackground" in session, "native scene background truth missing from Now Playing")
 require("hasPlaybackContext" in session, "remote-control context is not preserved across media replacement")
+require("preserveNativeIntent" in session, "native playback intent can be lost during bridge reset")
 
 # JS health telemetry must actually reach Swift.
 for needle in [
