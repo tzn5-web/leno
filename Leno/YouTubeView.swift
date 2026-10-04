@@ -1,11 +1,8 @@
 import SwiftUI
 
 struct YouTubeView: View {
-    @StateObject private var session =
-        YouTubeSession()
-
-    @ObservedObject var playback:
-        NativePlaybackController
+    @StateObject private var session = YouTubeSession()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack {
@@ -35,34 +32,22 @@ struct YouTubeView: View {
             }
         }
         .background(Color(.systemBackground))
-        .onAppear {
-            session.onVideoSelected = {
-                videoID in
-                playback.open(videoID: videoID)
-            }
+        .onChange(of: scenePhase) {
+            _, newPhase in
 
-            playback.onWebFallback = {
-                videoID in
-                session.loadVideoInWeb(
-                    videoID: videoID
-                )
+            switch newPhase {
+            case .active:
+                session.applicationDidBecomeActive()
+
+            case .inactive:
+                session.applicationWillResignActive()
+
+            case .background:
+                session.applicationDidEnterBackground()
+
+            default:
+                break
             }
-        }
-        .fullScreenCover(
-            isPresented: Binding(
-                get: {
-                    playback.isPresented
-                },
-                set: { presented in
-                    if !presented {
-                        playback.close()
-                    }
-                }
-            )
-        ) {
-            NativePlayerView(
-                controller: playback
-            )
         }
     }
 
@@ -238,7 +223,8 @@ private struct HomeLoadingView: View {
                     .font(
                         .system(
                             size: 15,
-                            weight: .semibold
+                            weight:
+                                .semibold
                         )
                     )
                     .foregroundStyle(
@@ -273,7 +259,9 @@ private struct HomeLoadingView: View {
             ) {
                 Circle()
                     .fill(
-                        .secondary.opacity(0.12)
+                        .secondary.opacity(
+                            0.12
+                        )
                     )
                     .frame(
                         width: 38,
@@ -288,7 +276,9 @@ private struct HomeLoadingView: View {
                         cornerRadius: 5
                     )
                     .fill(
-                        .secondary.opacity(0.12)
+                        .secondary.opacity(
+                            0.12
+                        )
                     )
                     .frame(height: 13)
 
@@ -296,7 +286,9 @@ private struct HomeLoadingView: View {
                         cornerRadius: 5
                     )
                     .fill(
-                        .secondary.opacity(0.09)
+                        .secondary.opacity(
+                            0.09
+                        )
                     )
                     .frame(
                         width: 180,

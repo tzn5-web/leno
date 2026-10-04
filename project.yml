@@ -17,7 +17,9 @@ targets:
     sources:
       - path: Leno
         excludes:
-          - PlaybackBridgeScript.swift
+          - NativePlaybackController.swift
+          - NativePlayerView.swift
+          - NavigationBridgeScript.swift
     info:
       path: Leno/Info.plist
       properties:
@@ -35,7 +37,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.tzn5web.leno
         PRODUCT_NAME: YoutubeVcd
-        MARKETING_VERSION: "0.5.0"
+        MARKETING_VERSION: "0.4.1"
         CURRENT_PROJECT_VERSION: "6"
         TARGETED_DEVICE_FAMILY: "1"
         SUPPORTS_MACCATALYST: NO

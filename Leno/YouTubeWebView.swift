@@ -9,8 +9,7 @@ struct YouTubeWebView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> WKWebView {
-        let userContentController =
-            WKUserContentController()
+        let userContentController = WKUserContentController()
 
         userContentController.addUserScript(
             WKUserScript(
@@ -22,8 +21,7 @@ struct YouTubeWebView: UIViewRepresentable {
 
         userContentController.addUserScript(
             WKUserScript(
-                source:
-                    NavigationBridgeScript.source,
+                source: PlaybackBridgeScript.source,
                 injectionTime: .atDocumentStart,
                 forMainFrameOnly: true
             )
@@ -31,68 +29,36 @@ struct YouTubeWebView: UIViewRepresentable {
 
         userContentController.add(
             session,
-            name: "openVideo"
+            name: "mediaState"
         )
 
-        let configuration =
-            WKWebViewConfiguration()
-
+        let configuration = WKWebViewConfiguration()
         configuration.userContentController =
             userContentController
+        configuration.websiteDataStore = .default()
+        configuration.allowsInlineMediaPlayback = true
+        configuration.allowsAirPlayForMediaPlayback = true
+        configuration.allowsPictureInPictureMediaPlayback = true
+        configuration.mediaTypesRequiringUserActionForPlayback = []
 
-        configuration.websiteDataStore =
-            .default()
-
-        configuration.allowsInlineMediaPlayback =
-            true
-
-        configuration.allowsAirPlayForMediaPlayback =
-            true
-
-        configuration
-            .allowsPictureInPictureMediaPlayback =
-            true
-
-        configuration
-            .mediaTypesRequiringUserActionForPlayback =
-            []
-
-        let preferences =
-            WKWebpagePreferences()
-
-        preferences.allowsContentJavaScript =
-            true
-
-        configuration.defaultWebpagePreferences =
-            preferences
+        let preferences = WKWebpagePreferences()
+        preferences.allowsContentJavaScript = true
+        configuration.defaultWebpagePreferences = preferences
 
         let webView = WKWebView(
             frame: .zero,
             configuration: configuration
         )
 
-        webView.navigationDelegate =
-            context.coordinator
-
-        webView.uiDelegate =
-            context.coordinator
-
-        webView.allowsBackForwardNavigationGestures =
-            true
-
-        webView.scrollView
-            .contentInsetAdjustmentBehavior =
-            .never
-
+        webView.navigationDelegate = context.coordinator
+        webView.uiDelegate = context.coordinator
+        webView.allowsBackForwardNavigationGestures = true
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.isOpaque = false
-        webView.backgroundColor =
-            .systemBackground
-
-        webView.scrollView.backgroundColor =
-            .systemBackground
+        webView.backgroundColor = .systemBackground
+        webView.scrollView.backgroundColor = .systemBackground
 
         session.attach(webView: webView)
-
         context.coordinator.observe(webView)
 
         installRulesAndLoad(
@@ -114,10 +80,9 @@ struct YouTubeWebView: UIViewRepresentable {
     ) {
         coordinator.invalidateObservations()
 
-        uiView.configuration
-            .userContentController
+        uiView.configuration.userContentController
             .removeScriptMessageHandler(
-                forName: "openVideo"
+                forName: "mediaState"
             )
 
         uiView.navigationDelegate = nil
@@ -129,21 +94,18 @@ struct YouTubeWebView: UIViewRepresentable {
         coordinator: Coordinator
     ) {
         guard let store =
-                WKContentRuleListStore.default()
-        else {
+                WKContentRuleListStore.default() else {
             session.loadHome()
             return
         }
 
-        let identifier =
-            "YoutubeVcdAdRules-v6"
+        let identifier = "YoutubeVcdAdRules-v5"
 
         store.lookUpContentRuleList(
             forIdentifier: identifier
         ) { cached, _ in
             DispatchQueue.main.async {
-                guard !coordinator
-                    .didStartInitialLoad else {
+                guard !coordinator.didStartInitialLoad else {
                     return
                 }
 
@@ -152,9 +114,7 @@ struct YouTubeWebView: UIViewRepresentable {
                         .userContentController
                         .add(cached)
 
-                    coordinator
-                        .didStartInitialLoad = true
-
+                    coordinator.didStartInitialLoad = true
                     session.loadHome()
                     return
                 }
@@ -175,14 +135,11 @@ struct YouTubeWebView: UIViewRepresentable {
                             )
                         }
 
-                        guard !coordinator
-                            .didStartInitialLoad else {
+                        guard !coordinator.didStartInitialLoad else {
                             return
                         }
 
-                        coordinator
-                            .didStartInitialLoad = true
-
+                        coordinator.didStartInitialLoad = true
                         session.loadHome()
                     }
                 }
@@ -196,7 +153,6 @@ struct YouTubeWebView: UIViewRepresentable {
         WKUIDelegate
     {
         private let session: YouTubeSession
-
         private var observations:
             [NSKeyValueObservation] = []
 
@@ -265,8 +221,7 @@ struct YouTubeWebView: UIViewRepresentable {
 
         func webView(
             _ webView: WKWebView,
-            didStartProvisionalNavigation:
-                WKNavigation!
+            didStartProvisionalNavigation navigation: WKNavigation!
         ) {
             session.markLoading()
             syncNavigationState(from: webView)
@@ -293,8 +248,7 @@ struct YouTubeWebView: UIViewRepresentable {
             didFail navigation: WKNavigation!,
             withError error: Error
         ) {
-            guard shouldRecover(from: error)
-            else {
+            guard shouldRecover(from: error) else {
                 return
             }
 
@@ -303,12 +257,10 @@ struct YouTubeWebView: UIViewRepresentable {
 
         func webView(
             _ webView: WKWebView,
-            didFailProvisionalNavigation:
-                WKNavigation!,
+            didFailProvisionalNavigation navigation: WKNavigation!,
             withError error: Error
         ) {
-            guard shouldRecover(from: error)
-            else {
+            guard shouldRecover(from: error) else {
                 return
             }
 
@@ -330,12 +282,6 @@ struct YouTubeWebView: UIViewRepresentable {
             windowFeatures:
                 WKWindowFeatures
         ) -> WKWebView? {
-            if let url =
-                    navigationAction.request.url,
-               session.interceptVideoURL(url) {
-                return nil
-            }
-
             if navigationAction.targetFrame == nil {
                 webView.load(
                     navigationAction.request
@@ -350,18 +296,10 @@ struct YouTubeWebView: UIViewRepresentable {
             decidePolicyFor navigationAction:
                 WKNavigationAction,
             decisionHandler:
-                @escaping (
-                    WKNavigationActionPolicy
-                ) -> Void
+                @escaping (WKNavigationActionPolicy) -> Void
         ) {
             guard let url =
-                    navigationAction.request.url
-            else {
-                decisionHandler(.cancel)
-                return
-            }
-
-            if session.interceptVideoURL(url) {
+                    navigationAction.request.url else {
                 decisionHandler(.cancel)
                 return
             }
@@ -387,110 +325,126 @@ struct YouTubeWebView: UIViewRepresentable {
         private func ensureHomeContainsVideos(
             _ webView: WKWebView
         ) {
-            guard let url = webView.url,
-                  url.path == "/" else {
+            guard let url = webView.url else {
+                return
+            }
+
+            let path = url.path
+
+            guard path == "/" ||
+                  path == "/feed/trending" else {
                 return
             }
 
             DispatchQueue.main.asyncAfter(
-                deadline: .now() + 2
+                deadline: .now() + 1.8
             ) { [weak webView] in
                 guard let webView,
-                      webView.url?.path == "/"
-                else {
+                      let currentURL = webView.url,
+                      currentURL.path == path else {
                     return
                 }
 
                 let script = #"""
                 (() => {
-                  const text =
-                    (document.body?.innerText || "")
-                      .toLowerCase();
+                  const validID = (value) =>
+                    typeof value === "string" &&
+                    /^[A-Za-z0-9_-]{11}$/.test(value);
 
-                  const emptyPrompt =
-                    text.includes(
-                      "try searching to get started"
-                    ) ||
-                    text.includes(
-                      "start watching videos"
-                    );
+                  return Array.from(
+                    document.querySelectorAll("a[href]")
+                  ).some((anchor) => {
+                    try {
+                      const url = new URL(
+                        anchor.href,
+                        location.href
+                      );
 
-                  const candidates =
-                    Array.from(
-                      document.querySelectorAll(
-                        'a[href*="/watch?v="], ytm-video-with-context-renderer, ytm-compact-video-renderer'
-                      )
-                    );
+                      if (url.pathname === "/watch") {
+                        return validID(
+                          url.searchParams.get("v") || ""
+                        );
+                      }
 
-                  const visibleVideoCard =
-                    candidates.some((node) => {
-                      const rect =
-                        node.getBoundingClientRect();
+                      const parts =
+                        url.pathname
+                          .split("/")
+                          .filter(Boolean);
 
-                      return rect.width > 120 &&
-                             rect.height > 60 &&
-                             rect.bottom > 0 &&
-                             rect.top <
-                               window.innerHeight * 2;
-                    });
+                      if (
+                        parts[0] === "shorts" &&
+                        parts.length >= 2
+                      ) {
+                        return validID(parts[1]);
+                      }
 
-                  return {
-                    emptyPrompt,
-                    visibleVideoCard
-                  };
+                      if (
+                        url.hostname === "youtu.be" &&
+                        parts.length >= 1
+                      ) {
+                        return validID(parts[0]);
+                      }
+
+                      return false;
+                    } catch (_) {
+                      return false;
+                    }
+                  });
                 })();
                 """#
 
                 webView.evaluateJavaScript(
                     script
                 ) { result, _ in
-                    guard let result =
-                            result as?
-                            [String: Any]
-                    else {
-                        return
-                    }
+                    let hasVideo =
+                        result as? Bool ?? false
 
-                    let emptyPrompt =
-                        result["emptyPrompt"]
-                            as? Bool ?? false
-
-                    let visibleVideoCard =
-                        result["visibleVideoCard"]
-                            as? Bool ?? false
-
-                    guard emptyPrompt ||
-                          !visibleVideoCard else {
-                        return
-                    }
-
-                    var components =
-                        URLComponents(
-                            string:
-                              "https://m.youtube.com/results"
-                        )
-
-                    components?.queryItems = [
-                        URLQueryItem(
-                            name:
-                                "search_query",
-                            value:
-                                "trending videos"
-                        )
-                    ]
-
-                    guard let fallback =
-                            components?.url
-                    else {
+                    guard !hasVideo else {
                         return
                     }
 
                     DispatchQueue.main.async {
-                        webView.load(
-                            URLRequest(
-                                url: fallback
+                        if path == "/" {
+                            guard let trending =
+                                    URL(
+                                      string:
+                                        "https://m.youtube.com/feed/trending"
+                                    ) else {
+                                return
+                            }
+
+                            webView.load(
+                                URLRequest(
+                                    url: trending
+                                )
                             )
-                        )
+                        } else {
+                            var components =
+                                URLComponents(
+                                  string:
+                                    "https://m.youtube.com/results"
+                                )
+
+                            components?.queryItems = [
+                                URLQueryItem(
+                                    name:
+                                      "search_query",
+                                    value:
+                                      "trending videos"
+                                )
+                            ]
+
+                            guard let fallback =
+                                    components?.url else {
+                                return
+                            }
+
+                            webView.load(
+                                URLRequest(
+                                    url: fallback
+                                )
+                            )
+                        }
                     }
                 }
             }
@@ -514,7 +468,8 @@ struct YouTubeWebView: UIViewRepresentable {
         private func shouldRecover(
             from error: Error
         ) -> Bool {
-            let nsError = error as NSError
+            let nsError =
+                error as NSError
 
             if nsError.domain ==
                     NSURLErrorDomain &&

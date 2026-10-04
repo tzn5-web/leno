@@ -8,39 +8,16 @@ enum PlaybackBridgeScript {
       if (window.__YOUTUBE_VCD_PLAYBACK_BRIDGE__) return;
       window.__YOUTUBE_VCD_PLAYBACK_BRIDGE__ = true;
 
-      let shouldKeepPlaying = false;
+      const state =
+        window.__YOUTUBE_VCD_MEDIA_STATE__ =
+          window.__YOUTUBE_VCD_MEDIA_STATE__ || {
+            wantsPlayback: false,
+            backgroundArmed: false
+          };
+
       let lastKnownTime = 0;
 
-      const currentVideo = () => {
-        const videos = Array.from(document.querySelectorAll("video"));
-
-        const playing = videos.find((video) =>
-          !video.paused &&
-          !video.ended &&
-          video.readyState >= 2 &&
-          !!video.currentSrc
-        );
-
-        if (playing) return playing;
-
-        const visible = videos
-          .map((video) => {
-            const rect = video.getBoundingClientRect();
-            const area =
-              Math.max(0, rect.width) *
-              Math.max(0, rect.height);
-
-            return { video, area };
-          })
-          .filter(({ video, area }) =>
-            area > 12000 &&
-            video.readyState >= 1 &&
-            !!video.currentSrc
-          )
-          .sort((a, b) => b.area - a.area)[0];
-
-        return visible?.video || null;
-      };
+      const currentVideo = () => document.querySelector("video");
 
       const postState = () => {
         try {
@@ -73,7 +50,7 @@ enum PlaybackBridgeScript {
       const resumeIfNeeded = () => {
         try {
           const video = currentVideo();
-          if (!video || !shouldKeepPlaying) return;
+          if (!video || !state.wantsPlayback) return;
 
           if (video.paused || video.ended) {
             if (Number.isFinite(lastKnownTime) &&
@@ -86,9 +63,57 @@ enum PlaybackBridgeScript {
         } catch (_) {}
       };
 
+      window.__YOUTUBE_VCD_MEDIA_CONTROL__ = {
+        armBackground() {
+          state.backgroundArmed = true;
+          state.wantsPlayback = true;
+          resumeIfNeeded();
+          return true;
+        },
+
+        disarmBackground() {
+          state.backgroundArmed = false;
+          return true;
+        },
+
+        play() {
+          state.wantsPlayback = true;
+
+          const video = currentVideo();
+          if (!video) return false;
+
+          try {
+            video.play().catch(() => {});
+            return true;
+          } catch (_) {
+            return false;
+          }
+        },
+
+        pause() {
+          state.wantsPlayback = false;
+
+          const video = currentVideo();
+          if (!video) return false;
+
+          try {
+            video.pause();
+            return true;
+          } catch (_) {
+            return false;
+          }
+        },
+
+        keepAlive() {
+          state.wantsPlayback = true;
+          resumeIfNeeded();
+          return true;
+        }
+      };
+
       document.addEventListener("play", (event) => {
         if (event.target?.tagName !== "VIDEO") return;
-        shouldKeepPlaying = true;
+        state.wantsPlayback = true;
         postState();
       }, true);
 
@@ -100,11 +125,11 @@ enum PlaybackBridgeScript {
           lastKnownTime = video.currentTime;
         }
 
-        if (document.hidden && shouldKeepPlaying) {
+        if ((document.hidden || state.backgroundArmed) && state.wantsPlayback) {
           event.stopImmediatePropagation();
           Promise.resolve().then(resumeIfNeeded);
         } else {
-          shouldKeepPlaying = false;
+          state.wantsPlayback = false;
         }
 
         postState();
@@ -131,7 +156,7 @@ enum PlaybackBridgeScript {
       document.addEventListener("emptied", postState, true);
 
       document.addEventListener("visibilitychange", (event) => {
-        if (document.hidden && shouldKeepPlaying) {
+        if ((document.hidden || state.backgroundArmed) && state.wantsPlayback) {
           event.stopImmediatePropagation();
           Promise.resolve().then(resumeIfNeeded);
           setTimeout(resumeIfNeeded, 80);
@@ -302,7 +327,7 @@ enum PlaybackBridgeScript {
 
       setInterval(() => {
         ensureControls();
-        if (document.hidden && shouldKeepPlaying) {
+        if ((document.hidden || state.backgroundArmed) && state.wantsPlayback) {
           resumeIfNeeded();
         }
         postState();
@@ -310,16 +335,53 @@ enum PlaybackBridgeScript {
     })();
     """#
 
+    static let armBackgroundCall = #"""
+    (() => {
+      const control =
+        window.__YOUTUBE_VCD_MEDIA_CONTROL__;
+
+      if (!control) return false;
+      return control.armBackground();
+    })();
+    """#
+
+    static let disarmBackgroundCall = #"""
+    (() => {
+      const control =
+        window.__YOUTUBE_VCD_MEDIA_CONTROL__;
+
+      if (!control) return false;
+      return control.disarmBackground();
+    })();
+    """#
+
+    static let userPlayCall = #"""
+    (() => {
+      const control =
+        window.__YOUTUBE_VCD_MEDIA_CONTROL__;
+
+      if (!control) return false;
+      return control.play();
+    })();
+    """#
+
+    static let userPauseCall = #"""
+    (() => {
+      const control =
+        window.__YOUTUBE_VCD_MEDIA_CONTROL__;
+
+      if (!control) return false;
+      return control.pause();
+    })();
+    """#
+
     static let keepAliveCall = #"""
     (() => {
-      const video = document.querySelector("video");
-      if (!video) return false;
-      try {
-        video.play().catch(() => {});
-        return true;
-      } catch (_) {
-        return false;
-      }
+      const control =
+        window.__YOUTUBE_VCD_MEDIA_CONTROL__;
+
+      if (!control) return false;
+      return control.keepAlive();
     })();
     """#
 

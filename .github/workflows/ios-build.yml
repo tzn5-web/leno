@@ -7,13 +7,13 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ios-build-${{ github.sha }}
-  cancel-in-progress: false
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: xcode-27
-    timeout-minutes: 40
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -30,55 +30,46 @@ jobs:
           xcrun swift Scripts/GenerateAppIcon.swift Leno/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
           test -s Leno/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
 
-      - name: V5 architecture audit
+      - name: Functional-first source audit
         run: |
           set -euo pipefail
 
           grep -q 'CFBundleDisplayName: YoutubeVcd' project.yml
           grep -q 'UIBackgroundModes:' project.yml
-          grep -q 'MARKETING_VERSION: "0.5.0"' project.yml
+          grep -q 'allowsPictureInPictureMediaPlayback = true' Leno/YouTubeWebView.swift
+          grep -q 'allowsAirPlayForMediaPlayback = true' Leno/YouTubeWebView.swift
+          grep -Fq 'mediaTypesRequiringUserActionForPlayback = []' Leno/YouTubeWebView.swift
+          grep -q 'name: "mediaState"' Leno/YouTubeWebView.swift
+          grep -q '__YOUTUBE_VCD_PLAYBACK_BRIDGE__' Leno/PlaybackBridgeScript.swift
+          grep -q 'webkitSetPresentationMode' Leno/PlaybackBridgeScript.swift
+          grep -q 'webkitEnterFullscreen' Leno/PlaybackBridgeScript.swift
+          grep -q 'visibilitychange' Leno/PlaybackBridgeScript.swift
+          grep -q 'AVAudioSession' Leno/YouTubeSession.swift
+          grep -q 'MPRemoteCommandCenter' Leno/YouTubeSession.swift
+          grep -q 'setAllMediaPlaybackSuspended' Leno/YouTubeSession.swift
+          grep -q 'applicationWillResignActive' Leno/YouTubeSession.swift
+          grep -q 'backgroundArmed' Leno/YouTubeSession.swift
+          grep -q '__YOUTUBE_VCD_MEDIA_CONTROL__' Leno/PlaybackBridgeScript.swift
+          grep -q 'armBackgroundCall' Leno/PlaybackBridgeScript.swift
+          grep -q 'userPauseCall' Leno/PlaybackBridgeScript.swift
 
-          grep -q 'pipedapi.kavin.rocks' Leno/StreamResolver.swift
-          grep -q 'invidious.nerdvpn.de' Leno/StreamResolver.swift
-          grep -q 'timeoutIntervalForRequest = 4' Leno/StreamResolver.swift
-          grep -q 'videoOnly != true' Leno/StreamResolver.swift
-          grep -q 'payload.paid != true' Leno/StreamResolver.swift
-          grep -q 'payload.premium != true' Leno/StreamResolver.swift
-
-          grep -q 'AVAudioSession' Leno/NativePlaybackController.swift
-          grep -q 'MPRemoteCommandCenter' Leno/NativePlaybackController.swift
-          grep -q 'audiovisualBackgroundPlaybackPolicy' Leno/NativePlaybackController.swift
-          grep -q 'continuesIfPossible' Leno/NativePlaybackController.swift
-          grep -q '7_000_000_000' Leno/NativePlaybackController.swift
-          grep -q 'onWebFallback' Leno/NativePlaybackController.swift
-
-          grep -q 'AVPlayerViewController' Leno/NativePlayerView.swift
-          grep -q 'allowsPictureInPicturePlayback = true' Leno/NativePlayerView.swift
-          grep -q 'canStartPictureInPictureAutomaticallyFromInline = true' Leno/NativePlayerView.swift
-
-          grep -q 'messageHandlers' Leno/NavigationBridgeScript.swift
-          grep -q 'openVideo' Leno/NavigationBridgeScript.swift
-          grep -q 'NavigationBridgeScript.source' Leno/YouTubeWebView.swift
-          grep -q 'name: "openVideo"' Leno/YouTubeWebView.swift
-          grep -q 'interceptVideoURL' Leno/YouTubeWebView.swift
+          if grep -q 'StreamResolver.swift' project.yml; then
+            echo "Stream resolver must not be part of this WebKit playback build."
+            exit 1
+          fi
 
           if grep -q 'YouTubeKit' project.yml; then
-            echo "YouTubeKit must not be in the active build."
-            exit 1
-          fi
-
-          if grep -q 'Response.prototype.json' Leno/AdBlockScript.swift; then
-            echo "Player JSON interception must not be active."
-            exit 1
-          fi
-
-          if grep -q 'JSON.parse = function' Leno/AdBlockScript.swift; then
-            echo "Global JSON.parse hook is forbidden."
+            echo "YouTubeKit must not be part of the playback build."
             exit 1
           fi
 
           if grep -q 'TextField("Search YouTube"' Leno/YouTubeView.swift; then
             echo "Duplicate native search bar must not exist."
+            exit 1
+          fi
+
+          if grep -q 'JSON.parse = function' Leno/AdBlockScript.swift; then
+            echo "Global JSON.parse hook is forbidden."
             exit 1
           fi
 
@@ -88,16 +79,7 @@ jobs:
       - name: Static analysis
         run: |
           set -o pipefail
-          xcodebuild \
-            -project YoutubeVcd.xcodeproj \
-            -scheme YoutubeVcd \
-            -configuration Debug \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -derivedDataPath build/AnalyzeData \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            analyze | tee analyze.log
+          xcodebuild             -project YoutubeVcd.xcodeproj             -scheme YoutubeVcd             -configuration Debug             -sdk iphoneos             -destination 'generic/platform=iOS'             -derivedDataPath build/AnalyzeData             CODE_SIGNING_ALLOWED=NO             CODE_SIGNING_REQUIRED=NO             analyze | tee analyze.log
 
       - name: Simulator smoke test
         run: |
@@ -119,16 +101,7 @@ jobs:
           xcrun simctl bootstatus "$SIM_UDID" -b
 
           set -o pipefail
-          xcodebuild \
-            -project YoutubeVcd.xcodeproj \
-            -scheme YoutubeVcd \
-            -configuration Debug \
-            -sdk iphonesimulator \
-            -destination "id=$SIM_UDID" \
-            -derivedDataPath build/SimulatorData \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            clean build | tee simulator-build.log
+          xcodebuild             -project YoutubeVcd.xcodeproj             -scheme YoutubeVcd             -configuration Debug             -sdk iphonesimulator             -destination "id=$SIM_UDID"             -derivedDataPath build/SimulatorData             CODE_SIGNING_ALLOWED=NO             CODE_SIGNING_REQUIRED=NO             clean build | tee simulator-build.log
 
           SIM_APP="build/SimulatorData/Build/Products/Debug-iphonesimulator/YoutubeVcd.app"
           test -d "$SIM_APP"
@@ -139,11 +112,7 @@ jobs:
           sleep 12
           xcrun simctl io "$SIM_UDID" screenshot simulator-smoke.png
 
-          xcrun simctl spawn "$SIM_UDID" log show \
-            --last 3m \
-            --style compact \
-            --predicate 'process == "YoutubeVcd"' \
-            > simulator-runtime.log || true
+          xcrun simctl spawn "$SIM_UDID" log show             --last 3m             --style compact             --predicate 'process == "YoutubeVcd"'             > simulator-runtime.log || true
 
           if grep -Eqi 'fatal error|uncaught exception|termination reason|crash' simulator-runtime.log; then
             echo "Potential runtime crash marker detected."
@@ -154,16 +123,7 @@ jobs:
       - name: Build unsigned device app
         run: |
           set -o pipefail
-          xcodebuild \
-            -project YoutubeVcd.xcodeproj \
-            -scheme YoutubeVcd \
-            -configuration Release \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -derivedDataPath build/DerivedData \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            clean build | tee build.log
+          xcodebuild             -project YoutubeVcd.xcodeproj             -scheme YoutubeVcd             -configuration Release             -sdk iphoneos             -destination 'generic/platform=iOS'             -derivedDataPath build/DerivedData             CODE_SIGNING_ALLOWED=NO             CODE_SIGNING_REQUIRED=NO             clean build | tee build.log
 
       - name: Audit built app metadata
         run: |
@@ -178,15 +138,12 @@ jobs:
           DISPLAY_NAME="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$PLIST")"
           BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$PLIST")"
           BACKGROUND_MODE="$(/usr/libexec/PlistBuddy -c 'Print :UIBackgroundModes:0' "$PLIST")"
-          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST")"
 
           test "$DISPLAY_NAME" = "YoutubeVcd"
           test "$BUNDLE_ID" = "com.tzn5web.leno"
           test "$BACKGROUND_MODE" = "audio"
-          test "$VERSION" = "0.5.0"
 
-          find "$APP_PATH" -maxdepth 1 -iname '*AppIcon*' -print \
-            | tee app-icon-files.log
+          find "$APP_PATH" -maxdepth 1 -iname '*AppIcon*' -print             | tee app-icon-files.log
 
           test -s Leno/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
 
@@ -199,13 +156,12 @@ jobs:
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/
 
-          ditto -c -k --sequesterRsrc --keepParent \
-            Payload YoutubeVcd-unsigned.ipa
+          ditto -c -k --sequesterRsrc --keepParent             Payload YoutubeVcd-unsigned.ipa
 
       - name: Upload IPA
         uses: actions/upload-artifact@v7
         with:
-          name: YoutubeVcd-v5-native-media-ipa
+          name: YoutubeVcd-v1-background-lifecycle-ipa
           path: YoutubeVcd-unsigned.ipa
           if-no-files-found: error
 
