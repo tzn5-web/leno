@@ -112,34 +112,6 @@ enum AdBlockScript {
         } catch (_) {}
       };
 
-      const reportMediaState = () => {
-        try {
-          const bridge = window.webkit?.messageHandlers?.mediaState;
-          if (!bridge) return;
-
-          const video = document.querySelector("video");
-
-          if (!video) {
-            bridge.postMessage({
-              title: "YouTube",
-              paused: true,
-              hasMedia: false,
-              currentTime: 0,
-              duration: 0
-            });
-            return;
-          }
-
-          bridge.postMessage({
-            title: (document.title || "YouTube").replace(/\s*-\s*YouTube\s*$/, ""),
-            paused: !!video.paused,
-            hasMedia: true,
-            currentTime: Number.isFinite(video.currentTime) ? video.currentTime : 0,
-            duration: Number.isFinite(video.duration) ? video.duration : 0
-          });
-        } catch (_) {}
-      };
-
       let maintenanceScheduled = false;
 
       const maintain = () => {
@@ -177,25 +149,9 @@ enum AdBlockScript {
         document.addEventListener("DOMContentLoaded", startObserver, { once: true });
       }
 
-      document.addEventListener("play", reportMediaState, true);
-      document.addEventListener("pause", reportMediaState, true);
-      document.addEventListener("loadedmetadata", reportMediaState, true);
-      document.addEventListener("durationchange", reportMediaState, true);
-      document.addEventListener("emptied", reportMediaState, true);
-
-      document.addEventListener("timeupdate", () => {
-        const now = Date.now();
-        if (!window.__YOUTUBE_VCD_LAST_MEDIA_REPORT__ ||
-            now - window.__YOUTUBE_VCD_LAST_MEDIA_REPORT__ > 1000) {
-          window.__YOUTUBE_VCD_LAST_MEDIA_REPORT__ = now;
-          reportMediaState();
-        }
-      }, true);
-
       setInterval(() => {
         cleanKnownPlayerGlobal();
         clickSkipButton();
-        reportMediaState();
       }, 2000);
     })();
     """#
