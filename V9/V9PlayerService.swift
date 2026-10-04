@@ -1279,6 +1279,9 @@ final class V9PlayerService:
                 possible
         }
 
+        isPiPPossible =
+            pipBridge.isPossible
+
         pipBridge.onActiveChanged = {
             [weak self] active in
 
