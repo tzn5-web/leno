@@ -31,11 +31,6 @@ struct YouTubeView: View {
                 )
             }
 
-            if !session.hlsProbeSummary.isEmpty {
-                hlsProbePill(
-                    session.hlsProbeSummary
-                )
-            }
         }
         .background(Color(.systemBackground))
         .onChange(of: scenePhase) {
@@ -54,39 +49,6 @@ struct YouTubeView: View {
             default:
                 break
             }
-        }
-    }
-
-    private func hlsProbePill(
-        _ summary: String
-    ) -> some View {
-        VStack {
-            Spacer()
-
-            Text(summary)
-                .font(
-                    .caption2
-                        .monospaced()
-                        .weight(.semibold)
-                )
-                .padding(
-                    .horizontal,
-                    10
-                )
-                .padding(
-                    .vertical,
-                    6
-                )
-                .background(
-                    .ultraThinMaterial,
-                    in:
-                        Capsule()
-                )
-                .padding(
-                    .bottom,
-                    12
-                )
-                .allowsHitTesting(false)
         }
     }
 
