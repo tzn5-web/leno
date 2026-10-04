@@ -179,11 +179,11 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             wantsPlayback = true
         }
 
-        if wantsPlayback {
-            evaluate(
-                PlaybackBridgeScript.prepareBackgroundCall
-            )
+        evaluate(
+            PlaybackBridgeScript.enterBackgroundCall
+        )
 
+        if wantsPlayback {
             evaluate(
                 PlaybackBridgeScript.keepAliveCall
             )
