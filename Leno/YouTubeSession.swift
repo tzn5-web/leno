@@ -24,9 +24,15 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     @Published private(set) var currentURL: URL?
     @Published private(set) var progress: Double = 0
     @Published private(set) var isLoading = false
+    @Published private(set) var isPlayerPresented = false
+    @Published private(set) var playerAvailable = false
 
     weak var webView: WKWebView?
+    weak var browserWebView: WKWebView?
 
+    private var playerWebViewReady = false
+    private var pendingPlayerURL: URL?
+    private var currentPlayerURL: URL?
     private var retryCount = 0
     private let maxRetries = 3
     private var remoteTargets: [(MPRemoteCommand, Any)] = []
@@ -78,23 +84,137 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         self.webView = webView
     }
 
+    func attachBrowser(webView: WKWebView) {
+        self.browserWebView = webView
+    }
+
+    func playerDidBecomeReady() {
+        playerWebViewReady = true
+
+        if let pendingPlayerURL {
+            self.pendingPlayerURL = nil
+            loadPlayer(
+                pendingPlayerURL
+            )
+        }
+    }
+
+    func openVideo(_ url: URL) {
+        guard isPlaybackURL(url) else {
+            showBrowser(url)
+            return
+        }
+
+        currentPlayerURL = url
+        pendingPlayerURL = nil
+        playerAvailable = true
+        isPlayerPresented = true
+        explicitPauseActive = false
+
+        if playerWebViewReady {
+            loadPlayer(url)
+        } else {
+            pendingPlayerURL = url
+        }
+    }
+
+    func showBrowser(_ url: URL? = nil) {
+        isPlayerPresented = false
+
+        guard let browserWebView else {
+            return
+        }
+
+        if let url {
+            browserWebView.load(
+                URLRequest(
+                    url: url
+                )
+            )
+        } else if browserWebView.url == nil {
+            browserWebView.load(
+                URLRequest(
+                    url: Self.homeURL
+                )
+            )
+        }
+    }
+
+    func showPlayer() {
+        guard playerAvailable else {
+            return
+        }
+
+        isPlayerPresented = true
+    }
+
+    func loadBrowserHome() {
+        showBrowser(
+            Self.homeURL
+        )
+    }
+
     func loadHome() {
-        load(Self.homeURL)
+        loadBrowserHome()
     }
 
     func reloadFromHome() {
         retryCount = 0
-        loadHome()
+        loadBrowserHome()
+    }
+
+    func shouldOpenInPlayer(
+        _ url: URL
+    ) -> Bool {
+        isPlaybackURL(url)
+    }
+
+    func shouldRoutePlayerNavigationToBrowser(
+        _ url: URL
+    ) -> Bool {
+        guard currentPlayerURL != nil else {
+            return false
+        }
+
+        guard isYouTubeURL(url) else {
+            return false
+        }
+
+        return !isPlaybackURL(url)
+    }
+
+    func routePlayerNavigationToBrowser(
+        _ url: URL
+    ) {
+        showBrowser(url)
     }
 
     func goBack() {
-        guard let webView, webView.canGoBack else { return }
-        webView.goBack()
+        let target =
+            isPlayerPresented
+                ? webView
+                : browserWebView
+
+        guard let target,
+              target.canGoBack else {
+            return
+        }
+
+        target.goBack()
     }
 
     func goForward() {
-        guard let webView, webView.canGoForward else { return }
-        webView.goForward()
+        let target =
+            isPlayerPresented
+                ? webView
+                : browserWebView
+
+        guard let target,
+              target.canGoForward else {
+            return
+        }
+
+        target.goForward()
     }
 
     func reload() {
@@ -170,8 +290,14 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             ) { [weak self] in
                 guard let self else { return }
 
-                if self.webView?.url == nil {
-                    self.loadHome()
+                if self.webView?.url == nil ||
+                   self.webView?.url?.scheme == "about" {
+                    if let currentPlayerURL =
+                            self.currentPlayerURL {
+                        self.loadPlayer(
+                            currentPlayerURL
+                        )
+                    }
                 } else {
                     self.webView?.reload()
                 }
@@ -251,8 +377,13 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                     wantsPlayback
             }
 
-            if webView?.url == nil {
-                loadHome()
+            if webView?.url == nil ||
+               webView?.url?.scheme == "about" {
+                if let currentPlayerURL {
+                    loadPlayer(
+                        currentPlayerURL
+                    )
+                }
             } else {
                 markLoading()
                 webView?.reload()
@@ -462,6 +593,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
             if mediaExists {
                 self.hasPlaybackContext = true
+                self.playerAvailable = true
             }
             self.isReallyHidden = bridgeReallyHidden
             self.transitionArmed = bridgeTransitionArmed
@@ -704,16 +836,84 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         }
     }
 
-    private func load(_ url: URL) {
-        DispatchQueue.main.async { [weak self] in
+    private func loadPlayer(
+        _ url: URL
+    ) {
+        DispatchQueue.main.async {
+            [weak self] in
+
             guard let self,
-                  let webView = self.webView else {
+                  let webView =
+                    self.webView else {
                 return
             }
 
+            self.currentPlayerURL =
+                url
+
             self.markLoading()
-            webView.load(URLRequest(url: url))
+
+            webView.load(
+                URLRequest(
+                    url: url
+                )
+            )
         }
+    }
+
+    private func isYouTubeURL(
+        _ url: URL
+    ) -> Bool {
+        let host =
+            url.host?
+                .lowercased() ?? ""
+
+        return host == "youtube.com" ||
+               host == "www.youtube.com" ||
+               host == "m.youtube.com" ||
+               host == "youtu.be"
+    }
+
+    private func isPlaybackURL(
+        _ url: URL
+    ) -> Bool {
+        guard isYouTubeURL(url) else {
+            return false
+        }
+
+        let host =
+            url.host?
+                .lowercased() ?? ""
+
+        if host == "youtu.be" {
+            return !url.path
+                .split(separator: "/")
+                .isEmpty
+        }
+
+        let path =
+            url.path
+
+        if path == "/watch" {
+            return URLComponents(
+                url: url,
+                resolvingAgainstBaseURL:
+                    false
+            )?
+            .queryItems?
+            .contains {
+                $0.name == "v" &&
+                !($0.value ?? "")
+                    .isEmpty
+            } == true
+        }
+
+        return path.hasPrefix(
+            "/shorts/"
+        ) ||
+        path.hasPrefix(
+            "/live/"
+        )
     }
 
     private func evaluate(_ script: String) {
