@@ -1,6 +1,10 @@
 # Leno
 
-Minimal iOS media player scaffold for iPhone, designed for iOS 27+ development and built entirely in GitHub Actions.
+Minimal native iOS media player for iPhone, designed for iOS 27+ development and built entirely in GitHub Actions.
+
+## Architecture goals
+
+The stability model is inspired by the supplied Tizen TubeVanced package: local critical components, explicit startup/playback states, health/recovery behavior, and a fallback-oriented design rather than a single fragile execution path.
 
 ## Current scope
 
@@ -9,13 +13,23 @@ Minimal iOS media player scaffold for iPhone, designed for iOS 27+ development a
 - Background audio session
 - Lock Screen / Control Center media commands
 - Picture in Picture
-- No analytics, ads, or third-party SDKs
+- Explicit playback state machine
+- Limited automatic retry and stall recovery
+- Manual retry and clean player reset
+- No analytics or third-party SDKs
 - Unsigned device build packaged as an IPA artifact in CI
 
-## Policy boundary
+## Compatibility boundary
 
-This project does not contain code to bypass YouTube advertising, Premium entitlements, DRM, or access controls. Media providers are intentionally isolated behind a clean integration boundary.
+The project intentionally keeps media-source integration separate from the native player. It does not include code that bypasses YouTube advertising, Premium entitlements, DRM, or access controls.
 
-## Build
+## CI quality gates
 
-GitHub Actions uses the `xcode-27` runner, generates the Xcode project with XcodeGen, builds for generic iOS with code signing disabled, and uploads an unsigned IPA artifact.
+GitHub Actions uses the `xcode-27` runner and XcodeGen. CI performs:
+
+1. project generation;
+2. Debug simulator compilation;
+3. static analysis;
+4. Release device compilation with signing disabled;
+5. unsigned IPA packaging;
+6. artifact upload.
