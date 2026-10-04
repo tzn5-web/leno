@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ios-build-${{ github.ref }}
-  cancel-in-progress: true
+  group: ios-build-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   build:
