@@ -1,9 +1,8 @@
-import Foundation
 import AVFoundation
 import Combine
+import Foundation
 import Libmpv
 import MediaPlayer
-import QuartzCore
 import SwiftUI
 
 @MainActor
@@ -60,22 +59,16 @@ final class V9PlayerService:
         switch state {
         case .idle:
             return "idle"
-
         case .initializing:
             return "initializing"
-
         case .ready:
             return "ready"
-
         case .loading:
             return "loading"
-
         case .playing:
             return "playing"
-
         case .paused:
             return "paused"
-
         case .failed(let message):
             return "failed: \(message)"
         }
@@ -84,8 +77,11 @@ final class V9PlayerService:
     private var mpv:
         OpaquePointer?
 
-    private weak var metalLayer:
-        CAMetalLayer?
+    private var renderContext:
+        OpaquePointer?
+
+    private weak var renderView:
+        V9MPVRenderView?
 
     private var remoteTargets:
         [(MPRemoteCommand, Any)] =
@@ -113,6 +109,18 @@ final class V9PlayerService:
                 )
             }
 
+            if let renderContext {
+                mpv_render_context_set_update_callback(
+                    renderContext,
+                    nil,
+                    nil
+                )
+
+                mpv_render_context_free(
+                    renderContext
+                )
+            }
+
             if let mpv {
                 mpv_set_wakeup_callback(
                     mpv,
@@ -128,13 +136,26 @@ final class V9PlayerService:
     }
 
     func attach(
-        metalLayer:
-            CAMetalLayer
+        renderView:
+            V9MPVRenderView
     ) {
-        self.metalLayer =
-            metalLayer
+        self.renderView =
+            renderView
 
-        guard mpv == nil else {
+        if mpv != nil {
+            if renderContext == nil {
+                guard renderView.attach(
+                    service:
+                        self
+                ) else {
+                    fail(
+                        "Nu am putut crea suprafața libmpv."
+                    )
+                    return
+                }
+            }
+
+            renderView.requestRender()
             return
         }
 
@@ -142,7 +163,8 @@ final class V9PlayerService:
             .initializing
 
         guard let handle =
-                mpv_create() else {
+                mpv_create()
+        else {
             fail(
                 "mpv_create() a eșuat."
             )
@@ -152,53 +174,31 @@ final class V9PlayerService:
         mpv =
             handle
 
-        var windowID =
-            Int64(
-                Int(
-                    bitPattern:
-                        Unmanaged
-                            .passUnretained(
-                                metalLayer
-                            )
-                            .toOpaque()
-                )
-            )
-
-        guard setOption(
-                "wid",
-                format:
-                    MPV_FORMAT_INT64,
-                data:
-                    &windowID
-              ),
-              setOptionString(
+        guard
+            setOptionString(
                 "vo",
-                "gpu-next"
-              ),
-              setOptionString(
-                "gpu-api",
-                "vulkan"
-              ),
-              setOptionString(
-                "gpu-context",
-                "moltenvk"
-              ),
-              setOptionString(
+                "libmpv"
+            ),
+            setOptionString(
                 "hwdec",
-                "videotoolbox"
-              ),
-              setOptionString(
+                "videotoolbox-copy"
+            ),
+            setOptionString(
                 "keep-open",
                 "yes"
-              ),
-              setOptionString(
+            ),
+            setOptionString(
                 "pause",
                 "yes"
-              ),
-              setOptionString(
+            ),
+            setOptionString(
                 "audio-display",
                 "no"
-              )
+            ),
+            setOptionString(
+                "terminal",
+                "no"
+            )
         else {
             fail(
                 "Configurarea libmpv a eșuat."
@@ -280,15 +280,249 @@ final class V9PlayerService:
                 .toOpaque()
         )
 
+        guard renderView.attach(
+            service:
+                self
+        ) else {
+            fail(
+                "mpv_render_context_create() a eșuat."
+            )
+            return
+        }
+
         state =
             .ready
 
         if let pendingMedia {
             self.pendingMedia =
                 nil
+
             load(
                 pendingMedia
             )
+        }
+    }
+
+    func createRenderContext(
+        getProcAddress:
+            @escaping
+            @convention(c)
+            (
+                UnsafeMutableRawPointer?,
+                UnsafePointer<CChar>?
+            ) ->
+                UnsafeMutableRawPointer?
+    ) -> Bool {
+        if renderContext != nil {
+            return true
+        }
+
+        guard let mpv else {
+            return false
+        }
+
+        var apiType =
+            MPV_RENDER_API_TYPE_OPENGL
+
+        var glParameters =
+            mpv_opengl_init_params(
+                get_proc_address:
+                    getProcAddress,
+                get_proc_address_ctx:
+                    nil
+            )
+
+        var context:
+            OpaquePointer?
+
+        let result =
+            withUnsafeMutablePointer(
+                to:
+                    &apiType
+            ) {
+                apiPointer in
+
+                withUnsafeMutablePointer(
+                    to:
+                        &glParameters
+                ) {
+                    glPointer in
+
+                    var parameters:
+                        [mpv_render_param] = [
+                            mpv_render_param(
+                                type:
+                                    MPV_RENDER_PARAM_API_TYPE,
+                                data:
+                                    apiPointer
+                            ),
+                            mpv_render_param(
+                                type:
+                                    MPV_RENDER_PARAM_OPENGL_INIT_PARAMS,
+                                data:
+                                    glPointer
+                            ),
+                            mpv_render_param(
+                                type:
+                                    MPV_RENDER_PARAM_INVALID,
+                                data:
+                                    nil
+                            )
+                        ]
+
+                    return parameters
+                        .withUnsafeMutableBufferPointer {
+                            buffer in
+
+                            mpv_render_context_create(
+                                &context,
+                                mpv,
+                                buffer.baseAddress
+                            )
+                        }
+                }
+            }
+
+        guard result >= 0,
+              let context
+        else {
+            return false
+        }
+
+        renderContext =
+            context
+
+        mpv_render_context_set_update_callback(
+            context,
+            { raw in
+                guard let raw else {
+                    return
+                }
+
+                let service =
+                    Unmanaged<
+                        V9PlayerService
+                    >
+                    .fromOpaque(
+                        raw
+                    )
+                    .takeUnretainedValue()
+
+                Task {
+                    @MainActor in
+
+                    service
+                        .renderView?
+                        .requestRender()
+                }
+            },
+            Unmanaged
+                .passUnretained(
+                    self
+                )
+                .toOpaque()
+        )
+
+        return true
+    }
+
+    func consumeRenderUpdate()
+        -> Bool
+    {
+        guard let renderContext
+        else {
+            return false
+        }
+
+        let flags =
+            mpv_render_context_update(
+                renderContext
+            )
+
+        return (
+            flags &
+            UInt64(
+                MPV_RENDER_UPDATE_FRAME
+                    .rawValue
+            )
+        ) != 0
+    }
+
+    func render(
+        framebuffer:
+            Int32,
+        width:
+            Int32,
+        height:
+            Int32
+    ) {
+        guard let renderContext,
+              width > 0,
+              height > 0
+        else {
+            return
+        }
+
+        var target =
+            mpv_opengl_fbo(
+                fbo:
+                    framebuffer,
+                w:
+                    width,
+                h:
+                    height,
+                internal_format:
+                    0x8058
+            )
+
+        var flipY:
+            Int32 = 1
+
+        withUnsafeMutablePointer(
+            to:
+                &target
+        ) {
+            targetPointer in
+
+            withUnsafeMutablePointer(
+                to:
+                    &flipY
+            ) {
+                flipPointer in
+
+                var parameters:
+                    [mpv_render_param] = [
+                        mpv_render_param(
+                            type:
+                                MPV_RENDER_PARAM_OPENGL_FBO,
+                            data:
+                                targetPointer
+                        ),
+                        mpv_render_param(
+                            type:
+                                MPV_RENDER_PARAM_FLIP_Y,
+                            data:
+                                flipPointer
+                        ),
+                        mpv_render_param(
+                            type:
+                                MPV_RENDER_PARAM_INVALID,
+                            data:
+                                nil
+                        )
+                    ]
+
+                _ =
+                    parameters
+                        .withUnsafeMutableBufferPointer {
+                            buffer in
+
+                            mpv_render_context_render(
+                                renderContext,
+                                buffer.baseAddress
+                            )
+                        }
+            }
         }
     }
 
@@ -296,7 +530,9 @@ final class V9PlayerService:
         _ media:
             ResolvedVideo
     ) {
-        guard mpv != nil else {
+        guard mpv != nil,
+              renderContext != nil
+        else {
             pendingMedia =
                 media
             title =
@@ -360,7 +596,8 @@ final class V9PlayerService:
 
     func play() {
         guard hasLoadedMedia ||
-              state == .loading else {
+              state == .loading
+        else {
             return
         }
 
@@ -411,7 +648,7 @@ final class V9PlayerService:
                     ? min(
                         duration,
                         seconds
-                      )
+                    )
                     : seconds
             )
 
@@ -434,12 +671,17 @@ final class V9PlayerService:
     ) {
         switch phase {
         case .background:
-            // Intentionally do not pause MPV.
-            // V9 has one playback engine for foreground/background.
+            // Playback remains alive. Only visual rendering stops.
+            renderView?
+                .pauseRendering()
+
             activateAudioSession()
 
         case .active:
             activateAudioSession()
+
+            renderView?
+                .resumeRendering()
 
             if desiredPlayback,
                hasLoadedMedia {
@@ -697,31 +939,6 @@ final class V9PlayerService:
         ) >= 0
     }
 
-    private func setOption<T>(
-        _ name:
-            String,
-        format:
-            mpv_format,
-        data:
-            inout T
-    ) -> Bool {
-        guard let mpv else {
-            return false
-        }
-
-        return withUnsafeMutablePointer(
-            to:
-                &data
-        ) { pointer in
-            mpv_set_option(
-                mpv,
-                name,
-                format,
-                pointer
-            ) >= 0
-        }
-    }
-
     private func observe(
         _ name:
             String,
@@ -763,9 +980,9 @@ final class V9PlayerService:
         defer {
             for pointer in storage
                 where pointer != nil {
-                free(
-                    pointer
-                )
+                    free(
+                        pointer
+                    )
             }
         }
 
@@ -829,30 +1046,26 @@ final class V9PlayerService:
                 )
 
             case MPV_EVENT_FILE_LOADED:
-                DispatchQueue.main.async {
-                    self
-                        .hasLoadedMedia =
-                        true
+                hasLoadedMedia =
+                    true
 
-                    if self
-                        .desiredPlayback {
-                        self
-                            .setPause(
-                                false
-                            )
-                    }
+                if desiredPlayback {
+                    setPause(
+                        false
+                    )
                 }
+
+                renderView?
+                    .requestRender()
 
             case MPV_EVENT_END_FILE:
-                DispatchQueue.main.async {
-                    self.isPlaying =
-                        false
+                isPlaying =
+                    false
 
-                    self.state =
-                        .paused
+                state =
+                    .paused
 
-                    self.updateNowPlaying()
-                }
+                updateNowPlaying()
 
             case MPV_EVENT_SHUTDOWN:
                 return
@@ -912,16 +1125,13 @@ final class V9PlayerService:
                     )
                     .pointee
 
-            DispatchQueue.main.async {
-                self.currentTime =
-                    max(
-                        0,
-                        value
-                    )
+            currentTime =
+                max(
+                    0,
+                    value
+                )
 
-                self
-                    .updateNowPlaying()
-            }
+            updateNowPlaying()
 
         case "duration":
             guard property.format ==
@@ -940,18 +1150,15 @@ final class V9PlayerService:
                     )
                     .pointee
 
-            DispatchQueue.main.async {
-                if value.isFinite {
-                    self.duration =
-                        max(
-                            0,
-                            value
-                        )
-                }
-
-                self
-                    .updateNowPlaying()
+            if value.isFinite {
+                duration =
+                    max(
+                        0,
+                        value
+                    )
             }
+
+            updateNowPlaying()
 
         case "pause":
             guard property.format ==
@@ -970,21 +1177,17 @@ final class V9PlayerService:
                     )
                     .pointee != 0
 
-            DispatchQueue.main.async {
-                self.isPlaying =
-                    !paused
+            isPlaying =
+                !paused
 
-                if self
-                    .hasLoadedMedia {
-                    self.state =
-                        paused
-                            ? .paused
-                            : .playing
-                }
-
-                self
-                    .updateNowPlaying()
+            if hasLoadedMedia {
+                state =
+                    paused
+                        ? .paused
+                        : .playing
             }
+
+            updateNowPlaying()
 
         default:
             break
