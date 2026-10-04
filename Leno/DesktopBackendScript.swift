@@ -17,6 +17,13 @@ enum DesktopBackendScript {
       const DESKTOP_HOST =
         "www.youtube.com";
 
+      const desktopState =
+        window.__YOUTUBE_VCD_DESKTOP_STATE__ = {
+          active: false,
+          mediaSessionShielded: false,
+          host: location.hostname
+        };
+
       const ensureViewport = () => {
         try {
           let viewport =
@@ -233,6 +240,9 @@ enum DesktopBackendScript {
               function() {
                 return undefined;
               };
+
+            desktopState.mediaSessionShielded =
+              true;
           } catch (_) {}
         }
 
@@ -379,6 +389,13 @@ enum DesktopBackendScript {
         ensureViewport();
         disablePageMediaSession();
         installDesktopShellStyle();
+
+        desktopState.active =
+          location.hostname ===
+          DESKTOP_HOST;
+
+        desktopState.host =
+          location.hostname;
 
         try {
           document.documentElement
