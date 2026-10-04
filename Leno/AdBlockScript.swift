@@ -11,7 +11,12 @@ enum AdBlockScript {
       const AD_KEYS = new Set([
         "adPlacements",
         "playerAds",
-        "adSlots"
+        "adSlots",
+        "adBreakHeartbeatParams",
+        "adBreakParams",
+        "adPlacementConfig",
+        "adParams",
+        "adBreaks"
       ]);
 
       const AD_RENDERER_KEYS = new Set([
