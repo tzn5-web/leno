@@ -113,10 +113,13 @@ struct YouTubeWebView: UIViewRepresentable {
     ) {
         guard let store =
                 WKContentRuleListStore.default() else {
+            coordinator.didStartInitialLoad = true
+
             startInitialLoad(
                 on: webView,
                 coordinator: coordinator
             )
+
             return
         }
 
