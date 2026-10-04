@@ -38,7 +38,7 @@ jobs:
           grep -q 'UIBackgroundModes:' project.yml
           grep -q 'allowsPictureInPictureMediaPlayback = true' Leno/YouTubeWebView.swift
           grep -q 'allowsAirPlayForMediaPlayback = true' Leno/YouTubeWebView.swift
-          grep -q 'mediaTypesRequiringUserActionForPlayback = []' Leno/YouTubeWebView.swift
+          grep -Fq 'mediaTypesRequiringUserActionForPlayback = []' Leno/YouTubeWebView.swift
           grep -q 'name: "mediaState"' Leno/YouTubeWebView.swift
           grep -q '__YOUTUBE_VCD_PLAYBACK_BRIDGE__' Leno/PlaybackBridgeScript.swift
           grep -q 'webkitSetPresentationMode' Leno/PlaybackBridgeScript.swift
