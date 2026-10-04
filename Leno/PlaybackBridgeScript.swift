@@ -199,6 +199,7 @@ enum PlaybackBridgeScript {
         lastKnownTime: 0,
         lastReportAt: 0,
         lastMediaHandlerInstallAt: 0,
+        transitionRecoveryUntil: 0,
         actionStamp:
           new Map()
       };
@@ -656,6 +657,7 @@ enum PlaybackBridgeScript {
 
         state.wantsPlayback = true;
         state.userPauseUntil = 0;
+        state.transitionRecoveryUntil = 0;
 
         const result =
           safePlay(video);
@@ -682,6 +684,7 @@ enum PlaybackBridgeScript {
         state.wantsPlayback = false;
         state.userPauseUntil =
           Date.now() + 5000;
+        state.transitionRecoveryUntil = 0;
 
         clearRecoveryTimers();
 
@@ -895,21 +898,29 @@ enum PlaybackBridgeScript {
             video.currentTime;
         }
 
+        const now = Date.now();
+
         if (
-          Date.now() <=
-            state.userPauseUntil ||
+          now <= state.userPauseUntil ||
           !state.wantsPlayback
         ) {
           state.wantsPlayback = false;
+          state.transitionRecoveryUntil = 0;
           clearRecoveryTimers();
         } else if (
           isReallyHidden() &&
           !video.ended
         ) {
           recoverPlayback(video);
-        } else {
-          // WebKit may emit pause immediately before the
-          // real visibility state flips to hidden.
+        } else if (
+          now <=
+            state.transitionRecoveryUntil &&
+          !video.ended
+        ) {
+          // A system background/PiP transition was armed before this pause.
+          // Recover now, then retry again if the real visibility flips hidden.
+          recoverPlayback(video);
+
           const waitForHidden = () => {
             if (
               isReallyHidden() &&
@@ -919,13 +930,6 @@ enum PlaybackBridgeScript {
               !video.ended
             ) {
               recoverPlayback(video);
-            } else if (
-              !isReallyHidden()
-            ) {
-              state.wantsPlayback =
-                false;
-
-              clearRecoveryTimers();
             }
 
             postState(true);
@@ -936,21 +940,10 @@ enum PlaybackBridgeScript {
             waitForHidden,
             { once: true }
           );
-
-          nativeSetTimeout(
-            () => {
-              if (
-                !isReallyHidden() &&
-                video.paused
-              ) {
-                state.wantsPlayback =
-                  false;
-
-                clearRecoveryTimers();
-              }
-            },
-            1800
-          );
+        } else {
+          // Visible pause with no armed system transition is intentional.
+          state.wantsPlayback = false;
+          clearRecoveryTimers();
         }
 
         updateMediaSession();
@@ -1301,6 +1294,10 @@ enum PlaybackBridgeScript {
           if (!video) return false;
 
           attachVideo(video);
+
+          state.transitionRecoveryUntil =
+            Date.now() + 2500;
+
           configureWebAudioSession();
           installMediaSessionHandlers(
             true
@@ -1344,6 +1341,7 @@ enum PlaybackBridgeScript {
         );
 
         clearRecoveryTimers();
+        state.transitionRecoveryUntil = 0;
 
         if (
           state.wantsPlayback &&
@@ -1376,6 +1374,9 @@ enum PlaybackBridgeScript {
             !video.paused &&
             !video.ended
           );
+
+        state.transitionRecoveryUntil =
+          Date.now() + 1800;
 
         if (
           video.paused &&
@@ -1677,6 +1678,8 @@ enum PlaybackBridgeScript {
 
             state.userPauseUntil =
               Date.now() + 3500;
+
+            state.transitionRecoveryUntil = 0;
 
             clearRecoveryTimers();
           }
