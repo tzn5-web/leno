@@ -35,6 +35,11 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     private var isReallyHidden = false
     private var transitionArmed = false
     private var presentationMode = "inline"
+    private var bridgeVideoID = ""
+    private var mediaReadyState = 0
+    private var mediaNetworkState = 0
+    private var mediaElementInDOM = false
+    private var lastMediaHealthSignature = ""
 
     private static let homeURL = URL(string: "https://m.youtube.com/")!
 
@@ -280,6 +285,14 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             body["transitionArmed"] as? Bool ?? false
         let bridgePresentationMode =
             body["presentationMode"] as? String ?? "inline"
+        let newVideoID =
+            body["videoID"] as? String ?? ""
+        let newReadyState =
+            Int(numericValue(body["readyState"]))
+        let newNetworkState =
+            Int(numericValue(body["networkState"]))
+        let newInDOM =
+            body["inDOM"] as? Bool ?? false
         let newCurrentTime = numericValue(body["currentTime"])
         let newDuration = numericValue(body["duration"])
 
@@ -293,6 +306,32 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             self.isReallyHidden = bridgeReallyHidden
             self.transitionArmed = bridgeTransitionArmed
             self.presentationMode = bridgePresentationMode
+            self.bridgeVideoID = newVideoID
+            self.mediaReadyState = newReadyState
+            self.mediaNetworkState = newNetworkState
+            self.mediaElementInDOM = newInDOM
+
+            let healthSignature =
+                "\(newVideoID)|\(newReadyState)|\(newNetworkState)|\(newInDOM)|\(bridgeReallyHidden)"
+
+            if healthSignature != self.lastMediaHealthSignature {
+                self.lastMediaHealthSignature = healthSignature
+
+                if mediaExists &&
+                   !bridgeReallyHidden &&
+                   (
+                       newReadyState == 0 ||
+                       !newInDOM
+                   ) {
+                    print(
+                        "Web media health warning: " +
+                        "videoID=\(newVideoID) " +
+                        "readyState=\(newReadyState) " +
+                        "networkState=\(newNetworkState) " +
+                        "inDOM=\(newInDOM)"
+                    )
+                }
+            }
 
             self.isPlaying =
                 mediaExists &&
