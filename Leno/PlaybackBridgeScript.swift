@@ -673,7 +673,11 @@ enum PlaybackBridgeScript {
 
                 if (
                   state.wantsPlayback &&
-                  isBackgrounded() &&
+                  (
+                    isBackgrounded() ||
+                    Date.now() <=
+                      state.transitionRecoveryUntil
+                  ) &&
                   Date.now() >
                     state.userPauseUntil &&
                   !video.ended
@@ -1147,12 +1151,6 @@ enum PlaybackBridgeScript {
         }
 
         configureWebAudioSession();
-
-        if (
-          !video.paused &&
-          !video.ended
-        ) {
-        }
 
         postState(true);
 
