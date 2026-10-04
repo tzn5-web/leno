@@ -429,7 +429,8 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                     )
 
                 pendingRepairShouldPlay =
-                    wantsPlayback
+                    desiredPlayback &&
+                    !explicitPauseActive
             }
 
             if webView?.url == nil ||
@@ -619,6 +620,31 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             return
         }
 
+        if message.name == "transitionEvent" {
+            guard let body =
+                    message.body as?
+                        [String: Any],
+                  let reason =
+                    body["reason"] as?
+                        String,
+                  !reason.isEmpty else {
+                return
+            }
+
+            DispatchQueue.main.async {
+                guard self
+                    .shouldRecoverDesiredPlayback else {
+                    return
+                }
+
+                self.beginTransitionRecovery(
+                    reason: reason
+                )
+            }
+
+            return
+        }
+
         if message.name == "mediaIntent" {
             guard let body =
                     message.body as?
@@ -708,6 +734,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                 effectiveExplicitPause
                     ? false
                     : (
+                        self.desiredPlayback ||
                         bridgeWantsPlayback ||
                         preserveNativeIntent
                     )
@@ -1102,7 +1129,8 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                 currentTime
             )
         pendingRepairShouldPlay =
-            wantsPlayback
+            desiredPlayback &&
+            !explicitPauseActive
 
         print(
             "Repairing frozen WebKit media: " +
