@@ -1224,25 +1224,28 @@ enum PlaybackBridgeScript {
         return video;
       }
 
-      // A JS call to pause on the attached watch video is considered an
-      // explicit pause. WebKit's own internal background pause does not pass
-      // through this JavaScript prototype method.
+      // Do not let a hidden-page/site initiated pause defeat an already
+      // established playback intent. Explicit app/lock-screen pause bypasses
+      // this wrapper through nativePause after clearing wantsPlayback.
       HTMLMediaElement.prototype.pause =
         function(...args) {
-          if (
+          const isActiveVideo =
             this === state.video ||
             this.classList
               ?.contains(
                 "html5-main-video"
-              )
-          ) {
-            state.wantsPlayback =
-              false;
+              );
 
-            state.userPauseUntil =
-              Date.now() + 5000;
+          const backgroundPause =
+            isActiveVideo &&
+            state.wantsPlayback &&
+            Date.now() >
+              state.userPauseUntil &&
+            isReallyHidden() &&
+            !this.ended;
 
-            clearRecoveryTimers();
+          if (backgroundPause) {
+            return;
           }
 
           return nativePause.apply(
@@ -1627,6 +1630,58 @@ enum PlaybackBridgeScript {
         }
       };
 
+      const recordPlayerControlIntent =
+        (event) => {
+          const target =
+            event.target;
+
+          if (
+            !(target instanceof Element)
+          ) {
+            return;
+          }
+
+          const control =
+            target.closest(
+              [
+                ".ytp-play-button",
+                "button[aria-label^='Pause']",
+                "button[aria-label^='Play']",
+                "button[data-title-no-tooltip='Pause']",
+                "button[data-title-no-tooltip='Play']"
+              ].join(",")
+            );
+
+          if (!control) return;
+
+          const video =
+            state.video ||
+            findWatchVideo();
+
+          if (!video) return;
+
+          attachVideo(video);
+
+          if (
+            video.paused ||
+            video.ended
+          ) {
+            state.wantsPlayback =
+              true;
+
+            state.userPauseUntil =
+              0;
+          } else {
+            state.wantsPlayback =
+              false;
+
+            state.userPauseUntil =
+              Date.now() + 3500;
+
+            clearRecoveryTimers();
+          }
+        };
+
       nativeDocumentAddEventListener(
         "play",
         (event) => {
@@ -1651,6 +1706,24 @@ enum PlaybackBridgeScript {
           }
         },
         true
+      );
+
+      nativeDocumentAddEventListener(
+        "pointerdown",
+        recordPlayerControlIntent,
+        {
+          capture: true,
+          passive: true
+        }
+      );
+
+      nativeDocumentAddEventListener(
+        "touchstart",
+        recordPlayerControlIntent,
+        {
+          capture: true,
+          passive: true
+        }
       );
 
       nativeDocumentAddEventListener(
