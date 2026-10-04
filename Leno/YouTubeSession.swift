@@ -24,7 +24,6 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     @Published private(set) var currentURL: URL?
     @Published private(set) var progress: Double = 0
     @Published private(set) var isLoading = false
-    @Published private(set) var hlsProbeSummary = ""
 
     weak var webView: WKWebView?
 
@@ -34,6 +33,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     private var notificationTokens: [NSObjectProtocol] = []
     private var wasPlayingBeforeInterruption = false
     private var wantsPlayback = false
+    private var explicitPauseActive = false
     private var hasPlaybackContext = false
     private var appIsBackground = false
     private var isReallyHidden = false
@@ -182,11 +182,13 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     func applicationWillResignActive() {
         activateAudioSession()
 
-        if isPlaying {
+        if isPlaying &&
+           !explicitPauseActive {
             wantsPlayback = true
         }
 
-        if wantsPlayback {
+        if wantsPlayback &&
+           !explicitPauseActive {
             evaluate(
                 PlaybackBridgeScript.prepareBackgroundCall
             )
@@ -203,7 +205,8 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         frozenRepairWorkItem = nil
         activateAudioSession()
 
-        if isPlaying {
+        if isPlaying &&
+           !explicitPauseActive {
             wantsPlayback = true
         }
 
@@ -211,7 +214,8 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             PlaybackBridgeScript.enterBackgroundCall
         )
 
-        if wantsPlayback {
+        if wantsPlayback &&
+           !explicitPauseActive {
             evaluate(
                 PlaybackBridgeScript.keepAliveCall
             )
@@ -257,11 +261,20 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             return
         }
 
-        evaluate(
-            PlaybackBridgeScript.resumeForegroundCall
-        )
+        if explicitPauseActive {
+            evaluate(
+                PlaybackBridgeScript.pauseCall
+            )
 
-        if returningFromBackground {
+            updateNowPlaying()
+        } else {
+            evaluate(
+                PlaybackBridgeScript.resumeForegroundCall
+            )
+        }
+
+        if returningFromBackground &&
+           !explicitPauseActive {
             probeNativeMediaPlaybackState(
                 after: 0.4
             )
@@ -281,26 +294,53 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     }
 
     func play() {
+        explicitPauseActive = false
         wantsPlayback = true
         activateAudioSession()
 
-        evaluate(
-            PlaybackBridgeScript.playCall
-        )
+        guard let webView else {
+            evaluate(
+                PlaybackBridgeScript.playCall
+            )
 
-        updateNowPlaying()
+            updateNowPlaying()
+            return
+        }
+
+        webView.setAllMediaPlaybackSuspended(
+            false
+        ) { [weak self] in
+            guard let self else {
+                return
+            }
+
+            self.evaluate(
+                PlaybackBridgeScript.playCall
+            )
+
+            self.updateNowPlaying()
+        }
     }
 
     func pause() {
+        explicitPauseActive = true
         wantsPlayback = false
         wasPlayingBeforeInterruption = false
+        isPlaying = false
 
         evaluate(
             PlaybackBridgeScript.pauseCall
         )
 
-        isPlaying = false
-        updateNowPlaying()
+        if let webView {
+            webView.setAllMediaPlaybackSuspended(
+                true
+            ) { [weak self] in
+                self?.updateNowPlaying()
+            }
+        } else {
+            updateNowPlaying()
+        }
     }
 
     func seek(by seconds: Double) {
@@ -335,10 +375,29 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
-        if message.name == "hlsProbe" {
-            handleHLSProbe(
-                message.body
-            )
+        if message.name == "mediaIntent" {
+            guard let body =
+                    message.body as?
+                        [String: Any],
+                  let intent =
+                    body["intent"] as?
+                        String else {
+                return
+            }
+
+            DispatchQueue.main.async {
+                switch intent {
+                case "play":
+                    self.play()
+
+                case "pause":
+                    self.pause()
+
+                default:
+                    break
+                }
+            }
+
             return
         }
 
@@ -354,6 +413,8 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         let mediaExists = body["hasMedia"] as? Bool ?? false
         let bridgeWantsPlayback =
             body["wantsPlayback"] as? Bool ?? false
+        let bridgeExplicitPause =
+            body["explicitPause"] as? Bool ?? false
         let bridgeReallyHidden =
             body["realHidden"] as? Bool ?? false
         let bridgeTransitionArmed =
@@ -387,9 +448,20 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                     bridgeTransitionArmed
                 )
 
+            let effectiveExplicitPause =
+                self.explicitPauseActive ||
+                bridgeExplicitPause
+
             let effectiveWantsPlayback =
-                bridgeWantsPlayback ||
-                preserveNativeIntent
+                effectiveExplicitPause
+                    ? false
+                    : (
+                        bridgeWantsPlayback ||
+                        preserveNativeIntent
+                    )
+
+            self.explicitPauseActive =
+                effectiveExplicitPause
 
             self.wantsPlayback =
                 effectiveWantsPlayback
@@ -428,6 +500,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             }
 
             self.isPlaying =
+                !effectiveExplicitPause &&
                 mediaExists &&
                 (
                     !paused ||
@@ -477,107 +550,6 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                 MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
             }
         }
-    }
-
-    private func handleHLSProbe(
-        _ rawBody: Any
-    ) {
-        guard let body =
-                rawBody as?
-                    [String: Any] else {
-            return
-        }
-
-        let videoID =
-            body["videoID"] as?
-                String ?? ""
-
-        let source =
-            body["source"] as?
-                String ?? "unknown"
-
-        if let error =
-                body["error"] as?
-                    String {
-            let summary =
-                "HLS FAIL · \(source)"
-
-            self.hlsProbeSummary =
-                summary
-
-            print(
-                "V6 HLS probe failed: " +
-                "videoID=\(videoID) " +
-                "source=\(source) " +
-                "error=\(error)"
-            )
-            return
-        }
-
-        let host =
-            body["manifestHost"] as?
-                String ?? ""
-
-        let status =
-            Int(
-                numericValue(
-                    body["status"]
-                )
-            )
-
-        let bytes =
-            Int(
-                numericValue(
-                    body["byteCount"]
-                )
-            )
-
-        let nLength =
-            Int(
-                numericValue(
-                    body["nLength"]
-                )
-            )
-
-        let isM3U8 =
-            body["isM3U8"] as?
-                Bool ?? false
-
-        let hasSPC =
-            body["hasSPC"] as?
-                Bool ?? false
-
-        let hasN =
-            body["hasNChallenge"] as?
-                Bool ?? false
-
-        let hasVariants =
-            body["hasVariants"] as?
-                Bool ?? false
-
-        let summary =
-            "HLS \(status) · " +
-            "M3U8 \(isM3U8 ? "Y" : "N") · " +
-            "SPC \(hasSPC ? "Y" : "N") · " +
-            "N \(hasN ? "Y" : "N") · " +
-            "VAR \(hasVariants ? "Y" : "N")"
-
-        self.hlsProbeSummary =
-            summary
-
-        print(
-            "V6 HLS probe: " +
-            "videoID=\(videoID) " +
-            "source=\(source) " +
-            "host=\(host) " +
-            "HTTP=\(status) " +
-            "m3u8=\(isM3U8) " +
-            "spc=\(hasSPC) " +
-            "n=\(hasN) " +
-            "nLen=\(nLength) " +
-            "variants=\(hasVariants) " +
-            "bytes=\(bytes)"
-        )
     }
 
     private func probeNativeMediaPlaybackState(
@@ -864,6 +836,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
             if wasPlayingBeforeInterruption &&
                wantsPlayback &&
+               !explicitPauseActive &&
                options.contains(.shouldResume) {
                 play()
             }
@@ -969,13 +942,16 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         }
 
         let reportingPlaying =
-            isPlaying ||
+            !explicitPauseActive &&
             (
-                wantsPlayback &&
+                isPlaying ||
                 (
-                    appIsBackground ||
-                    isReallyHidden ||
-                    transitionArmed
+                    wantsPlayback &&
+                    (
+                        appIsBackground ||
+                        isReallyHidden ||
+                        transitionArmed
+                    )
                 )
             )
 
