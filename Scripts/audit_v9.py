@@ -100,6 +100,8 @@ for required in [
     "skipByInterval",
     "setPlaying",
     "shouldKeepRendering",
+    "isPictureInPicturePossible",
+    "NSKeyValueObservation",
 ]:
     require(required in pip_bridge, f"native MPV PiP invariant missing: {required}")
 
@@ -136,8 +138,9 @@ require(
 
 require(
     '"loadfile"' in player
-    and '"audio-add"' in player,
-    "separate video/audio MPV load path missing",
+    and "edl://!new_stream;!no_clip;!no_chapters;" in player
+    and '"audio-add"' not in player,
+    "separate video/audio MPV EDL load path missing or legacy audio-add race returned",
 )
 
 require(
@@ -166,6 +169,14 @@ require(
 require(
     "yt-dlp==2026.08.19" in requirements,
     "resolver yt-dlp version is not the audited current pin",
+)
+
+require(
+    "h264" in resolver
+    and "avc1" in resolver
+    and "aac" in resolver
+    and "mp4a" in resolver,
+    "Media Lab resolver must prefer conservative H264/AAC formats first",
 )
 
 # The API response must expose relay URLs, not raw upstream URLs.
