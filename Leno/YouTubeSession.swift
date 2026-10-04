@@ -1,14 +1,10 @@
+import Foundation
 import AVFoundation
 import Combine
 import MediaPlayer
-import UIKit
 import WebKit
 
-final class YouTubeSession:
-    NSObject,
-    ObservableObject,
-    WKScriptMessageHandler
-{
+final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     enum State: Equatable {
         case idle
         case loading
@@ -28,114 +24,238 @@ final class YouTubeSession:
     @Published private(set) var currentURL: URL?
     @Published private(set) var progress: Double = 0
     @Published private(set) var isLoading = false
+    @Published private(set) var isPlayerPresented = false
+    @Published private(set) var playerAvailable = false
 
     weak var webView: WKWebView?
+    weak var browserWebView: WKWebView?
 
+    private var playerWebViewReady = false
+    private var pendingPlayerURL: URL?
+    private var currentPlayerURL: URL?
     private var retryCount = 0
     private let maxRetries = 3
-
-    private var remoteTargets:
-        [(MPRemoteCommand, Any)] = []
-
-    private var notificationTokens:
-        [NSObjectProtocol] = []
-
+    private var remoteTargets: [(MPRemoteCommand, Any)] = []
+    private var notificationTokens: [NSObjectProtocol] = []
     private var wasPlayingBeforeInterruption = false
     private var wantsPlayback = false
-    private var backgroundArmed = false
-    private var nativeHandoffActive = false
-    private var currentVideoID: String?
+    private var desiredPlayback = false
+    private var explicitPauseActive = false
+    private var systemInterruptionActive = false
+    private var hasPlaybackContext = false
+    private var appIsBackground = false
+    private var isReallyHidden = false
+    private var transitionArmed = false
+    private var presentationMode = "inline"
+    private var bridgeVideoID = ""
+    private var mediaReadyState = 0
+    private var mediaNetworkState = 0
+    private var mediaElementInDOM = false
+    private var lastMediaHealthSignature = ""
+    private var lastStablePlaybackTime: Double = 0
+    private var frozenRepairWorkItem: DispatchWorkItem?
+    private var lastFrozenRepairDate = Date.distantPast
+    private var pendingRepairResumeTime: Double?
+    private var pendingRepairShouldPlay = false
+    private var foregroundRepairWindowUntil = Date.distantPast
+    private var nativeMediaPlaybackState: WKMediaPlaybackState = .none
+    private var pendingWebProcessRecovery = false
+    private var transitionRecoveryGeneration = 0
+    private var transitionRecoveryDeadline = Date.distantPast
+    private var transitionRecoveryWorkItems: [DispatchWorkItem] = []
+    private var lastTransitionReason = ""
 
-    private let backgroundAudio =
-        BackgroundAudioHandoff()
-
-    private static let homeURL =
-        URL(
-            string:
-                "https://m.youtube.com/"
-        )!
+    private static let homeURL = URL(string: "https://m.youtube.com/")!
 
     override init() {
         super.init()
-
         configureAudioSession()
-        configureBackgroundAudioCallbacks()
         configureRemoteCommands()
         observeAudioSession()
-        observeApplicationLifecycle()
     }
 
     deinit {
-        for (command, token)
-        in remoteTargets {
-            command.removeTarget(
-                token
-            )
+        for (command, token) in remoteTargets {
+            command.removeTarget(token)
         }
 
         notificationTokens.forEach {
-            NotificationCenter.default
-                .removeObserver(
-                    $0
-                )
+            NotificationCenter.default.removeObserver($0)
         }
 
-        MPNowPlayingInfoCenter
-            .default()
-            .nowPlayingInfo = nil
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     }
 
-    func attach(
-        webView: WKWebView
-    ) {
+    func attach(webView: WKWebView) {
         self.webView = webView
-
-        webView
-            .setAllMediaPlaybackSuspended(
-                false,
-                completionHandler: nil
-            )
     }
 
-    func loadHome() {
-        load(
+    func attachBrowser(webView: WKWebView) {
+        self.browserWebView = webView
+    }
+
+    func playerDidBecomeReady() {
+        playerWebViewReady = true
+
+        if let pendingPlayerURL {
+            self.pendingPlayerURL = nil
+            loadPlayer(
+                pendingPlayerURL
+            )
+        }
+    }
+
+    func openVideo(_ url: URL) {
+        guard isPlaybackURL(url) else {
+            showBrowser(url)
+            return
+        }
+
+        currentPlayerURL = url
+        pendingPlayerURL = nil
+        playerAvailable = true
+        isPlayerPresented = true
+        explicitPauseActive = false
+        desiredPlayback = true
+        wantsPlayback = true
+        cancelTransitionRecovery()
+
+        if playerWebViewReady {
+            loadPlayer(url)
+        } else {
+            pendingPlayerURL = url
+        }
+    }
+
+    func showBrowser(_ url: URL? = nil) {
+        isPlayerPresented = false
+
+        guard let browserWebView else {
+            return
+        }
+
+        if let url {
+            browserWebView.load(
+                URLRequest(
+                    url: url
+                )
+            )
+        } else if browserWebView.url == nil {
+            browserWebView.load(
+                URLRequest(
+                    url: Self.homeURL
+                )
+            )
+        }
+    }
+
+    func showPlayer() {
+        guard playerAvailable else {
+            return
+        }
+
+        isPlayerPresented = true
+    }
+
+    func loadBrowserHome() {
+        showBrowser(
             Self.homeURL
         )
     }
 
+    func loadHome() {
+        loadBrowserHome()
+    }
+
     func reloadFromHome() {
         retryCount = 0
-        loadHome()
+        loadBrowserHome()
+    }
+
+    func shouldOpenInPlayer(
+        _ url: URL
+    ) -> Bool {
+        isPlaybackURL(url)
+    }
+
+    func shouldRoutePlayerNavigationToBrowser(
+        _ url: URL
+    ) -> Bool {
+        guard currentPlayerURL != nil else {
+            return false
+        }
+
+        let scheme =
+            url.scheme?
+                .lowercased() ?? ""
+
+        guard scheme == "http" ||
+              scheme == "https" else {
+            return false
+        }
+
+        return !isPlaybackURL(url)
+    }
+
+    func routePlayerNavigationToBrowser(
+        _ url: URL
+    ) {
+        showBrowser(url)
     }
 
     func goBack() {
-        guard let webView,
-              webView.canGoBack else {
+        if isPlayerPresented {
+            showBrowser()
             return
         }
 
-        webView.goBack()
+        guard let browserWebView,
+              browserWebView.canGoBack else {
+            return
+        }
+
+        browserWebView.goBack()
     }
 
     func goForward() {
-        guard let webView,
-              webView.canGoForward else {
+        guard !isPlayerPresented,
+              let browserWebView,
+              browserWebView.canGoForward else {
             return
         }
 
-        webView.goForward()
+        browserWebView.goForward()
     }
 
     func reload() {
-        guard let webView else {
+        if isPlayerPresented {
+            guard let webView else {
+                return
+            }
+
+            if webView.url == nil ||
+               webView.url?.scheme == "about" {
+                if let currentPlayerURL {
+                    loadPlayer(
+                        currentPlayerURL
+                    )
+                }
+            } else {
+                markLoading()
+                webView.reload()
+            }
+
             return
         }
 
-        if webView.url == nil {
-            loadHome()
+        guard let browserWebView else {
+            return
+        }
+
+        if browserWebView.url == nil {
+            loadBrowserHome()
         } else {
-            markLoading()
-            webView.reload()
+            browserWebView.reload()
         }
     }
 
@@ -147,36 +267,28 @@ final class YouTubeSession:
         isLoading: Bool
     ) {
         DispatchQueue.main.async {
-            self.canGoBack =
-                canGoBack
+            self.canGoBack = canGoBack
+            self.canGoForward = canGoForward
+            self.currentURL = url
 
-            self.canGoForward =
-                canGoForward
-
-            self.currentURL =
-                url
-
-            self.progress =
-                min(
-                    max(
-                        progress,
-                        0
-                    ),
-                    1
-                )
-
-            self.isLoading =
-                isLoading
+            if let url,
+               self.isPlaybackURL(
+                    url
+               ) {
+                self.currentPlayerURL =
+                    url
+                self.playerAvailable =
+                    true
+            }
+            self.progress = min(max(progress, 0), 1)
+            self.isLoading = isLoading
         }
     }
 
     func markLoading() {
         DispatchQueue.main.async {
-            self.state =
-                .loading
-
-            self.isLoading =
-                true
+            self.state = .loading
+            self.isLoading = true
         }
     }
 
@@ -186,195 +298,180 @@ final class YouTubeSession:
             self.state = .ready
             self.isLoading = false
             self.progress = 1
+            self.resumeAfterFrozenMediaRepairIfNeeded()
         }
     }
 
-    func recover(
-        after error: Error? = nil
-    ) {
-        DispatchQueue.main.async {
-            [weak self] in
+    func recover(after error: Error? = nil) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
 
-            guard let self else {
+            if self.appIsBackground {
+                self.pendingWebProcessRecovery = true
                 return
             }
 
-            guard self.retryCount <
-                    self.maxRetries else {
+            guard self.retryCount < self.maxRetries else {
                 self.isLoading = false
-
-                self.state =
-                    .failed(
-                        error?
-                            .localizedDescription ??
-                        "YouTube could not be loaded."
-                    )
-
+                self.state = .failed(
+                    error?.localizedDescription ??
+                    "YouTube could not be loaded."
+                )
                 return
             }
 
             self.retryCount += 1
+            let attempt = self.retryCount
+            self.state = .recovering(attempt)
 
-            let attempt =
-                self.retryCount
+            let delay = min(1.2 * Double(attempt), 3.6)
 
-            self.state =
-                .recovering(
-                    attempt
-                )
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + delay
+            ) { [weak self] in
+                guard let self else { return }
 
-            let delay =
-                min(
-                    1.2 *
-                    Double(
-                        attempt
-                    ),
-                    3.6
-                )
-
-            DispatchQueue.main
-                .asyncAfter(
-                    deadline:
-                        .now() +
-                        delay
-                ) {
-                    [weak self] in
-
-                    guard let self else {
-                        return
+                if self.webView?.url == nil ||
+                   self.webView?.url?.scheme == "about" {
+                    if let currentPlayerURL =
+                            self.currentPlayerURL {
+                        self.loadPlayer(
+                            currentPlayerURL
+                        )
                     }
-
-                    if self
-                        .webView?
-                        .url == nil {
-                        self.loadHome()
-                    } else {
-                        self
-                            .webView?
-                            .reload()
-                    }
+                } else {
+                    self.webView?.reload()
                 }
+            }
         }
     }
 
     func applicationWillResignActive() {
-        guard hasMedia ||
-              backgroundAudio
-                .hasCandidate else {
-            return
-        }
+        activateAudioSession()
 
-        if isPlaying {
+        if (
+            isPlaying ||
+            wantsPlayback
+        ) &&
+           !explicitPauseActive {
+            desiredPlayback = true
             wantsPlayback = true
         }
 
-        backgroundArmed =
-            wantsPlayback
+        if shouldRecoverDesiredPlayback {
+            evaluate(
+                PlaybackBridgeScript.prepareBackgroundCall
+            )
 
-        activateAudioSession()
-
-        if beginNativeHandoffIfPossible() {
-            updateNowPlaying()
-            return
-        }
-
-        if wantsPlayback {
-            armWebBackgroundFallback()
+            beginTransitionRecovery(
+                reason: "inactive"
+            )
         }
 
         updateNowPlaying()
     }
 
     func applicationDidEnterBackground() {
-        if nativeHandoffActive {
-            if wantsPlayback {
-                backgroundAudio.play()
-                isPlaying = true
-            }
+        appIsBackground = true
+        foregroundRepairWindowUntil =
+            .distantPast
+        frozenRepairWorkItem?.cancel()
+        frozenRepairWorkItem = nil
+        activateAudioSession()
 
-            updateNowPlaying()
-            return
+        if (
+            isPlaying ||
+            wantsPlayback
+        ) &&
+           !explicitPauseActive {
+            desiredPlayback = true
+            wantsPlayback = true
         }
 
-        if wantsPlayback {
-            backgroundArmed = true
-            activateAudioSession()
-            armWebBackgroundFallback()
+        evaluate(
+            PlaybackBridgeScript.enterBackgroundCall
+        )
+
+        if shouldRecoverDesiredPlayback {
+            evaluate(
+                PlaybackBridgeScript.keepAliveCall
+            )
+
+            beginTransitionRecovery(
+                reason: "background"
+            )
         }
 
         updateNowPlaying()
     }
 
     func applicationDidBecomeActive() {
+        let returningFromBackground =
+            appIsBackground
+
+        appIsBackground = false
+
+        foregroundRepairWindowUntil =
+            returningFromBackground
+                ? Date().addingTimeInterval(6)
+                : .distantPast
+
         activateAudioSession()
 
-        if nativeHandoffActive {
-            let resumeTime =
-                backgroundAudio
-                    .stopForForeground()
+        if pendingWebProcessRecovery {
+            pendingWebProcessRecovery = false
 
-            nativeHandoffActive =
-                false
-
-            backgroundArmed =
-                false
-
-            currentTime =
-                resumeTime
-
-            let script =
-                PlaybackBridgeScript
-                    .resumeFromNativeCall(
-                        time:
-                            resumeTime,
-                        shouldPlay:
-                            wantsPlayback
+            if hasPlaybackContext {
+                pendingRepairResumeTime =
+                    max(
+                        lastStablePlaybackTime,
+                        currentTime
                     )
 
-            webView?
-                .setAllMediaPlaybackSuspended(
-                    false
-                ) { [weak self] in
-                    self?
-                        .evaluate(
-                            script
-                        )
+                pendingRepairShouldPlay =
+                    desiredPlayback &&
+                    !explicitPauseActive
+            }
+
+            if webView?.url == nil ||
+               webView?.url?.scheme == "about" {
+                if let currentPlayerURL {
+                    loadPlayer(
+                        currentPlayerURL
+                    )
                 }
+            } else {
+                markLoading()
+                webView?.reload()
+            }
 
-            isPlaying =
-                wantsPlayback
-
-            updateNowPlaying()
             return
         }
 
-        webView?
-            .setAllMediaPlaybackSuspended(
-                false,
-                completionHandler: nil
-            )
+        if explicitPauseActive {
+            cancelTransitionRecovery()
 
-        evaluate(
-            PlaybackBridgeScript
-                .disarmBackgroundCall
-        )
-
-        backgroundArmed = false
-
-        if wantsPlayback &&
-           hasMedia {
             evaluate(
-                PlaybackBridgeScript
-                    .userPlayCall
+                PlaybackBridgeScript.pauseCall
             )
-        }
 
-        updateNowPlaying()
+            updateNowPlaying()
+        } else {
+            evaluate(
+                PlaybackBridgeScript.resumeForegroundCall
+            )
+
+            if returningFromBackground &&
+               shouldRecoverDesiredPlayback {
+                beginTransitionRecovery(
+                    reason: "foreground"
+                )
+            }
+        }
     }
 
     func togglePlayback() {
-        if wantsPlayback ||
-           isPlaying {
+        if wantsPlayback || isPlaying {
             pause()
         } else {
             play()
@@ -382,489 +479,716 @@ final class YouTubeSession:
     }
 
     func play() {
+        explicitPauseActive = false
+        desiredPlayback = true
         wantsPlayback = true
+        cancelTransitionRecovery()
         activateAudioSession()
 
-        if nativeHandoffActive {
-            backgroundAudio.play()
-            isPlaying = true
+        guard let webView else {
+            evaluate(
+                PlaybackBridgeScript.playCall
+            )
+
             updateNowPlaying()
             return
         }
 
-        if UIApplication
-            .shared
-            .applicationState !=
-            .active {
-            backgroundArmed = true
-
-            if beginNativeHandoffIfPossible() {
-                updateNowPlaying()
+        webView.setAllMediaPlaybackSuspended(
+            false
+        ) { [weak self] in
+            guard let self else {
                 return
             }
 
-            armWebBackgroundFallback()
-            updateNowPlaying()
-            return
-        }
-
-        webView?
-            .setAllMediaPlaybackSuspended(
-                false,
-                completionHandler: nil
+            self.evaluate(
+                PlaybackBridgeScript.playCall
             )
 
-        evaluate(
-            PlaybackBridgeScript
-                .userPlayCall
-        )
+            self.beginTransitionRecovery(
+                reason: "manual-play"
+            )
 
-        updateNowPlaying()
+            self.updateNowPlaying()
+        }
     }
 
     func pause() {
+        explicitPauseActive = true
+        desiredPlayback = false
         wantsPlayback = false
-
-        if nativeHandoffActive {
-            backgroundAudio.pause()
-            isPlaying = false
-            updateNowPlaying()
-            return
-        }
-
-        backgroundArmed = false
-
-        evaluate(
-            PlaybackBridgeScript
-                .userPauseCall
-        )
-
+        wasPlayingBeforeInterruption = false
         isPlaying = false
-        updateNowPlaying()
-    }
-
-    func seek(
-        by seconds: Double
-    ) {
-        let safeSeconds =
-            max(
-                -60,
-                min(
-                    60,
-                    seconds
-                )
-            )
-
-        if nativeHandoffActive {
-            backgroundAudio
-                .seek(
-                    by:
-                        safeSeconds
-                )
-
-            currentTime =
-                backgroundAudio
-                    .currentTime
-
-            updateNowPlaying()
-            return
-        }
+        cancelTransitionRecovery()
 
         evaluate(
-            PlaybackBridgeScript
-                .seekByCall(
-                    seconds:
-                        safeSeconds
-                )
+            PlaybackBridgeScript.pauseCall
+        )
+
+        if let webView {
+            webView.setAllMediaPlaybackSuspended(
+                true
+            ) { [weak self] in
+                self?.updateNowPlaying()
+            }
+        } else {
+            updateNowPlaying()
+        }
+    }
+
+    func seek(by seconds: Double) {
+        let safeSeconds = max(-60, min(60, seconds))
+
+        evaluate(
+            PlaybackBridgeScript.seekByCall(
+                seconds: safeSeconds
+            )
         )
     }
 
-    func seek(
-        to seconds: Double
-    ) {
-        let safeSeconds =
-            max(
-                0,
-                seconds
-            )
-
-        if nativeHandoffActive {
-            backgroundAudio
-                .seek(
-                    to:
-                        safeSeconds
-                )
-
-            currentTime =
-                safeSeconds
-
-            updateNowPlaying()
-            return
-        }
+    func seek(to seconds: Double) {
+        let safeSeconds = max(0, seconds)
 
         evaluate(
-            PlaybackBridgeScript
-                .seekToCall(
-                    seconds:
-                        safeSeconds
-                )
+            PlaybackBridgeScript.seekToCall(
+                seconds: safeSeconds
+            )
         )
     }
 
     func requestPictureInPicture() {
+        if shouldRecoverDesiredPlayback {
+            beginTransitionRecovery(
+                reason: "pip-request"
+            )
+        }
+
         evaluate(
-            PlaybackBridgeScript
-                .requestPiPCall
+            PlaybackBridgeScript.requestPiPCall
         )
     }
 
     func requestFullscreen() {
-        evaluate(
-            PlaybackBridgeScript
-                .requestFullscreenCall
-        )
+        evaluate(PlaybackBridgeScript.requestFullscreenCall)
     }
 
     func userContentController(
-        _ userContentController:
-            WKUserContentController,
-        didReceive message:
-            WKScriptMessage
+        _ userContentController: WKUserContentController,
+        didReceive message: WKScriptMessage
     ) {
-        switch message.name {
-        case "mediaCandidate":
-            handleMediaCandidate(
-                message.body
-            )
-
-        case "mediaState":
-            handleMediaState(
-                message.body
-            )
-
-        default:
-            break
-        }
-    }
-
-    private func handleMediaCandidate(
-        _ rawBody: Any
-    ) {
-        guard !nativeHandoffActive,
-              let body =
-                rawBody as?
-                [String: Any],
-              let rawURL =
-                body["url"] as?
-                String,
-              let url =
-                URL(
-                    string:
-                        rawURL
-                ),
-              url.scheme?
-                .lowercased() ==
-                "https" else {
-            return
-        }
-
-        let videoID =
-            normalizedVideoID(
-                body["videoID"]
-                    as? String
-            )
-
-        let candidateTitle =
-            cleanTitle(
-                body["title"]
-                    as? String
-            )
-
-        let kind =
-            (
-                body["kind"]
-                    as? String
-            )?
-            .trimmingCharacters(
-                in:
-                    .whitespacesAndNewlines
-            ) ?? "media"
-
-        backgroundAudio
-            .prepare(
-                url: url,
-                videoID:
-                    videoID,
-                title:
-                    candidateTitle,
-                kind:
-                    kind
-            )
-    }
-
-    private func handleMediaState(
-        _ rawBody: Any
-    ) {
-        guard let body =
-                rawBody as?
-                [String: Any] else {
-            return
-        }
-
-        let newTitle =
-            cleanTitle(
-                body["title"]
-                    as? String
-            )
-
-        let videoID =
-            normalizedVideoID(
-                body["videoID"]
-                    as? String
-            )
-
-        let paused =
-            body["paused"]
-                as? Bool ??
-                true
-
-        let mediaExists =
-            body["hasMedia"]
-                as? Bool ??
-                false
-
-        let newCurrentTime =
-            numericValue(
-                body[
-                    "currentTime"
-                ]
-            )
-
-        let newDuration =
-            numericValue(
-                body[
-                    "duration"
-                ]
-            )
-
-        DispatchQueue.main.async {
-            self.title =
-                newTitle
-
-            self.currentVideoID =
-                videoID
-
-            self.hasMedia =
-                mediaExists
-
-            self.duration =
-                max(
-                    0,
-                    newDuration
-                )
-
-            if self.nativeHandoffActive {
-                self.currentTime =
-                    self.backgroundAudio
-                        .currentTime
-
-                self.isPlaying =
-                    self.wantsPlayback
-
-                self.updateNowPlaying()
+        if message.name == "browserOpenVideo" {
+            guard let body =
+                    message.body as?
+                        [String: Any],
+                  let value =
+                    body["url"] as?
+                        String,
+                  let url =
+                    URL(
+                        string:
+                            value
+                    ) else {
                 return
             }
 
-            self.isPlaying =
-                mediaExists &&
-                !paused
+            DispatchQueue.main.async {
+                self.openVideo(url)
+            }
 
-            self.currentTime =
-                max(
-                    0,
-                    newCurrentTime
+            return
+        }
+
+        if message.name == "browseRequest" {
+            guard let body =
+                    message.body as?
+                        [String: Any],
+                  let value =
+                    body["url"] as?
+                        String,
+                  let url =
+                    URL(
+                        string:
+                            value
+                    ) else {
+                return
+            }
+
+            DispatchQueue.main.async {
+                self.showBrowser(url)
+            }
+
+            return
+        }
+
+        if message.name == "transitionEvent" {
+            guard let body =
+                    message.body as?
+                        [String: Any],
+                  let reason =
+                    body["reason"] as?
+                        String,
+                  !reason.isEmpty else {
+                return
+            }
+
+            DispatchQueue.main.async {
+                guard self
+                    .shouldRecoverDesiredPlayback else {
+                    return
+                }
+
+                self.beginTransitionRecovery(
+                    reason: reason
                 )
+            }
 
-            let appState =
-                UIApplication
-                    .shared
-                    .applicationState
+            return
+        }
+
+        if message.name == "mediaIntent" {
+            guard let body =
+                    message.body as?
+                        [String: Any],
+                  let intent =
+                    body["intent"] as?
+                        String else {
+                return
+            }
+
+            DispatchQueue.main.async {
+                switch intent {
+                case "play":
+                    self.play()
+
+                case "pause":
+                    self.pause()
+
+                default:
+                    break
+                }
+            }
+
+            return
+        }
+
+        guard message.name == "mediaState",
+              let body = message.body as? [String: Any] else {
+            return
+        }
+
+        let newTitle = (body["title"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let paused = body["paused"] as? Bool ?? true
+        let ended = body["ended"] as? Bool ?? false
+        let mediaExists = body["hasMedia"] as? Bool ?? false
+        let bridgeWantsPlayback =
+            body["wantsPlayback"] as? Bool ?? false
+        let bridgeReallyHidden =
+            body["realHidden"] as? Bool ?? false
+        let bridgeTransitionArmed =
+            body["transitionArmed"] as? Bool ?? false
+        let bridgePresentationMode =
+            body["presentationMode"] as? String ?? "inline"
+        let newVideoID =
+            body["videoID"] as? String ?? ""
+        let newReadyState =
+            Int(numericValue(body["readyState"]))
+        let newNetworkState =
+            Int(numericValue(body["networkState"]))
+        let newInDOM =
+            body["inDOM"] as? Bool ?? false
+        let newCurrentTime = numericValue(body["currentTime"])
+        let newDuration = numericValue(body["duration"])
+
+        DispatchQueue.main.async {
+            self.title = newTitle?.isEmpty == false
+                ? newTitle!
+                : "YouTube"
+
+            self.hasMedia = mediaExists
 
             if mediaExists &&
-               !paused {
-                self.wantsPlayback =
-                    true
-            } else if mediaExists &&
-                      paused &&
-                      appState ==
-                        .active &&
-                      !self.backgroundArmed {
-                self.wantsPlayback =
-                    false
+               !paused &&
+               !self.explicitPauseActive &&
+               !self.appIsBackground &&
+               !bridgeReallyHidden &&
+               !bridgeTransitionArmed {
+                self.desiredPlayback = true
             }
+
+            let preserveNativeIntent =
+                self.desiredPlayback &&
+                !self.explicitPauseActive &&
+                (
+                    self.isTransitionRecoveryActive ||
+                    self.appIsBackground ||
+                    self.isLoading ||
+                    bridgeReallyHidden ||
+                    bridgeTransitionArmed
+                )
+
+            let effectiveExplicitPause =
+                self.explicitPauseActive
+
+            let effectiveWantsPlayback =
+                effectiveExplicitPause
+                    ? false
+                    : (
+                        self.desiredPlayback ||
+                        bridgeWantsPlayback ||
+                        preserveNativeIntent
+                    )
+
+            self.wantsPlayback =
+                effectiveWantsPlayback
+
+            if mediaExists {
+                self.hasPlaybackContext = true
+                self.playerAvailable = true
+            }
+            self.isReallyHidden = bridgeReallyHidden
+            self.transitionArmed = bridgeTransitionArmed
+
+            let previousPresentationMode =
+                self.presentationMode
+
+            self.presentationMode =
+                bridgePresentationMode
+
+            if previousPresentationMode !=
+                bridgePresentationMode &&
+               (
+                   previousPresentationMode ==
+                       "picture-in-picture" ||
+                   bridgePresentationMode ==
+                       "picture-in-picture"
+               ) &&
+               self.shouldRecoverDesiredPlayback {
+                self.beginTransitionRecovery(
+                    reason:
+                        bridgePresentationMode ==
+                            "picture-in-picture"
+                            ? "pip-enter"
+                            : "pip-exit"
+                )
+            }
+
+            self.bridgeVideoID = newVideoID
+            self.mediaReadyState = newReadyState
+            self.mediaNetworkState = newNetworkState
+            self.mediaElementInDOM = newInDOM
+
+            let healthSignature =
+                "\(newVideoID)|\(newReadyState)|\(newNetworkState)|\(newInDOM)|\(bridgeReallyHidden)"
+
+            if healthSignature != self.lastMediaHealthSignature {
+                self.lastMediaHealthSignature = healthSignature
+
+                if mediaExists &&
+                   !bridgeReallyHidden &&
+                   (
+                       newReadyState == 0 ||
+                       !newInDOM
+                   ) {
+                    print(
+                        "Web media health warning: " +
+                        "videoID=\(newVideoID) " +
+                        "readyState=\(newReadyState) " +
+                        "networkState=\(newNetworkState) " +
+                        "inDOM=\(newInDOM)"
+                    )
+                }
+            }
+
+            self.isPlaying =
+                !effectiveExplicitPause &&
+                mediaExists &&
+                (
+                    !paused ||
+                    (
+                        effectiveWantsPlayback &&
+                        (
+                            bridgeReallyHidden ||
+                            bridgeTransitionArmed
+                        )
+                    )
+                )
+
+            self.currentTime = max(0, newCurrentTime)
+            self.duration = max(0, newDuration)
+
+            if mediaExists &&
+               newReadyState > 0 &&
+               newCurrentTime > 0 {
+                self.lastStablePlaybackTime =
+                    newCurrentTime
+            }
+
+            let frozenForegroundMedia =
+                mediaExists &&
+                !ended &&
+                effectiveWantsPlayback &&
+                !self.isTransitionRecoveryActive &&
+                !self.appIsBackground &&
+                !bridgeReallyHidden &&
+                newInDOM &&
+                (
+                    newReadyState == 0 ||
+                    self.nativeMediaPlaybackState ==
+                        .suspended ||
+                    self.nativeMediaPlaybackState ==
+                        .paused
+                )
+
+            self.updateFrozenMediaRepair(
+                needed: frozenForegroundMedia
+            )
 
             if mediaExists {
                 self.updateNowPlaying()
-            } else if appState ==
-                        .active {
-                self.wantsPlayback =
-                    false
-
-                self.currentVideoID =
-                    nil
-
-                MPNowPlayingInfoCenter
-                    .default()
-                    .nowPlayingInfo =
-                    nil
+            } else if !effectiveWantsPlayback &&
+                      !bridgeReallyHidden &&
+                      !bridgeTransitionArmed &&
+                      !self.appIsBackground {
+                self.wantsPlayback = false
+                self.hasPlaybackContext = false
+                MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
             }
         }
     }
 
-    private func beginNativeHandoffIfPossible()
-        -> Bool
+    private var shouldRecoverDesiredPlayback:
+        Bool
     {
-        guard wantsPlayback,
-              backgroundAudio
-                .hasCandidate,
-              backgroundAudio
-                .matches(
-                    videoID:
-                        currentVideoID
-                ) else {
-            return false
+        desiredPlayback &&
+        !explicitPauseActive &&
+        !systemInterruptionActive &&
+        hasPlaybackContext
+    }
+
+    private var isTransitionRecoveryActive:
+        Bool
+    {
+        shouldRecoverDesiredPlayback &&
+        Date() <=
+            transitionRecoveryDeadline
+    }
+
+    private func cancelTransitionRecovery() {
+        transitionRecoveryGeneration += 1
+        transitionRecoveryDeadline =
+            .distantPast
+        lastTransitionReason = ""
+
+        transitionRecoveryWorkItems
+            .forEach {
+                $0.cancel()
+            }
+
+        transitionRecoveryWorkItems
+            .removeAll()
+    }
+
+    private func beginTransitionRecovery(
+        reason: String
+    ) {
+        guard shouldRecoverDesiredPlayback,
+              webView != nil else {
+            cancelTransitionRecovery()
+            return
         }
 
-        evaluate(
-            PlaybackBridgeScript
-                .prepareNativeHandoffCall
-        )
+        transitionRecoveryGeneration += 1
+        let generation =
+            transitionRecoveryGeneration
 
-        let started =
-            backgroundAudio
-                .start(
-                    at:
-                        currentTime,
-                    shouldPlay:
-                        true
+        lastTransitionReason =
+            reason
+
+        let delays:
+            [TimeInterval] = [
+                0,
+                0.08,
+                0.20,
+                0.45,
+                0.90,
+                1.60,
+                2.80
+            ]
+
+        transitionRecoveryDeadline =
+            Date()
+                .addingTimeInterval(
+                    3.4
                 )
 
-        guard started else {
-            return false
+        if !appIsBackground &&
+           (
+               reason == "foreground" ||
+               reason == "pip-request" ||
+               reason == "pip-enter" ||
+               reason == "pip-exit"
+           ) {
+            foregroundRepairWindowUntil =
+                Date()
+                    .addingTimeInterval(
+                        7
+                    )
         }
 
-        nativeHandoffActive =
-            true
+        transitionRecoveryWorkItems
+            .forEach {
+                $0.cancel()
+            }
 
-        backgroundArmed =
-            true
+        transitionRecoveryWorkItems
+            .removeAll()
 
-        isPlaying =
-            true
+        frozenRepairWorkItem?
+            .cancel()
 
-        webView?
-            .setAllMediaPlaybackSuspended(
-                true,
-                completionHandler: nil
-            )
+        frozenRepairWorkItem = nil
 
-        return true
+        for delay in delays {
+            let workItem =
+                DispatchWorkItem {
+                    [weak self] in
+
+                    self?
+                        .attemptTransitionRecovery(
+                            generation:
+                                generation,
+                            reason:
+                                reason
+                        )
+                }
+
+            transitionRecoveryWorkItems
+                .append(
+                    workItem
+                )
+
+            DispatchQueue.main
+                .asyncAfter(
+                    deadline:
+                        .now() +
+                        delay,
+                    execute:
+                        workItem
+                )
+        }
     }
 
-    private func armWebBackgroundFallback() {
-        backgroundArmed = true
+    private func attemptTransitionRecovery(
+        generation: Int,
+        reason: String
+    ) {
+        guard generation ==
+                transitionRecoveryGeneration,
+              shouldRecoverDesiredPlayback,
+              Date() <=
+                transitionRecoveryDeadline,
+              let webView else {
+            return
+        }
 
-        webView?
-            .setAllMediaPlaybackSuspended(
-                false,
-                completionHandler: nil
-            )
+        webView.requestMediaPlaybackState {
+            [weak self, weak webView]
+            mediaState in
 
-        evaluate(
-            PlaybackBridgeScript
-                .armBackgroundCall
-        )
-
-        evaluate(
-            PlaybackBridgeScript
-                .keepAliveCall
-        )
-    }
-
-    private func configureBackgroundAudioCallbacks() {
-        backgroundAudio
-            .onProgress = {
-                [weak self]
-                seconds,
-                playing in
-
+            DispatchQueue.main.async {
                 guard let self,
+                      let webView,
+                      generation ==
+                        self
+                            .transitionRecoveryGeneration,
                       self
-                        .nativeHandoffActive else {
+                        .shouldRecoverDesiredPlayback,
+                      Date() <=
+                        self
+                            .transitionRecoveryDeadline else {
                     return
                 }
 
-                self.currentTime =
-                    seconds
+                self.nativeMediaPlaybackState =
+                    mediaState
 
-                self.isPlaying =
-                    self.wantsPlayback &&
-                    (
-                        playing ||
-                        self
-                            .backgroundAudio
-                            .isActive
+                switch mediaState {
+                case .playing:
+                    self.wantsPlayback =
+                        true
+                    self.isPlaying =
+                        true
+                    self.updateFrozenMediaRepair(
+                        needed:
+                            false
                     )
 
-                self.updateNowPlaying()
-            }
+                case .paused,
+                     .suspended,
+                     .none:
+                    self.wantsPlayback =
+                        true
 
-        backgroundAudio
-            .onFailure = {
-                [weak self]
-                message in
+                    webView
+                        .setAllMediaPlaybackSuspended(
+                            false
+                        ) { [weak self] in
+                            DispatchQueue.main.async {
+                                guard let self,
+                                      generation ==
+                                        self
+                                            .transitionRecoveryGeneration,
+                                      self
+                                        .shouldRecoverDesiredPlayback else {
+                                    return
+                                }
 
-                guard let self,
-                      self
-                        .nativeHandoffActive else {
-                    return
+                                self.evaluate(
+                                    PlaybackBridgeScript
+                                        .playCall
+                                )
+
+                                self.evaluate(
+                                    PlaybackBridgeScript
+                                        .keepAliveCall
+                                )
+
+                                self.updateNowPlaying()
+                            }
+                        }
+
+                @unknown default:
+                    break
                 }
 
                 print(
-                    "Native background audio failed: \(message)"
+                    "V8 transition recovery: " +
+                    "reason=\(reason) " +
+                    "state=\(mediaState.rawValue) " +
+                    "generation=\(generation)"
                 )
-
-                let resumeTime =
-                    self
-                        .backgroundAudio
-                        .stopForForeground()
-
-                self.nativeHandoffActive =
-                    false
-
-                self.currentTime =
-                    resumeTime
-
-                self.evaluate(
-                    PlaybackBridgeScript
-                        .resumeFromNativeCall(
-                            time:
-                                resumeTime,
-                            shouldPlay:
-                                self.wantsPlayback
-                        )
-                )
-
-                if self.wantsPlayback {
-                    self
-                        .armWebBackgroundFallback()
-                }
-
-                self.updateNowPlaying()
             }
+        }
     }
 
-    private func load(
+    private func updateFrozenMediaRepair(
+        needed: Bool
+    ) {
+        guard needed else {
+            frozenRepairWorkItem?.cancel()
+            frozenRepairWorkItem = nil
+            return
+        }
+
+        guard frozenRepairWorkItem == nil,
+              !isTransitionRecoveryActive,
+              !isLoading,
+              Date() <=
+                foregroundRepairWindowUntil,
+              Date().timeIntervalSince(
+                lastFrozenRepairDate
+              ) > 15 else {
+            return
+        }
+
+        let workItem = DispatchWorkItem {
+            [weak self] in
+
+            guard let self else {
+                return
+            }
+
+            self.frozenRepairWorkItem = nil
+
+            guard !self.appIsBackground,
+                  Date() <=
+                    self.foregroundRepairWindowUntil,
+                  self.wantsPlayback,
+                  self.hasPlaybackContext,
+                  (
+                      (
+                          self.hasMedia &&
+                          self.mediaElementInDOM &&
+                          self.mediaReadyState == 0
+                      ) ||
+                      self.nativeMediaPlaybackState ==
+                          .suspended
+                  ),
+                  !self.isLoading,
+                  Date().timeIntervalSince(
+                    self.lastFrozenRepairDate
+                  ) > 15 else {
+                return
+            }
+
+            self.repairFrozenWebMedia()
+        }
+
+        frozenRepairWorkItem = workItem
+
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + 2.0,
+            execute: workItem
+        )
+    }
+
+    private func repairFrozenWebMedia() {
+        guard let webView,
+              webView.url != nil else {
+            return
+        }
+
+        lastFrozenRepairDate = Date()
+        pendingRepairResumeTime =
+            max(
+                lastStablePlaybackTime,
+                currentTime
+            )
+        pendingRepairShouldPlay =
+            desiredPlayback &&
+            !explicitPauseActive
+
+        print(
+            "Repairing frozen WebKit media: " +
+            "videoID=\(bridgeVideoID) " +
+            "resume=\(pendingRepairResumeTime ?? 0) " +
+            "wkState=\(nativeMediaPlaybackState.rawValue)"
+        )
+
+        markLoading()
+        webView.reload()
+    }
+
+    private func resumeAfterFrozenMediaRepairIfNeeded() {
+        guard let resumeTime =
+                pendingRepairResumeTime else {
+            return
+        }
+
+        let shouldPlay =
+            pendingRepairShouldPlay
+
+        pendingRepairResumeTime = nil
+        pendingRepairShouldPlay = false
+
+        for delay in [0.25, 0.7, 1.4, 2.4] {
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + delay
+            ) { [weak self] in
+                self?.evaluate(
+                    PlaybackBridgeScript
+                        .restoreAfterReloadCall(
+                            seconds: resumeTime,
+                            shouldPlay: shouldPlay
+                        )
+                )
+            }
+        }
+    }
+
+    private func loadPlayer(
         _ url: URL
     ) {
         DispatchQueue.main.async {
@@ -876,35 +1200,90 @@ final class YouTubeSession:
                 return
             }
 
-            self.markLoading()
+            self.currentPlayerURL =
+                url
 
-            webView.load(
-                URLRequest(
-                    url:
-                        url
+            webView.setAllMediaPlaybackSuspended(
+                false
+            ) { [weak self, weak webView] in
+                guard let self,
+                      let webView else {
+                    return
+                }
+
+                self.markLoading()
+
+                webView.load(
+                    URLRequest(
+                        url: url
+                    )
                 )
-            )
+            }
         }
     }
 
-    private func evaluate(
-        _ script: String
-    ) {
-        let work: () -> Void = {
-            [weak self] in
+    private func isYouTubeURL(
+        _ url: URL
+    ) -> Bool {
+        let host =
+            url.host?
+                .lowercased() ?? ""
 
-            guard let self,
-                  let webView =
-                    self.webView else {
+        return host == "youtube.com" ||
+               host == "www.youtube.com" ||
+               host == "m.youtube.com" ||
+               host == "youtu.be"
+    }
+
+    private func isPlaybackURL(
+        _ url: URL
+    ) -> Bool {
+        guard isYouTubeURL(url) else {
+            return false
+        }
+
+        let host =
+            url.host?
+                .lowercased() ?? ""
+
+        if host == "youtu.be" {
+            return !url.path
+                .split(separator: "/")
+                .isEmpty
+        }
+
+        let path =
+            url.path
+
+        if path == "/watch" {
+            return URLComponents(
+                url: url,
+                resolvingAgainstBaseURL:
+                    false
+            )?
+            .queryItems?
+            .contains {
+                $0.name == "v" &&
+                !($0.value ?? "")
+                    .isEmpty
+            } == true
+        }
+
+        return path.hasPrefix(
+            "/shorts/"
+        ) ||
+        path.hasPrefix(
+            "/live/"
+        )
+    }
+
+    private func evaluate(_ script: String) {
+        let work: () -> Void = { [weak self] in
+            guard let webView = self?.webView else {
                 return
             }
 
-            webView.evaluateJavaScript(
-                script
-            ) {
-                _,
-                error in
-
+            webView.evaluateJavaScript(script) { _, error in
                 if let error {
                     print(
                         "JavaScript bridge error: \(error.localizedDescription)"
@@ -916,99 +1295,33 @@ final class YouTubeSession:
         if Thread.isMainThread {
             work()
         } else {
-            DispatchQueue.main.async(
-                execute: work
-            )
+            DispatchQueue.main.async(execute: work)
         }
     }
 
-    private func numericValue(
-        _ value: Any?
-    ) -> Double {
-        if let number =
-            value as?
-            NSNumber {
-            return number
-                .doubleValue
+    private func numericValue(_ value: Any?) -> Double {
+        if let number = value as? NSNumber {
+            return number.doubleValue
         }
 
-        if let number =
-            value as?
-            Double {
+        if let number = value as? Double {
             return number
         }
 
         return 0
     }
 
-    private func cleanTitle(
-        _ value: String?
-    ) -> String {
-        let trimmed =
-            value?
-                .trimmingCharacters(
-                    in:
-                        .whitespacesAndNewlines
-                )
-
-        return trimmed?
-            .isEmpty ==
-            false
-            ? trimmed!
-            : "YouTube"
-    }
-
-    private func normalizedVideoID(
-        _ value: String?
-    ) -> String? {
-        guard let value else {
-            return nil
-        }
-
-        let trimmed =
-            value
-                .trimmingCharacters(
-                    in:
-                        .whitespacesAndNewlines
-                )
-
-        guard trimmed.count ==
-                11 else {
-            return nil
-        }
-
-        let allowed =
-            CharacterSet(
-                charactersIn:
-                    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
-            )
-
-        guard trimmed
-            .unicodeScalars
-            .allSatisfy({
-                allowed.contains(
-                    $0
-                )
-            }) else {
-            return nil
-        }
-
-        return trimmed
-    }
-
     private func configureAudioSession() {
         do {
-            let audioSession =
-                AVAudioSession
-                    .sharedInstance()
+            let audioSession = AVAudioSession.sharedInstance()
 
-            try audioSession
-                .setCategory(
-                    .playback,
-                    mode:
-                        .moviePlayback,
-                    options: []
-                )
+            try audioSession.setCategory(
+                .playback,
+                mode: .moviePlayback,
+                options: []
+            )
+
+            try audioSession.setActive(true)
         } catch {
             print(
                 "Audio session configuration failed: \(error.localizedDescription)"
@@ -1018,11 +1331,7 @@ final class YouTubeSession:
 
     private func activateAudioSession() {
         do {
-            try AVAudioSession
-                .sharedInstance()
-                .setActive(
-                    true
-                )
+            try AVAudioSession.sharedInstance().setActive(true)
         } catch {
             print(
                 "Audio session activation failed: \(error.localizedDescription)"
@@ -1030,398 +1339,223 @@ final class YouTubeSession:
         }
     }
 
-    private func observeApplicationLifecycle() {
-        let center =
-            NotificationCenter
-                .default
-
-        let resign =
-            center.addObserver(
-                forName:
-                    UIApplication
-                        .willResignActiveNotification,
-                object:
-                    nil,
-                queue:
-                    .main
-            ) {
-                [weak self]
-                _ in
-
-                self?
-                    .applicationWillResignActive()
-            }
-
-        let background =
-            center.addObserver(
-                forName:
-                    UIApplication
-                        .didEnterBackgroundNotification,
-                object:
-                    nil,
-                queue:
-                    .main
-            ) {
-                [weak self]
-                _ in
-
-                self?
-                    .applicationDidEnterBackground()
-            }
-
-        let active =
-            center.addObserver(
-                forName:
-                    UIApplication
-                        .didBecomeActiveNotification,
-                object:
-                    nil,
-                queue:
-                    .main
-            ) {
-                [weak self]
-                _ in
-
-                self?
-                    .applicationDidBecomeActive()
-            }
-
-        notificationTokens
-            .append(
-                contentsOf: [
-                    resign,
-                    background,
-                    active
-                ]
-            )
-    }
-
     private func observeAudioSession() {
-        let token =
-            NotificationCenter
-                .default
-                .addObserver(
-                    forName:
-                        AVAudioSession
-                            .interruptionNotification,
-                    object:
-                        AVAudioSession
-                            .sharedInstance(),
-                    queue:
-                        .main
-                ) {
-                    [weak self]
-                    notification in
+        let token = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            self?.handleAudioInterruption(notification)
+        }
 
-                    self?
-                        .handleAudioInterruption(
-                            notification
-                        )
-                }
-
-        notificationTokens
-            .append(
-                token
-            )
+        notificationTokens.append(token)
     }
 
     private func handleAudioInterruption(
-        _ notification:
-            Notification
+        _ notification: Notification
     ) {
-        guard let userInfo =
-                notification.userInfo,
+        guard let userInfo = notification.userInfo,
               let rawType =
-                (
-                    userInfo[
-                        AVAudioSessionInterruptionTypeKey
-                    ] as?
-                    NSNumber
-                )?
-                .uintValue,
+                (userInfo[AVAudioSessionInterruptionTypeKey] as? NSNumber)?
+                    .uintValue,
               let type =
-                AVAudioSession
-                    .InterruptionType(
-                        rawValue:
-                            rawType
-                    ) else {
+                AVAudioSession.InterruptionType(rawValue: rawType) else {
             return
         }
 
         switch type {
         case .began:
+            systemInterruptionActive = true
+            cancelTransitionRecovery()
+
             wasPlayingBeforeInterruption =
-                wantsPlayback ||
-                isPlaying
+                isPlaying || wantsPlayback
+
+            evaluate(
+                PlaybackBridgeScript
+                    .beginSystemInterruptionCall
+            )
 
         case .ended:
+            systemInterruptionActive = false
             activateAudioSession()
 
+            evaluate(
+                PlaybackBridgeScript
+                    .endSystemInterruptionCall
+            )
+
             let rawOptions =
-                (
-                    userInfo[
-                        AVAudioSessionInterruptionOptionKey
-                    ] as?
-                    NSNumber
-                )?
-                .uintValue ??
-                0
+                (userInfo[
+                    AVAudioSessionInterruptionOptionKey
+                ] as? NSNumber)?.uintValue ?? 0
 
             let options =
-                AVAudioSession
-                    .InterruptionOptions(
-                        rawValue:
-                            rawOptions
-                    )
+                AVAudioSession.InterruptionOptions(rawValue: rawOptions)
 
             if wasPlayingBeforeInterruption &&
-               options.contains(
-                    .shouldResume
-               ) {
+               desiredPlayback &&
+               !explicitPauseActive &&
+               options.contains(.shouldResume) {
                 play()
             }
 
-            wasPlayingBeforeInterruption =
-                false
+            wasPlayingBeforeInterruption = false
 
         @unknown default:
             break
         }
     }
 
-    private var hasControllableMedia: Bool {
-        hasMedia ||
-        nativeHandoffActive ||
-        backgroundAudio
-            .hasCandidate
-    }
-
     private func configureRemoteCommands() {
-        let center =
-            MPRemoteCommandCenter
-                .shared()
+        let center = MPRemoteCommandCenter.shared()
 
-        center.playCommand
-            .isEnabled = true
-
-        addRemoteTarget(
-            center.playCommand
-        ) {
-            [weak self]
-            _ in
-
+        center.playCommand.isEnabled = true
+        addRemoteTarget(center.playCommand) { [weak self] _ in
             guard let self,
-                  self
-                    .hasControllableMedia else {
+                  self.hasPlaybackContext else {
                 return .commandFailed
             }
 
-            self.play()
-            return .success
-        }
-
-        center.pauseCommand
-            .isEnabled = true
-
-        addRemoteTarget(
-            center.pauseCommand
-        ) {
-            [weak self]
-            _ in
-
-            guard let self,
-                  self
-                    .hasControllableMedia else {
-                return .commandFailed
+            DispatchQueue.main.async {
+                self.play()
             }
-
-            self.pause()
-            return .success
-        }
-
-        center
-            .togglePlayPauseCommand
-            .isEnabled = true
-
-        addRemoteTarget(
-            center
-                .togglePlayPauseCommand
-        ) {
-            [weak self]
-            _ in
-
-            guard let self,
-                  self
-                    .hasControllableMedia else {
-                return .commandFailed
-            }
-
-            self.togglePlayback()
-            return .success
-        }
-
-        center
-            .skipForwardCommand
-            .isEnabled = true
-
-        center
-            .skipForwardCommand
-            .preferredIntervals =
-            [15]
-
-        addRemoteTarget(
-            center
-                .skipForwardCommand
-        ) {
-            [weak self]
-            _ in
-
-            guard let self,
-                  self
-                    .hasControllableMedia else {
-                return .commandFailed
-            }
-
-            self.seek(
-                by: 15
-            )
 
             return .success
         }
 
-        center
-            .skipBackwardCommand
-            .isEnabled = true
-
-        center
-            .skipBackwardCommand
-            .preferredIntervals =
-            [15]
-
-        addRemoteTarget(
-            center
-                .skipBackwardCommand
-        ) {
-            [weak self]
-            _ in
-
+        center.pauseCommand.isEnabled = true
+        addRemoteTarget(center.pauseCommand) { [weak self] _ in
             guard let self,
-                  self
-                    .hasControllableMedia else {
+                  self.hasPlaybackContext else {
                 return .commandFailed
             }
 
-            self.seek(
-                by: -15
-            )
+            DispatchQueue.main.async {
+                self.pause()
+            }
 
             return .success
         }
 
-        center
-            .changePlaybackPositionCommand
-            .isEnabled = true
+        center.togglePlayPauseCommand.isEnabled = true
+        addRemoteTarget(center.togglePlayPauseCommand) { [weak self] _ in
+            guard let self,
+                  self.hasPlaybackContext else {
+                return .commandFailed
+            }
+
+            DispatchQueue.main.async {
+                self.togglePlayback()
+            }
+
+            return .success
+        }
+
+        center.skipForwardCommand.isEnabled = true
+        center.skipForwardCommand.preferredIntervals = [15]
+
+        addRemoteTarget(center.skipForwardCommand) { [weak self] _ in
+            guard let self, self.hasMedia else {
+                return .commandFailed
+            }
+
+            DispatchQueue.main.async {
+                self.seek(by: 15)
+            }
+
+            return .success
+        }
+
+        center.skipBackwardCommand.isEnabled = true
+        center.skipBackwardCommand.preferredIntervals = [15]
+
+        addRemoteTarget(center.skipBackwardCommand) { [weak self] _ in
+            guard let self, self.hasMedia else {
+                return .commandFailed
+            }
+
+            DispatchQueue.main.async {
+                self.seek(by: -15)
+            }
+
+            return .success
+        }
+
+        center.changePlaybackPositionCommand.isEnabled = true
 
         addRemoteTarget(
-            center
-                .changePlaybackPositionCommand
-        ) {
-            [weak self]
-            event in
-
+            center.changePlaybackPositionCommand
+        ) { [weak self] event in
             guard let self,
-                  self
-                    .hasControllableMedia,
+                  self.hasMedia,
                   let event =
-                    event as?
-                    MPChangePlaybackPositionCommandEvent else {
+                    event as? MPChangePlaybackPositionCommandEvent else {
                 return .commandFailed
             }
 
-            self.seek(
-                to:
-                    event
-                        .positionTime
-            )
+            let position =
+                event.positionTime
+
+            DispatchQueue.main.async {
+                self.seek(
+                    to: position
+                )
+            }
 
             return .success
         }
     }
 
     private func addRemoteTarget(
-        _ command:
-            MPRemoteCommand,
-        handler:
-            @escaping (
-                MPRemoteCommandEvent
-            ) ->
-            MPRemoteCommandHandlerStatus
+        _ command: MPRemoteCommand,
+        handler: @escaping (
+            MPRemoteCommandEvent
+        ) -> MPRemoteCommandHandlerStatus
     ) {
-        let token =
-            command.addTarget(
-                handler:
-                    handler
-            )
-
-        remoteTargets
-            .append(
-                (
-                    command,
-                    token
-                )
-            )
+        let token = command.addTarget(handler: handler)
+        remoteTargets.append((command, token))
     }
 
     private func updateNowPlaying() {
-        guard hasControllableMedia else {
+        guard hasMedia ||
+              hasPlaybackContext else {
             return
         }
 
         let reportingPlaying =
-            nativeHandoffActive
-                ? wantsPlayback
-                : isPlaying ||
-                  (
-                    backgroundArmed &&
-                    wantsPlayback
-                  )
+            !explicitPauseActive &&
+            (
+                isPlaying ||
+                (
+                    wantsPlayback &&
+                    (
+                        appIsBackground ||
+                        isReallyHidden ||
+                        transitionArmed
+                    )
+                )
+            )
 
-        let elapsed =
-            nativeHandoffActive
-                ? backgroundAudio
-                    .currentTime
-                : currentTime
-
-        var info:
-            [String: Any] = [
-                MPMediaItemPropertyTitle:
-                    title,
-                MPNowPlayingInfoPropertyPlaybackRate:
-                    reportingPlaying
-                        ? 1.0
-                        : 0.0,
-                MPNowPlayingInfoPropertyDefaultPlaybackRate:
-                    1.0,
-                MPNowPlayingInfoPropertyElapsedPlaybackTime:
-                    elapsed
-            ]
+        var info: [String: Any] = [
+            MPMediaItemPropertyTitle: title,
+            MPNowPlayingInfoPropertyPlaybackRate:
+                reportingPlaying ? 1.0 : 0.0,
+            MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime:
+                currentTime
+        ]
 
         if duration > 0 {
-            info[
-                MPMediaItemPropertyPlaybackDuration
-            ] = duration
+            info[MPMediaItemPropertyPlaybackDuration] =
+                duration
         }
 
         let nowPlaying =
-            MPNowPlayingInfoCenter
-                .default()
+            MPNowPlayingInfoCenter.default()
 
-        nowPlaying.nowPlayingInfo =
-            info
-
+        nowPlaying.nowPlayingInfo = info
         nowPlaying.playbackState =
-            reportingPlaying
-                ? .playing
-                : .paused
+            reportingPlaying ? .playing : .paused
     }
 }

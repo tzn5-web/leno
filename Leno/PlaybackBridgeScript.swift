@@ -5,44 +5,378 @@ enum PlaybackBridgeScript {
     (() => {
       "use strict";
 
-      if (window.__YOUTUBE_VCD_PLAYBACK_BRIDGE__) return;
-      window.__YOUTUBE_VCD_PLAYBACK_BRIDGE__ = true;
+      if (window.__YOUTUBE_VCD_PLAYBACK_BRIDGE_V4__) return;
+      window.__YOUTUBE_VCD_PLAYBACK_BRIDGE_V4__ = true;
 
-      const state =
-        window.__YOUTUBE_VCD_MEDIA_STATE__ =
-          window.__YOUTUBE_VCD_MEDIA_STATE__ || {
-            wantsPlayback: false,
-            backgroundArmed: false,
-            nativeHandoff: false
-          };
+      const nativeDocumentAddEventListener =
+        document.addEventListener.bind(document);
 
-      let lastKnownTime = 0;
-      let handoffPause = false;
+      const nativeWindowAddEventListener =
+        window.addEventListener.bind(window);
 
-      const videos = () =>
-        Array.from(
-          document.querySelectorAll(
-            "video"
-          )
+      const nativeSetTimeout =
+        window.setTimeout.bind(window);
+
+      const nativeClearTimeout =
+        window.clearTimeout.bind(window);
+
+      const nativePlay =
+        HTMLMediaElement.prototype.play;
+
+      const nativePause =
+        HTMLMediaElement.prototype.pause;
+
+      const inheritedDescriptor = (object, property) => {
+        let current = object;
+
+        while (current) {
+          const descriptor =
+            Object.getOwnPropertyDescriptor(
+              current,
+              property
+            );
+
+          if (descriptor) return descriptor;
+
+          current =
+            Object.getPrototypeOf(current);
+        }
+
+        return null;
+      };
+
+      const nativeHiddenDescriptor =
+        inheritedDescriptor(
+          document,
+          "hidden"
         );
 
-      const videoIDFromLocation = () => {
+      const nativeWebKitHiddenDescriptor =
+        inheritedDescriptor(
+          document,
+          "webkitHidden"
+        );
+
+      const nativeVisibilityDescriptor =
+        inheritedDescriptor(
+          document,
+          "visibilityState"
+        );
+
+      const nativeWebKitVisibilityDescriptor =
+        inheritedDescriptor(
+          document,
+          "webkitVisibilityState"
+        );
+
+      const readNative = (
+        descriptor,
+        fallback
+      ) => {
+        try {
+          return descriptor?.get
+            ? descriptor.get.call(document)
+            : fallback;
+        } catch (_) {
+          return fallback;
+        }
+      };
+
+      const isReallyHidden = () => {
+        const hidden =
+          readNative(
+            nativeHiddenDescriptor,
+            null
+          );
+
+        if (typeof hidden === "boolean") {
+          return hidden;
+        }
+
+        const webkitHidden =
+          readNative(
+            nativeWebKitHiddenDescriptor,
+            null
+          );
+
+        if (
+          typeof webkitHidden ===
+          "boolean"
+        ) {
+          return webkitHidden;
+        }
+
+        const visibility =
+          readNative(
+            nativeVisibilityDescriptor,
+            "visible"
+          );
+
+        return visibility === "hidden";
+      };
+
+      const spoofDocumentProperty = (
+        property,
+        value
+      ) => {
+        const descriptor =
+          inheritedDescriptor(
+            document,
+            property
+          );
+
+        const replacement = {
+          configurable:
+            descriptor?.configurable ??
+            true,
+          enumerable:
+            descriptor?.enumerable ??
+            true,
+          get: () => value
+        };
+
+        if (descriptor?.set) {
+          replacement.set = function(next) {
+            return descriptor.set.call(
+              this,
+              next
+            );
+          };
+        }
+
+        try {
+          Object.defineProperty(
+            Document.prototype,
+            property,
+            replacement
+          );
+
+          return;
+        } catch (_) {}
+
+        try {
+          Object.defineProperty(
+            document,
+            property,
+            {
+              configurable: true,
+              enumerable:
+                replacement.enumerable,
+              get: () => value
+            }
+          );
+        } catch (_) {}
+      };
+
+      // YouTube should continue believing the page is visible.
+      // Our code still reads the real values through the saved descriptors.
+      spoofDocumentProperty(
+        "hidden",
+        false
+      );
+
+      spoofDocumentProperty(
+        "webkitHidden",
+        false
+      );
+
+      spoofDocumentProperty(
+        "visibilityState",
+        "visible"
+      );
+
+      spoofDocumentProperty(
+        "webkitVisibilityState",
+        "visible"
+      );
+
+      // Keep YouTube from registering page-lifecycle handlers that can
+      // explicitly pause the watch player. The bridge captured pristine
+      // addEventListener functions above, so our own real lifecycle listeners
+      // still receive the native events.
+      const originalEventTargetAddEventListener =
+        EventTarget.prototype.addEventListener;
+
+      const blockedLifecycleEvents =
+        new Set([
+          "visibilitychange",
+          "webkitvisibilitychange",
+          "pagehide",
+          "freeze"
+        ]);
+
+      EventTarget.prototype.addEventListener =
+        function(type, listener, options) {
+          if (
+            blockedLifecycleEvents.has(
+              String(type)
+            )
+          ) {
+            return;
+          }
+
+          return originalEventTargetAddEventListener.call(
+            this,
+            type,
+            listener,
+            options
+          );
+        };
+
+      try {
+        document.hasFocus = () => true;
+      } catch (_) {}
+
+      try {
+        Object.defineProperty(
+          document,
+          "onvisibilitychange",
+          {
+            configurable: true,
+            get: () => null,
+            set: () => {}
+          }
+        );
+      } catch (_) {}
+
+      try {
+        Object.defineProperty(
+          document,
+          "onwebkitvisibilitychange",
+          {
+            configurable: true,
+            get: () => null,
+            set: () => {}
+          }
+        );
+      } catch (_) {}
+
+      const shieldPageMediaActions = () => {
+        try {
+          const mediaSession =
+            navigator.mediaSession;
+
+          if (!mediaSession) return;
+
+          const proto =
+            Object.getPrototypeOf(
+              mediaSession
+            );
+
+          if (
+            proto &&
+            typeof proto
+              .setActionHandler ===
+              "function" &&
+            !proto
+              .__youtubeVcdActionShield
+          ) {
+            Object.defineProperty(
+              proto,
+              "__youtubeVcdActionShield",
+              {
+                configurable: false,
+                enumerable: false,
+                writable: false,
+                value: true
+              }
+            );
+
+            const blockedActionHandler =
+              function() {
+                return undefined;
+              };
+
+            Object.defineProperty(
+              proto,
+              "setActionHandler",
+              {
+                configurable: true,
+                enumerable: false,
+                get() {
+                  return blockedActionHandler;
+                },
+                set(_) {}
+              }
+            );
+          }
+        } catch (_) {
+          try {
+            const blockedActionHandler =
+              function() {
+                return undefined;
+              };
+
+            Object.defineProperty(
+              navigator.mediaSession,
+              "setActionHandler",
+              {
+                configurable: true,
+                enumerable: false,
+                get() {
+                  return blockedActionHandler;
+                },
+                set(_) {}
+              }
+            );
+          } catch (_) {}
+        }
+      };
+
+      shieldPageMediaActions();
+
+      const state = {
+        video: null,
+        wantsPlayback: false,
+        explicitPause: false,
+        userPauseUntil: 0,
+        nativeBackground: false,
+        videoID: "",
+        systemInterruption: false,
+        recoveryTimers:
+          new Set(),
+        lastKnownTime: 0,
+        lastReportAt: 0,
+        transitionRecoveryUntil: 0,
+        actionStamp:
+          new Map()
+      };
+
+      const isBackgrounded = () =>
+        state.nativeBackground ||
+        isReallyHidden();
+
+      const cleanTitle = () => {
+        const value =
+          String(
+            document.title ||
+            "YouTube"
+          )
+          .replace(
+            /\s*-\s*YouTube\s*$/,
+            ""
+          )
+          .trim();
+
+        return value || "YouTube";
+      };
+
+      const currentVideoID = () => {
         try {
           const url =
-            new URL(
-              location.href
-            );
+            new URL(location.href);
 
           if (
             url.pathname === "/watch"
           ) {
-            const id =
-              url.searchParams.get(
-                "v"
-              ) || "";
+            const value =
+              url.searchParams.get("v") ||
+              "";
 
-            return /^[A-Za-z0-9_-]{11}$/.test(id)
-              ? id
+            return /^[A-Za-z0-9_-]{11}$/.test(
+              value
+            )
+              ? value
               : "";
           }
 
@@ -69,98 +403,165 @@ enum PlaybackBridgeScript {
         return "";
       };
 
-      const videoScore = (video) => {
-        if (!video || video.ended) {
-          return -1;
+      const isPreviewVideo = (video) => {
+        try {
+          return !!video.closest(
+            "#inline-preview-player, #inline-player"
+          );
+        } catch (_) {
+          return false;
+        }
+      };
+
+      const findWatchVideo = () => {
+        const videos =
+          Array.from(
+            document.querySelectorAll(
+              "video"
+            )
+          )
+          .filter(
+            (video) =>
+              video instanceof
+                HTMLVideoElement &&
+              video.isConnected &&
+              !isPreviewVideo(video)
+          );
+
+        if (!videos.length) {
+          return null;
         }
 
-        let score = 0;
+        const main =
+          videos.find(
+            (video) =>
+              video.classList.contains(
+                "html5-main-video"
+              )
+          );
 
-        if (!video.paused) {
-          score += 1_000_000;
-        }
+        if (main) return main;
 
-        if (video.readyState >= 2) {
-          score += 20_000;
-        }
+        const inPlayer =
+          videos.find(
+            (video) =>
+              !!video.closest(
+                "#movie_player, .html5-video-player, #player-container, #player-container-id, ytm-player"
+              )
+          );
 
-        if (video.currentSrc) {
-          score += 10_000;
-        }
+        if (inPlayer) return inPlayer;
 
+        const playing =
+          videos.find(
+            (video) =>
+              !video.paused &&
+              !video.ended &&
+              video.readyState > 0
+          );
+
+        if (playing) return playing;
+
+        return (
+          videos.find(
+            (video) =>
+              !video.ended &&
+              video.readyState > 0
+          ) ||
+          videos[0]
+        );
+      };
+
+      const enforceInlinePlayback = (
+        video
+      ) => {
         if (
-          Number.isFinite(
-            video.duration
-          ) &&
-          video.duration > 0
+          !(video instanceof
+            HTMLVideoElement)
         ) {
-          score += 5_000;
+          return;
         }
 
         try {
-          const mode =
-            video.webkitPresentationMode;
+          video.setAttribute(
+            "playsinline",
+            ""
+          );
+
+          video.setAttribute(
+            "webkit-playsinline",
+            ""
+          );
+
+          video.setAttribute(
+            "x-webkit-airplay",
+            "allow"
+          );
+
+          video.playsInline = true;
 
           if (
-            mode ===
-              "picture-in-picture" ||
-            mode === "fullscreen"
+            "webkitPlaysInline" in
+            video
           ) {
-            score += 2_000_000;
+            video.webkitPlaysInline =
+              true;
+          }
+
+          video.removeAttribute(
+            "disablepictureinpicture"
+          );
+
+          if (
+            "disablePictureInPicture" in
+            video
+          ) {
+            video.disablePictureInPicture =
+              false;
           }
         } catch (_) {}
-
-        try {
-          const rect =
-            video.getBoundingClientRect();
-
-          const area =
-            Math.max(
-              0,
-              rect.width
-            ) *
-            Math.max(
-              0,
-              rect.height
-            );
-
-          score +=
-            Math.min(
-              area,
-              1_000_000
-            ) / 100;
-        } catch (_) {}
-
-        return score;
       };
 
-      const currentVideo = () => {
-        let best = null;
-        let bestScore = -1;
+      const configureWebAudioSession =
+        () => {
+          try {
+            if (
+              navigator.audioSession
+            ) {
+              navigator.audioSession.type =
+                "playback";
+            }
+          } catch (_) {}
+        };
 
-        for (const video of videos()) {
-          const score =
-            videoScore(
-              video
-            );
-
-          if (score > bestScore) {
-            best = video;
-            bestScore = score;
-          }
+      const clearRecoveryTimers = () => {
+        for (
+          const timer of
+          state.recoveryTimers
+        ) {
+          nativeClearTimeout(timer);
         }
 
-        return best;
+        state.recoveryTimers.clear();
       };
 
-      const safePlay = (video) => {
-        if (!video) {
+      const safePlay = (
+        video = state.video
+      ) => {
+        if (
+          !video ||
+          video.ended ||
+          video.error
+        ) {
           return false;
         }
 
+        enforceInlinePlayback(video);
+        configureWebAudioSession();
+
         try {
           const result =
-            video.play();
+            nativePlay.call(video);
 
           if (
             result &&
@@ -178,36 +579,38 @@ enum PlaybackBridgeScript {
         }
       };
 
-      const pauseVideo = (
-        video,
-        preserveIntent = false
+      const postTransitionEvent =
+        (reason) => {
+          try {
+            window.webkit
+              ?.messageHandlers
+              ?.transitionEvent
+              ?.postMessage({
+                reason:
+                  String(
+                    reason || ""
+                  )
+              });
+          } catch (_) {}
+        };
+
+      const postState = (
+        force = false
       ) => {
-        if (!video) {
-          return false;
-        }
-
-        if (preserveIntent) {
-          handoffPause = true;
-        }
-
         try {
-          video.pause();
-          return true;
-        } catch (_) {
-          return false;
-        } finally {
-          if (preserveIntent) {
-            Promise.resolve().then(
-              () => {
-                handoffPause = false;
-              }
-            );
+          const now = Date.now();
+
+          if (
+            !force &&
+            now -
+              state.lastReportAt <
+              500
+          ) {
+            return;
           }
-        }
-      };
 
-      const postState = () => {
-        try {
+          state.lastReportAt = now;
+
           const bridge =
             window.webkit
               ?.messageHandlers
@@ -216,15 +619,31 @@ enum PlaybackBridgeScript {
           if (!bridge) return;
 
           const video =
-            currentVideo();
+            state.video ||
+            findWatchVideo();
 
           if (!video) {
             bridge.postMessage({
-              title: "YouTube",
+              title: cleanTitle(),
               videoID:
-                videoIDFromLocation(),
+                currentVideoID(),
               paused: true,
+              ended: false,
               hasMedia: false,
+              wantsPlayback:
+                state.wantsPlayback,
+              explicitPause:
+                state.explicitPause,
+              transitionArmed:
+                Date.now() <=
+                  state.transitionRecoveryUntil,
+              realHidden:
+                isBackgrounded(),
+              presentationMode:
+                "none",
+              readyState: 0,
+              networkState: 0,
+              inDOM: false,
               currentTime: 0,
               duration: 0
             });
@@ -232,20 +651,38 @@ enum PlaybackBridgeScript {
             return;
           }
 
+          let presentationMode =
+            "inline";
+
+          try {
+            presentationMode =
+              video.webkitPresentationMode ||
+              "inline";
+          } catch (_) {}
+
           bridge.postMessage({
-            title:
-              (
-                document.title ||
-                "YouTube"
-              ).replace(
-                /\s*-\s*YouTube\s*$/,
-                ""
-              ),
+            title: cleanTitle(),
             videoID:
-              videoIDFromLocation(),
-            paused:
-              !!video.paused,
+              currentVideoID(),
+            paused: !!video.paused,
+            ended: !!video.ended,
             hasMedia: true,
+            wantsPlayback:
+              state.wantsPlayback,
+            explicitPause:
+              state.explicitPause,
+            transitionArmed:
+              Date.now() <=
+                state.transitionRecoveryUntil,
+            realHidden:
+              isBackgrounded(),
+            presentationMode,
+            readyState:
+              video.readyState,
+            networkState:
+              video.networkState,
+            inDOM:
+              document.contains(video),
             currentTime:
               Number.isFinite(
                 video.currentTime
@@ -262,112 +699,967 @@ enum PlaybackBridgeScript {
         } catch (_) {}
       };
 
-      const resumeWebIfNeeded = () => {
+      // System transport ownership stays native in YouTubeSession.
+      // Do not install a second set of JS transport handlers or overwrite
+      // playbackState/position from two independent owners.
+      const actionAllowed = (
+        key,
+        minimumGap = 220
+      ) => {
+        const now = Date.now();
+
+        const previous =
+          state.actionStamp.get(key) ||
+          0;
+
+        if (
+          now - previous <
+          minimumGap
+        ) {
+          return false;
+        }
+
+        state.actionStamp.set(
+          key,
+          now
+        );
+
+        return true;
+      };
+
+      const recoverPlayback = (
+        video = state.video
+      ) => {
+        if (
+          !video ||
+          !state.wantsPlayback ||
+          state.explicitPause ||
+          state.systemInterruption ||
+          video.ended ||
+          Date.now() <=
+            state.userPauseUntil
+        ) {
+          return;
+        }
+
+        if (
+          Number.isFinite(state.lastKnownTime) &&
+          state.lastKnownTime > 0 &&
+          Number.isFinite(video.currentTime) &&
+          Math.abs(
+            video.currentTime -
+            state.lastKnownTime
+          ) > 2
+        ) {
+          try {
+            video.currentTime =
+              state.lastKnownTime;
+          } catch (_) {}
+        }
+
+        safePlay(video);
+        clearRecoveryTimers();
+
+        for (
+          const delay of
+          [80, 250, 750, 1500]
+        ) {
+          const timer =
+            nativeSetTimeout(
+              () => {
+                state.recoveryTimers
+                  .delete(timer);
+
+                if (
+                  state.wantsPlayback &&
+                  (
+                    isBackgrounded() ||
+                    Date.now() <=
+                      state.transitionRecoveryUntil
+                  ) &&
+                  Date.now() >
+                    state.userPauseUntil &&
+                  !video.ended
+                ) {
+                  safePlay(video);
+                }
+              },
+              delay
+            );
+
+          state.recoveryTimers
+            .add(timer);
+        }
+      };
+
+      const mediaPlay = () => {
+        const video =
+          state.video ||
+          findWatchVideo();
+
+        if (!video) return false;
+
+        attachVideo(video);
+
+        state.explicitPause = false;
+        state.wantsPlayback = true;
+        state.userPauseUntil = 0;
+        state.transitionRecoveryUntil = 0;
+
+        const result =
+          safePlay(video);
+        postState(true);
+
+        return result;
+      };
+
+      const mediaPause = () => {
+        const video =
+          state.video ||
+          findWatchVideo();
+
+        if (!video) return false;
+
+        attachVideo(video);
+
+        state.explicitPause = true;
+        state.wantsPlayback = false;
+        state.userPauseUntil =
+          Number.POSITIVE_INFINITY;
+        state.transitionRecoveryUntil = 0;
+
+        clearRecoveryTimers();
+
         try {
+          nativePause.call(video);
+        } catch (_) {
+          return false;
+        }
+        postState(true);
+
+        return true;
+      };
+
+      const seekTo = (seconds) => {
+        const video =
+          state.video ||
+          findWatchVideo();
+
+        if (!video) return false;
+
+        const numeric =
+          Number(seconds);
+
+        if (!Number.isFinite(numeric)) {
+          return false;
+        }
+
+        const maximum =
+          Number.isFinite(
+            video.duration
+          )
+            ? video.duration
+            : Number.POSITIVE_INFINITY;
+
+        try {
+          video.currentTime =
+            Math.max(
+              0,
+              Math.min(
+                maximum,
+                numeric
+              )
+            );
+
+          state.lastKnownTime =
+            video.currentTime;
+          postState(true);
+
+          return true;
+        } catch (_) {
+          return false;
+        }
+      };
+
+      const seekBy = (seconds) => {
+        const video =
+          state.video ||
+          findWatchVideo();
+
+        if (!video) return false;
+
+        if (
+          !actionAllowed(
+            "seek",
+            260
+          )
+        ) {
+          return true;
+        }
+
+        const current =
+          Number.isFinite(
+            video.currentTime
+          )
+            ? video.currentTime
+            : 0;
+
+        return seekTo(
+          current +
+          Number(seconds || 0)
+        );
+      };
+
+      const onPlay = () => {
+        if (state.explicitPause) {
+          try {
+            nativePause.call(
+              state.video
+            );
+          } catch (_) {}
+
+          postState(true);
+          return;
+        }
+
+        state.wantsPlayback = true;
+        state.userPauseUntil = 0;
+
+        configureWebAudioSession();
+        postState(true);
+      };
+
+      const onPause = () => {
+        const video =
+          state.video;
+
+        if (!video) return;
+
+        if (
+          Number.isFinite(
+            video.currentTime
+          )
+        ) {
+          state.lastKnownTime =
+            video.currentTime;
+        }
+
+        const now = Date.now();
+
+        if (state.systemInterruption) {
+          clearRecoveryTimers();
+          postState(true);
+          return;
+        }
+
+        if (state.explicitPause) {
+          state.wantsPlayback = false;
+          state.transitionRecoveryUntil = 0;
+          clearRecoveryTimers();
+          postState(true);
+          return;
+        }
+
+        if (
+          now <= state.userPauseUntil ||
+          !state.wantsPlayback
+        ) {
+          state.wantsPlayback = false;
+          state.transitionRecoveryUntil = 0;
+          clearRecoveryTimers();
+        } else if (
+          isBackgrounded() &&
+          !video.ended
+        ) {
+          recoverPlayback(video);
+        } else if (
+          now <=
+            state.transitionRecoveryUntil &&
+          !video.ended
+        ) {
+          // A system background/PiP transition was armed before this pause.
+          // Recover now, then retry again if the real visibility flips hidden.
+          recoverPlayback(video);
+
+          const waitForHidden = () => {
+            if (
+              isBackgrounded() &&
+              state.wantsPlayback &&
+              Date.now() >
+                state.userPauseUntil &&
+              !video.ended
+            ) {
+              recoverPlayback(video);
+            }
+
+            postState(true);
+          };
+
+          nativeDocumentAddEventListener(
+            "visibilitychange",
+            waitForHidden,
+            { once: true }
+          );
+        } else {
+          // Visible pause with no armed system transition is intentional.
+          state.wantsPlayback = false;
+          clearRecoveryTimers();
+        }
+        postState(true);
+      };
+
+      const onPresentationModeChanged =
+        (event) => {
+          // YouTube listens for this event and may pause when PiP starts.
+          // Keep the system presentation transition, but do not let the
+          // site consume the transition as a playback-stop signal.
+          event.stopPropagation();
+
+          const video =
+            event.currentTarget;
+
           if (
-            state.nativeHandoff ||
-            !state.wantsPlayback
+            video instanceof
+              HTMLVideoElement
           ) {
+            const mode =
+              video.webkitPresentationMode ||
+              "inline";
+
+            postTransitionEvent(
+              mode ===
+                "picture-in-picture"
+                ? "pip-enter"
+                : "pip-exit"
+            );
+
+            enforceInlinePlayback(video);
+
+            if (
+              state.wantsPlayback &&
+              !state.explicitPause &&
+              video.paused &&
+              !video.ended
+            ) {
+              safePlay(video);
+
+              nativeSetTimeout(
+                () => {
+                  if (
+                    state.wantsPlayback &&
+                    video.paused &&
+                    !video.ended
+                  ) {
+                    safePlay(video);
+                  }
+                },
+                120
+              );
+            }
+          }
+          postState(true);
+        };
+
+      const lifecycleEvents = [
+        "loadstart",
+        "loadeddata",
+        "canplay",
+        "canplaythrough",
+        "emptied",
+        "webkitbeginfullscreen",
+        "webkitendfullscreen",
+        "webkitcurrentplaybacktargetiswirelesschanged"
+      ];
+
+      const detachVideo = (video) => {
+        if (!video) return;
+
+        video.removeEventListener(
+          "play",
+          onPlay,
+          true
+        );
+
+        video.removeEventListener(
+          "playing",
+          onPlay,
+          true
+        );
+
+        video.removeEventListener(
+          "pause",
+          onPause,
+          true
+        );
+
+        video.removeEventListener(
+          "ended",
+          onPause,
+          true
+        );
+
+        video.removeEventListener(
+          "timeupdate",
+          onTimeUpdate,
+          true
+        );
+
+        video.removeEventListener(
+          "loadedmetadata",
+          onMetadata,
+          true
+        );
+
+        video.removeEventListener(
+          "webkitpresentationmodechanged",
+          onPresentationModeChanged,
+          true
+        );
+
+        for (
+          const eventName of
+          lifecycleEvents
+        ) {
+          video.removeEventListener(
+            eventName,
+            onInlineLifecycle,
+            true
+          );
+        }
+      };
+
+      const onTimeUpdate = () => {
+        const video =
+          state.video;
+
+        if (!video) return;
+
+        if (
+          Number.isFinite(
+            video.currentTime
+          )
+        ) {
+          state.lastKnownTime =
+            video.currentTime;
+        }
+        postState(false);
+      };
+
+      const onMetadata = () => {
+        enforceInlinePlayback(
+          state.video
+        );
+        postState(true);
+      };
+
+      const onInlineLifecycle = (
+        event
+      ) => {
+        const video =
+          event.currentTarget;
+
+        if (
+          video instanceof
+            HTMLVideoElement
+        ) {
+          enforceInlinePlayback(video);
+        }
+        postState(false);
+      };
+
+      function attachVideo(video) {
+        if (
+          !(video instanceof
+            HTMLVideoElement)
+        ) {
+          return null;
+        }
+
+        const nextVideoID =
+          currentVideoID();
+
+        if (state.video === video) {
+          const routeChanged =
+            !!nextVideoID &&
+            !!state.videoID &&
+            nextVideoID !==
+              state.videoID;
+
+          if (routeChanged) {
+            const keepBackgroundIntent =
+              isBackgrounded() &&
+              state.wantsPlayback;
+
+            state.videoID =
+              nextVideoID;
+            state.lastKnownTime = 0;
+            state.transitionRecoveryUntil = 0;
+            clearRecoveryTimers();
+
+            state.wantsPlayback =
+              keepBackgroundIntent ||
+              (
+                !video.paused &&
+                !video.ended
+              );
+          } else if (nextVideoID) {
+            state.videoID =
+              nextVideoID;
+          }
+
+          enforceInlinePlayback(video);
+          return video;
+        }
+
+        const sameMedia =
+          !state.videoID ||
+          !nextVideoID ||
+          state.videoID === nextVideoID;
+
+        const preserveIntent =
+          sameMedia &&
+          state.wantsPlayback &&
+          (
+            isBackgrounded() ||
+            Date.now() <=
+              state.transitionRecoveryUntil
+          );
+
+        const preservePosition =
+          sameMedia &&
+          preserveIntent &&
+          state.lastKnownTime > 1;
+
+        detachVideo(state.video);
+
+        state.video = video;
+        state.videoID =
+          nextVideoID ||
+          state.videoID;
+
+        try {
+          video.setAttribute(
+            "data-youtube-vcd-attached",
+            "true"
+          );
+        } catch (_) {}
+
+        enforceInlinePlayback(video);
+
+        state.wantsPlayback =
+          preserveIntent ||
+          (
+            !video.paused &&
+            !video.ended
+          );
+
+        if (
+          !preservePosition &&
+          Number.isFinite(
+            video.currentTime
+          )
+        ) {
+          state.lastKnownTime =
+            video.currentTime;
+        }
+
+        video.addEventListener(
+          "play",
+          onPlay,
+          true
+        );
+
+        video.addEventListener(
+          "playing",
+          onPlay,
+          true
+        );
+
+        video.addEventListener(
+          "pause",
+          onPause,
+          true
+        );
+
+        video.addEventListener(
+          "ended",
+          onPause,
+          true
+        );
+
+        video.addEventListener(
+          "timeupdate",
+          onTimeUpdate,
+          true
+        );
+
+        video.addEventListener(
+          "loadedmetadata",
+          onMetadata,
+          true
+        );
+
+        video.addEventListener(
+          "webkitpresentationmodechanged",
+          onPresentationModeChanged,
+          true
+        );
+
+        for (
+          const eventName of
+          lifecycleEvents
+        ) {
+          video.addEventListener(
+            eventName,
+            onInlineLifecycle,
+            true
+          );
+        }
+
+        configureWebAudioSession();
+
+        postState(true);
+
+        return video;
+      }
+
+      // Do not let a hidden-page/site initiated pause defeat an already
+      // established playback intent. Explicit app/lock-screen pause bypasses
+      // this wrapper through nativePause after clearing wantsPlayback.
+      HTMLMediaElement.prototype.pause =
+        function(...args) {
+          const isActiveVideo =
+            this === state.video ||
+            this.classList
+              ?.contains(
+                "html5-main-video"
+              );
+
+          const backgroundPause =
+            isActiveVideo &&
+            state.wantsPlayback &&
+            !state.systemInterruption &&
+            Date.now() >
+              state.userPauseUntil &&
+            isBackgrounded() &&
+            !this.ended;
+
+          if (backgroundPause) {
             return;
           }
 
-          const video =
-            currentVideo();
+          return nativePause.apply(
+            this,
+            args
+          );
+        };
 
-          if (!video) return;
+      HTMLMediaElement.prototype.play =
+        function(...args) {
+          if (
+            this instanceof
+              HTMLVideoElement
+          ) {
+            const active =
+              findWatchVideo();
+
+            if (
+              this === active ||
+              this.classList
+                ?.contains(
+                  "html5-main-video"
+                )
+            ) {
+              attachVideo(this);
+
+              if (state.explicitPause) {
+                postState(true);
+                return Promise.resolve();
+              }
+
+              state.wantsPlayback =
+                true;
+
+              state.userPauseUntil =
+                0;
+
+              enforceInlinePlayback(
+                this
+              );
+
+              configureWebAudioSession();
+            }
+          }
+
+          return nativePlay.apply(
+            this,
+            args
+          );
+        };
+
+      const prepareForBackground =
+        () => {
+          const video =
+            state.video ||
+            findWatchVideo();
+
+          if (!video) return false;
+
+          attachVideo(video);
+
+          state.transitionRecoveryUntil =
+            Date.now() + 2500;
+
+          configureWebAudioSession();
 
           if (
-            video.paused ||
-            video.ended
+            !state.explicitPause &&
+            !video.paused &&
+            !video.ended &&
+            Date.now() >
+              state.userPauseUntil
           ) {
-            if (
-              Number.isFinite(
-                lastKnownTime
-              ) &&
-              Math.abs(
-                (
-                  video.currentTime ||
-                  0
-                ) -
-                lastKnownTime
-              ) > 2
-            ) {
-              video.currentTime =
-                lastKnownTime;
-            }
-
-            safePlay(video);
+            state.wantsPlayback =
+              true;
           }
-        } catch (_) {}
+
+          if (
+            state.wantsPlayback &&
+            isBackgrounded() &&
+            Date.now() >
+              state.userPauseUntil
+          ) {
+            recoverPlayback(video);
+          }
+          postState(true);
+
+          return true;
+        };
+
+      const enterBackground = () => {
+        state.nativeBackground = true;
+        state.transitionRecoveryUntil =
+          Date.now() + 2500;
+
+        const video =
+          state.video ||
+          findWatchVideo();
+
+        if (!video) {
+          postState(true);
+          return false;
+        }
+
+        attachVideo(video);
+        configureWebAudioSession();
+
+        if (
+          state.wantsPlayback &&
+          !state.explicitPause &&
+          Date.now() >
+            state.userPauseUntil
+        ) {
+          recoverPlayback(video);
+        }
+        postState(true);
+
+        return true;
+      };
+
+      const resumeForeground = () => {
+        state.nativeBackground = false;
+
+        if (state.wantsPlayback) {
+          state.transitionRecoveryUntil =
+            Date.now() + 2500;
+        }
+
+        const video =
+          state.video ||
+          findWatchVideo();
+
+        if (!video) return false;
+
+        attachVideo(video);
+        configureWebAudioSession();
+
+        clearRecoveryTimers();
+
+        if (
+          state.wantsPlayback &&
+          !video.ended &&
+          Date.now() >
+            state.userPauseUntil
+        ) {
+          // recoverPlayback also restores lastKnownTime if WebKit rebuilt the
+          // MediaSource at position zero, even when the replacement element
+          // has already started playing.
+          recoverPlayback(video);
+        }
+        postState(true);
+
+        return true;
       };
 
       const requestPiP = () => {
-        const video =
-          currentVideo();
+        postTransitionEvent(
+          "pip-request"
+        );
 
-        if (!video) {
-          return false;
+        const video =
+          state.video ||
+          findWatchVideo();
+
+        if (!video) return false;
+
+        attachVideo(video);
+
+        const shouldResume =
+          !state.explicitPause &&
+          (
+            state.wantsPlayback ||
+            (
+              !video.paused &&
+              !video.ended
+            )
+          );
+
+        state.transitionRecoveryUntil =
+          Date.now() + 1800;
+
+        if (
+          shouldResume &&
+          video.paused &&
+          !video.ended
+        ) {
+          state.wantsPlayback =
+            true;
+
+          state.userPauseUntil = 0;
+
+          safePlay(video);
         }
+
+        try {
+          video.removeAttribute(
+            "disablepictureinpicture"
+          );
+
+          if (
+            "disablePictureInPicture" in
+            video
+          ) {
+            video.disablePictureInPicture =
+              false;
+          }
+        } catch (_) {}
+
+        let requested = false;
 
         try {
           if (
             typeof video
               .webkitSetPresentationMode ===
-            "function"
-          ) {
-            const mode =
-              video.webkitPresentationMode;
-
-            video.webkitSetPresentationMode(
-              mode ===
-                "picture-in-picture"
-                ? "inline"
-                : "picture-in-picture"
-            );
-
-            return true;
-          }
-        } catch (_) {}
-
-        try {
-          if (
-            document
-              .pictureInPictureElement
-          ) {
-            document
-              .exitPictureInPicture
-              ?.();
-
-            return true;
-          }
-
-          if (
-            document
-              .pictureInPictureEnabled &&
-            typeof video
-              .requestPictureInPicture ===
               "function"
           ) {
-            video
-              .requestPictureInPicture()
-              .catch(
-                () => {}
+            const current =
+              video.webkitPresentationMode;
+
+            if (
+              current ===
+              "picture-in-picture"
+            ) {
+              video.webkitSetPresentationMode(
+                "inline"
               );
 
-            return true;
+              // The WebKit presentation API handled the toggle. Without this,
+              // the standards fallback below can immediately request PiP again.
+              requested = true;
+            } else {
+              const supports =
+                typeof video
+                  .webkitSupportsPresentationMode !==
+                  "function" ||
+                video.webkitSupportsPresentationMode(
+                  "picture-in-picture"
+                );
+
+              if (supports) {
+                video.webkitSetPresentationMode(
+                  "picture-in-picture"
+                );
+
+                requested = true;
+              }
+            }
           }
         } catch (_) {}
 
-        return false;
+        if (!requested) {
+          try {
+            if (
+              document
+                .pictureInPictureElement ===
+              video
+            ) {
+              document
+                .exitPictureInPicture
+                ?.();
+
+              requested = true;
+            } else if (
+              typeof video
+                .requestPictureInPicture ===
+                "function"
+            ) {
+              video
+                .requestPictureInPicture()
+                .catch(
+                  () => {}
+                );
+
+              requested = true;
+            }
+          } catch (_) {}
+        }
+
+        if (shouldResume) {
+          state.wantsPlayback = true;
+          state.userPauseUntil = 0;
+
+          for (
+            const delay of
+            [0, 120, 350]
+          ) {
+            nativeSetTimeout(
+              () => {
+                if (
+                  state.wantsPlayback &&
+                  !state.explicitPause &&
+                  video.paused &&
+                  !video.ended
+                ) {
+                  safePlay(video);
+                }
+              },
+              delay
+            );
+          }
+        }
+        postState(true);
+
+        return requested;
       };
 
       const requestFullscreen = () => {
         const video =
-          currentVideo();
+          state.video ||
+          findWatchVideo();
 
-        if (!video) {
-          return false;
-        }
+        if (!video) return false;
+
+        attachVideo(video);
 
         try {
           if (
@@ -382,8 +1674,8 @@ enum PlaybackBridgeScript {
 
         try {
           const player =
-            document.querySelector(
-              ".html5-video-player"
+            video.closest(
+              "#movie_player, .html5-video-player"
             ) ||
             video.parentElement ||
             video;
@@ -407,9 +1699,7 @@ enum PlaybackBridgeScript {
               .webkitRequestFullscreen ===
             "function"
           ) {
-            player
-              .webkitRequestFullscreen();
-
+            player.webkitRequestFullscreen();
             return true;
           }
         } catch (_) {}
@@ -417,381 +1707,24 @@ enum PlaybackBridgeScript {
         return false;
       };
 
-      window.__YOUTUBE_VCD_MEDIA_CONTROL__ = {
-        armBackground() {
-          state.backgroundArmed = true;
-          resumeWebIfNeeded();
-          postState();
-          return true;
-        },
-
-        disarmBackground() {
-          state.backgroundArmed = false;
-          postState();
-          return true;
-        },
-
-        prepareNativeHandoff() {
-          const video =
-            currentVideo();
-
-          if (!video) {
-            return false;
-          }
-
-          state.nativeHandoff = true;
-          state.backgroundArmed = false;
-
-          if (
-            !video.paused &&
-            !video.ended
-          ) {
-            state.wantsPlayback = true;
-          }
-
-          if (
-            Number.isFinite(
-              video.currentTime
-            )
-          ) {
-            lastKnownTime =
-              video.currentTime;
-          }
-
-          pauseVideo(
-            video,
-            true
-          );
-
-          postState();
-          return true;
-        },
-
-        resumeFromNative(
-          seconds,
-          shouldPlay
-        ) {
-          const video =
-            currentVideo();
-
-          state.nativeHandoff = false;
-          state.backgroundArmed = false;
-          state.wantsPlayback =
-            !!shouldPlay;
-
-          if (!video) {
-            postState();
-            return false;
-          }
-
-          const safeSeconds =
-            Number.isFinite(
-              Number(seconds)
-            )
-              ? Math.max(
-                  0,
-                  Number(seconds)
-                )
-              : 0;
-
-          try {
-            video.currentTime =
-              safeSeconds;
-
-            lastKnownTime =
-              safeSeconds;
-          } catch (_) {}
-
-          if (shouldPlay) {
-            safePlay(video);
-          } else {
-            pauseVideo(
-              video,
-              false
-            );
-          }
-
-          postState();
-          return true;
-        },
-
-        play() {
-          state.wantsPlayback = true;
-
-          if (state.nativeHandoff) {
-            postState();
-            return true;
-          }
-
-          const started =
-            safePlay(
-              currentVideo()
-            );
-
-          postState();
-          return started;
-        },
-
-        pause() {
-          state.wantsPlayback = false;
-
-          if (state.nativeHandoff) {
-            postState();
-            return true;
-          }
-
-          const paused =
-            pauseVideo(
-              currentVideo(),
-              false
-            );
-
-          postState();
-          return paused;
-        },
-
-        seekTo(seconds) {
-          const video =
-            currentVideo();
-
-          if (!video) {
-            return false;
-          }
-
-          const safeSeconds =
-            Number.isFinite(
-              Number(seconds)
-            )
-              ? Math.max(
-                  0,
-                  Number(seconds)
-                )
-              : 0;
-
-          const maximum =
-            Number.isFinite(
-              video.duration
-            )
-              ? video.duration
-              : Number
-                  .POSITIVE_INFINITY;
-
-          video.currentTime =
-            Math.max(
-              0,
-              Math.min(
-                maximum,
-                safeSeconds
-              )
-            );
-
-          lastKnownTime =
-            video.currentTime;
-
-          postState();
-          return true;
-        },
-
-        seekBy(seconds) {
-          const video =
-            currentVideo();
-
-          if (!video) {
-            return false;
-          }
-
-          const delta =
-            Number.isFinite(
-              Number(seconds)
-            )
-              ? Number(seconds)
-              : 0;
-
-          return this.seekTo(
-            (
-              Number.isFinite(
-                video.currentTime
-              )
-                ? video.currentTime
-                : 0
-            ) + delta
-          );
-        },
-
-        keepAlive() {
-          resumeWebIfNeeded();
-          return state.wantsPlayback;
-        },
-
-        requestPiP,
-        requestFullscreen
-      };
-
-      document.addEventListener(
-        "play",
-        (event) => {
-          if (
-            event.target?.tagName !==
-            "VIDEO"
-          ) {
-            return;
-          }
-
-          if (!state.nativeHandoff) {
-            state.wantsPlayback = true;
-          }
-
-          postState();
-        },
-        true
-      );
-
-      document.addEventListener(
-        "pause",
-        (event) => {
-          if (
-            event.target?.tagName !==
-            "VIDEO"
-          ) {
-            return;
-          }
-
-          const video =
-            event.target;
-
-          if (
-            Number.isFinite(
-              video.currentTime
-            )
-          ) {
-            lastKnownTime =
-              video.currentTime;
-          }
-
-          if (
-            !handoffPause &&
-            !state.nativeHandoff
-          ) {
-            if (
-              document.hidden &&
-              state.backgroundArmed &&
-              state.wantsPlayback
-            ) {
-              Promise.resolve()
-                .then(
-                  resumeWebIfNeeded
-                );
-            } else {
-              state.wantsPlayback =
-                false;
-            }
-          }
-
-          postState();
-        },
-        true
-      );
-
-      document.addEventListener(
-        "timeupdate",
-        (event) => {
-          if (
-            event.target?.tagName !==
-            "VIDEO"
-          ) {
-            return;
-          }
-
-          const video =
-            event.target;
-
-          if (
-            Number.isFinite(
-              video.currentTime
-            )
-          ) {
-            lastKnownTime =
-              video.currentTime;
-          }
-
-          const now = Date.now();
-
-          if (
-            !window
-              .__YOUTUBE_VCD_LAST_MEDIA_REPORT__ ||
-            now -
-              window
-                .__YOUTUBE_VCD_LAST_MEDIA_REPORT__ >
-              1000
-          ) {
-            window
-              .__YOUTUBE_VCD_LAST_MEDIA_REPORT__ =
-              now;
-
-            postState();
-          }
-        },
-        true
-      );
-
-      [
-        "playing",
-        "loadedmetadata",
-        "durationchange",
-        "emptied"
-      ].forEach(
-        (eventName) => {
-          document.addEventListener(
-            eventName,
-            postState,
-            true
-          );
-        }
-      );
-
-      document.addEventListener(
-        "visibilitychange",
-        () => {
-          if (
-            document.hidden &&
-            state.backgroundArmed &&
-            state.wantsPlayback &&
-            !state.nativeHandoff
-          ) {
-            Promise.resolve()
-              .then(
-                resumeWebIfNeeded
-              );
-          }
-        },
-        true
-      );
-
-      const makeButton = (
+      const makeControlButton = (
         id,
         title,
         symbol,
         action
       ) => {
         let button =
-          document.getElementById(
-            id
-          );
+          document.getElementById(id);
 
-        if (button) {
-          return button;
-        }
+        if (button) return button;
 
         button =
-          document.createElement(
-            "button"
-          );
+          document.createElement("button");
 
         button.id = id;
         button.type = "button";
         button.title = title;
-        button.textContent =
-          symbol;
+        button.textContent = symbol;
 
         button.style.cssText = [
           "width:44px",
@@ -815,9 +1748,7 @@ enum PlaybackBridgeScript {
           (event) => {
             event.preventDefault();
             event.stopPropagation();
-            event
-              .stopImmediatePropagation();
-
+            event.stopImmediatePropagation();
             action();
           },
           true
@@ -826,9 +1757,10 @@ enum PlaybackBridgeScript {
         return button;
       };
 
-      const ensureControls = () => {
+      const ensureMediaControls = () => {
         const video =
-          currentVideo();
+          state.video ||
+          findWatchVideo();
 
         let root =
           document.getElementById(
@@ -864,7 +1796,7 @@ enum PlaybackBridgeScript {
           ].join(";");
 
           root.appendChild(
-            makeButton(
+            makeControlButton(
               "__youtube_vcd_pip__",
               "Picture in Picture",
               "◱",
@@ -873,7 +1805,7 @@ enum PlaybackBridgeScript {
           );
 
           root.appendChild(
-            makeButton(
+            makeControlButton(
               "__youtube_vcd_fullscreen__",
               "Fullscreen",
               "⛶",
@@ -884,20 +1816,552 @@ enum PlaybackBridgeScript {
           (
             document.body ||
             document.documentElement
-          )?.appendChild(
-            root
-          );
+          )?.appendChild(root);
         }
 
-        root.style.display =
-          "flex";
+        root.style.display = "flex";
       };
+
+      window.__YOUTUBE_VCD_MEDIA_CONTROL__ = {
+        play: mediaPlay,
+        pause: mediaPause,
+
+        toggle() {
+          const video =
+            state.video ||
+            findWatchVideo();
+
+          if (!video) return false;
+
+          return (
+            video.paused ||
+            video.ended
+          )
+            ? mediaPlay()
+            : mediaPause();
+        },
+
+        seekBy,
+        seekTo,
+
+        prepareForBackground,
+        enterBackground,
+        resumeForeground,
+
+        beginSystemInterruption() {
+          state.systemInterruption = true;
+          clearRecoveryTimers();
+          postState(true);
+          return true;
+        },
+
+        endSystemInterruption() {
+          state.systemInterruption = false;
+          postState(true);
+          return true;
+        },
+
+        keepAlive() {
+          if (
+            state.wantsPlayback &&
+            !state.explicitPause &&
+            Date.now() >
+              state.userPauseUntil
+          ) {
+            recoverPlayback(
+              state.video ||
+              findWatchVideo()
+            );
+          }
+
+          return state.wantsPlayback;
+        },
+
+        requestPiP,
+        requestFullscreen,
+
+        snapshot() {
+          const video =
+            state.video ||
+            findWatchVideo();
+
+          return {
+            hasVideo: !!video,
+            paused:
+              video
+                ? !!video.paused
+                : true,
+            wantsPlayback:
+              state.wantsPlayback,
+            explicitPause:
+              state.explicitPause,
+            realHidden:
+              isBackgrounded(),
+            currentTime:
+              video &&
+              Number.isFinite(
+                video.currentTime
+              )
+                ? video.currentTime
+                : 0,
+            presentationMode:
+              video
+                ?.webkitPresentationMode ||
+              "inline",
+            readyState:
+              video?.readyState ?? 0,
+            networkState:
+              video?.networkState ?? 0,
+            inDOM:
+              !!video &&
+              document.contains(video)
+          };
+        }
+      };
+
+      const refreshVideo = () => {
+        const video =
+          findWatchVideo();
+
+        if (video) {
+          attachVideo(video);
+        }
+      };
+
+      const isPlaybackNavigationURL =
+        (value) => {
+          try {
+            const url =
+              new URL(
+                value,
+                location.href
+              );
+
+            const host =
+              url.hostname
+                .toLowerCase();
+
+            const youtubeHost =
+              host ===
+                "youtube.com" ||
+              host ===
+                "www.youtube.com" ||
+              host ===
+                "m.youtube.com" ||
+              host ===
+                "youtu.be";
+
+            if (!youtubeHost) {
+              return false;
+            }
+
+            if (
+              host ===
+              "youtu.be"
+            ) {
+              return (
+                url.pathname
+                  .split("/")
+                  .filter(Boolean)
+                  .length > 0
+              );
+            }
+
+            if (
+              url.pathname ===
+              "/watch"
+            ) {
+              return !!url
+                .searchParams
+                .get("v");
+            }
+
+            return (
+              url.pathname
+                .startsWith(
+                  "/shorts/"
+                ) ||
+              url.pathname
+                .startsWith(
+                  "/live/"
+                )
+            );
+          } catch (_) {
+            return false;
+          }
+        };
+
+      const routeBrowseLink =
+        (event) => {
+          const target =
+            event.target;
+
+          if (
+            !(target instanceof
+              Element)
+          ) {
+            return;
+          }
+
+          const anchor =
+            target.closest(
+              "a[href]"
+            );
+
+          if (
+            !(anchor instanceof
+              HTMLAnchorElement)
+          ) {
+            return;
+          }
+
+          let url = null;
+
+          try {
+            url =
+              new URL(
+                anchor.href,
+                location.href
+              );
+          } catch (_) {
+            return;
+          }
+
+          const protocol =
+            url.protocol
+              .toLowerCase();
+
+          const webURL =
+            protocol === "http:" ||
+            protocol === "https:";
+
+          if (
+            !webURL ||
+            isPlaybackNavigationURL(
+              url.href
+            )
+          ) {
+            return;
+          }
+
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation();
+
+          try {
+            window.webkit
+              ?.messageHandlers
+              ?.browseRequest
+              ?.postMessage({
+                url:
+                  url.href
+              });
+          } catch (_) {}
+        };
+
+      const routeBrowseURL =
+        (value) => {
+          try {
+            const url =
+              new URL(
+                value,
+                location.href
+              );
+
+            const protocol =
+              url.protocol
+                .toLowerCase();
+
+            const webURL =
+              protocol === "http:" ||
+              protocol === "https:";
+
+            if (
+              !webURL ||
+              isPlaybackNavigationURL(
+                url.href
+              )
+            ) {
+              return false;
+            }
+
+            window.webkit
+              ?.messageHandlers
+              ?.browseRequest
+              ?.postMessage({
+                url:
+                  url.href
+              });
+
+            return true;
+          } catch (_) {
+            return false;
+          }
+        };
+
+      const nativeHistoryPushState =
+        history.pushState
+          .bind(history);
+
+      history.pushState =
+        function(
+          state,
+          title,
+          url
+        ) {
+          if (
+            url &&
+            routeBrowseURL(url)
+          ) {
+            return;
+          }
+
+          return nativeHistoryPushState(
+            state,
+            title,
+            url
+          );
+        };
+
+      const nativeHistoryReplaceState =
+        history.replaceState
+          .bind(history);
+
+      history.replaceState =
+        function(
+          state,
+          title,
+          url
+        ) {
+          if (
+            url &&
+            routeBrowseURL(url)
+          ) {
+            return;
+          }
+
+          return nativeHistoryReplaceState(
+            state,
+            title,
+            url
+          );
+        };
+
+      const recordPlayerControlIntent =
+        (event) => {
+          const target =
+            event.target;
+
+          if (
+            !(target instanceof Element)
+          ) {
+            return;
+          }
+
+          const control =
+            target.closest(
+              [
+                ".ytp-play-button",
+                "button[aria-label^='Pause']",
+                "button[aria-label^='Play']",
+                "button[data-title-no-tooltip='Pause']",
+                "button[data-title-no-tooltip='Play']"
+              ].join(",")
+            );
+
+          if (!control) return;
+
+          const video =
+            state.video ||
+            findWatchVideo();
+
+          if (!video) return;
+
+          attachVideo(video);
+
+          if (
+            !actionAllowed(
+              "media-intent",
+              260
+            )
+          ) {
+            return;
+          }
+
+          const intent =
+            (
+              video.paused ||
+              video.ended
+            )
+              ? "play"
+              : "pause";
+
+          if (intent === "play") {
+            state.explicitPause = false;
+            state.wantsPlayback = true;
+            state.userPauseUntil = 0;
+          } else {
+            state.explicitPause = true;
+            state.wantsPlayback = false;
+            state.userPauseUntil =
+              Number.POSITIVE_INFINITY;
+            state.transitionRecoveryUntil = 0;
+            clearRecoveryTimers();
+          }
+
+          try {
+            window.webkit
+              ?.messageHandlers
+              ?.mediaIntent
+              ?.postMessage({
+                intent
+              });
+          } catch (_) {}
+        };
+
+      nativeDocumentAddEventListener(
+        "click",
+        routeBrowseLink,
+        true
+      );
+
+      nativeDocumentAddEventListener(
+        "auxclick",
+        routeBrowseLink,
+        true
+      );
+
+      nativeDocumentAddEventListener(
+        "play",
+        (event) => {
+          if (
+            event.target instanceof
+              HTMLVideoElement
+          ) {
+            const active =
+              findWatchVideo();
+
+            if (
+              event.target === active ||
+              event.target.classList
+                ?.contains(
+                  "html5-main-video"
+                )
+            ) {
+              attachVideo(
+                event.target
+              );
+            }
+          }
+        },
+        true
+      );
+
+      nativeDocumentAddEventListener(
+        "pointerdown",
+        recordPlayerControlIntent,
+        {
+          capture: true,
+          passive: true
+        }
+      );
+
+      nativeDocumentAddEventListener(
+        "touchstart",
+        recordPlayerControlIntent,
+        {
+          capture: true,
+          passive: true
+        }
+      );
+
+      nativeDocumentAddEventListener(
+        "visibilitychange",
+        () => {
+          if (isReallyHidden()) {
+            prepareForBackground();
+          } else {
+            resumeForeground();
+          }
+        },
+        true
+      );
+
+      nativeDocumentAddEventListener(
+        "webkitvisibilitychange",
+        () => {
+          if (isReallyHidden()) {
+            prepareForBackground();
+          }
+        },
+        true
+      );
+
+      nativeDocumentAddEventListener(
+        "freeze",
+        prepareForBackground,
+        true
+      );
+
+      nativeWindowAddEventListener(
+        "blur",
+        () => {
+          const video =
+            state.video ||
+            findWatchVideo();
+
+          if (
+            video &&
+            !video.paused
+          ) {
+            prepareForBackground();
+          }
+        },
+        true
+      );
+
+      nativeWindowAddEventListener(
+        "pagehide",
+        prepareForBackground,
+        true
+      );
+
+      nativeWindowAddEventListener(
+        "pageshow",
+        resumeForeground,
+        true
+      );
+
+      nativeDocumentAddEventListener(
+        "yt-navigate-finish",
+        () => {
+          nativeSetTimeout(
+            refreshVideo,
+            0
+          );
+
+          nativeSetTimeout(
+            refreshVideo,
+            300
+          );
+        },
+        true
+      );
 
       const observer =
         new MutationObserver(
           () => {
-            ensureControls();
-            postState();
+            const video =
+              findWatchVideo();
+
+            if (
+              video &&
+              video !== state.video
+            ) {
+              attachVideo(video);
+            }
+
+            ensureMediaControls();
           }
         );
 
@@ -912,71 +2376,44 @@ enum PlaybackBridgeScript {
           );
         }
 
-        ensureControls();
-        postState();
+        refreshVideo();
+        ensureMediaControls();
+        configureWebAudioSession();
       };
 
       if (document.documentElement) {
         begin();
       } else {
-        document.addEventListener(
+        nativeDocumentAddEventListener(
           "DOMContentLoaded",
           begin,
           { once: true }
         );
       }
 
-      setInterval(() => {
-        ensureControls();
+      window.setInterval(
+        () => {
+          refreshVideo();
+          ensureMediaControls();
 
-        if (
-          document.hidden &&
-          state.backgroundArmed &&
-          state.wantsPlayback &&
-          !state.nativeHandoff
-        ) {
-          resumeWebIfNeeded();
-        }
-
-        postState();
-      }, 1500);
+          if (
+            state.wantsPlayback &&
+            isBackgrounded() &&
+            Date.now() >
+              state.userPauseUntil
+          ) {
+            recoverPlayback(
+              state.video
+            );
+          }
+          postState(false);
+        },
+        1500
+      );
     })();
     """#
 
-    static let armBackgroundCall = #"""
-    (() => {
-      const control =
-        window.__YOUTUBE_VCD_MEDIA_CONTROL__;
-
-      return control
-        ? control.armBackground()
-        : false;
-    })();
-    """#
-
-    static let disarmBackgroundCall = #"""
-    (() => {
-      const control =
-        window.__YOUTUBE_VCD_MEDIA_CONTROL__;
-
-      return control
-        ? control.disarmBackground()
-        : false;
-    })();
-    """#
-
-    static let prepareNativeHandoffCall = #"""
-    (() => {
-      const control =
-        window.__YOUTUBE_VCD_MEDIA_CONTROL__;
-
-      return control
-        ? control.prepareNativeHandoff()
-        : false;
-    })();
-    """#
-
-    static let userPlayCall = #"""
+    static let playCall = #"""
     (() => {
       const control =
         window.__YOUTUBE_VCD_MEDIA_CONTROL__;
@@ -987,13 +2424,79 @@ enum PlaybackBridgeScript {
     })();
     """#
 
-    static let userPauseCall = #"""
+    static let pauseCall = #"""
     (() => {
       const control =
         window.__YOUTUBE_VCD_MEDIA_CONTROL__;
 
       return control
         ? control.pause()
+        : false;
+    })();
+    """#
+
+    static let toggleCall = #"""
+    (() => {
+      const control =
+        window.__YOUTUBE_VCD_MEDIA_CONTROL__;
+
+      return control
+        ? control.toggle()
+        : false;
+    })();
+    """#
+
+    static let prepareBackgroundCall = #"""
+    (() => {
+      const control =
+        window.__YOUTUBE_VCD_MEDIA_CONTROL__;
+
+      return control
+        ? control.prepareForBackground()
+        : false;
+    })();
+    """#
+
+    static let enterBackgroundCall = #"""
+    (() => {
+      const control =
+        window.__YOUTUBE_VCD_MEDIA_CONTROL__;
+
+      return control
+        ? control.enterBackground()
+        : false;
+    })();
+    """#
+
+    static let resumeForegroundCall = #"""
+    (() => {
+      const control =
+        window.__YOUTUBE_VCD_MEDIA_CONTROL__;
+
+      return control
+        ? control.resumeForeground()
+        : false;
+    })();
+    """#
+
+    static let beginSystemInterruptionCall = #"""
+    (() => {
+      const control =
+        window.__YOUTUBE_VCD_MEDIA_CONTROL__;
+
+      return control
+        ? control.beginSystemInterruption()
+        : false;
+    })();
+    """#
+
+    static let endSystemInterruptionCall = #"""
+    (() => {
+      const control =
+        window.__YOUTUBE_VCD_MEDIA_CONTROL__;
+
+      return control
+        ? control.endSystemInterruption()
         : false;
     })();
     """#
@@ -1031,25 +2534,49 @@ enum PlaybackBridgeScript {
     })();
     """#
 
-    static func resumeFromNativeCall(
-        time: Double,
+    static let snapshotCall = #"""
+    (() => {
+      const control =
+        window.__YOUTUBE_VCD_MEDIA_CONTROL__;
+
+      return control
+        ? control.snapshot()
+        : null;
+    })();
+    """#
+
+    static func restoreAfterReloadCall(
+        seconds: Double,
         shouldPlay: Bool
     ) -> String {
-        let safeTime = max(0, time)
+        let safeSeconds =
+            max(
+                0,
+                seconds
+            )
+
         let playLiteral =
-            shouldPlay ? "true" : "false"
+            shouldPlay
+                ? "true"
+                : "false"
 
         return """
         (() => {
           const control =
             window.__YOUTUBE_VCD_MEDIA_CONTROL__;
 
-          return control
-            ? control.resumeFromNative(
-                \(safeTime),
-                \(playLiteral)
-              )
-            : false;
+          if (!control) {
+            return false;
+          }
+
+          const seeked =
+            control.seekTo(\(safeSeconds));
+
+          if (\(playLiteral)) {
+            control.play();
+          }
+
+          return seeked;
         })();
         """
     }
@@ -1072,7 +2599,11 @@ enum PlaybackBridgeScript {
     static func seekToCall(
         seconds: Double
     ) -> String {
-        let safe = max(0, seconds)
+        let safe =
+            max(
+                0,
+                seconds
+            )
 
         return """
         (() => {

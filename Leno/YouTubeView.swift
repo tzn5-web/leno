@@ -2,35 +2,192 @@ import SwiftUI
 
 struct YouTubeView: View {
     @StateObject private var session = YouTubeSession()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack {
-            YouTubeWebView(session: session)
-                .ignoresSafeArea(
-                    .container,
-                    edges: .bottom
-                )
+            // The player WebView always stays mounted and full-size. Browsing
+            // never replaces or deallocates the page that owns PiP/media.
+            YouTubeWebView(
+                session: session
+            )
+            .ignoresSafeArea(
+                .container,
+                edges: .bottom
+            )
+            .opacity(
+                session.isPlayerPresented
+                    ? 1
+                    : 0.001
+            )
+            .allowsHitTesting(
+                session.isPlayerPresented
+            )
+            .accessibilityHidden(
+                !session.isPlayerPresented
+            )
+            .zIndex(
+                session.isPlayerPresented
+                    ? 2
+                    : 0
+            )
 
-            if session.state == .idle ||
-               session.isLoading {
+            YouTubeBrowserWebView(
+                session: session
+            )
+            .ignoresSafeArea(
+                .container,
+                edges: .bottom
+            )
+            .opacity(
+                session.isPlayerPresented
+                    ? 0.001
+                    : 1
+            )
+            .allowsHitTesting(
+                !session.isPlayerPresented
+            )
+            .accessibilityHidden(
+                session.isPlayerPresented
+            )
+            .zIndex(
+                session.isPlayerPresented
+                    ? 0
+                    : 1
+            )
+
+            if session.isPlayerPresented &&
+               (
+                   session.state == .idle ||
+                   session.isLoading
+               ) {
                 HomeLoadingView()
                     .transition(.opacity)
                     .allowsHitTesting(false)
+                    .zIndex(3)
             }
 
-            if case .recovering(let attempt) =
+            if session.isPlayerPresented,
+               case .recovering(let attempt) =
                 session.state {
-                recoveryPill(attempt: attempt)
+                recoveryPill(
+                    attempt:
+                        attempt
+                )
+                .zIndex(3)
             }
 
-            if case .failed(let message) =
+            if session.isPlayerPresented,
+               case .failed(let message) =
                 session.state {
                 failureOverlay(
                     message: message
                 )
+                .zIndex(3)
+            }
+
+            if !session.isPlayerPresented &&
+               session.playerAvailable {
+                nowPlayingPill
+                    .zIndex(4)
             }
         }
         .background(Color(.systemBackground))
+        .onChange(of: scenePhase) {
+            _, newPhase in
+
+            switch newPhase {
+            case .active:
+                session.applicationDidBecomeActive()
+
+            case .inactive:
+                session.applicationWillResignActive()
+
+            case .background:
+                session.applicationDidEnterBackground()
+
+            default:
+                break
+            }
+        }
+    }
+
+    private var nowPlayingPill:
+        some View
+    {
+        VStack {
+            Spacer()
+
+            Button {
+                session.showPlayer()
+            } label: {
+                HStack(
+                    spacing: 9
+                ) {
+                    Image(
+                        systemName:
+                            session.isPlaying
+                                ? "play.rectangle.fill"
+                                : "pause.rectangle"
+                    )
+                    .font(
+                        .system(
+                            size: 16,
+                            weight:
+                                .semibold
+                        )
+                    )
+
+                    Text(
+                        session.title
+                    )
+                    .font(
+                        .caption
+                            .weight(
+                                .semibold
+                            )
+                    )
+                    .lineLimit(1)
+
+                    Image(
+                        systemName:
+                            "chevron.up"
+                    )
+                    .font(
+                        .caption
+                            .weight(
+                                .bold
+                            )
+                    )
+                }
+                .padding(
+                    .horizontal,
+                    14
+                )
+                .padding(
+                    .vertical,
+                    10
+                )
+                .background(
+                    .ultraThinMaterial,
+                    in:
+                        Capsule()
+                )
+                .shadow(
+                    radius: 10,
+                    y: 4
+                )
+            }
+            .buttonStyle(.plain)
+            .padding(
+                .horizontal,
+                12
+            )
+            .padding(
+                .bottom,
+                14
+            )
+        }
     }
 
     private func recoveryPill(

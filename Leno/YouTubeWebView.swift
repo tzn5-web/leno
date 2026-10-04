@@ -11,19 +11,21 @@ struct YouTubeWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let userContentController = WKUserContentController()
 
-        userContentController.addUserScript(
-            WKUserScript(
-                source: AdBlockScript.source,
-                injectionTime: .atDocumentStart,
-                forMainFrameOnly: false
-            )
-        )
-
+        // Playback lifecycle shielding must be the first project script:
+        // it captures pristine WebKit APIs before YouTube or our other hooks.
         userContentController.addUserScript(
             WKUserScript(
                 source: PlaybackBridgeScript.source,
                 injectionTime: .atDocumentStart,
                 forMainFrameOnly: true
+            )
+        )
+
+        userContentController.addUserScript(
+            WKUserScript(
+                source: AdBlockScript.source,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: false
             )
         )
 
@@ -34,7 +36,17 @@ struct YouTubeWebView: UIViewRepresentable {
 
         userContentController.add(
             session,
-            name: "mediaCandidate"
+            name: "mediaIntent"
+        )
+
+        userContentController.add(
+            session,
+            name: "browseRequest"
+        )
+
+        userContentController.add(
+            session,
+            name: "transitionEvent"
         )
 
         let configuration = WKWebViewConfiguration()
@@ -92,7 +104,17 @@ struct YouTubeWebView: UIViewRepresentable {
 
         uiView.configuration.userContentController
             .removeScriptMessageHandler(
-                forName: "mediaCandidate"
+                forName: "mediaIntent"
+            )
+
+        uiView.configuration.userContentController
+            .removeScriptMessageHandler(
+                forName: "browseRequest"
+            )
+
+        uiView.configuration.userContentController
+            .removeScriptMessageHandler(
+                forName: "transitionEvent"
             )
 
         uiView.navigationDelegate = nil
@@ -105,7 +127,8 @@ struct YouTubeWebView: UIViewRepresentable {
     ) {
         guard let store =
                 WKContentRuleListStore.default() else {
-            session.loadHome()
+            coordinator.didStartInitialLoad = true
+            session.playerDidBecomeReady()
             return
         }
 
@@ -125,7 +148,7 @@ struct YouTubeWebView: UIViewRepresentable {
                         .add(cached)
 
                     coordinator.didStartInitialLoad = true
-                    session.loadHome()
+                    session.playerDidBecomeReady()
                     return
                 }
 
@@ -150,7 +173,7 @@ struct YouTubeWebView: UIViewRepresentable {
                         }
 
                         coordinator.didStartInitialLoad = true
-                        session.loadHome()
+                        session.playerDidBecomeReady()
                     }
                 }
             }
@@ -292,7 +315,10 @@ struct YouTubeWebView: UIViewRepresentable {
             windowFeatures:
                 WKWindowFeatures
         ) -> WKWebView? {
-            if navigationAction.targetFrame == nil {
+            if navigationAction.targetFrame == nil,
+               let url =
+                    navigationAction.request.url,
+               !isYouTubeAppPromotion(url) {
                 webView.load(
                     navigationAction.request
                 )
@@ -314,6 +340,27 @@ struct YouTubeWebView: UIViewRepresentable {
                 return
             }
 
+            if isYouTubeAppPromotion(url) {
+                decisionHandler(.cancel)
+                return
+            }
+
+            if session
+                .shouldRoutePlayerNavigationToBrowser(
+                    url
+                ) {
+                decisionHandler(.cancel)
+
+                DispatchQueue.main.async {
+                    self.session
+                        .routePlayerNavigationToBrowser(
+                            url
+                        )
+                }
+
+                return
+            }
+
             let scheme =
                 url.scheme?.lowercased() ?? ""
 
@@ -329,6 +376,42 @@ struct YouTubeWebView: UIViewRepresentable {
                 allowedSchemes.contains(scheme)
                     ? .allow
                     : .cancel
+            )
+        }
+
+        private func isYouTubeAppPromotion(
+            _ url: URL
+        ) -> Bool {
+            let scheme =
+                url.scheme?.lowercased() ?? ""
+
+            if [
+                "youtube",
+                "vnd.youtube",
+                "itms-apps",
+                "itms-services",
+                "intent"
+            ].contains(scheme) {
+                return true
+            }
+
+            let host =
+                url.host?.lowercased() ?? ""
+
+            if host == "apps.apple.com" ||
+               host == "itunes.apple.com" {
+                return true
+            }
+
+            let value =
+                url.absoluteString
+                    .lowercased()
+
+            return value.contains(
+                "mweb_to_native_app"
+            ) ||
+            value.contains(
+                "redirect_app_store_ios=1"
             )
         }
 
