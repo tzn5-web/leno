@@ -89,15 +89,41 @@ enum DesktopBackendScript {
             }
           }
 
-          url.searchParams.set(
-            "app",
-            "desktop"
-          );
+          const path =
+            url.pathname;
 
-          url.searchParams.set(
-            "persist_app",
-            "1"
-          );
+          const contentRoute =
+            path === "/" ||
+            path === "/watch" ||
+            path.startsWith(
+              "/shorts/"
+            ) ||
+            path.startsWith(
+              "/live/"
+            ) ||
+            path.startsWith(
+              "/feed/"
+            ) ||
+            path === "/results" ||
+            path === "/playlist" ||
+            path.startsWith(
+              "/channel/"
+            ) ||
+            path.startsWith(
+              "/@"
+            );
+
+          if (contentRoute) {
+            url.searchParams.set(
+              "app",
+              "desktop"
+            );
+
+            url.searchParams.set(
+              "persist_app",
+              "1"
+            );
+          }
 
           if (
             url.href !==
