@@ -33,205 +33,29 @@ enum AdBlockScript {
         return payload;
       };
 
-      const cleanTitle = (value) => {
-        const text = String(value || "YouTube")
-          .replace(/\s*-\s*YouTube\s*$/, "")
-          .trim();
-
-        return text || "YouTube";
-      };
-
-      const publishMediaCandidate = (payload) => {
-        try {
-          const bridge =
-            window.webkit
-              ?.messageHandlers
-              ?.mediaCandidate;
-
-          if (!bridge ||
-              !payload ||
-              typeof payload !== "object") {
-            return;
-          }
-
-          const streaming =
-            payload.streamingData || {};
-
-          const details =
-            payload.videoDetails || {};
-
-          const adaptive =
-            Array.isArray(
-              streaming.adaptiveFormats
-            )
-              ? streaming.adaptiveFormats
-              : [];
-
-          const formats =
-            Array.isArray(streaming.formats)
-              ? streaming.formats
-              : [];
-
-          const audioMP4 = adaptive
-            .filter((format) => {
-              const mime =
-                String(
-                  format?.mimeType || ""
-                ).toLowerCase();
-
-              return !!format?.url &&
-                mime.startsWith(
-                  "audio/mp4"
-                );
-            })
-            .sort(
-              (left, right) =>
-                Number(
-                  right?.bitrate || 0
-                ) -
-                Number(
-                  left?.bitrate || 0
-                )
-            )[0];
-
-          const progressiveMP4 = formats
-            .filter((format) => {
-              const mime =
-                String(
-                  format?.mimeType || ""
-                ).toLowerCase();
-
-              return !!format?.url &&
-                mime.startsWith(
-                  "video/mp4"
-                ) &&
-                !!format?.audioQuality;
-            })
-            .sort(
-              (left, right) =>
-                Number(
-                  right?.bitrate || 0
-                ) -
-                Number(
-                  left?.bitrate || 0
-                )
-            )[0];
-
-          let url = "";
-          let kind = "";
-
-          if (
-            typeof streaming.hlsManifestUrl ===
-              "string" &&
-            streaming.hlsManifestUrl
-          ) {
-            url =
-              streaming.hlsManifestUrl;
-
-            kind = "hls";
-          } else if (
-            typeof audioMP4?.url ===
-              "string"
-          ) {
-            url = audioMP4.url;
-            kind = "audio-mp4";
-          } else if (
-            typeof progressiveMP4?.url ===
-              "string"
-          ) {
-            url = progressiveMP4.url;
-            kind = "progressive-mp4";
-          }
-
-          if (!/^https:\/\//i.test(url)) {
-            return;
-          }
-
-          const videoID =
-            String(
-              details.videoId || ""
-            );
-
-          const key =
-            videoID + "|" + url;
-
-          if (
-            window
-              .__YOUTUBE_VCD_LAST_MEDIA_CANDIDATE__ ===
-            key
-          ) {
-            return;
-          }
-
-          window
-            .__YOUTUBE_VCD_LAST_MEDIA_CANDIDATE__ =
-            key;
-
-          bridge.postMessage({
-            url,
-            kind,
-            videoID,
-            title: cleanTitle(
-              details.title ||
-              document.title
-            )
-          });
-        } catch (_) {}
-      };
-
       const cleanKnownPlayerGlobal = () => {
         try {
           if (window.ytInitialPlayerResponse) {
-            publishMediaCandidate(
-              window.ytInitialPlayerResponse
-            );
-
-            prunePlayerPayload(
-              window.ytInitialPlayerResponse
-            );
+            prunePlayerPayload(window.ytInitialPlayerResponse);
           }
         } catch (_) {}
       };
 
-      if (
-        typeof Response !== "undefined" &&
-        Response.prototype?.json
-      ) {
-        const originalResponseJSON =
-          Response.prototype.json;
+      if (typeof Response !== "undefined" && Response.prototype?.json) {
+        const originalResponseJSON = Response.prototype.json;
 
-        Response.prototype.json =
-          async function(...args) {
-            const result =
-              await originalResponseJSON
-                .apply(
-                  this,
-                  args
-                );
+        Response.prototype.json = async function(...args) {
+          const result = await originalResponseJSON.apply(this, args);
 
-            try {
-              const responseURL =
-                String(
-                  this.url || ""
-                );
+          try {
+            const responseURL = String(this.url || "");
+            if (responseURL.includes("/youtubei/v1/player")) {
+              prunePlayerPayload(result);
+            }
+          } catch (_) {}
 
-              if (
-                responseURL.includes(
-                  "/youtubei/v1/player"
-                )
-              ) {
-                publishMediaCandidate(
-                  result
-                );
-
-                prunePlayerPayload(
-                  result
-                );
-              }
-            } catch (_) {}
-
-            return result;
-          };
+          return result;
+        };
       }
 
       const HIDE_SELECTORS = [
@@ -262,47 +86,102 @@ enum AdBlockScript {
       ];
 
       const installCosmeticRules = () => {
-        if (
-          document.getElementById(
-            "__youtube_vcd_v2_css__"
-          )
-        ) {
-          return;
-        }
+        if (document.getElementById("__youtube_vcd_v2_css__")) return;
 
-        const style =
-          document.createElement(
-            "style"
-          );
-
-        style.id =
-          "__youtube_vcd_v2_css__";
-
+        const style = document.createElement("style");
+        style.id = "__youtube_vcd_v2_css__";
         style.textContent =
           HIDE_SELECTORS.join(",") +
           "{display:none!important;visibility:hidden!important;}";
 
-        (
-          document.head ||
-          document.documentElement
-        )?.appendChild(
-          style
-        );
+        (document.head || document.documentElement)?.appendChild(style);
+      };
+
+      const removeOpenInYouTubePromos = () => {
+        try {
+          const appLinkPattern =
+            /^(?:youtube|vnd\.youtube|itms-apps|itms-services):|apps\.apple\.com|itunes\.apple\.com/i;
+
+          const textPattern =
+            /^(?:open|open in|watch in|deschide|deschide în|deschide in)\s+(?:the\s+)?youtube(?:\s+app)?$/i;
+
+          for (
+            const anchor of
+            document.querySelectorAll(
+              "a[href], button, [role='button']"
+            )
+          ) {
+            const href =
+              anchor instanceof HTMLAnchorElement
+                ? anchor.href
+                : "";
+
+            const label =
+              String(
+                anchor.getAttribute?.(
+                  "aria-label"
+                ) ||
+                anchor.textContent ||
+                ""
+              )
+              .replace(/\s+/g, " ")
+              .trim();
+
+            const isExplicitAppLink =
+              href &&
+              appLinkPattern.test(href);
+
+            const isOpenYouTubeControl =
+              textPattern.test(label);
+
+            if (
+              !isExplicitAppLink &&
+              !isOpenYouTubeControl
+            ) {
+              continue;
+            }
+
+            const host =
+              anchor.closest(
+                [
+                  "ytm-app-promo",
+                  "ytm-promo",
+                  "ytm-mobile-topbar-renderer",
+                  "ytd-banner-promo-renderer",
+                  "[class*='app-promo']",
+                  "[class*='open-app']"
+                ].join(",")
+              ) ||
+              anchor;
+
+            if (host instanceof HTMLElement) {
+              host.style.setProperty(
+                "display",
+                "none",
+                "important"
+              );
+            }
+          }
+
+          for (
+            const meta of
+            document.querySelectorAll(
+              'meta[name="apple-itunes-app"]'
+            )
+          ) {
+            meta.remove();
+          }
+        } catch (_) {}
       };
 
       const clickSkipButton = () => {
         try {
-          const player =
-            document.querySelector(
-              ".html5-video-player.ad-showing, .ad-showing"
-            );
-
+          const player = document.querySelector(".html5-video-player.ad-showing, .ad-showing");
           if (!player) return;
 
-          const button =
-            document.querySelector(
-              ".ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, button.ytp-skip-ad-button"
-            );
+          const button = document.querySelector(
+            ".ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, button.ytp-skip-ad-button"
+          );
 
           if (button) {
             button.click();
@@ -313,54 +192,44 @@ enum AdBlockScript {
       let maintenanceScheduled = false;
 
       const maintain = () => {
-        if (maintenanceScheduled) {
-          return;
-        }
-
+        if (maintenanceScheduled) return;
         maintenanceScheduled = true;
 
         setTimeout(() => {
           maintenanceScheduled = false;
           installCosmeticRules();
+          removeOpenInYouTubePromos();
           cleanKnownPlayerGlobal();
           clickSkipButton();
         }, 180);
       };
 
       installCosmeticRules();
+      removeOpenInYouTubePromos();
       cleanKnownPlayerGlobal();
       clickSkipButton();
 
-      const observer =
-        new MutationObserver(
-          maintain
-        );
+      const observer = new MutationObserver(maintain);
 
       const startObserver = () => {
         installCosmeticRules();
 
         if (document.documentElement) {
-          observer.observe(
-            document.documentElement,
-            {
-              childList: true,
-              subtree: true
-            }
-          );
+          observer.observe(document.documentElement, {
+            childList: true,
+            subtree: true
+          });
         }
       };
 
       if (document.documentElement) {
         startObserver();
       } else {
-        document.addEventListener(
-          "DOMContentLoaded",
-          startObserver,
-          { once: true }
-        );
+        document.addEventListener("DOMContentLoaded", startObserver, { once: true });
       }
 
       setInterval(() => {
+        removeOpenInYouTubePromos();
         cleanKnownPlayerGlobal();
         clickSkipButton();
       }, 2000);

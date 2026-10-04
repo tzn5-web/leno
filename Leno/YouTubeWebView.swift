@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 import WebKit
 
@@ -11,14 +12,8 @@ struct YouTubeWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let userContentController = WKUserContentController()
 
-        userContentController.addUserScript(
-            WKUserScript(
-                source: AdBlockScript.source,
-                injectionTime: .atDocumentStart,
-                forMainFrameOnly: false
-            )
-        )
-
+        // Playback lifecycle shielding must be the first project script:
+        // it captures pristine WebKit APIs before YouTube or our other hooks.
         userContentController.addUserScript(
             WKUserScript(
                 source: PlaybackBridgeScript.source,
@@ -27,14 +22,25 @@ struct YouTubeWebView: UIViewRepresentable {
             )
         )
 
-        userContentController.add(
-            session,
-            name: "mediaState"
+        userContentController.addUserScript(
+            WKUserScript(
+                source: DesktopBackendScript.source,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
+
+        userContentController.addUserScript(
+            WKUserScript(
+                source: AdBlockScript.source,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: false
+            )
         )
 
         userContentController.add(
             session,
-            name: "mediaCandidate"
+            name: "mediaState"
         )
 
         let configuration = WKWebViewConfiguration()
@@ -54,6 +60,13 @@ struct YouTubeWebView: UIViewRepresentable {
             frame: .zero,
             configuration: configuration
         )
+
+        // Deliberately identify as desktop Safari. The V5 backend uses the
+        // desktop YouTube player, then adapts it inside our native shell.
+        webView.customUserAgent =
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) " +
+            "Version/18.3 Safari/605.1.15"
 
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
@@ -90,11 +103,6 @@ struct YouTubeWebView: UIViewRepresentable {
                 forName: "mediaState"
             )
 
-        uiView.configuration.userContentController
-            .removeScriptMessageHandler(
-                forName: "mediaCandidate"
-            )
-
         uiView.navigationDelegate = nil
         uiView.uiDelegate = nil
     }
@@ -105,7 +113,13 @@ struct YouTubeWebView: UIViewRepresentable {
     ) {
         guard let store =
                 WKContentRuleListStore.default() else {
-            session.loadHome()
+            coordinator.didStartInitialLoad = true
+
+            startInitialLoad(
+                on: webView,
+                coordinator: coordinator
+            )
+
             return
         }
 
@@ -125,7 +139,12 @@ struct YouTubeWebView: UIViewRepresentable {
                         .add(cached)
 
                     coordinator.didStartInitialLoad = true
-                    session.loadHome()
+
+                    startInitialLoad(
+                        on: webView,
+                        coordinator: coordinator
+                    )
+
                     return
                 }
 
@@ -150,11 +169,62 @@ struct YouTubeWebView: UIViewRepresentable {
                         }
 
                         coordinator.didStartInitialLoad = true
-                        session.loadHome()
+
+                        startInitialLoad(
+                            on: webView,
+                            coordinator: coordinator
+                        )
                     }
                 }
             }
         }
+    }
+
+    private func startInitialLoad(
+        on webView: WKWebView,
+        coordinator: Coordinator
+    ) {
+        let properties:
+            [HTTPCookiePropertyKey: Any] = [
+                .name: "SOCS",
+                .value: "CAI",
+                .domain: ".youtube.com",
+                .path: "/",
+                .secure: true,
+                .sameSitePolicy: "None",
+                .expires:
+                    Date(
+                        timeIntervalSinceNow:
+                            365 * 24 * 60 * 60
+                    )
+            ]
+
+        guard let cookie =
+                HTTPCookie(
+                    properties:
+                        properties
+                ) else {
+            session.loadHome()
+            return
+        }
+
+        webView.configuration
+            .websiteDataStore
+            .httpCookieStore
+            .setCookie(cookie) {
+                DispatchQueue.main.async {
+                    guard coordinator
+                        .didStartInitialLoad else {
+                        return
+                    }
+
+                    print(
+                        "YouTube SOCS consent cookie seeded"
+                    )
+
+                    session.loadHome()
+                }
+            }
     }
 
     final class Coordinator:
@@ -314,8 +384,43 @@ struct YouTubeWebView: UIViewRepresentable {
                 return
             }
 
+            let host =
+                url.host?.lowercased() ?? ""
+
+            if host == "consent.youtube.com" ||
+               host == "consent.google.com" {
+                decisionHandler(.allow)
+                return
+            }
+
             let scheme =
                 url.scheme?.lowercased() ?? ""
+
+            let blockedAppSchemes = [
+                "youtube",
+                "vnd.youtube",
+                "itms-apps",
+                "itms-services"
+            ]
+
+            if blockedAppSchemes.contains(scheme) {
+                decisionHandler(.cancel)
+                return
+            }
+
+            if let normalized =
+                    normalizeYouTubeURL(url),
+               normalized != url {
+                decisionHandler(.cancel)
+
+                webView.load(
+                    URLRequest(
+                        url: normalized
+                    )
+                )
+
+                return
+            }
 
             let allowedSchemes = [
                 "http",
@@ -330,6 +435,115 @@ struct YouTubeWebView: UIViewRepresentable {
                     ? .allow
                     : .cancel
             )
+        }
+
+        private func normalizeYouTubeURL(
+            _ url: URL
+        ) -> URL? {
+            guard var components =
+                    URLComponents(
+                        url: url,
+                        resolvingAgainstBaseURL: false
+                    ) else {
+                return nil
+            }
+
+            let host =
+                components.host?
+                    .lowercased() ?? ""
+
+            let youtubeHosts = [
+                "youtube.com",
+                "www.youtube.com",
+                "m.youtube.com",
+                "youtu.be"
+            ]
+
+            guard youtubeHosts.contains(host) else {
+                return nil
+            }
+
+            if host == "youtu.be" {
+                let id =
+                    components.path
+                        .split(separator: "/")
+                        .first
+                        .map(String.init)
+
+                guard let id,
+                      !id.isEmpty else {
+                    return nil
+                }
+
+                components.host =
+                    "www.youtube.com"
+
+                components.path =
+                    "/watch"
+
+                var queryItems =
+                    components.queryItems ?? []
+
+                queryItems.removeAll {
+                    $0.name == "v"
+                }
+
+                queryItems.append(
+                    URLQueryItem(
+                        name: "v",
+                        value: id
+                    )
+                )
+
+                components.queryItems =
+                    queryItems
+            } else {
+                components.host =
+                    "www.youtube.com"
+            }
+
+            let path =
+                components.path
+
+            let contentRoute =
+                path == "/" ||
+                path == "/watch" ||
+                path.hasPrefix("/shorts/") ||
+                path.hasPrefix("/live/") ||
+                path.hasPrefix("/feed/") ||
+                path == "/results" ||
+                path == "/playlist" ||
+                path.hasPrefix("/channel/") ||
+                path.hasPrefix("/@")
+
+            if contentRoute {
+                var queryItems =
+                    components.queryItems ?? []
+
+                queryItems.removeAll {
+                    $0.name == "app" ||
+                    $0.name == "persist_app"
+                }
+
+                queryItems.append(
+                    URLQueryItem(
+                        name: "app",
+                        value: "desktop"
+                    )
+                )
+
+                queryItems.append(
+                    URLQueryItem(
+                        name: "persist_app",
+                        value: "1"
+                    )
+                )
+
+                components.queryItems =
+                    queryItems
+            }
+
+            return components.url
         }
 
         private func ensureHomeContainsVideos(
@@ -418,7 +632,7 @@ struct YouTubeWebView: UIViewRepresentable {
                             guard let trending =
                                     URL(
                                       string:
-                                        "https://m.youtube.com/feed/trending"
+                                        "https://www.youtube.com/feed/trending?app=desktop&persist_app=1"
                                     ) else {
                                 return
                             }
@@ -432,7 +646,7 @@ struct YouTubeWebView: UIViewRepresentable {
                             var components =
                                 URLComponents(
                                   string:
-                                    "https://m.youtube.com/results"
+                                    "https://www.youtube.com/results"
                                 )
 
                             components?.queryItems = [
@@ -441,6 +655,14 @@ struct YouTubeWebView: UIViewRepresentable {
                                       "search_query",
                                     value:
                                       "trending videos"
+                                ),
+                                URLQueryItem(
+                                    name: "app",
+                                    value: "desktop"
+                                ),
+                                URLQueryItem(
+                                    name: "persist_app",
+                                    value: "1"
                                 )
                             ]
 
