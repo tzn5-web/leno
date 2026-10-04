@@ -256,6 +256,7 @@ enum PlaybackBridgeScript {
         wantsPlayback: false,
         userPauseUntil: 0,
         nativeBackground: false,
+        videoID: "",
         recoveryTimers:
           new Set(),
         lastKnownTime: 0,
@@ -265,6 +266,10 @@ enum PlaybackBridgeScript {
         actionStamp:
           new Map()
       };
+
+      const isBackgrounded = () =>
+        state.nativeBackground ||
+        isReallyHidden();
 
       const cleanTitle = () => {
         const value =
@@ -326,7 +331,7 @@ enum PlaybackBridgeScript {
       const isPreviewVideo = (video) => {
         try {
           return !!video.closest(
-            "#inline-preview-player, #inline-player, ytm-reel-video-renderer"
+            "#inline-preview-player, #inline-player"
           );
         } catch (_) {
           return false;
@@ -540,10 +545,7 @@ enum PlaybackBridgeScript {
                 Date.now() <=
                   state.transitionRecoveryUntil,
               realHidden:
-                (
-                  isReallyHidden() ||
-                  state.nativeBackground
-                ),
+                isBackgrounded(),
               presentationMode:
                 "none",
               readyState: 0,
@@ -577,7 +579,7 @@ enum PlaybackBridgeScript {
               Date.now() <=
                 state.transitionRecoveryUntil,
             realHidden:
-              isReallyHidden(),
+              isBackgrounded(),
             presentationMode,
             readyState:
               video.readyState,
@@ -601,61 +603,10 @@ enum PlaybackBridgeScript {
         } catch (_) {}
       };
 
-      const updateMediaSession = () => {
-        try {
-          if (
-            !navigator.mediaSession
-          ) {
-            return;
-          }
-
-          const video =
-            state.video ||
-            findWatchVideo();
-
-          navigator.mediaSession
-            .playbackState =
-            video &&
-            !video.paused &&
-            !video.ended
-              ? "playing"
-              : "paused";
-
-          if (
-            video &&
-            Number.isFinite(
-              video.duration
-            ) &&
-            video.duration > 0 &&
-            Number.isFinite(
-              video.currentTime
-            )
-          ) {
-            try {
-              navigator.mediaSession
-                .setPositionState({
-                  duration:
-                    video.duration,
-                  playbackRate:
-                    Number.isFinite(
-                      video.playbackRate
-                    ) &&
-                    video.playbackRate > 0
-                      ? video.playbackRate
-                      : 1,
-                  position:
-                    Math.max(
-                      0,
-                      Math.min(
-                        video.duration,
-                        video.currentTime
-                      )
-                    )
-                });
-            } catch (_) {}
-          }
-        } catch (_) {}
-      };
+      // System transport ownership stays native in YouTubeSession.
+      // Do not install a second set of JS transport handlers or overwrite
+      // playbackState/position from two independent owners.
+      const updateMediaSession = () => {};
 
       const actionAllowed = (
         key,
@@ -695,6 +646,21 @@ enum PlaybackBridgeScript {
           return;
         }
 
+        if (
+          Number.isFinite(state.lastKnownTime) &&
+          state.lastKnownTime > 0 &&
+          Number.isFinite(video.currentTime) &&
+          Math.abs(
+            video.currentTime -
+            state.lastKnownTime
+          ) > 2
+        ) {
+          try {
+            video.currentTime =
+              state.lastKnownTime;
+          } catch (_) {}
+        }
+
         safePlay(video);
         clearRecoveryTimers();
 
@@ -710,7 +676,7 @@ enum PlaybackBridgeScript {
 
                 if (
                   state.wantsPlayback &&
-                  isReallyHidden() &&
+                  isBackgrounded() &&
                   Date.now() >
                     state.userPauseUntil &&
                   !video.ended
@@ -852,103 +818,7 @@ enum PlaybackBridgeScript {
         );
       };
 
-      const installMediaSessionHandlers =
-        (force = false) => {
-          try {
-            if (
-              !navigator.mediaSession
-            ) {
-              return;
-            }
-
-            const now = Date.now();
-
-            if (
-              !force &&
-              now -
-                state
-                  .lastMediaHandlerInstallAt <
-                1200
-            ) {
-              return;
-            }
-
-            state.lastMediaHandlerInstallAt =
-              now;
-
-            navigator.mediaSession
-              .setActionHandler(
-                "play",
-                () => {
-                  if (
-                    actionAllowed(
-                      "play",
-                      180
-                    )
-                  ) {
-                    mediaPlay();
-                  }
-                }
-              );
-
-            navigator.mediaSession
-              .setActionHandler(
-                "pause",
-                () => {
-                  if (
-                    actionAllowed(
-                      "pause",
-                      180
-                    )
-                  ) {
-                    mediaPause();
-                  }
-                }
-              );
-
-            navigator.mediaSession
-              .setActionHandler(
-                "seekbackward",
-                (details) => {
-                  seekBy(
-                    -(
-                      details
-                        ?.seekOffset ||
-                      15
-                    )
-                  );
-                }
-              );
-
-            navigator.mediaSession
-              .setActionHandler(
-                "seekforward",
-                (details) => {
-                  seekBy(
-                    details?.seekOffset ||
-                    15
-                  );
-                }
-              );
-
-            navigator.mediaSession
-              .setActionHandler(
-                "seekto",
-                (details) => {
-                  if (
-                    details?.seekTime !=
-                    null
-                  ) {
-                    seekTo(
-                      details.seekTime
-                    );
-                  }
-                }
-              );
-
-            updateMediaSession();
-          } catch (_) {}
-        };
+      const installMediaSessionHandlers = () => {};
 
       const onPlay = () => {
         state.wantsPlayback = true;
@@ -988,7 +858,7 @@ enum PlaybackBridgeScript {
           state.transitionRecoveryUntil = 0;
           clearRecoveryTimers();
         } else if (
-          isReallyHidden() &&
+          isBackgrounded() &&
           !video.ended
         ) {
           recoverPlayback(video);
@@ -1003,10 +873,7 @@ enum PlaybackBridgeScript {
 
           const waitForHidden = () => {
             if (
-              (
-                isReallyHidden() ||
-                state.nativeBackground
-              ) &&
+              isBackgrounded() &&
               state.wantsPlayback &&
               Date.now() >
                 state.userPauseUntil &&
@@ -1205,9 +1072,34 @@ enum PlaybackBridgeScript {
           return video;
         }
 
+        const nextVideoID =
+          currentVideoID();
+
+        const sameMedia =
+          !state.videoID ||
+          !nextVideoID ||
+          state.videoID === nextVideoID;
+
+        const preserveIntent =
+          sameMedia &&
+          state.wantsPlayback &&
+          (
+            isBackgrounded() ||
+            Date.now() <=
+              state.transitionRecoveryUntil
+          );
+
+        const preservePosition =
+          sameMedia &&
+          preserveIntent &&
+          state.lastKnownTime > 1;
+
         detachVideo(state.video);
 
         state.video = video;
+        state.videoID =
+          nextVideoID ||
+          state.videoID;
 
         try {
           video.setAttribute(
@@ -1219,10 +1111,14 @@ enum PlaybackBridgeScript {
         enforceInlinePlayback(video);
 
         state.wantsPlayback =
-          !video.paused &&
-          !video.ended;
+          preserveIntent ||
+          (
+            !video.paused &&
+            !video.ended
+          );
 
         if (
+          !preservePosition &&
           Number.isFinite(
             video.currentTime
           )
@@ -1317,7 +1213,7 @@ enum PlaybackBridgeScript {
             state.wantsPlayback &&
             Date.now() >
               state.userPauseUntil &&
-            isReallyHidden() &&
+            isBackgrounded() &&
             !this.ended;
 
           if (backgroundPause) {
@@ -1398,6 +1294,7 @@ enum PlaybackBridgeScript {
 
           if (
             state.wantsPlayback &&
+            isBackgrounded() &&
             Date.now() >
               state.userPauseUntil
           ) {
@@ -1447,6 +1344,11 @@ enum PlaybackBridgeScript {
       const resumeForeground = () => {
         state.nativeBackground = false;
 
+        if (state.wantsPlayback) {
+          state.transitionRecoveryUntil =
+            Date.now() + 2500;
+        }
+
         const video =
           state.video ||
           findWatchVideo();
@@ -1460,7 +1362,6 @@ enum PlaybackBridgeScript {
         );
 
         clearRecoveryTimers();
-        state.transitionRecoveryUntil = 0;
 
         if (
           state.wantsPlayback &&
@@ -1668,6 +1569,121 @@ enum PlaybackBridgeScript {
         return false;
       };
 
+      const makeControlButton = (
+        id,
+        title,
+        symbol,
+        action
+      ) => {
+        let button =
+          document.getElementById(id);
+
+        if (button) return button;
+
+        button =
+          document.createElement("button");
+
+        button.id = id;
+        button.type = "button";
+        button.title = title;
+        button.textContent = symbol;
+
+        button.style.cssText = [
+          "width:44px",
+          "height:44px",
+          "border:0",
+          "border-radius:22px",
+          "background:rgba(18,18,18,.78)",
+          "color:white",
+          "font:600 20px -apple-system,BlinkMacSystemFont,sans-serif",
+          "display:flex",
+          "align-items:center",
+          "justify-content:center",
+          "box-shadow:0 5px 18px rgba(0,0,0,.28)",
+          "-webkit-backdrop-filter:blur(16px)",
+          "backdrop-filter:blur(16px)",
+          "touch-action:manipulation"
+        ].join(";");
+
+        button.addEventListener(
+          "click",
+          (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+            action();
+          },
+          true
+        );
+
+        return button;
+      };
+
+      const ensureMediaControls = () => {
+        const video =
+          state.video ||
+          findWatchVideo();
+
+        let root =
+          document.getElementById(
+            "__youtube_vcd_media_controls__"
+          );
+
+        if (!video) {
+          if (root) {
+            root.style.display =
+              "none";
+          }
+
+          return;
+        }
+
+        if (!root) {
+          root =
+            document.createElement(
+              "div"
+            );
+
+          root.id =
+            "__youtube_vcd_media_controls__";
+
+          root.style.cssText = [
+            "position:fixed",
+            "right:12px",
+            "top:max(72px,calc(env(safe-area-inset-top) + 54px))",
+            "z-index:2147483647",
+            "display:flex",
+            "gap:8px",
+            "pointer-events:auto"
+          ].join(";");
+
+          root.appendChild(
+            makeControlButton(
+              "__youtube_vcd_pip__",
+              "Picture in Picture",
+              "◱",
+              requestPiP
+            )
+          );
+
+          root.appendChild(
+            makeControlButton(
+              "__youtube_vcd_fullscreen__",
+              "Fullscreen",
+              "⛶",
+              requestFullscreen
+            )
+          );
+
+          (
+            document.body ||
+            document.documentElement
+          )?.appendChild(root);
+        }
+
+        root.style.display = "flex";
+      };
+
       window.__YOUTUBE_VCD_MEDIA_CONTROL__ = {
         play: mediaPlay,
         pause: mediaPause,
@@ -1726,7 +1742,7 @@ enum PlaybackBridgeScript {
             wantsPlayback:
               state.wantsPlayback,
             realHidden:
-              isReallyHidden(),
+              isBackgrounded(),
             currentTime:
               video &&
               Number.isFinite(
@@ -1941,6 +1957,8 @@ enum PlaybackBridgeScript {
             ) {
               attachVideo(video);
             }
+
+            ensureMediaControls();
           }
         );
 
@@ -1956,6 +1974,7 @@ enum PlaybackBridgeScript {
         }
 
         refreshVideo();
+        ensureMediaControls();
         configureWebAudioSession();
       };
 
@@ -1972,10 +1991,11 @@ enum PlaybackBridgeScript {
       window.setInterval(
         () => {
           refreshVideo();
+          ensureMediaControls();
 
           if (
             state.wantsPlayback &&
-            isReallyHidden() &&
+            isBackgrounded() &&
             Date.now() >
               state.userPauseUntil
           ) {
