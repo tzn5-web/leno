@@ -88,18 +88,32 @@ def choose_formats(info: dict[str, Any]) -> tuple[dict[str, Any] | None, dict[st
         and f.get("acodec") not in (None, "none")
     ]
 
-    def video_score(f: dict[str, Any]) -> tuple[int, int, float]:
+    def video_score(f: dict[str, Any]) -> tuple[int, int, int, float]:
         height = int(f.get("height") or 0)
-        codec = str(f.get("vcodec") or "")
-        codec_score = 3 if codec.startswith("av01") else 2 if codec.startswith("vp9") else 1
-        bitrate = float(f.get("tbr") or 0)
-        return (height, codec_score, bitrate)
+        codec = str(f.get("vcodec") or "").lower()
+        ext = str(f.get("ext") or "").lower()
 
-    def audio_score(f: dict[str, Any]) -> tuple[int, float]:
-        codec = str(f.get("acodec") or "")
-        codec_score = 2 if "opus" in codec else 1
+        # First Media Lab goal is reliability, not maximum codec efficiency.
+        # Prefer an MP4/H.264 path that VideoToolbox handles broadly on iPhone.
+        h264 = codec.startswith("avc1") or "h264" in codec
+        mp4 = ext == "mp4"
+        compatibility = 3 if (h264 and mp4) else 2 if h264 else 1
+
+        bitrate = float(f.get("tbr") or 0)
+        return (compatibility, height, 1 if mp4 else 0, bitrate)
+
+    def audio_score(f: dict[str, Any]) -> tuple[int, int, float]:
+        codec = str(f.get("acodec") or "").lower()
+        ext = str(f.get("ext") or "").lower()
+
+        # Prefer AAC/M4A first so the first device tests use the most
+        # conservative iOS audio path. Opus remains a fallback for MPV.
+        aac = "mp4a" in codec or "aac" in codec
+        m4a = ext in {"m4a", "mp4"}
+        compatibility = 3 if (aac and m4a) else 2 if aac else 1
+
         bitrate = float(f.get("abr") or f.get("tbr") or 0)
-        return (codec_score, bitrate)
+        return (compatibility, 1 if m4a else 0, bitrate)
 
     if video_only and audio_only:
         return max(video_only, key=video_score), max(audio_only, key=audio_score)
