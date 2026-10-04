@@ -4,6 +4,7 @@ enum ResolverClientError:
     LocalizedError
 {
     case invalidEndpoint
+    case loopbackEndpointOnDevice
     case invalidVideoID
     case badResponse(Int)
     case server(String)
@@ -13,8 +14,11 @@ enum ResolverClientError:
         case .invalidEndpoint:
             return "Endpoint resolver invalid."
 
+        case .loopbackEndpointOnDevice:
+            return "127.0.0.1/localhost indică iPhone-ul, nu PC-ul. Folosește IP-ul LAN al PC-ului sau un resolver HTTPS."
+
         case .invalidVideoID:
-            return "Video ID trebuie să aibă 11 caractere."
+            return "Video ID trebuie să aibă exact 11 caractere valide."
 
         case .badResponse(let status):
             return "Resolver HTTP \(status)."
@@ -52,7 +56,9 @@ actor VcdResolverClient {
 
         let data =
             try await request(
-                url
+                url,
+                bearerToken:
+                    ""
             )
 
         return try decoder.decode(
@@ -64,11 +70,20 @@ actor VcdResolverClient {
 
     func resolve(
         videoID: String,
-        endpoint: String
+        endpoint: String,
+        bearerToken: String = ""
     ) async throws
         -> ResolvedVideo
     {
-        guard videoID.count == 11 else {
+        guard
+            videoID.count == 11,
+            videoID.allSatisfy({
+                $0.isLetter ||
+                $0.isNumber ||
+                $0 == "_" ||
+                $0 == "-"
+            })
+        else {
             throw ResolverClientError
                 .invalidVideoID
         }
@@ -95,7 +110,9 @@ actor VcdResolverClient {
 
         let data =
             try await request(
-                url
+                url,
+                bearerToken:
+                    bearerToken
             )
 
         return try decoder.decode(
@@ -124,10 +141,25 @@ actor VcdResolverClient {
                     .lowercased(),
               scheme == "https" ||
               scheme == "http",
-              components.host != nil else {
+              let host =
+                components.host,
+              !host.isEmpty
+        else {
             throw ResolverClientError
                 .invalidEndpoint
         }
+
+        #if !targetEnvironment(simulator)
+        let normalizedHost =
+            host.lowercased()
+
+        if normalizedHost == "localhost" ||
+           normalizedHost == "127.0.0.1" ||
+           normalizedHost == "::1" {
+            throw ResolverClientError
+                .loopbackEndpointOnDevice
+        }
+        #endif
 
         components.path =
             components.path
@@ -149,7 +181,8 @@ actor VcdResolverClient {
     }
 
     private func request(
-        _ url: URL
+        _ url: URL,
+        bearerToken: String
     ) async throws -> Data {
         var request =
             URLRequest(
@@ -165,6 +198,21 @@ actor VcdResolverClient {
             forHTTPHeaderField:
                 "Accept"
         )
+
+        let trimmedToken =
+            bearerToken
+                .trimmingCharacters(
+                    in:
+                        .whitespacesAndNewlines
+                )
+
+        if !trimmedToken.isEmpty {
+            request.setValue(
+                "Bearer \(trimmedToken)",
+                forHTTPHeaderField:
+                    "Authorization"
+            )
+        }
 
         let (
             data,
