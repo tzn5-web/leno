@@ -294,7 +294,10 @@ struct YouTubeWebView: UIViewRepresentable {
             windowFeatures:
                 WKWindowFeatures
         ) -> WKWebView? {
-            if navigationAction.targetFrame == nil {
+            if navigationAction.targetFrame == nil,
+               let url =
+                    navigationAction.request.url,
+               !isYouTubeAppPromotion(url) {
                 webView.load(
                     navigationAction.request
                 )
@@ -316,6 +319,11 @@ struct YouTubeWebView: UIViewRepresentable {
                 return
             }
 
+            if isYouTubeAppPromotion(url) {
+                decisionHandler(.cancel)
+                return
+            }
+
             let scheme =
                 url.scheme?.lowercased() ?? ""
 
@@ -331,6 +339,42 @@ struct YouTubeWebView: UIViewRepresentable {
                 allowedSchemes.contains(scheme)
                     ? .allow
                     : .cancel
+            )
+        }
+
+        private func isYouTubeAppPromotion(
+            _ url: URL
+        ) -> Bool {
+            let scheme =
+                url.scheme?.lowercased() ?? ""
+
+            if [
+                "youtube",
+                "vnd.youtube",
+                "itms-apps",
+                "itms-services",
+                "intent"
+            ].contains(scheme) {
+                return true
+            }
+
+            let host =
+                url.host?.lowercased() ?? ""
+
+            if host == "apps.apple.com" ||
+               host == "itunes.apple.com" {
+                return true
+            }
+
+            let value =
+                url.absoluteString
+                    .lowercased()
+
+            return value.contains(
+                "mweb_to_native_app"
+            ) ||
+            value.contains(
+                "redirect_app_store_ios=1"
             )
         }
 
