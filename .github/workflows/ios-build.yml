@@ -7,13 +7,13 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ios-build-\${{ github.ref }}
+  group: ios-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
     runs-on: xcode-27
-    timeout-minutes: 35
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
@@ -30,36 +30,44 @@ jobs:
           xcrun swift Scripts/GenerateAppIcon.swift Leno/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
           test -s Leno/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
 
-      - name: V2 source integrity audit
+      - name: V3 source integrity audit
         run: |
           set -euo pipefail
           grep -q 'CFBundleDisplayName: YoutubeVcd' project.yml
-          grep -q 'PRODUCT_NAME: YoutubeVcd' project.yml
-          grep -q 'func search(_ query: String)' Leno/YouTubeSession.swift
-          grep -q 'func goBack()' Leno/YouTubeSession.swift
-          grep -q 'createWebViewWith configuration' Leno/YouTubeWebView.swift
-          grep -q '/youtubei/v1/player' Leno/AdBlockScript.swift
+          grep -q 'YouTubeKit' project.yml
+          grep -q 'UIBackgroundModes:' project.yml
+          grep -q 'AVPictureInPictureController' Leno/NativePlaybackController.swift
+          grep -q 'audiovisualBackgroundPlaybackPolicy = .continuesIfPossible' Leno/NativePlaybackController.swift
+          grep -q 'filterVideoAndAudio' Leno/NativePlaybackController.swift
+          grep -q 'messageHandlers?.openVideo' Leno/NavigationBridgeScript.swift
+          grep -q 'session.loadHome()' Leno/YouTubeWebView.swift
+
+          if grep -q 'TextField("Search YouTube"' Leno/YouTubeView.swift; then
+            echo "Legacy native search bar must not exist."
+            exit 1
+          fi
+
+          if grep -q 'mediaState' Leno/YouTubeWebView.swift; then
+            echo "Legacy WebView media engine must not exist."
+            exit 1
+          fi
+
           if grep -q 'JSON.parse = function' Leno/AdBlockScript.swift; then
-            echo "Global JSON.parse hook is forbidden in V2."
+            echo "Global JSON.parse hook is forbidden."
             exit 1
           fi
 
       - name: Generate Xcode project
         run: xcodegen generate
 
+      - name: Resolve Swift packages
+        run: |
+          xcodebuild             -resolvePackageDependencies             -project YoutubeVcd.xcodeproj             -scheme YoutubeVcd
+
       - name: Static analysis
         run: |
           set -o pipefail
-          xcodebuild \
-            -project YoutubeVcd.xcodeproj \
-            -scheme YoutubeVcd \
-            -configuration Debug \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -derivedDataPath build/AnalyzeData \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            analyze | tee analyze.log
+          xcodebuild             -project YoutubeVcd.xcodeproj             -scheme YoutubeVcd             -configuration Debug             -sdk iphoneos             -destination 'generic/platform=iOS'             -derivedDataPath build/AnalyzeData             CODE_SIGNING_ALLOWED=NO             CODE_SIGNING_REQUIRED=NO             analyze | tee analyze.log
 
       - name: Simulator smoke test
         run: |
@@ -81,16 +89,7 @@ jobs:
           xcrun simctl bootstatus "$SIM_UDID" -b
 
           set -o pipefail
-          xcodebuild \
-            -project YoutubeVcd.xcodeproj \
-            -scheme YoutubeVcd \
-            -configuration Debug \
-            -sdk iphonesimulator \
-            -destination "id=$SIM_UDID" \
-            -derivedDataPath build/SimulatorData \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            clean build | tee simulator-build.log
+          xcodebuild             -project YoutubeVcd.xcodeproj             -scheme YoutubeVcd             -configuration Debug             -sdk iphonesimulator             -destination "id=$SIM_UDID"             -derivedDataPath build/SimulatorData             CODE_SIGNING_ALLOWED=NO             CODE_SIGNING_REQUIRED=NO             clean build | tee simulator-build.log
 
           SIM_APP="build/SimulatorData/Build/Products/Debug-iphonesimulator/YoutubeVcd.app"
           test -d "$SIM_APP"
@@ -98,12 +97,9 @@ jobs:
           xcrun simctl install "$SIM_UDID" "$SIM_APP"
           xcrun simctl launch "$SIM_UDID" com.tzn5web.leno | tee simulator-launch.log
 
-          sleep 10
+          sleep 12
           xcrun simctl io "$SIM_UDID" screenshot simulator-smoke.png
-          xcrun simctl spawn "$SIM_UDID" log show \
-            --last 3m \
-            --style compact \
-            --predicate 'process == "YoutubeVcd"' > simulator-runtime.log || true
+          xcrun simctl spawn "$SIM_UDID" log show             --last 3m             --style compact             --predicate 'process == "YoutubeVcd"' > simulator-runtime.log || true
 
           if grep -Eqi 'fatal error|uncaught exception|termination reason|crash' simulator-runtime.log; then
             echo "Potential runtime crash marker detected."
@@ -114,16 +110,7 @@ jobs:
       - name: Build unsigned device app
         run: |
           set -o pipefail
-          xcodebuild \
-            -project YoutubeVcd.xcodeproj \
-            -scheme YoutubeVcd \
-            -configuration Release \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -derivedDataPath build/DerivedData \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            clean build | tee build.log
+          xcodebuild             -project YoutubeVcd.xcodeproj             -scheme YoutubeVcd             -configuration Release             -sdk iphoneos             -destination 'generic/platform=iOS'             -derivedDataPath build/DerivedData             CODE_SIGNING_ALLOWED=NO             CODE_SIGNING_REQUIRED=NO             clean build | tee build.log
 
       - name: Audit built app metadata
         run: |

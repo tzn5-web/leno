@@ -2,176 +2,176 @@ import SwiftUI
 
 struct YouTubeView: View {
     @StateObject private var session = YouTubeSession()
-    @State private var searchText = ""
-    @FocusState private var searchFocused: Bool
-    @Environment(\.scenePhase) private var scenePhase
+    @ObservedObject var playback: NativePlaybackController
 
     var body: some View {
-        VStack(spacing: 0) {
-            browserBar
+        ZStack {
+            YouTubeWebView(session: session)
+                .ignoresSafeArea(.container, edges: .bottom)
 
-            if session.isLoading {
-                ProgressView(value: session.progress)
-                    .progressViewStyle(.linear)
-                    .frame(height: 2)
+            if session.state == .idle || session.isLoading {
+                HomeLoadingView()
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
             }
 
-            ZStack(alignment: .top) {
-                YouTubeWebView(session: session)
+            if case .recovering(let attempt) = session.state {
+                recoveryPill(attempt: attempt)
+            }
 
-                if case .recovering(let attempt) = session.state {
-                    Label("Recovering \(attempt)/3", systemImage: "wrench.and.screwdriver")
-                        .statusPill()
-                        .padding(.top, 8)
-                }
-
-                if case .failed(let message) = session.state {
-                    failureOverlay(message: message)
-                }
+            if case .failed(let message) = session.state {
+                failureOverlay(message: message)
             }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if session.hasMedia {
-                mediaBar
+        .background(Color(.systemBackground))
+        .onAppear {
+            session.onVideoSelected = { videoID in
+                playback.open(videoID: videoID)
             }
         }
-        .onChange(of: scenePhase) { _, newPhase in
-            switch newPhase {
-            case .active:
-                session.applicationDidBecomeActive()
-            case .background:
-                session.applicationDidEnterBackground()
-            default:
-                break
-            }
+        .fullScreenCover(
+            isPresented: Binding(
+                get: { playback.isPresented },
+                set: { presented in
+                    if !presented {
+                        playback.close()
+                    }
+                }
+            )
+        ) {
+            NativePlayerView(controller: playback)
         }
     }
 
-    private var browserBar: some View {
-        HStack(spacing: 10) {
-            Button {
-                session.goBack()
-            } label: {
-                Image(systemName: "chevron.left")
+    private func recoveryPill(attempt: Int) -> some View {
+        VStack {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Reconectare… \(attempt)/3")
+                    .font(.caption.weight(.semibold))
             }
-            .disabled(!session.canGoBack)
-            .accessibilityLabel("Back")
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background(.ultraThinMaterial, in: Capsule())
+            .shadow(radius: 12, y: 5)
 
-            Button {
-                session.goForward()
-            } label: {
-                Image(systemName: "chevron.right")
-            }
-            .disabled(!session.canGoForward)
-            .accessibilityLabel("Forward")
-
-            TextField("Search YouTube", text: $searchText)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .submitLabel(.search)
-                .focused($searchFocused)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit {
-                    submitSearch()
-                }
-
-            Button {
-                session.loadHome()
-                searchFocused = false
-            } label: {
-                Image(systemName: "house.fill")
-            }
-            .accessibilityLabel("Home")
-
-            Button {
-                session.reload()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-            }
-            .accessibilityLabel("Reload")
+            Spacer()
         }
-        .font(.body.weight(.semibold))
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(.thinMaterial)
-    }
-
-    private var mediaBar: some View {
-        HStack(spacing: 18) {
-            Button {
-                session.seek(by: -15)
-            } label: {
-                Image(systemName: "gobackward.15")
-            }
-
-            Button {
-                session.togglePlayback()
-            } label: {
-                Image(systemName: session.isPlaying ? "pause.fill" : "play.fill")
-            }
-
-            Button {
-                session.seek(by: 15)
-            } label: {
-                Image(systemName: "goforward.15")
-            }
-
-            Text(session.title)
-                .font(.caption)
-                .lineLimit(1)
-                .foregroundStyle(.secondary)
-
-            Spacer(minLength: 8)
-
-            Button {
-                session.requestPictureInPicture()
-            } label: {
-                Image(systemName: "pip")
-            }
-        }
-        .font(.title3)
-        .padding(.horizontal, 16)
-        .frame(height: 52)
-        .background(.ultraThinMaterial)
-    }
-
-    private func submitSearch() {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return }
-        session.search(query)
-        searchFocused = false
+        .padding(.top, 10)
     }
 
     private func failureOverlay(message: String) -> some View {
-        VStack(spacing: 14) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.largeTitle)
+        ZStack {
+            Color(.systemBackground)
+                .ignoresSafeArea()
 
-            Text("YouTube did not load correctly")
-                .font(.headline)
+            VStack(spacing: 18) {
+                Image(systemName: "wifi.exclamationmark")
+                    .font(.system(size: 42, weight: .semibold))
+                    .symbolRenderingMode(.hierarchical)
 
-            Text(message)
-                .font(.footnote)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
+                VStack(spacing: 6) {
+                    Text("YouTube nu s-a încărcat")
+                        .font(.title3.weight(.bold))
 
-            Button("Reload") {
-                session.reloadFromHome()
+                    Text(message)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(3)
+                }
+
+                Button {
+                    session.reloadFromHome()
+                } label: {
+                    Label("Reîncearcă", systemImage: "arrow.clockwise")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
             }
-            .buttonStyle(.borderedProminent)
+            .padding(24)
+            .frame(maxWidth: 360)
         }
-        .padding(24)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
-        .padding(24)
     }
 }
 
-private extension View {
-    func statusPill() -> some View {
-        self
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(.regularMaterial, in: Capsule())
+private struct HomeLoadingView: View {
+    var body: some View {
+        ZStack {
+            Color(.systemBackground)
+                .ignoresSafeArea()
+
+            ScrollView {
+                VStack(spacing: 22) {
+                    loadingHeader
+
+                    ForEach(0..<3, id: \.self) { _ in
+                        loadingCard
+                    }
+                }
+                .padding(.bottom, 80)
+            }
+            .scrollDisabled(true)
+        }
+    }
+
+    private var loadingHeader: some View {
+        HStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(.red)
+                .frame(width: 34, height: 24)
+                .overlay {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundStyle(.white)
+                }
+
+            Text("YoutubeVcd")
+                .font(.system(size: 20, weight: .bold, design: .rounded))
+
+            Spacer()
+
+            Circle()
+                .fill(.secondary.opacity(0.14))
+                .frame(width: 34, height: 34)
+                .overlay {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+    }
+
+    private var loadingCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(.secondary.opacity(0.12))
+                .aspectRatio(16 / 9, contentMode: .fit)
+
+            HStack(alignment: .top, spacing: 12) {
+                Circle()
+                    .fill(.secondary.opacity(0.12))
+                    .frame(width: 38, height: 38)
+
+                VStack(alignment: .leading, spacing: 7) {
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(.secondary.opacity(0.12))
+                        .frame(height: 13)
+
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(.secondary.opacity(0.09))
+                        .frame(width: 180, height: 11)
+                }
+
+                Spacer()
+            }
+        }
+        .padding(.horizontal, 12)
     }
 }

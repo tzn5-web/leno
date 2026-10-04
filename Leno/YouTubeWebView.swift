@@ -10,6 +10,7 @@ struct YouTubeWebView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         let userContentController = WKUserContentController()
+
         userContentController.addUserScript(
             WKUserScript(
                 source: AdBlockScript.source,
@@ -17,15 +18,24 @@ struct YouTubeWebView: UIViewRepresentable {
                 forMainFrameOnly: false
             )
         )
-        userContentController.add(session, name: "mediaState")
+
+        userContentController.addUserScript(
+            WKUserScript(
+                source: NavigationBridgeScript.source,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
+
+        userContentController.add(session, name: "openVideo")
 
         let configuration = WKWebViewConfiguration()
         configuration.userContentController = userContentController
         configuration.websiteDataStore = .default()
         configuration.allowsInlineMediaPlayback = true
-        configuration.allowsAirPlayForMediaPlayback = true
-        configuration.allowsPictureInPictureMediaPlayback = true
-        configuration.mediaTypesRequiringUserActionForPlayback = []
+        configuration.allowsAirPlayForMediaPlayback = false
+        configuration.allowsPictureInPictureMediaPlayback = false
+        configuration.mediaTypesRequiringUserActionForPlayback = [.audio, .video]
 
         let preferences = WKWebpagePreferences()
         preferences.allowsContentJavaScript = true
@@ -36,10 +46,15 @@ struct YouTubeWebView: UIViewRepresentable {
         webView.uiDelegate = context.coordinator
         webView.allowsBackForwardNavigationGestures = true
         webView.scrollView.contentInsetAdjustmentBehavior = .never
+        webView.isOpaque = false
+        webView.backgroundColor = .systemBackground
+        webView.scrollView.backgroundColor = .systemBackground
 
         session.attach(webView: webView)
         context.coordinator.observe(webView)
-        installContentRulesThenLoad(on: webView, coordinator: context.coordinator)
+
+        installRules(on: webView)
+        session.loadHome()
 
         return webView
     }
@@ -48,14 +63,27 @@ struct YouTubeWebView: UIViewRepresentable {
 
     static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
         coordinator.invalidateObservations()
-        uiView.configuration.userContentController.removeScriptMessageHandler(forName: "mediaState")
+        uiView.configuration.userContentController.removeScriptMessageHandler(
+            forName: "openVideo"
+        )
         uiView.navigationDelegate = nil
         uiView.uiDelegate = nil
     }
 
-    private func installContentRulesThenLoad(on webView: WKWebView, coordinator: Coordinator) {
-        WKContentRuleListStore.default().compileContentRuleList(
-            forIdentifier: "YoutubeVcdAdRules-v3",
+    private func installRules(on webView: WKWebView) {
+        let store = WKContentRuleListStore.default()
+        let identifier = "YoutubeVcdAdRules-v4"
+
+        store.lookUpContentRuleList(forIdentifier: identifier) { cached, _ in
+            DispatchQueue.main.async {
+                if let cached {
+                    webView.configuration.userContentController.add(cached)
+                }
+            }
+        }
+
+        store.compileContentRuleList(
+            forIdentifier: identifier,
             encodedContentRuleList: AdBlockScript.contentRules
         ) { ruleList, error in
             DispatchQueue.main.async {
@@ -64,10 +92,6 @@ struct YouTubeWebView: UIViewRepresentable {
                 } else if let error {
                     print("Content rule compilation failed: \(error.localizedDescription)")
                 }
-
-                guard !coordinator.didLoadInitialPage else { return }
-                coordinator.didLoadInitialPage = true
-                session.loadHome()
             }
         }
     }
@@ -75,7 +99,6 @@ struct YouTubeWebView: UIViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         private let session: YouTubeSession
         private var observations: [NSKeyValueObservation] = []
-        var didLoadInitialPage = false
 
         init(session: YouTubeSession) {
             self.session = session
@@ -106,7 +129,10 @@ struct YouTubeWebView: UIViewRepresentable {
             observations.removeAll()
         }
 
-        func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        func webView(
+            _ webView: WKWebView,
+            didStartProvisionalNavigation navigation: WKNavigation!
+        ) {
             session.markLoading()
             syncNavigationState(from: webView)
         }
@@ -148,9 +174,15 @@ struct YouTubeWebView: UIViewRepresentable {
             for navigationAction: WKNavigationAction,
             windowFeatures: WKWindowFeatures
         ) -> WKWebView? {
+            if let url = navigationAction.request.url,
+               session.interceptVideoURL(url) {
+                return nil
+            }
+
             if navigationAction.targetFrame == nil {
                 webView.load(navigationAction.request)
             }
+
             return nil
         }
 
@@ -164,14 +196,17 @@ struct YouTubeWebView: UIViewRepresentable {
                 return
             }
 
+            if session.interceptVideoURL(url) {
+                decisionHandler(.cancel)
+                return
+            }
+
             let scheme = url.scheme?.lowercased() ?? ""
             let allowedSchemes = ["http", "https", "about", "data", "blob"]
 
-            if allowedSchemes.contains(scheme) {
-                decisionHandler(.allow)
-            } else {
-                decisionHandler(.cancel)
-            }
+            decisionHandler(
+                allowedSchemes.contains(scheme) ? .allow : .cancel
+            )
         }
 
         private func syncNavigationState(from webView: WKWebView) {
@@ -187,7 +222,8 @@ struct YouTubeWebView: UIViewRepresentable {
         private func shouldRecover(from error: Error) -> Bool {
             let nsError = error as NSError
 
-            if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled {
+            if nsError.domain == NSURLErrorDomain &&
+                nsError.code == NSURLErrorCancelled {
                 return false
             }
 

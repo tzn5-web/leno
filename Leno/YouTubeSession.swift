@@ -1,7 +1,4 @@
-import AVFoundation
 import Combine
-import MediaPlayer
-import UIKit
 import WebKit
 
 final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
@@ -14,12 +11,6 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     }
 
     @Published private(set) var state: State = .idle
-    @Published private(set) var title = "YouTube"
-    @Published private(set) var isPlaying = false
-    @Published private(set) var hasMedia = false
-    @Published private(set) var currentTime: Double = 0
-    @Published private(set) var duration: Double = 0
-
     @Published private(set) var canGoBack = false
     @Published private(set) var canGoForward = false
     @Published private(set) var currentURL: URL?
@@ -27,29 +18,14 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     @Published private(set) var isLoading = false
 
     weak var webView: WKWebView?
+    var onVideoSelected: ((String) -> Void)?
 
     private var retryCount = 0
     private let maxRetries = 3
-    private var remoteTargets: [(MPRemoteCommand, Any)] = []
-    private var notificationTokens: [NSObjectProtocol] = []
-    private var wasPlayingBeforeInterruption = false
+    private var lastVideoID: String?
+    private var lastVideoDate = Date.distantPast
 
     private static let homeURL = URL(string: "https://m.youtube.com/")!
-
-    override init() {
-        super.init()
-        configureAudioSession()
-        configureRemoteCommands()
-        observeAudioSession()
-    }
-
-    deinit {
-        for (command, token) in remoteTargets {
-            command.removeTarget(token)
-        }
-        notificationTokens.forEach(NotificationCenter.default.removeObserver)
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
-    }
 
     func attach(webView: WKWebView) {
         self.webView = webView
@@ -64,36 +40,9 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         loadHome()
     }
 
-    func search(_ query: String) {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-
-        var components = URLComponents(string: "https://m.youtube.com/results")!
-        components.queryItems = [URLQueryItem(name: "search_query", value: trimmed)]
-
-        guard let url = components.url else { return }
-        load(url)
-    }
-
     func goBack() {
         guard let webView, webView.canGoBack else { return }
         webView.goBack()
-    }
-
-    func goForward() {
-        guard let webView, webView.canGoForward else { return }
-        webView.goForward()
-    }
-
-    func reload() {
-        guard let webView else { return }
-
-        if webView.url == nil {
-            loadHome()
-        } else {
-            markLoading()
-            webView.reload()
-        }
     }
 
     func updateNavigationState(
@@ -142,7 +91,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             let attempt = self.retryCount
             self.state = .recovering(attempt)
 
-            let delay = min(1.5 * Double(attempt), 4.5)
+            let delay = min(1.2 * Double(attempt), 3.6)
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                 guard let self else { return }
 
@@ -155,128 +104,49 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         }
     }
 
-    func applicationDidEnterBackground() {
-        activateAudioSession()
-        updateNowPlaying()
-    }
+    @discardableResult
+    func interceptVideoURL(_ url: URL) -> Bool {
+        guard let videoID = Self.videoID(from: url) else {
+            return false
+        }
 
-    func applicationDidBecomeActive() {
-        activateAudioSession()
-    }
-
-    func togglePlayback() {
-        evaluate(#"""
-        (() => {
-          const video = document.querySelector("video");
-          if (!video) return false;
-          if (video.paused) {
-            video.play().catch(() => {});
-          } else {
-            video.pause();
-          }
-          return true;
-        })();
-        """#)
-    }
-
-    func play() {
-        evaluate(#"""
-        (() => {
-          const video = document.querySelector("video");
-          if (!video) return false;
-          video.play().catch(() => {});
-          return true;
-        })();
-        """#)
-    }
-
-    func pause() {
-        evaluate(#"""
-        (() => {
-          const video = document.querySelector("video");
-          if (!video) return false;
-          video.pause();
-          return true;
-        })();
-        """#)
-    }
-
-    func seek(by seconds: Double) {
-        let safeSeconds = max(-60, min(60, seconds))
-        evaluate("""
-        (() => {
-          const video = document.querySelector("video");
-          if (!video) return false;
-          const duration = Number.isFinite(video.duration) ? video.duration : Number.POSITIVE_INFINITY;
-          video.currentTime = Math.max(0, Math.min(duration, video.currentTime + \(safeSeconds)));
-          return true;
-        })();
-        """)
-    }
-
-    func seek(to seconds: Double) {
-        let safeSeconds = max(0, seconds)
-        evaluate("""
-        (() => {
-          const video = document.querySelector("video");
-          if (!video) return false;
-          const duration = Number.isFinite(video.duration) ? video.duration : Number.POSITIVE_INFINITY;
-          video.currentTime = Math.max(0, Math.min(duration, \(safeSeconds)));
-          return true;
-        })();
-        """)
-    }
-
-    func requestPictureInPicture() {
-        evaluate(#"""
-        (() => {
-          const video = document.querySelector("video");
-          if (!video) return false;
-
-          if (typeof video.webkitSetPresentationMode === "function") {
-            try {
-              video.webkitSetPresentationMode("picture-in-picture");
-              return true;
-            } catch (_) {}
-          }
-
-          if (document.pictureInPictureEnabled && video.requestPictureInPicture) {
-            video.requestPictureInPicture().catch(() => {});
-            return true;
-          }
-
-          return false;
-        })();
-        """#)
+        presentVideo(videoID)
+        return true
     }
 
     func userContentController(
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
-        guard message.name == "mediaState",
-              let body = message.body as? [String: Any] else {
+        guard message.name == "openVideo" else { return }
+
+        if let body = message.body as? [String: Any],
+           let videoID = body["videoID"] as? String,
+           Self.isValidVideoID(videoID) {
+            presentVideo(videoID)
             return
         }
 
-        let newTitle = (body["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let paused = body["paused"] as? Bool ?? true
-        let mediaExists = body["hasMedia"] as? Bool ?? false
-        let newCurrentTime = numericValue(body["currentTime"])
-        let newDuration = numericValue(body["duration"])
+        if let href = message.body as? String,
+           let url = URL(string: href),
+           let videoID = Self.videoID(from: url) {
+            presentVideo(videoID)
+        }
+    }
 
-        DispatchQueue.main.async {
-            self.title = (newTitle?.isEmpty == false ? newTitle! : "YouTube")
-            self.hasMedia = mediaExists
-            self.isPlaying = mediaExists && !paused
-            self.currentTime = max(0, newCurrentTime)
-            self.duration = max(0, newDuration)
+    private func presentVideo(_ videoID: String) {
+        let now = Date()
 
-            if mediaExists {
-                self.updateNowPlaying()
-            } else {
-                MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
-            }
+        if lastVideoID == videoID,
+           now.timeIntervalSince(lastVideoDate) < 1.5 {
+            return
+        }
+
+        lastVideoID = videoID
+        lastVideoDate = now
+
+        DispatchQueue.main.async { [weak self] in
+            self?.onVideoSelected?(videoID)
         }
     }
 
@@ -288,161 +158,47 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         }
     }
 
-    private func evaluate(_ script: String) {
-        DispatchQueue.main.async { [weak self] in
-            self?.webView?.evaluateJavaScript(script) { _, error in
-                if let error {
-                    print("JavaScript bridge error: \(error.localizedDescription)")
-                }
-            }
+    private static func videoID(from url: URL) -> String? {
+        guard let host = url.host?.lowercased() else { return nil }
+
+        if host == "youtu.be" || host.hasSuffix(".youtu.be") {
+            let candidate = url.pathComponents.dropFirst().first ?? ""
+            return isValidVideoID(candidate) ? candidate : nil
         }
+
+        guard host == "youtube.com" || host.hasSuffix(".youtube.com") else {
+            return nil
+        }
+
+        let components = url.pathComponents.filter { $0 != "/" }
+
+        if url.path == "/watch",
+           let queryItems = URLComponents(
+                url: url,
+                resolvingAgainstBaseURL: false
+           )?.queryItems,
+           let candidate = queryItems.first(where: { $0.name == "v" })?.value,
+           isValidVideoID(candidate) {
+            return candidate
+        }
+
+        if let first = components.first,
+           ["shorts", "embed", "live"].contains(first),
+           components.count >= 2 {
+            let candidate = components[1]
+            return isValidVideoID(candidate) ? candidate : nil
+        }
+
+        return nil
     }
 
-    private func numericValue(_ value: Any?) -> Double {
-        if let number = value as? NSNumber {
-            return number.doubleValue
-        }
-        if let number = value as? Double {
-            return number
-        }
-        return 0
-    }
+    private static func isValidVideoID(_ value: String) -> Bool {
+        guard value.count == 11 else { return false }
 
-    private func configureAudioSession() {
-        do {
-            let audioSession = AVAudioSession.sharedInstance()
-            try audioSession.setCategory(.playback, mode: .moviePlayback, options: [])
-            try audioSession.setActive(true)
-        } catch {
-            print("Audio session configuration failed: \(error.localizedDescription)")
-        }
-    }
+        let allowed = CharacterSet(
+            charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
+        )
 
-    private func activateAudioSession() {
-        do {
-            try AVAudioSession.sharedInstance().setActive(true)
-        } catch {
-            print("Audio session activation failed: \(error.localizedDescription)")
-        }
-    }
-
-    private func observeAudioSession() {
-        let token = NotificationCenter.default.addObserver(
-            forName: AVAudioSession.interruptionNotification,
-            object: AVAudioSession.sharedInstance(),
-            queue: .main
-        ) { [weak self] notification in
-            self?.handleAudioInterruption(notification)
-        }
-
-        notificationTokens.append(token)
-    }
-
-    private func handleAudioInterruption(_ notification: Notification) {
-        guard let userInfo = notification.userInfo,
-              let rawType = (userInfo[AVAudioSessionInterruptionTypeKey] as? NSNumber)?.uintValue,
-              let type = AVAudioSession.InterruptionType(rawValue: rawType) else {
-            return
-        }
-
-        switch type {
-        case .began:
-            wasPlayingBeforeInterruption = isPlaying
-
-        case .ended:
-            activateAudioSession()
-
-            let rawOptions = (userInfo[AVAudioSessionInterruptionOptionKey] as? NSNumber)?.uintValue ?? 0
-            let options = AVAudioSession.InterruptionOptions(rawValue: rawOptions)
-
-            if wasPlayingBeforeInterruption && options.contains(.shouldResume) {
-                play()
-            }
-
-            wasPlayingBeforeInterruption = false
-
-        @unknown default:
-            break
-        }
-    }
-
-    private func configureRemoteCommands() {
-        let center = MPRemoteCommandCenter.shared()
-
-        center.playCommand.isEnabled = true
-        addRemoteTarget(center.playCommand) { [weak self] _ in
-            guard let self, self.hasMedia else { return .commandFailed }
-            self.play()
-            return .success
-        }
-
-        center.pauseCommand.isEnabled = true
-        addRemoteTarget(center.pauseCommand) { [weak self] _ in
-            guard let self, self.hasMedia else { return .commandFailed }
-            self.pause()
-            return .success
-        }
-
-        center.togglePlayPauseCommand.isEnabled = true
-        addRemoteTarget(center.togglePlayPauseCommand) { [weak self] _ in
-            guard let self, self.hasMedia else { return .commandFailed }
-            self.togglePlayback()
-            return .success
-        }
-
-        center.skipForwardCommand.isEnabled = true
-        center.skipForwardCommand.preferredIntervals = [15]
-        addRemoteTarget(center.skipForwardCommand) { [weak self] _ in
-            guard let self, self.hasMedia else { return .commandFailed }
-            self.seek(by: 15)
-            return .success
-        }
-
-        center.skipBackwardCommand.isEnabled = true
-        center.skipBackwardCommand.preferredIntervals = [15]
-        addRemoteTarget(center.skipBackwardCommand) { [weak self] _ in
-            guard let self, self.hasMedia else { return .commandFailed }
-            self.seek(by: -15)
-            return .success
-        }
-
-        center.changePlaybackPositionCommand.isEnabled = true
-        addRemoteTarget(center.changePlaybackPositionCommand) { [weak self] event in
-            guard let self,
-                  self.hasMedia,
-                  let event = event as? MPChangePlaybackPositionCommandEvent else {
-                return .commandFailed
-            }
-
-            self.seek(to: event.positionTime)
-            return .success
-        }
-    }
-
-    private func addRemoteTarget(
-        _ command: MPRemoteCommand,
-        handler: @escaping (MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus
-    ) {
-        let token = command.addTarget(handler: handler)
-        remoteTargets.append((command, token))
-    }
-
-    private func updateNowPlaying() {
-        guard hasMedia else { return }
-
-        var info: [String: Any] = [
-            MPMediaItemPropertyTitle: title,
-            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
-            MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
-            MPNowPlayingInfoPropertyElapsedPlaybackTime: currentTime
-        ]
-
-        if duration > 0 {
-            info[MPMediaItemPropertyPlaybackDuration] = duration
-        }
-
-        let nowPlaying = MPNowPlayingInfoCenter.default()
-        nowPlaying.nowPlayingInfo = info
-        nowPlaying.playbackState = isPlaying ? .playing : .paused
+        return value.unicodeScalars.allSatisfy { allowed.contains($0) }
     }
 }
