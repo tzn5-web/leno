@@ -30,68 +30,78 @@ jobs:
           xcrun swift Scripts/GenerateAppIcon.swift Leno/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
           test -s Leno/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
 
-      - name: Native handoff source audit
+      - name: WebKit V4 source audit
         run: |
           set -euo pipefail
 
-          grep -q 'CFBundleDisplayName: YoutubeVcd' project.yml
+          grep -q 'MARKETING_VERSION: "0.4.4"' project.yml
+          grep -q 'CURRENT_PROJECT_VERSION: "9"' project.yml
           grep -q 'UIBackgroundModes:' project.yml
-          grep -q 'MARKETING_VERSION: "0.4.3"' project.yml
-          grep -q 'CURRENT_PROJECT_VERSION: "8"' project.yml
+          grep -q -- '- audio' project.yml
 
-          grep -q 'allowsPictureInPictureMediaPlayback = true' Leno/YouTubeWebView.swift
-          grep -q 'allowsAirPlayForMediaPlayback = true' Leno/YouTubeWebView.swift
-          grep -Fq 'mediaTypesRequiringUserActionForPlayback = []' Leno/YouTubeWebView.swift
-          grep -q 'name: "mediaState"' Leno/YouTubeWebView.swift
-          grep -q 'name: "mediaCandidate"' Leno/YouTubeWebView.swift
+          test ! -f Leno/BackgroundAudioHandoff.swift
 
-          grep -q 'publishMediaCandidate' Leno/AdBlockScript.swift
-          grep -q 'audio/mp4' Leno/AdBlockScript.swift
-          grep -q 'hlsManifestUrl' Leno/AdBlockScript.swift
-
-          grep -q '__YOUTUBE_VCD_PLAYBACK_BRIDGE__' Leno/PlaybackBridgeScript.swift
-          grep -q 'prepareNativeHandoff' Leno/PlaybackBridgeScript.swift
-          grep -q 'resumeFromNative' Leno/PlaybackBridgeScript.swift
-          grep -q 'videoScore' Leno/PlaybackBridgeScript.swift
-
-          grep -q 'final class BackgroundAudioHandoff' Leno/BackgroundAudioHandoff.swift
-          grep -q 'AVPlayer()' Leno/BackgroundAudioHandoff.swift
-          grep -q 'continuesIfPossible' Leno/BackgroundAudioHandoff.swift
+          grep -q '__YOUTUBE_VCD_PLAYBACK_BRIDGE_V4__' Leno/PlaybackBridgeScript.swift
+          grep -q 'blockedLifecycleEvents' Leno/PlaybackBridgeScript.swift
+          grep -q 'nativeHiddenDescriptor' Leno/PlaybackBridgeScript.swift
+          grep -q 'spoofDocumentProperty' Leno/PlaybackBridgeScript.swift
+          grep -q 'document.hasFocus = () => true' Leno/PlaybackBridgeScript.swift
+          grep -q 'userPauseUntil' Leno/PlaybackBridgeScript.swift
+          grep -q 'transitionRecoveryUntil' Leno/PlaybackBridgeScript.swift
+          grep -q 'nativeBackground' Leno/PlaybackBridgeScript.swift
+          grep -q 'findWatchVideo' Leno/PlaybackBridgeScript.swift
+          grep -q 'html5-main-video' Leno/PlaybackBridgeScript.swift
+          grep -q 'navigator.audioSession.type' Leno/PlaybackBridgeScript.swift
+          grep -q 'setActionHandler' Leno/PlaybackBridgeScript.swift
+          grep -q 'setPositionState' Leno/PlaybackBridgeScript.swift
+          grep -q 'webkitpresentationmodechanged' Leno/PlaybackBridgeScript.swift
+          grep -q 'event.stopPropagation()' Leno/PlaybackBridgeScript.swift
+          grep -q 'enterBackgroundCall' Leno/PlaybackBridgeScript.swift
+          grep -q 'resumeForegroundCall' Leno/PlaybackBridgeScript.swift
 
           grep -q 'AVAudioSession' Leno/YouTubeSession.swift
           grep -q 'MPRemoteCommandCenter' Leno/YouTubeSession.swift
-          grep -q 'beginNativeHandoffIfPossible' Leno/YouTubeSession.swift
-          grep -q 'prepareNativeHandoffCall' Leno/YouTubeSession.swift
-          grep -q 'setAllMediaPlaybackSuspended' Leno/YouTubeSession.swift
-          grep -q 'observeApplicationLifecycle' Leno/YouTubeSession.swift
+          grep -q 'applicationWillResignActive' Leno/YouTubeSession.swift
+          grep -q 'enterBackgroundCall' Leno/YouTubeSession.swift
+          grep -q 'resumeForegroundCall' Leno/YouTubeSession.swift
 
-          if grep -Fq 'HTMLMediaElement.prototype.pause' Leno/PlaybackBridgeScript.swift; then
-            echo "Global HTMLMediaElement.pause patch must not return."
+          grep -q 'applicationWillResignActive()' Leno/YouTubeView.swift
+          grep -q 'allowsPictureInPictureMediaPlayback = true' Leno/YouTubeWebView.swift
+          grep -q 'allowsInlineMediaPlayback = true' Leno/YouTubeWebView.swift
+          grep -Fq 'mediaTypesRequiringUserActionForPlayback = []' Leno/YouTubeWebView.swift
+
+          if grep -q 'BackgroundAudioHandoff' project.yml Leno/*.swift; then
+            echo "AVPlayer handoff must not return."
             exit 1
           fi
 
-          if grep -Fq 'messageHandlers?.mediaState' Leno/AdBlockScript.swift; then
-            echo "AdBlockScript must not compete for media-state reporting."
-            exit 1
-          fi
-
-          if grep -q 'scenePhase' Leno/YouTubeView.swift; then
-            echo "SwiftUI scenePhase must not duplicate lifecycle notifications."
+          if grep -q 'mediaCandidate' Leno/*.swift; then
+            echo "Direct media URL handoff must not return."
             exit 1
           fi
 
           if grep -q 'StreamResolver.swift' project.yml; then
-            echo "External stream resolver must not be active."
+            echo "External stream resolver must stay inactive."
             exit 1
           fi
 
           if grep -q 'YouTubeKit' project.yml; then
-            echo "YouTubeKit must not be an active dependency."
+            echo "YouTubeKit must stay inactive."
             exit 1
           fi
 
-          if grep -q 'JSON.parse = function' Leno/AdBlockScript.swift; then
-            echo "Global JSON.parse hook is forbidden."
+          if grep -q 'setAllMediaPlaybackSuspended' Leno/YouTubeSession.swift; then
+            echo "Manual WebKit suspension is forbidden in V4."
+            exit 1
+          fi
+
+          if grep -Fq 'messageHandlers?.mediaState' Leno/AdBlockScript.swift; then
+            echo "AdBlockScript must not compete for media-state ownership."
+            exit 1
+          fi
+
+          if grep -Fq 'document.querySelector("video")' Leno/YouTubeSession.swift; then
+            echo "Native transport must use the active-video bridge, not first-video selection."
             exit 1
           fi
 
@@ -126,8 +136,7 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             clean build | tee simulator-build.log
 
-          SIM_APP="build/SimulatorData/Build/Products/Debug-iphonesimulator/YoutubeVcd.app"
-          test -d "$SIM_APP"
+          test -d build/SimulatorData/Build/Products/Debug-iphonesimulator/YoutubeVcd.app
 
       - name: Build unsigned device app
         run: |
@@ -162,13 +171,8 @@ jobs:
           test "$DISPLAY_NAME" = "YoutubeVcd"
           test "$BUNDLE_ID" = "com.tzn5web.leno"
           test "$BACKGROUND_MODE" = "audio"
-          test "$VERSION" = "0.4.3"
-          test "$BUILD" = "8"
-
-          find "$APP_PATH" -maxdepth 1 -iname '*AppIcon*' -print \
-            | tee app-icon-files.log
-
-          test -s Leno/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
+          test "$VERSION" = "0.4.4"
+          test "$BUILD" = "9"
 
       - name: Package unsigned IPA
         run: |
@@ -185,7 +189,7 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v7
         with:
-          name: YoutubeVcd-v3-native-background-handoff-ipa
+          name: YoutubeVcd-v4-researched-webkit-background-ipa
           path: YoutubeVcd-unsigned.ipa
           if-no-files-found: error
 
@@ -196,7 +200,6 @@ jobs:
           name: build-evidence
           path: |
             analyze.log
-            build.log
             simulator-build.log
-            app-icon-files.log
+            build.log
           if-no-files-found: ignore
