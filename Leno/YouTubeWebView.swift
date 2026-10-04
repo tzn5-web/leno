@@ -21,6 +21,7 @@ struct YouTubeWebView: UIViewRepresentable {
 
         let configuration = WKWebViewConfiguration()
         configuration.userContentController = userContentController
+        configuration.websiteDataStore = .default()
         configuration.allowsInlineMediaPlayback = true
         configuration.allowsAirPlayForMediaPlayback = true
         configuration.allowsPictureInPictureMediaPlayback = true
@@ -101,6 +102,7 @@ struct YouTubeWebView: UIViewRepresentable {
             didFail navigation: WKNavigation!,
             withError error: Error
         ) {
+            guard shouldRecover(from: error) else { return }
             session.recover(after: error)
         }
 
@@ -109,6 +111,7 @@ struct YouTubeWebView: UIViewRepresentable {
             didFailProvisionalNavigation navigation: WKNavigation!,
             withError error: Error
         ) {
+            guard shouldRecover(from: error) else { return }
             session.recover(after: error)
         }
 
@@ -132,6 +135,16 @@ struct YouTubeWebView: UIViewRepresentable {
             } else {
                 decisionHandler(.cancel)
             }
+        }
+
+        private func shouldRecover(from error: Error) -> Bool {
+            let nsError = error as NSError
+
+            if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled {
+                return false
+            }
+
+            return true
         }
     }
 }
