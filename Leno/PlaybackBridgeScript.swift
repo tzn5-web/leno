@@ -1896,6 +1896,141 @@ enum PlaybackBridgeScript {
         }
       };
 
+      const isPlaybackNavigationURL =
+        (value) => {
+          try {
+            const url =
+              new URL(
+                value,
+                location.href
+              );
+
+            const host =
+              url.hostname
+                .toLowerCase();
+
+            const youtubeHost =
+              host ===
+                "youtube.com" ||
+              host ===
+                "www.youtube.com" ||
+              host ===
+                "m.youtube.com" ||
+              host ===
+                "youtu.be";
+
+            if (!youtubeHost) {
+              return false;
+            }
+
+            if (
+              host ===
+              "youtu.be"
+            ) {
+              return (
+                url.pathname
+                  .split("/")
+                  .filter(Boolean)
+                  .length > 0
+              );
+            }
+
+            if (
+              url.pathname ===
+              "/watch"
+            ) {
+              return !!url
+                .searchParams
+                .get("v");
+            }
+
+            return (
+              url.pathname
+                .startsWith(
+                  "/shorts/"
+                ) ||
+              url.pathname
+                .startsWith(
+                  "/live/"
+                )
+            );
+          } catch (_) {
+            return false;
+          }
+        };
+
+      const routeBrowseLink =
+        (event) => {
+          const target =
+            event.target;
+
+          if (
+            !(target instanceof
+              Element)
+          ) {
+            return;
+          }
+
+          const anchor =
+            target.closest(
+              "a[href]"
+            );
+
+          if (
+            !(anchor instanceof
+              HTMLAnchorElement)
+          ) {
+            return;
+          }
+
+          let url = null;
+
+          try {
+            url =
+              new URL(
+                anchor.href,
+                location.href
+              );
+          } catch (_) {
+            return;
+          }
+
+          const host =
+            url.hostname
+              .toLowerCase();
+
+          const youtubeHost =
+            host ===
+              "youtube.com" ||
+            host ===
+              "www.youtube.com" ||
+            host ===
+              "m.youtube.com";
+
+          if (
+            !youtubeHost ||
+            isPlaybackNavigationURL(
+              url.href
+            )
+          ) {
+            return;
+          }
+
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation();
+
+          try {
+            window.webkit
+              ?.messageHandlers
+              ?.browseRequest
+              ?.postMessage({
+                url:
+                  url.href
+              });
+          } catch (_) {}
+        };
+
       const recordPlayerControlIntent =
         (event) => {
           const target =
@@ -1967,6 +2102,18 @@ enum PlaybackBridgeScript {
               });
           } catch (_) {}
         };
+
+      nativeDocumentAddEventListener(
+        "click",
+        routeBrowseLink,
+        true
+      );
+
+      nativeDocumentAddEventListener(
+        "auxclick",
+        routeBrowseLink,
+        true
+      );
 
       nativeDocumentAddEventListener(
         "play",
