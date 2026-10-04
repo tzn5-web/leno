@@ -52,6 +52,13 @@ struct YouTubeWebView: UIViewRepresentable {
             configuration: configuration
         )
 
+        // Deliberately identify as desktop Safari. The V5 backend uses the
+        // desktop YouTube player, then adapts it inside our native shell.
+        webView.customUserAgent =
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) " +
+            "Version/18.3 Safari/605.1.15"
+
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
         webView.allowsBackForwardNavigationGestures = true
@@ -309,6 +316,32 @@ struct YouTubeWebView: UIViewRepresentable {
             let scheme =
                 url.scheme?.lowercased() ?? ""
 
+            let blockedAppSchemes = [
+                "youtube",
+                "vnd.youtube",
+                "itms-apps",
+                "itms-services"
+            ]
+
+            if blockedAppSchemes.contains(scheme) {
+                decisionHandler(.cancel)
+                return
+            }
+
+            if let normalized =
+                    normalizeYouTubeURL(url),
+               normalized != url {
+                decisionHandler(.cancel)
+
+                webView.load(
+                    URLRequest(
+                        url: normalized
+                    )
+                )
+
+                return
+            }
+
             let allowedSchemes = [
                 "http",
                 "https",
@@ -322,6 +355,99 @@ struct YouTubeWebView: UIViewRepresentable {
                     ? .allow
                     : .cancel
             )
+        }
+
+        private func normalizeYouTubeURL(
+            _ url: URL
+        ) -> URL? {
+            guard var components =
+                    URLComponents(
+                        url: url,
+                        resolvingAgainstBaseURL: false
+                    ) else {
+                return nil
+            }
+
+            let host =
+                components.host?
+                    .lowercased() ?? ""
+
+            let youtubeHosts = [
+                "youtube.com",
+                "www.youtube.com",
+                "m.youtube.com",
+                "youtu.be"
+            ]
+
+            guard youtubeHosts.contains(host) else {
+                return nil
+            }
+
+            if host == "youtu.be" {
+                let id =
+                    components.path
+                        .split(separator: "/")
+                        .first
+                        .map(String.init)
+
+                guard let id,
+                      !id.isEmpty else {
+                    return nil
+                }
+
+                components.host =
+                    "www.youtube.com"
+
+                components.path =
+                    "/watch"
+
+                var queryItems =
+                    components.queryItems ?? []
+
+                queryItems.removeAll {
+                    $0.name == "v"
+                }
+
+                queryItems.append(
+                    URLQueryItem(
+                        name: "v",
+                        value: id
+                    )
+                )
+
+                components.queryItems =
+                    queryItems
+            } else {
+                components.host =
+                    "www.youtube.com"
+            }
+
+            var queryItems =
+                components.queryItems ?? []
+
+            queryItems.removeAll {
+                $0.name == "app" ||
+                $0.name == "persist_app"
+            }
+
+            queryItems.append(
+                URLQueryItem(
+                    name: "app",
+                    value: "desktop"
+                )
+            )
+
+            queryItems.append(
+                URLQueryItem(
+                    name: "persist_app",
+                    value: "1"
+                )
+            )
+
+            components.queryItems =
+                queryItems
+
+            return components.url
         }
 
         private func ensureHomeContainsVideos(
@@ -410,7 +536,7 @@ struct YouTubeWebView: UIViewRepresentable {
                             guard let trending =
                                     URL(
                                       string:
-                                        "https://m.youtube.com/feed/trending"
+                                        "https://www.youtube.com/feed/trending?app=desktop&persist_app=1"
                                     ) else {
                                 return
                             }
@@ -424,7 +550,7 @@ struct YouTubeWebView: UIViewRepresentable {
                             var components =
                                 URLComponents(
                                   string:
-                                    "https://m.youtube.com/results"
+                                    "https://www.youtube.com/results"
                                 )
 
                             components?.queryItems = [
@@ -433,6 +559,14 @@ struct YouTubeWebView: UIViewRepresentable {
                                       "search_query",
                                     value:
                                       "trending videos"
+                                ),
+                                URLQueryItem(
+                                    name: "app",
+                                    value: "desktop"
+                                ),
+                                URLQueryItem(
+                                    name: "persist_app",
+                                    value: "1"
                                 )
                             ]
 
