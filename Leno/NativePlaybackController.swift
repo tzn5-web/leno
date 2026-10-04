@@ -18,11 +18,14 @@ final class NativePlaybackController:
 
     enum PlaybackError: LocalizedError {
         case noPlayableStream
+        case missingMediaTracks
 
         var errorDescription: String? {
             switch self {
             case .noPlayableStream:
-                return "Nu am găsit un stream audio+video compatibil pentru acest clip."
+                return "Nu am găsit streamuri native compatibile pentru acest clip."
+            case .missingMediaTracks:
+                return "Streamurile DASH nu conțin piste audio/video utilizabile."
             }
         }
     }
@@ -46,6 +49,7 @@ final class NativePlaybackController:
     private var pipPossibleObservation: NSKeyValueObservation?
     private var pictureInPictureController: AVPictureInPictureController?
     private var remoteTargets: [(MPRemoteCommand, Any)] = []
+    private var retainedPlaybackAssets: [AVAsset] = []
 
     override init() {
         super.init()
@@ -97,21 +101,60 @@ final class NativePlaybackController:
 
                 guard !Task.isCancelled else { return }
 
-                guard let stream = streams
+                let metadata = try? await youtube.metadata
+                let resolvedTitle = metadata?.title ?? "YouTube"
+
+                if let progressive = streams
                     .filterVideoAndAudio()
                     .filter({ $0.isNativelyPlayable })
-                    .highestResolutionStream() else {
+                    .highestResolutionStream() {
+                    guard !Task.isCancelled else { return }
+
+                    await MainActor.run { [weak self] in
+                        self?.prepareNativePlayback(
+                            asset: AVURLAsset(url: progressive.url),
+                            title: resolvedTitle
+                        )
+                    }
+
+                    return
+                }
+
+                let nativeVideoOnly = streams
+                    .filterVideoOnly()
+                    .filter({ $0.isNativelyPlayable })
+
+                let nativeAudioOnly = streams
+                    .filterAudioOnly()
+                    .filter({ $0.isNativelyPlayable })
+
+                let preferredVideo = nativeVideoOnly
+                    .filter({ $0.fileExtension == .mp4 })
+                    .highestResolutionStream()
+                    ?? nativeVideoOnly.highestResolutionStream()
+
+                let preferredAudio = nativeAudioOnly
+                    .filter({ $0.fileExtension == .mp4 })
+                    .highestAudioBitrateStream()
+                    ?? nativeAudioOnly.highestAudioBitrateStream()
+
+                guard let videoStream = preferredVideo,
+                      let audioStream = preferredAudio else {
                     throw PlaybackError.noPlayableStream
                 }
 
-                let metadata = try? await youtube.metadata
+                let composedAsset = try await self?.makeDASHComposition(
+                    videoURL: videoStream.url,
+                    audioURL: audioStream.url
+                )
 
                 guard !Task.isCancelled else { return }
+                guard let composedAsset else { return }
 
                 await MainActor.run { [weak self] in
                     self?.prepareNativePlayback(
-                        url: stream.url,
-                        title: metadata?.title ?? "YouTube"
+                        asset: composedAsset,
+                        title: resolvedTitle
                     )
                 }
             } catch {
@@ -142,6 +185,7 @@ final class NativePlaybackController:
 
         player.pause()
         player.replaceCurrentItem(with: nil)
+        retainedPlaybackAssets.removeAll()
 
         itemStatusObservation?.invalidate()
         itemStatusObservation = nil
@@ -280,11 +324,12 @@ final class NativePlaybackController:
         }
     }
 
-    private func prepareNativePlayback(url: URL, title: String) {
+    private func prepareNativePlayback(asset: AVAsset, title: String) {
         activateAudioSession()
         self.title = title.isEmpty ? "YouTube" : title
+        retainedPlaybackAssets = [asset]
 
-        let item = AVPlayerItem(url: url)
+        let item = AVPlayerItem(asset: asset)
 
         itemStatusObservation?.invalidate()
         itemStatusObservation = item.observe(
@@ -323,6 +368,81 @@ final class NativePlaybackController:
         }
 
         player.replaceCurrentItem(with: item)
+    }
+
+    private func makeDASHComposition(
+        videoURL: URL,
+        audioURL: URL
+    ) async throws -> AVMutableComposition {
+        let videoAsset = AVURLAsset(url: videoURL)
+        let audioAsset = AVURLAsset(url: audioURL)
+
+        async let videoTracks = videoAsset.loadTracks(withMediaType: .video)
+        async let audioTracks = audioAsset.loadTracks(withMediaType: .audio)
+        async let videoDuration = videoAsset.load(.duration)
+        async let audioDuration = audioAsset.load(.duration)
+
+        guard let sourceVideoTrack = try await videoTracks.first,
+              let sourceAudioTrack = try await audioTracks.first else {
+            throw PlaybackError.missingMediaTracks
+        }
+
+        let resolvedVideoDuration = try await videoDuration
+        let resolvedAudioDuration = try await audioDuration
+
+        let playableDuration = CMTimeMinimum(
+            resolvedVideoDuration,
+            resolvedAudioDuration
+        )
+
+        guard playableDuration.isNumeric,
+              playableDuration > .zero else {
+            throw PlaybackError.missingMediaTracks
+        }
+
+        let composition = AVMutableComposition()
+
+        guard let compositionVideoTrack = composition.addMutableTrack(
+            withMediaType: .video,
+            preferredTrackID: kCMPersistentTrackID_Invalid
+        ),
+        let compositionAudioTrack = composition.addMutableTrack(
+            withMediaType: .audio,
+            preferredTrackID: kCMPersistentTrackID_Invalid
+        ) else {
+            throw PlaybackError.missingMediaTracks
+        }
+
+        let timeRange = CMTimeRange(
+            start: .zero,
+            duration: playableDuration
+        )
+
+        try compositionVideoTrack.insertTimeRange(
+            timeRange,
+            of: sourceVideoTrack,
+            at: .zero
+        )
+
+        try compositionAudioTrack.insertTimeRange(
+            timeRange,
+            of: sourceAudioTrack,
+            at: .zero
+        )
+
+        if let transform = try? await sourceVideoTrack.load(.preferredTransform) {
+            compositionVideoTrack.preferredTransform = transform
+        }
+
+        await MainActor.run { [weak self] in
+            self?.retainedPlaybackAssets = [
+                videoAsset,
+                audioAsset,
+                composition
+            ]
+        }
+
+        return composition
     }
 
     private func configureAudioSession() {

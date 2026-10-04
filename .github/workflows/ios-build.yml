@@ -39,6 +39,9 @@ jobs:
           grep -q 'AVPictureInPictureController' Leno/NativePlaybackController.swift
           grep -q 'audiovisualBackgroundPlaybackPolicy = .continuesIfPossible' Leno/NativePlaybackController.swift
           grep -q 'filterVideoAndAudio' Leno/NativePlaybackController.swift
+          grep -q 'AVMutableComposition' Leno/NativePlaybackController.swift
+          grep -q 'filterVideoOnly' Leno/NativePlaybackController.swift
+          grep -q 'filterAudioOnly' Leno/NativePlaybackController.swift
           grep -q 'messageHandlers?.openVideo' Leno/NavigationBridgeScript.swift
           grep -q 'session.loadHome()' Leno/YouTubeWebView.swift
 
