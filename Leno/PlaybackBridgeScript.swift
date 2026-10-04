@@ -1995,20 +1995,16 @@ enum PlaybackBridgeScript {
             return;
           }
 
-          const host =
-            url.hostname
+          const protocol =
+            url.protocol
               .toLowerCase();
 
-          const youtubeHost =
-            host ===
-              "youtube.com" ||
-            host ===
-              "www.youtube.com" ||
-            host ===
-              "m.youtube.com";
+          const webURL =
+            protocol === "http:" ||
+            protocol === "https:";
 
           if (
-            !youtubeHost ||
+            !webURL ||
             isPlaybackNavigationURL(
               url.href
             )
