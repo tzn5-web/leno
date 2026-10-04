@@ -97,6 +97,104 @@ enum AdBlockScript {
         (document.head || document.documentElement)?.appendChild(style);
       };
 
+      const removeOpenInYouTubePromos = () => {
+        try {
+          for (
+            const meta of
+            document.querySelectorAll(
+              'meta[name="apple-itunes-app"]'
+            )
+          ) {
+            meta.remove();
+          }
+
+          const appURL =
+            /^(?:youtube|vnd\.youtube|itms-apps|itms-services|intent):|apps\.apple\.com|itunes\.apple\.com|redirect_app_store_ios=1|mweb_to_native_app/i;
+
+          const openLabel =
+            /^(?:open|open app|open in app|open in youtube|watch in youtube|deschide|deschide aplicația|deschide aplicatia|deschide în youtube|deschide in youtube)$/i;
+
+          const candidates =
+            document.querySelectorAll(
+              [
+                "a[href]",
+                "button",
+                "[role='button']",
+                "ytm-open-in-app-button-renderer",
+                "ytm-app-promo",
+                "ytm-promo"
+              ].join(",")
+            );
+
+          for (const node of candidates) {
+            const href =
+              node instanceof
+                HTMLAnchorElement
+                ? node.href || ""
+                : node.querySelector
+                    ?.("a[href]")
+                    ?.href || "";
+
+            const label =
+              String(
+                node.getAttribute?.(
+                  "aria-label"
+                ) ||
+                node.textContent ||
+                ""
+              )
+              .replace(
+                /\s+/g,
+                " "
+              )
+              .trim();
+
+            const explicitAppTarget =
+              appURL.test(href);
+
+            const explicitOpenControl =
+              openLabel.test(label);
+
+            if (
+              !explicitAppTarget &&
+              !explicitOpenControl
+            ) {
+              continue;
+            }
+
+            const host =
+              node.closest?.(
+                [
+                  "ytm-open-in-app-button-renderer",
+                  "ytm-app-promo",
+                  "ytm-promo",
+                  "ytm-mobile-topbar-renderer",
+                  "[class*='app-promo']",
+                  "[class*='open-app']"
+                ].join(",")
+              ) ||
+              node;
+
+            if (
+              host instanceof
+                HTMLElement
+            ) {
+              host.style.setProperty(
+                "display",
+                "none",
+                "important"
+              );
+
+              host.style.setProperty(
+                "visibility",
+                "hidden",
+                "important"
+              );
+            }
+          }
+        } catch (_) {}
+      };
+
       const clickSkipButton = () => {
         try {
           const player = document.querySelector(".html5-video-player.ad-showing, .ad-showing");
@@ -121,12 +219,14 @@ enum AdBlockScript {
         setTimeout(() => {
           maintenanceScheduled = false;
           installCosmeticRules();
+          removeOpenInYouTubePromos();
           cleanKnownPlayerGlobal();
           clickSkipButton();
         }, 180);
       };
 
       installCosmeticRules();
+      removeOpenInYouTubePromos();
       cleanKnownPlayerGlobal();
       clickSkipButton();
 
@@ -150,6 +250,7 @@ enum AdBlockScript {
       }
 
       setInterval(() => {
+        removeOpenInYouTubePromos();
         cleanKnownPlayerGlobal();
         clickSkipButton();
       }, 2000);
