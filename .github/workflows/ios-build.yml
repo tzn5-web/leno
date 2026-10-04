@@ -105,7 +105,7 @@ jobs:
           test "$BUNDLE_ID" = "com.tzn5web.leno"
           test "$BACKGROUND_MODE" = "audio"
           test "$VERSION" = "0.4.5"
-          test "$BUILD" = "11"
+          test "$BUILD" = "12"
 
       - name: Package unsigned IPA
         run: |
