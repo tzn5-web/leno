@@ -251,288 +251,68 @@ enum PlaybackBridgeScript {
         );
       } catch (_) {}
 
-      const nativeFetch =
-        window.fetch.bind(window);
+      const shieldPageMediaActions = () => {
+        try {
+          const mediaSession =
+            navigator.mediaSession;
 
-      const hlsProbeState = {
-        lastVideoID: "",
-        lastManifestHost: "",
-        lastProbeAt: 0
-      };
+          if (!mediaSession) return;
 
-      const reportHLSProbe =
-        async (
-          hlsManifestUrl,
-          videoID,
-          source
-        ) => {
-          try {
-            if (
-              !hlsManifestUrl ||
-              typeof hlsManifestUrl !==
-                "string"
-            ) {
-              return;
-            }
-
-            const url =
-              new URL(
-                hlsManifestUrl,
-                location.href
-              );
-
-            const now =
-              Date.now();
-
-            if (
-              hlsProbeState
-                .lastVideoID ===
-                videoID &&
-              hlsProbeState
-                .lastManifestHost ===
-                url.host &&
-              now -
-                hlsProbeState
-                  .lastProbeAt <
-                15000
-            ) {
-              return;
-            }
-
-            hlsProbeState.lastVideoID =
-              videoID || "";
-
-            hlsProbeState
-              .lastManifestHost =
-              url.host;
-
-            hlsProbeState.lastProbeAt =
-              now;
-
-            const response =
-              await nativeFetch(
-                url.href,
-                {
-                  credentials:
-                    "include",
-                  cache:
-                    "no-store"
-                }
-              );
-
-            const text =
-              await response.text();
-
-            const nMatch =
-              text.match(
-                /\/n\/([A-Za-z0-9_-]{10,})\//
-              );
-
-            window.webkit
-              ?.messageHandlers
-              ?.hlsProbe
-              ?.postMessage({
-                videoID:
-                  videoID || "",
-                source:
-                  source || "unknown",
-                manifestHost:
-                  url.host,
-                status:
-                  response.status,
-                isM3U8:
-                  text.includes(
-                    "#EXTM3U"
-                  ),
-                hasSPC:
-                  url.searchParams
-                    .has("spc"),
-                hasNChallenge:
-                  !!nMatch,
-                nLength:
-                  nMatch
-                    ? nMatch[1]
-                        .length
-                    : 0,
-                hasVariants:
-                  text.includes(
-                    "#EXT-X-STREAM-INF"
-                  ),
-                byteCount:
-                  text.length
-              });
-          } catch (error) {
-            window.webkit
-              ?.messageHandlers
-              ?.hlsProbe
-              ?.postMessage({
-                videoID:
-                  videoID || "",
-                source:
-                  source || "unknown",
-                error:
-                  String(
-                    error?.message ||
-                    error ||
-                    "probe failed"
-                  )
-              });
-          }
-        };
-
-      const inspectPlayerPayload =
-        (
-          payload,
-          source,
-          videoID
-        ) => {
-          try {
-            const object =
-              typeof payload ===
-                "string"
-                ? JSON.parse(
-                    payload
-                  )
-                : payload;
-
-            const hls =
-              object
-                ?.streamingData
-                ?.hlsManifestUrl;
-
-            if (
-              typeof hls ===
-              "string" &&
-              hls
-            ) {
-              reportHLSProbe(
-                hls,
-                videoID ||
-                  currentVideoID(),
-                source
-              );
-            }
-          } catch (_) {}
-        };
-
-      window.fetch =
-        async function(...args) {
-          const input =
-            args[0];
-
-          const requestURL =
-            typeof input ===
-              "string"
-              ? input
-              : input?.url || "";
-
-          const response =
-            await nativeFetch(
-              ...args
+          const proto =
+            Object.getPrototypeOf(
+              mediaSession
             );
 
           if (
-            String(
-              requestURL
-            ).includes(
-              "youtubei/v1/player"
-            )
+            proto &&
+            typeof proto
+              .setActionHandler ===
+              "function" &&
+            !proto
+              .__youtubeVcdActionShield
           ) {
-            try {
-              const clone =
-                response.clone();
+            Object.defineProperty(
+              proto,
+              "__youtubeVcdActionShield",
+              {
+                configurable: false,
+                enumerable: false,
+                writable: false,
+                value: true
+              }
+            );
 
-              const text =
-                await clone.text();
-
-              inspectPlayerPayload(
-                text,
-                "fetch",
-                currentVideoID()
-              );
-            } catch (_) {}
+            Object.defineProperty(
+              proto,
+              "setActionHandler",
+              {
+                configurable: true,
+                enumerable: false,
+                writable: true,
+                value:
+                  function() {
+                    return undefined;
+                  }
+              }
+            );
           }
-
-          return response;
-        };
-
-      const nativeXHROpen =
-        XMLHttpRequest
-          .prototype
-          .open;
-
-      const nativeXHRSend =
-        XMLHttpRequest
-          .prototype
-          .send;
-
-      XMLHttpRequest
-        .prototype
-        .open =
-        function(
-          method,
-          url,
-          ...rest
-        ) {
+        } catch (_) {
           try {
-            this
-              .__youtubeVcdURL =
-              String(
-                url || ""
-              );
+            navigator.mediaSession
+              .setActionHandler =
+              function() {
+                return undefined;
+              };
           } catch (_) {}
+        }
+      };
 
-          return nativeXHROpen
-            .call(
-              this,
-              method,
-              url,
-              ...rest
-            );
-        };
-
-      XMLHttpRequest
-        .prototype
-        .send =
-        function(...args) {
-          try {
-            if (
-              String(
-                this
-                  .__youtubeVcdURL ||
-                ""
-              ).includes(
-                "youtubei/v1/player"
-              )
-            ) {
-              this.addEventListener(
-                "load",
-                () => {
-                  try {
-                    inspectPlayerPayload(
-                      this.responseText,
-                      "xhr",
-                      currentVideoID()
-                    );
-                  } catch (_) {}
-                },
-                {
-                  once: true
-                }
-              );
-            }
-          } catch (_) {}
-
-          return nativeXHRSend
-            .apply(
-              this,
-              args
-            );
-        };
+      shieldPageMediaActions();
 
       const state = {
         video: null,
         wantsPlayback: false,
+        explicitPause: false,
         userPauseUntil: 0,
         nativeBackground: false,
         videoID: "",
@@ -916,6 +696,7 @@ enum PlaybackBridgeScript {
         if (
           !video ||
           !state.wantsPlayback ||
+          state.explicitPause ||
           state.systemInterruption ||
           video.ended ||
           Date.now() <=
@@ -983,6 +764,7 @@ enum PlaybackBridgeScript {
 
         attachVideo(video);
 
+        state.explicitPause = false;
         state.wantsPlayback = true;
         state.userPauseUntil = 0;
         state.transitionRecoveryUntil = 0;
@@ -1003,9 +785,10 @@ enum PlaybackBridgeScript {
 
         attachVideo(video);
 
+        state.explicitPause = true;
         state.wantsPlayback = false;
         state.userPauseUntil =
-          Date.now() + 5000;
+          Number.POSITIVE_INFINITY;
         state.transitionRecoveryUntil = 0;
 
         clearRecoveryTimers();
@@ -1091,6 +874,17 @@ enum PlaybackBridgeScript {
       };
 
       const onPlay = () => {
+        if (state.explicitPause) {
+          try {
+            nativePause.call(
+              state.video
+            );
+          } catch (_) {}
+
+          postState(true);
+          return;
+        }
+
         state.wantsPlayback = true;
         state.userPauseUntil = 0;
 
@@ -1116,6 +910,14 @@ enum PlaybackBridgeScript {
         const now = Date.now();
 
         if (state.systemInterruption) {
+          clearRecoveryTimers();
+          postState(true);
+          return;
+        }
+
+        if (state.explicitPause) {
+          state.wantsPlayback = false;
+          state.transitionRecoveryUntil = 0;
           clearRecoveryTimers();
           postState(true);
           return;
@@ -1521,6 +1323,11 @@ enum PlaybackBridgeScript {
             ) {
               attachVideo(this);
 
+              if (state.explicitPause) {
+                postState(true);
+                return Promise.resolve();
+              }
+
               state.wantsPlayback =
                 true;
 
@@ -1557,6 +1364,7 @@ enum PlaybackBridgeScript {
           configureWebAudioSession();
 
           if (
+            !state.explicitPause &&
             !video.paused &&
             !video.ended &&
             Date.now() >
@@ -1598,6 +1406,7 @@ enum PlaybackBridgeScript {
 
         if (
           state.wantsPlayback &&
+          !state.explicitPause &&
           Date.now() >
             state.userPauseUntil
         ) {
@@ -1998,6 +1807,7 @@ enum PlaybackBridgeScript {
         keepAlive() {
           if (
             state.wantsPlayback &&
+            !state.explicitPause &&
             Date.now() >
               state.userPauseUntil
           ) {
@@ -2026,6 +1836,8 @@ enum PlaybackBridgeScript {
                 : true,
             wantsPlayback:
               state.wantsPlayback,
+            explicitPause:
+              state.explicitPause,
             realHidden:
               isBackgrounded(),
             currentTime:
@@ -2092,25 +1904,43 @@ enum PlaybackBridgeScript {
           attachVideo(video);
 
           if (
-            video.paused ||
-            video.ended
+            !actionAllowed(
+              "media-intent",
+              260
+            )
           ) {
-            state.wantsPlayback =
-              true;
+            return;
+          }
 
-            state.userPauseUntil =
-              0;
+          const intent =
+            (
+              video.paused ||
+              video.ended
+            )
+              ? "play"
+              : "pause";
+
+          if (intent === "play") {
+            state.explicitPause = false;
+            state.wantsPlayback = true;
+            state.userPauseUntil = 0;
           } else {
-            state.wantsPlayback =
-              false;
-
+            state.explicitPause = true;
+            state.wantsPlayback = false;
             state.userPauseUntil =
-              Date.now() + 3500;
-
+              Number.POSITIVE_INFINITY;
             state.transitionRecoveryUntil = 0;
-
             clearRecoveryTimers();
           }
+
+          try {
+            window.webkit
+              ?.messageHandlers
+              ?.mediaIntent
+              ?.postMessage({
+                intent
+              });
+          } catch (_) {}
         };
 
       nativeDocumentAddEventListener(
