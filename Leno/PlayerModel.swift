@@ -205,8 +205,9 @@ final class PlayerModel: ObservableObject {
         phase = .stalled
         errorMessage = "Recovering playback (attempt \(retryAttempt)/\(maximumAutomaticRetries))…"
 
+        let delay = Double(self.retryAttempt)
         Task { [weak self] in
-            try? await Task.sleep(for: .seconds(Double(retryAttempt)))
+            try? await Task.sleep(for: .seconds(delay))
             guard let self, self.currentURL == currentURL else { return }
             self.startPlayback(url: currentURL)
         }
