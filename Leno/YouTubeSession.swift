@@ -662,7 +662,21 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             }
 
             self.markLoading()
-            webView.load(URLRequest(url: url))
+
+            var request =
+                URLRequest(url: url)
+
+            if url.host?
+                .lowercased()
+                .hasSuffix("youtube.com") == true {
+                request.setValue(
+                    "en-US,en;q=0.9",
+                    forHTTPHeaderField:
+                        "Accept-Language"
+                )
+            }
+
+            webView.load(request)
         }
     }
 
