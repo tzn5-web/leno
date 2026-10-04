@@ -167,6 +167,8 @@ for needle in [
     "lastStablePlaybackTime",
     "pendingRepairResumeTime",
     "foregroundRepairWindowUntil",
+    "requestMediaPlaybackState",
+    "nativeMediaPlaybackState",
     "beginSystemInterruptionCall",
     "endSystemInterruptionCall",
 ]:
@@ -222,7 +224,7 @@ print("V4 SOURCE AUDIT PASSED")
 print(f" - raw isReallyHidden() calls: {raw_hidden_count}")
 print(" - one native transport owner")
 print(" - media replacement intent/position preserved")
-print(" - persistent foreground readyState=0 repair is bounded and resumable")
+print(" - persistent foreground readyState=0 / WK suspended repair is bounded and resumable")
 print(" - same-element route changes and AVAudioSession interruptions are isolated")
 print(" - lock-screen context survives transient video-element replacement")
 print(" - PiP/fullscreen controls present and WebKit fallback retained")
