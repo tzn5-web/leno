@@ -211,8 +211,8 @@ for required in [
     require(required in resolver, f"resolver invariant missing: {required}")
 
 require(
-    "DENO_VERSION=2.9.7" in dockerfile
-    and "deno.land/install.sh" in dockerfile
+    "denoland/deno:bin-2.9.7" in dockerfile
+    and "COPY --from=deno /deno /usr/local/bin/deno" in dockerfile
     and "nodejs" not in dockerfile,
     "resolver Docker runtime must use pinned supported Deno, not distro Node",
 )
