@@ -11,19 +11,21 @@ struct YouTubeWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let userContentController = WKUserContentController()
 
-        userContentController.addUserScript(
-            WKUserScript(
-                source: AdBlockScript.source,
-                injectionTime: .atDocumentStart,
-                forMainFrameOnly: false
-            )
-        )
-
+        // Playback lifecycle shielding must be the first project script:
+        // it captures pristine WebKit APIs before YouTube or our other hooks.
         userContentController.addUserScript(
             WKUserScript(
                 source: PlaybackBridgeScript.source,
                 injectionTime: .atDocumentStart,
                 forMainFrameOnly: true
+            )
+        )
+
+        userContentController.addUserScript(
+            WKUserScript(
+                source: AdBlockScript.source,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: false
             )
         )
 
