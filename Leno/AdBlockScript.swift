@@ -14,29 +14,42 @@ enum AdBlockScript {
         "adSlots"
       ]);
 
-      const stripAds = (value, depth = 0) => {
-        if (!value || depth > 12) return value;
+      const stripAds = (root) => {
+        if (!root || typeof root !== "object") return root;
 
-        if (Array.isArray(value)) {
-          for (const item of value) stripAds(item, depth + 1);
-          return value;
-        }
+        const stack = [{ value: root, depth: 0 }];
+        let visited = 0;
+        const maxVisited = 2500;
+        const maxDepth = 10;
 
-        if (typeof value !== "object") return value;
+        while (stack.length && visited < maxVisited) {
+          const { value, depth } = stack.pop();
+          if (!value || typeof value !== "object" || depth > maxDepth) continue;
+          visited++;
 
-        for (const key of Object.keys(value)) {
-          if (AD_KEYS.has(key)) {
-            try { delete value[key]; } catch (_) {}
+          if (Array.isArray(value)) {
+            for (const child of value) {
+              if (child && typeof child === "object") {
+                stack.push({ value: child, depth: depth + 1 });
+              }
+            }
             continue;
           }
 
-          const child = value[key];
-          if (child && typeof child === "object") {
-            stripAds(child, depth + 1);
+          for (const key of Object.keys(value)) {
+            if (AD_KEYS.has(key)) {
+              try { delete value[key]; } catch (_) {}
+              continue;
+            }
+
+            const child = value[key];
+            if (child && typeof child === "object") {
+              stack.push({ value: child, depth: depth + 1 });
+            }
           }
         }
 
-        return value;
+        return root;
       };
 
       const originalParse = JSON.parse;
@@ -46,12 +59,14 @@ enum AdBlockScript {
         return result;
       };
 
-      const originalResponseJSON = Response.prototype.json;
-      Response.prototype.json = async function(...args) {
-        const result = await originalResponseJSON.apply(this, args);
-        try { stripAds(result); } catch (_) {}
-        return result;
-      };
+      if (typeof Response !== "undefined" && Response.prototype?.json) {
+        const originalResponseJSON = Response.prototype.json;
+        Response.prototype.json = async function(...args) {
+          const result = await originalResponseJSON.apply(this, args);
+          try { stripAds(result); } catch (_) {}
+          return result;
+        };
+      }
 
       const cleanKnownGlobals = () => {
         try {
@@ -111,13 +126,22 @@ enum AdBlockScript {
         } catch (_) {}
       };
 
+      let scheduled = false;
+      const scheduleMaintenance = () => {
+        if (scheduled) return;
+        scheduled = true;
+
+        setTimeout(() => {
+          scheduled = false;
+          cleanKnownGlobals();
+          removeAdUI();
+        }, 180);
+      };
+
       cleanKnownGlobals();
       removeAdUI();
 
-      const observer = new MutationObserver(() => {
-        cleanKnownGlobals();
-        removeAdUI();
-      });
+      const observer = new MutationObserver(scheduleMaintenance);
 
       const startObserver = () => {
         if (document.documentElement) {
@@ -147,7 +171,7 @@ enum AdBlockScript {
         cleanKnownGlobals();
         removeAdUI();
         reportMediaState();
-      }, 1500);
+      }, 2000);
     })();
     """#
 
