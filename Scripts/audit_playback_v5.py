@@ -48,7 +48,7 @@ for needle in [
     forbid(all_swift, needle, "compiled Leno sources")
 
 require('MARKETING_VERSION: "0.4.5"' in project, "version must be 0.4.5")
-require('CURRENT_PROJECT_VERSION: "11"' in project, "build must be 11")
+require('CURRENT_PROJECT_VERSION: "12"' in project, "build must be 12")
 require("UIBackgroundModes:" in project and "- audio" in project, "audio background mode missing")
 require("excludes:" not in project, "source excludes remain")
 
@@ -64,6 +64,27 @@ require(
     'webView.customUserAgent =' in webview
     and 'Macintosh; Intel Mac OS X' in webview,
     "desktop Safari user agent missing",
+)
+
+for needle in [
+    '.name: "SOCS"',
+    '.value: "CAI"',
+    '.domain: ".youtube.com"',
+    '.httpCookieStore',
+    '.setCookie(cookie)',
+]:
+    require(needle in webview, f"EU consent bootstrap missing: {needle}")
+
+require(
+    webview.find(".setCookie(cookie)")
+    < webview.find("session.loadHome()", webview.find(".setCookie(cookie)")),
+    "YouTube must not load before the SOCS cookie completion path",
+)
+
+require(
+    '"Accept-Language"' in session
+    and '"en-US,en;q=0.9"' in session,
+    "stable initial YouTube Accept-Language header missing",
 )
 
 bridge_index = webview.find("source: PlaybackBridgeScript.source")
@@ -154,6 +175,24 @@ require(
     "native desktop URL normalization missing",
 )
 
+for needle in [
+    'host == "consent.youtube.com"',
+    'host == "consent.google.com"',
+    "let contentRoute =",
+    'path == "/watch"',
+    'path.hasPrefix("/shorts/")',
+    'path.hasPrefix("/feed/")',
+]:
+    require(needle in webview, f"native consent-safe routing missing: {needle}")
+
+for needle in [
+    "const contentRoute =",
+    'path === "/watch"',
+    'path.startsWith(\n              "/shorts/"',
+    'path.startsWith(\n              "/feed/"',
+]:
+    require(needle in desktop, f"JS consent-safe routing missing: {needle}")
+
 require(
     "https://m.youtube.com" not in all_swift,
     "mobile YouTube URL remains in compiled source",
@@ -234,3 +273,5 @@ print(" - mobile guide drawer preserved; mini-guide hidden")
 print(" - app/universal-link promotion paths blocked")
 print(" - V4 background and freeze recovery retained")
 print(" - V5 backend telemetry connected to Swift")
+print(" - EU consent cookie is seeded before first YouTube load")
+print(" - desktop query parameters are limited to content routes")
