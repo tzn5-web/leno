@@ -413,8 +413,6 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         let mediaExists = body["hasMedia"] as? Bool ?? false
         let bridgeWantsPlayback =
             body["wantsPlayback"] as? Bool ?? false
-        let bridgeExplicitPause =
-            body["explicitPause"] as? Bool ?? false
         let bridgeReallyHidden =
             body["realHidden"] as? Bool ?? false
         let bridgeTransitionArmed =
@@ -449,8 +447,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                 )
 
             let effectiveExplicitPause =
-                self.explicitPauseActive ||
-                bridgeExplicitPause
+                self.explicitPauseActive
 
             let effectiveWantsPlayback =
                 effectiveExplicitPause
@@ -459,9 +456,6 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                         bridgeWantsPlayback ||
                         preserveNativeIntent
                     )
-
-            self.explicitPauseActive =
-                effectiveExplicitPause
 
             self.wantsPlayback =
                 effectiveWantsPlayback
@@ -858,7 +852,10 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                 return .commandFailed
             }
 
-            self.play()
+            DispatchQueue.main.async {
+                self.play()
+            }
+
             return .success
         }
 
@@ -869,7 +866,10 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                 return .commandFailed
             }
 
-            self.pause()
+            DispatchQueue.main.async {
+                self.pause()
+            }
+
             return .success
         }
 
@@ -880,7 +880,10 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                 return .commandFailed
             }
 
-            self.togglePlayback()
+            DispatchQueue.main.async {
+                self.togglePlayback()
+            }
+
             return .success
         }
 
@@ -892,7 +895,10 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                 return .commandFailed
             }
 
-            self.seek(by: 15)
+            DispatchQueue.main.async {
+                self.seek(by: 15)
+            }
+
             return .success
         }
 
@@ -904,7 +910,10 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                 return .commandFailed
             }
 
-            self.seek(by: -15)
+            DispatchQueue.main.async {
+                self.seek(by: -15)
+            }
+
             return .success
         }
 
@@ -920,7 +929,15 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                 return .commandFailed
             }
 
-            self.seek(to: event.positionTime)
+            let position =
+                event.positionTime
+
+            DispatchQueue.main.async {
+                self.seek(
+                    to: position
+                )
+            }
+
             return .success
         }
     }
