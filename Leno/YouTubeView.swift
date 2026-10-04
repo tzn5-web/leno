@@ -2,7 +2,6 @@ import SwiftUI
 
 struct YouTubeView: View {
     @StateObject private var session = YouTubeSession()
-    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack {
@@ -32,23 +31,6 @@ struct YouTubeView: View {
             }
         }
         .background(Color(.systemBackground))
-        .onChange(of: scenePhase) {
-            _, newPhase in
-
-            switch newPhase {
-            case .active:
-                session.applicationDidBecomeActive()
-
-            case .inactive:
-                session.applicationWillResignActive()
-
-            case .background:
-                session.applicationDidEnterBackground()
-
-            default:
-                break
-            }
-        }
     }
 
     private func recoveryPill(
