@@ -591,28 +591,33 @@ final class V9PlayerService:
 
         activateAudioSession()
 
-        command(
-            [
-                "loadfile",
-                media.video
-                    .relayURL
-                    .absoluteString,
-                "replace"
-            ]
-        )
+        let loadTarget:
+            String
 
         if let audio =
                 media.audio {
-            command(
-                [
-                    "audio-add",
-                    audio.relayURL
-                        .absoluteString,
-                    "select",
-                    "VcdResolver"
-                ]
-            )
+            loadTarget =
+                makeEDL(
+                    video:
+                        media.video
+                            .relayURL,
+                    audio:
+                        audio.relayURL
+                )
+        } else {
+            loadTarget =
+                media.video
+                    .relayURL
+                    .absoluteString
         }
+
+        command(
+            [
+                "loadfile",
+                loadTarget,
+                "replace"
+            ]
+        )
 
         setPause(
             false
@@ -749,6 +754,22 @@ final class V9PlayerService:
         @unknown default:
             break
         }
+    }
+
+    private func makeEDL(
+        video: URL,
+        audio: URL
+    ) -> String {
+        func escape(
+            _ url: URL
+        ) -> String {
+            let value =
+                url.absoluteString
+
+            return "%\(value.utf8.count)%\(value)"
+        }
+
+        return "edl://!new_stream;!no_clip;!no_chapters;\(escape(video));!new_stream;\(escape(audio))"
     }
 
     private func configureAudioSession() {
