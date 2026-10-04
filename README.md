@@ -1,35 +1,26 @@
 # Leno
 
-Minimal native iOS media player for iPhone, designed for iOS 27+ development and built entirely in GitHub Actions.
-
-## Architecture goals
-
-The stability model is inspired by the supplied Tizen TubeVanced package: local critical components, explicit startup/playback states, health/recovery behavior, and a fallback-oriented design rather than a single fragile execution path.
+Minimal iOS YouTube client scaffold for iPhone, targeting iOS 27+ and built entirely in GitHub Actions.
 
 ## Current scope
 
-- SwiftUI shell with Home / Search / Library
-- AVPlayer-based playback
-- Background audio session
-- Lock Screen / Control Center media commands
-- Picture in Picture
-- Explicit playback state machine
-- Limited automatic retry and stall recovery
-- Manual retry and clean player reset
+- YouTube web client hosted in WKWebView
+- Early injected JSON filter adapted from the user's Tizen implementation
+- Removes YouTube ad payload keys: `adPlacements`, `playerAds`, `adSlots`
+- Content rules for common external ad domains
+- DOM fallback to remove ad UI and press skip controls when present
+- Native background audio session
+- Lock Screen / Control Center play, pause and ±15 second commands
+- Picture in Picture request bridge
+- Automatic WebKit/navigation recovery with bounded retries
+- Native AVPlayer direct-media fallback
 - No analytics or third-party SDKs
 - Unsigned device build packaged as an IPA artifact in CI
 
-## Compatibility boundary
+## Reliability model
 
-The project intentionally keeps media-source integration separate from the native player. It does not include code that bypasses YouTube advertising, Premium entitlements, DRM, or access controls.
+The Tizen package uses a health gate plus fallback architecture. Leno mirrors that philosophy on iOS with explicit loading/recovery states, bounded retries, WebKit process recovery, and a separate native player path.
 
-## CI quality gates
+## Build
 
-GitHub Actions uses the `xcode-27` runner and XcodeGen. CI performs:
-
-1. project generation;
-2. Debug simulator compilation;
-3. static analysis;
-4. Release device compilation with signing disabled;
-5. unsigned IPA packaging;
-6. artifact upload.
+GitHub Actions uses the `xcode-27` runner, generates the Xcode project with XcodeGen, runs a device build and static analysis, then uploads an unsigned IPA artifact.
