@@ -17,7 +17,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Show Xcode version
         run: xcodebuild -version
@@ -116,7 +116,7 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent Payload Leno-unsigned.ipa
 
       - name: Upload IPA
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Leno-unsigned-ipa
           path: Leno-unsigned.ipa
@@ -124,7 +124,7 @@ jobs:
 
       - name: Upload simulator evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: simulator-smoke
           path: |
@@ -136,7 +136,7 @@ jobs:
 
       - name: Upload diagnostics on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-diagnostics
           path: |
