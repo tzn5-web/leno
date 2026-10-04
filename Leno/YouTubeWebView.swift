@@ -44,6 +44,11 @@ struct YouTubeWebView: UIViewRepresentable {
             name: "browseRequest"
         )
 
+        userContentController.add(
+            session,
+            name: "transitionEvent"
+        )
+
         let configuration = WKWebViewConfiguration()
         configuration.userContentController =
             userContentController
@@ -105,6 +110,11 @@ struct YouTubeWebView: UIViewRepresentable {
         uiView.configuration.userContentController
             .removeScriptMessageHandler(
                 forName: "browseRequest"
+            )
+
+        uiView.configuration.userContentController
+            .removeScriptMessageHandler(
+                forName: "transitionEvent"
             )
 
         uiView.navigationDelegate = nil
