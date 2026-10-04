@@ -339,7 +339,22 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                 : "YouTube"
 
             self.hasMedia = mediaExists
-            self.wantsPlayback = bridgeWantsPlayback
+
+            let preserveNativeIntent =
+                self.wantsPlayback &&
+                (
+                    self.appIsBackground ||
+                    self.isLoading ||
+                    bridgeReallyHidden ||
+                    bridgeTransitionArmed
+                )
+
+            let effectiveWantsPlayback =
+                bridgeWantsPlayback ||
+                preserveNativeIntent
+
+            self.wantsPlayback =
+                effectiveWantsPlayback
 
             if mediaExists {
                 self.hasPlaybackContext = true
@@ -379,7 +394,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                 (
                     !paused ||
                     (
-                        bridgeWantsPlayback &&
+                        effectiveWantsPlayback &&
                         (
                             bridgeReallyHidden ||
                             bridgeTransitionArmed
@@ -399,7 +414,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
             let frozenForegroundMedia =
                 mediaExists &&
-                bridgeWantsPlayback &&
+                effectiveWantsPlayback &&
                 !self.appIsBackground &&
                 !bridgeReallyHidden &&
                 newInDOM &&
@@ -415,7 +430,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
             if mediaExists {
                 self.updateNowPlaying()
-            } else if !bridgeWantsPlayback &&
+            } else if !effectiveWantsPlayback &&
                       !bridgeReallyHidden &&
                       !bridgeTransitionArmed &&
                       !self.appIsBackground {
