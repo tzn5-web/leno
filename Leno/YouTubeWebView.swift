@@ -32,11 +32,6 @@ struct YouTubeWebView: UIViewRepresentable {
             name: "mediaState"
         )
 
-        userContentController.add(
-            session,
-            name: "mediaCandidate"
-        )
-
         let configuration = WKWebViewConfiguration()
         configuration.userContentController =
             userContentController
@@ -88,11 +83,6 @@ struct YouTubeWebView: UIViewRepresentable {
         uiView.configuration.userContentController
             .removeScriptMessageHandler(
                 forName: "mediaState"
-            )
-
-        uiView.configuration.userContentController
-            .removeScriptMessageHandler(
-                forName: "mediaCandidate"
             )
 
         uiView.navigationDelegate = nil
