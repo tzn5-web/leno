@@ -24,15 +24,51 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+      - name: Debug simulator compile
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Leno.xcodeproj \
+            -scheme Leno \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/SimulatorDerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            clean build | tee build-debug.log
+
+      - name: Static analyze
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Leno.xcodeproj \
+            -scheme Leno \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/AnalyzeDerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            analyze | tee analyze.log
+
       - name: Build unsigned device app
         run: |
           set -o pipefail
-          xcodebuild             -project Leno.xcodeproj             -scheme Leno             -configuration Release             -sdk iphoneos             -destination 'generic/platform=iOS'             -derivedDataPath build/DerivedData             CODE_SIGNING_ALLOWED=NO             CODE_SIGNING_REQUIRED=NO             clean build | tee build.log
+          xcodebuild \
+            -project Leno.xcodeproj \
+            -scheme Leno \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            clean build | tee build-release.log
 
       - name: Package unsigned IPA
         run: |
           APP_PATH="build/DerivedData/Build/Products/Release-iphoneos/Leno.app"
           test -d "$APP_PATH"
+          rm -rf Payload
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/
           ditto -c -k --sequesterRsrc --keepParent Payload Leno-unsigned.ipa
@@ -44,10 +80,13 @@ jobs:
           path: Leno-unsigned.ipa
           if-no-files-found: error
 
-      - name: Upload build log on failure
+      - name: Upload diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: build-log
-          path: build.log
+          name: build-diagnostics
+          path: |
+            build-debug.log
+            analyze.log
+            build-release.log
           if-no-files-found: ignore
