@@ -107,7 +107,9 @@ final class V9MPVRenderView:
     }
 
     deinit {
-        tearDownGL()
+        MainActor.assumeIsolated {
+            tearDownGL()
+        }
     }
 
     func attach(
