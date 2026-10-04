@@ -214,17 +214,9 @@ final class BackgroundAudioHandoff {
                 seconds: 0.35,
                 preferredTimescale: 600
             )
-        ) { [weak self] _ in
-            guard let self,
-                  self.isActive,
-                  shouldPlay else {
-                return
-            }
+        )
 
-            self.player.play()
-        }
-
-        if shouldPlay && safeSeconds < 0.05 {
+        if shouldPlay {
             player.play()
         }
 
