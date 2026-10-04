@@ -170,6 +170,7 @@ for needle in [
     "foregroundRepairWindowUntil",
     "requestMediaPlaybackState",
     "nativeMediaPlaybackState",
+    "pendingWebProcessRecovery",
     "beginSystemInterruptionCall",
     "endSystemInterruptionCall",
 ]:
@@ -228,5 +229,6 @@ print(" - media replacement intent/position preserved")
 print(" - persistent foreground readyState=0 / WK suspended repair is bounded and resumable")
 print(" - same-element route changes and AVAudioSession interruptions are isolated")
 print(" - lock-screen context survives transient video-element replacement")
+print(" - terminated WebKit process recovery is deferred to foreground")
 print(" - PiP/fullscreen controls present and WebKit fallback retained")
 print(" - dormant native playback code absent")
