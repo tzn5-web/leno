@@ -24,6 +24,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     @Published private(set) var currentURL: URL?
     @Published private(set) var progress: Double = 0
     @Published private(set) var isLoading = false
+    @Published private(set) var hlsProbeSummary = ""
 
     weak var webView: WKWebView?
 
@@ -498,6 +499,12 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         if let error =
                 body["error"] as?
                     String {
+            let summary =
+                "HLS FAIL · \(source)"
+
+            self.hlsProbeSummary =
+                summary
+
             print(
                 "V6 HLS probe failed: " +
                 "videoID=\(videoID) " +
@@ -547,6 +554,16 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         let hasVariants =
             body["hasVariants"] as?
                 Bool ?? false
+
+        let summary =
+            "HLS \(status) · " +
+            "M3U8 \(isM3U8 ? "Y" : "N") · " +
+            "SPC \(hasSPC ? "Y" : "N") · " +
+            "N \(hasN ? "Y" : "N") · " +
+            "VAR \(hasVariants ? "Y" : "N")"
+
+        self.hlsProbeSummary =
+            summary
 
         print(
             "V6 HLS probe: " +
