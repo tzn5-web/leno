@@ -34,6 +34,9 @@ targets:
         UILaunchScreen: {}
         UIBackgroundModes:
           - audio
+        NSLocalNetworkUsageDescription: "YoutubeVcd V9 folosește VcdResolver din rețeaua locală pentru laboratorul media."
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
