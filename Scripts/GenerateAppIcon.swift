@@ -38,7 +38,10 @@ context.addPath(platePath)
 context.setFillColor(CGColor(gray: 1.0, alpha: 1.0))
 context.fillPath()
 
-let font = CTFontCreateUIFontForLanguage(.system, 300, nil)
+guard let font = CTFontCreateUIFontForLanguage(.system, 300, nil) else {
+    fatalError("Could not create system font")
+}
+
 let textColor = CGColor(red: 1.0, green: 0.0, blue: 0.0, alpha: 1.0)
 
 let attributes: [NSAttributedString.Key: Any] = [
