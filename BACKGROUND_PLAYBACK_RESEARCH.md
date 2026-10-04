@@ -160,3 +160,65 @@ The bridge keeps explicit playback intent:
 
 Only an actual iPhone run can prove WebKit background behavior; simulator/static
 checks cannot certify it.
+
+
+## Full re-audit findings before build 10
+
+The first 0.4.4 build-9 candidate passed compilation but failed a deeper
+behavioral audit. It must not be treated as the final V4 candidate.
+
+The second audit found and corrected all of the following before build 10:
+
+- removed dormant AVPlayer / YouTubeKit / native-navigation source files instead
+  of merely excluding them from the target;
+- restored the 0.4.0 PiP and fullscreen on-page controls lost in the first V4 rewrite;
+- fused Swift real scene background state with WebKit native visibility everywhere
+  recovery makes a decision;
+- preserved playback intent when YouTube replaces the active video element;
+- restored last-known playback position after a same-video MediaSource rebuild;
+- distinguished same-element SPA route changes so an old position cannot leak
+  into the next video;
+- stopped classifying the Shorts renderer as an inline preview;
+- returned explicit Lock Screen / Control Center transport ownership to
+  MPRemoteCommandCenter / MPNowPlayingInfoCenter instead of a second custom
+  navigator.mediaSession action-handler layer;
+- preserved native playback context while a rebuilt page temporarily has no video;
+- made native scene state authoritative for Now Playing while JS is suspended;
+- isolated AVAudioSession interruptions so recovery does not fight phone/Siri pauses;
+- fixed PiP exit so the standards fallback cannot immediately re-enter PiP;
+- retained the prefixed WebKit fullscreen fallback;
+- consumed readyState/networkState/DOM/video-id telemetry in Swift;
+- added a bounded foreground-only repair for persistent readyState == 0:
+  two-second confirmation, 15-second cooldown, controlled reload, then position
+  and Play restoration;
+- added WKWebView.requestMediaPlaybackState probes so native suspended state can
+  independently trigger the same bounded recovery;
+- deferred WebContent-process termination recovery while backgrounded and performs
+  it on the next foreground transition with position/play restoration;
+- injected the playback lifecycle shield before the ad-block script;
+- replaced the grep-only CI gate with structural source auditing plus JavaScript
+  syntax checks.
+
+The source candidate is now 0.4.4 build 10. No build-10 IPA should be accepted
+unless structural audit, Swift static analysis, simulator compile, unsigned
+device build, and metadata audit all pass.
+
+### Remaining physical-device release gates
+
+Static analysis cannot prove iOS scheduling behavior. The physical iPhone test
+must still verify:
+
+1. Home without PiP keeps audio playing.
+2. Lock screen without PiP keeps audio playing.
+3. Lock-screen Pause stays paused and Play resumes.
+4. PiP enter/exit does not introduce a pause.
+5. Foreground return does not freeze audio/video or reset position.
+6. Repeat across multiple videos and a Short.
+7. A phone/Siri/audio interruption pauses correctly and only resumes when the
+   system says it should.
+8. Repeated transitions do not trigger repair reload unless media is actually stuck.
+
+A separate iOS 26 class of whole-WebContent-process suspension after long
+background periods has been reported publicly. If a physical device shows that
+stronger failure mode (no JS/native media-state response at all), the next
+recovery layer should recreate the WKWebView rather than add more play timers.
