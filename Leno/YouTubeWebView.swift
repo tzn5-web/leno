@@ -225,14 +225,33 @@ struct YouTubeWebView: UIViewRepresentable {
 
                 let script = #"""
                 (() => {
-                  const selectors = [
-                    'a[href*="/watch?v="]',
-                    'a[href^="/shorts/"]',
-                    'a[href*="youtu.be/"]'
-                  ];
-                  return selectors.some((selector) =>
-                    document.querySelector(selector) !== null
-                  );
+                  const validID = (value) =>
+                    typeof value === "string" &&
+                    /^[A-Za-z0-9_-]{11}$/.test(value);
+
+                  return Array.from(document.querySelectorAll("a[href]")).some((anchor) => {
+                    try {
+                      const url = new URL(anchor.href, location.href);
+
+                      if (url.pathname === "/watch") {
+                        return validID(url.searchParams.get("v") || "");
+                      }
+
+                      const parts = url.pathname.split("/").filter(Boolean);
+
+                      if (parts[0] === "shorts" && parts.length >= 2) {
+                        return validID(parts[1]);
+                      }
+
+                      if (url.hostname === "youtu.be" && parts.length >= 1) {
+                        return validID(parts[0]);
+                      }
+
+                      return false;
+                    } catch (_) {
+                      return false;
+                    }
+                  });
                 })();
                 """#
 
