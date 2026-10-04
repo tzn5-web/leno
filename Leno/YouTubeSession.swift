@@ -680,6 +680,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
         let paused = body["paused"] as? Bool ?? true
+        let ended = body["ended"] as? Bool ?? false
         let mediaExists = body["hasMedia"] as? Bool ?? false
         let bridgeWantsPlayback =
             body["wantsPlayback"] as? Bool ?? false
@@ -826,6 +827,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
             let frozenForegroundMedia =
                 mediaExists &&
+                !ended &&
                 effectiveWantsPlayback &&
                 !self.isTransitionRecoveryActive &&
                 !self.appIsBackground &&
@@ -834,7 +836,9 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                 (
                     newReadyState == 0 ||
                     self.nativeMediaPlaybackState ==
-                        .suspended
+                        .suspended ||
+                    self.nativeMediaPlaybackState ==
+                        .paused
                 )
 
             self.updateFrozenMediaRepair(
@@ -918,6 +922,20 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                 .addingTimeInterval(
                     3.4
                 )
+
+        if !appIsBackground &&
+           (
+               reason == "foreground" ||
+               reason == "pip-request" ||
+               reason == "pip-enter" ||
+               reason == "pip-exit"
+           ) {
+            foregroundRepairWindowUntil =
+                Date()
+                    .addingTimeInterval(
+                        7
+                    )
+        }
 
         transitionRecoveryWorkItems
             .forEach {
