@@ -46,6 +46,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     private var lastFrozenRepairDate = Date.distantPast
     private var pendingRepairResumeTime: Double?
     private var pendingRepairShouldPlay = false
+    private var foregroundRepairWindowUntil = Date.distantPast
 
     private static let homeURL = URL(string: "https://m.youtube.com/")!
 
@@ -186,6 +187,8 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
     func applicationDidEnterBackground() {
         appIsBackground = true
+        foregroundRepairWindowUntil =
+            .distantPast
         frozenRepairWorkItem?.cancel()
         frozenRepairWorkItem = nil
         activateAudioSession()
@@ -208,7 +211,16 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     }
 
     func applicationDidBecomeActive() {
+        let returningFromBackground =
+            appIsBackground
+
         appIsBackground = false
+
+        foregroundRepairWindowUntil =
+            returningFromBackground
+                ? Date().addingTimeInterval(6)
+                : .distantPast
+
         activateAudioSession()
 
         evaluate(
@@ -237,6 +249,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
     func pause() {
         wantsPlayback = false
+        wasPlayingBeforeInterruption = false
 
         evaluate(
             PlaybackBridgeScript.pauseCall
@@ -399,6 +412,8 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
         guard frozenRepairWorkItem == nil,
               !isLoading,
+              Date() <=
+                foregroundRepairWindowUntil,
               Date().timeIntervalSince(
                 lastFrozenRepairDate
               ) > 15 else {
@@ -415,6 +430,8 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             self.frozenRepairWorkItem = nil
 
             guard !self.appIsBackground,
+                  Date() <=
+                    self.foregroundRepairWindowUntil,
                   self.wantsPlayback,
                   self.hasMedia,
                   self.mediaElementInDOM,
@@ -592,8 +609,18 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             wasPlayingBeforeInterruption =
                 isPlaying || wantsPlayback
 
+            evaluate(
+                PlaybackBridgeScript
+                    .beginSystemInterruptionCall
+            )
+
         case .ended:
             activateAudioSession()
+
+            evaluate(
+                PlaybackBridgeScript
+                    .endSystemInterruptionCall
+            )
 
             let rawOptions =
                 (userInfo[
@@ -604,6 +631,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                 AVAudioSession.InterruptionOptions(rawValue: rawOptions)
 
             if wasPlayingBeforeInterruption &&
+               wantsPlayback &&
                options.contains(.shouldResume) {
                 play()
             }
