@@ -21,27 +21,35 @@ struct YouTubeWebView: UIViewRepresentable {
 
         userContentController.addUserScript(
             WKUserScript(
-                source: NavigationBridgeScript.source,
+                source: PlaybackBridgeScript.source,
                 injectionTime: .atDocumentStart,
                 forMainFrameOnly: true
             )
         )
 
-        userContentController.add(session, name: "openVideo")
+        userContentController.add(
+            session,
+            name: "mediaState"
+        )
 
         let configuration = WKWebViewConfiguration()
-        configuration.userContentController = userContentController
+        configuration.userContentController =
+            userContentController
         configuration.websiteDataStore = .default()
         configuration.allowsInlineMediaPlayback = true
-        configuration.allowsAirPlayForMediaPlayback = false
-        configuration.allowsPictureInPictureMediaPlayback = false
-        configuration.mediaTypesRequiringUserActionForPlayback = [.audio, .video]
+        configuration.allowsAirPlayForMediaPlayback = true
+        configuration.allowsPictureInPictureMediaPlayback = true
+        configuration.mediaTypesRequiringUserActionForPlayback = []
 
         let preferences = WKWebpagePreferences()
         preferences.allowsContentJavaScript = true
         configuration.defaultWebpagePreferences = preferences
 
-        let webView = WKWebView(frame: .zero, configuration: configuration)
+        let webView = WKWebView(
+            frame: .zero,
+            configuration: configuration
+        )
+
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
         webView.allowsBackForwardNavigationGestures = true
@@ -53,52 +61,102 @@ struct YouTubeWebView: UIViewRepresentable {
         session.attach(webView: webView)
         context.coordinator.observe(webView)
 
-        installRules(on: webView)
-        session.loadHome()
+        installRulesAndLoad(
+            on: webView,
+            coordinator: context.coordinator
+        )
 
         return webView
     }
 
-    func updateUIView(_ uiView: WKWebView, context: Context) {}
+    func updateUIView(
+        _ uiView: WKWebView,
+        context: Context
+    ) {}
 
-    static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
+    static func dismantleUIView(
+        _ uiView: WKWebView,
+        coordinator: Coordinator
+    ) {
         coordinator.invalidateObservations()
-        uiView.configuration.userContentController.removeScriptMessageHandler(
-            forName: "openVideo"
-        )
+
+        uiView.configuration.userContentController
+            .removeScriptMessageHandler(
+                forName: "mediaState"
+            )
+
         uiView.navigationDelegate = nil
         uiView.uiDelegate = nil
     }
 
-    private func installRules(on webView: WKWebView) {
-        guard let store = WKContentRuleListStore.default() else { return }
-        let identifier = "YoutubeVcdAdRules-v4"
-
-        store.lookUpContentRuleList(forIdentifier: identifier) { cached, _ in
-            DispatchQueue.main.async {
-                if let cached {
-                    webView.configuration.userContentController.add(cached)
-                }
-            }
+    private func installRulesAndLoad(
+        on webView: WKWebView,
+        coordinator: Coordinator
+    ) {
+        guard let store =
+                WKContentRuleListStore.default() else {
+            session.loadHome()
+            return
         }
 
-        store.compileContentRuleList(
-            forIdentifier: identifier,
-            encodedContentRuleList: AdBlockScript.contentRules
-        ) { ruleList, error in
+        let identifier = "YoutubeVcdAdRules-v5"
+
+        store.lookUpContentRuleList(
+            forIdentifier: identifier
+        ) { cached, _ in
             DispatchQueue.main.async {
-                if let ruleList {
-                    webView.configuration.userContentController.add(ruleList)
-                } else if let error {
-                    print("Content rule compilation failed: \(error.localizedDescription)")
+                guard !coordinator.didStartInitialLoad else {
+                    return
+                }
+
+                if let cached {
+                    webView.configuration
+                        .userContentController
+                        .add(cached)
+
+                    coordinator.didStartInitialLoad = true
+                    session.loadHome()
+                    return
+                }
+
+                store.compileContentRuleList(
+                    forIdentifier: identifier,
+                    encodedContentRuleList:
+                        AdBlockScript.contentRules
+                ) { compiled, error in
+                    DispatchQueue.main.async {
+                        if let compiled {
+                            webView.configuration
+                                .userContentController
+                                .add(compiled)
+                        } else if let error {
+                            print(
+                                "Content rule compilation failed: \(error.localizedDescription)"
+                            )
+                        }
+
+                        guard !coordinator.didStartInitialLoad else {
+                            return
+                        }
+
+                        coordinator.didStartInitialLoad = true
+                        session.loadHome()
+                    }
                 }
             }
         }
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+    final class Coordinator:
+        NSObject,
+        WKNavigationDelegate,
+        WKUIDelegate
+    {
         private let session: YouTubeSession
-        private var observations: [NSKeyValueObservation] = []
+        private var observations:
+            [NSKeyValueObservation] = []
+
+        var didStartInitialLoad = false
 
         init(session: YouTubeSession) {
             self.session = session
@@ -106,26 +164,58 @@ struct YouTubeWebView: UIViewRepresentable {
 
         func observe(_ webView: WKWebView) {
             observations = [
-                webView.observe(\.canGoBack, options: [.initial, .new]) { [weak self] webView, _ in
-                    self?.syncNavigationState(from: webView)
+                webView.observe(
+                    \.canGoBack,
+                    options: [.initial, .new]
+                ) { [weak self] webView, _ in
+                    self?.syncNavigationState(
+                        from: webView
+                    )
                 },
-                webView.observe(\.canGoForward, options: [.initial, .new]) { [weak self] webView, _ in
-                    self?.syncNavigationState(from: webView)
+
+                webView.observe(
+                    \.canGoForward,
+                    options: [.initial, .new]
+                ) { [weak self] webView, _ in
+                    self?.syncNavigationState(
+                        from: webView
+                    )
                 },
-                webView.observe(\.estimatedProgress, options: [.initial, .new]) { [weak self] webView, _ in
-                    self?.syncNavigationState(from: webView)
+
+                webView.observe(
+                    \.estimatedProgress,
+                    options: [.initial, .new]
+                ) { [weak self] webView, _ in
+                    self?.syncNavigationState(
+                        from: webView
+                    )
                 },
-                webView.observe(\.url, options: [.initial, .new]) { [weak self] webView, _ in
-                    self?.syncNavigationState(from: webView)
+
+                webView.observe(
+                    \.url,
+                    options: [.initial, .new]
+                ) { [weak self] webView, _ in
+                    self?.syncNavigationState(
+                        from: webView
+                    )
                 },
-                webView.observe(\.isLoading, options: [.initial, .new]) { [weak self] webView, _ in
-                    self?.syncNavigationState(from: webView)
+
+                webView.observe(
+                    \.isLoading,
+                    options: [.initial, .new]
+                ) { [weak self] webView, _ in
+                    self?.syncNavigationState(
+                        from: webView
+                    )
                 }
             ]
         }
 
         func invalidateObservations() {
-            observations.forEach { $0.invalidate() }
+            observations.forEach {
+                $0.invalidate()
+            }
+
             observations.removeAll()
         }
 
@@ -137,11 +227,17 @@ struct YouTubeWebView: UIViewRepresentable {
             syncNavigationState(from: webView)
         }
 
-        func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        func webView(
+            _ webView: WKWebView,
+            didCommit navigation: WKNavigation!
+        ) {
             syncNavigationState(from: webView)
         }
 
-        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        func webView(
+            _ webView: WKWebView,
+            didFinish navigation: WKNavigation!
+        ) {
             session.markReady()
             syncNavigationState(from: webView)
             ensureHomeContainsVideos(webView)
@@ -152,7 +248,10 @@ struct YouTubeWebView: UIViewRepresentable {
             didFail navigation: WKNavigation!,
             withError error: Error
         ) {
-            guard shouldRecover(from: error) else { return }
+            guard shouldRecover(from: error) else {
+                return
+            }
+
             session.recover(after: error)
         }
 
@@ -161,27 +260,32 @@ struct YouTubeWebView: UIViewRepresentable {
             didFailProvisionalNavigation navigation: WKNavigation!,
             withError error: Error
         ) {
-            guard shouldRecover(from: error) else { return }
+            guard shouldRecover(from: error) else {
+                return
+            }
+
             session.recover(after: error)
         }
 
-        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        func webViewWebContentProcessDidTerminate(
+            _ webView: WKWebView
+        ) {
             session.recover()
         }
 
         func webView(
             _ webView: WKWebView,
-            createWebViewWith configuration: WKWebViewConfiguration,
-            for navigationAction: WKNavigationAction,
-            windowFeatures: WKWindowFeatures
+            createWebViewWith configuration:
+                WKWebViewConfiguration,
+            for navigationAction:
+                WKNavigationAction,
+            windowFeatures:
+                WKWindowFeatures
         ) -> WKWebView? {
-            if let url = navigationAction.request.url,
-               session.interceptVideoURL(url) {
-                return nil
-            }
-
             if navigationAction.targetFrame == nil {
-                webView.load(navigationAction.request)
+                webView.load(
+                    navigationAction.request
+                )
             }
 
             return nil
@@ -189,34 +293,52 @@ struct YouTubeWebView: UIViewRepresentable {
 
         func webView(
             _ webView: WKWebView,
-            decidePolicyFor navigationAction: WKNavigationAction,
-            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+            decidePolicyFor navigationAction:
+                WKNavigationAction,
+            decisionHandler:
+                @escaping (WKNavigationActionPolicy) -> Void
         ) {
-            guard let url = navigationAction.request.url else {
+            guard let url =
+                    navigationAction.request.url else {
                 decisionHandler(.cancel)
                 return
             }
 
-            if session.interceptVideoURL(url) {
-                decisionHandler(.cancel)
-                return
-            }
+            let scheme =
+                url.scheme?.lowercased() ?? ""
 
-            let scheme = url.scheme?.lowercased() ?? ""
-            let allowedSchemes = ["http", "https", "about", "data", "blob"]
+            let allowedSchemes = [
+                "http",
+                "https",
+                "about",
+                "data",
+                "blob"
+            ]
 
             decisionHandler(
-                allowedSchemes.contains(scheme) ? .allow : .cancel
+                allowedSchemes.contains(scheme)
+                    ? .allow
+                    : .cancel
             )
         }
 
-        private func ensureHomeContainsVideos(_ webView: WKWebView) {
-            guard let url = webView.url else { return }
+        private func ensureHomeContainsVideos(
+            _ webView: WKWebView
+        ) {
+            guard let url = webView.url else {
+                return
+            }
 
             let path = url.path
-            guard path == "/" || path == "/feed/trending" else { return }
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { [weak webView] in
+            guard path == "/" ||
+                  path == "/feed/trending" else {
+                return
+            }
+
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + 1.8
+            ) { [weak webView] in
                 guard let webView,
                       let currentURL = webView.url,
                       currentURL.path == path else {
@@ -229,21 +351,37 @@ struct YouTubeWebView: UIViewRepresentable {
                     typeof value === "string" &&
                     /^[A-Za-z0-9_-]{11}$/.test(value);
 
-                  return Array.from(document.querySelectorAll("a[href]")).some((anchor) => {
+                  return Array.from(
+                    document.querySelectorAll("a[href]")
+                  ).some((anchor) => {
                     try {
-                      const url = new URL(anchor.href, location.href);
+                      const url = new URL(
+                        anchor.href,
+                        location.href
+                      );
 
                       if (url.pathname === "/watch") {
-                        return validID(url.searchParams.get("v") || "");
+                        return validID(
+                          url.searchParams.get("v") || ""
+                        );
                       }
 
-                      const parts = url.pathname.split("/").filter(Boolean);
+                      const parts =
+                        url.pathname
+                          .split("/")
+                          .filter(Boolean);
 
-                      if (parts[0] === "shorts" && parts.length >= 2) {
+                      if (
+                        parts[0] === "shorts" &&
+                        parts.length >= 2
+                      ) {
                         return validID(parts[1]);
                       }
 
-                      if (url.hostname === "youtu.be" && parts.length >= 1) {
+                      if (
+                        url.hostname === "youtu.be" &&
+                        parts.length >= 1
+                      ) {
                         return validID(parts[0]);
                       }
 
@@ -255,51 +393,88 @@ struct YouTubeWebView: UIViewRepresentable {
                 })();
                 """#
 
-                webView.evaluateJavaScript(script) { result, _ in
-                    let hasVideo = result as? Bool ?? false
-                    guard !hasVideo else { return }
+                webView.evaluateJavaScript(
+                    script
+                ) { result, _ in
+                    let hasVideo =
+                        result as? Bool ?? false
+
+                    guard !hasVideo else {
+                        return
+                    }
 
                     DispatchQueue.main.async {
                         if path == "/" {
-                            guard let trending = URL(
-                                string: "https://m.youtube.com/feed/trending"
-                            ) else { return }
+                            guard let trending =
+                                    URL(
+                                      string:
+                                        "https://m.youtube.com/feed/trending"
+                                    ) else {
+                                return
+                            }
 
-                            webView.load(URLRequest(url: trending))
-                        } else {
-                            var components = URLComponents(
-                                string: "https://m.youtube.com/results"
+                            webView.load(
+                                URLRequest(
+                                    url: trending
+                                )
                             )
+                        } else {
+                            var components =
+                                URLComponents(
+                                  string:
+                                    "https://m.youtube.com/results"
+                                )
+
                             components?.queryItems = [
                                 URLQueryItem(
-                                    name: "search_query",
-                                    value: "trending videos"
+                                    name:
+                                      "search_query",
+                                    value:
+                                      "trending videos"
                                 )
                             ]
 
-                            guard let fallback = components?.url else { return }
-                            webView.load(URLRequest(url: fallback))
+                            guard let fallback =
+                                    components?.url else {
+                                return
+                            }
+
+                            webView.load(
+                                URLRequest(
+                                    url: fallback
+                                )
+                            )
                         }
                     }
                 }
             }
         }
 
-        private func syncNavigationState(from webView: WKWebView) {
+        private func syncNavigationState(
+            from webView: WKWebView
+        ) {
             session.updateNavigationState(
                 canGoBack: webView.canGoBack,
-                canGoForward: webView.canGoForward,
+                canGoForward:
+                    webView.canGoForward,
                 url: webView.url,
-                progress: webView.estimatedProgress,
-                isLoading: webView.isLoading
+                progress:
+                    webView.estimatedProgress,
+                isLoading:
+                    webView.isLoading
             )
         }
 
-        private func shouldRecover(from error: Error) -> Bool {
-            let nsError = error as NSError
+        private func shouldRecover(
+            from error: Error
+        ) -> Bool {
+            let nsError =
+                error as NSError
 
-            if nsError.domain == NSURLErrorDomain &&
-                nsError.code == NSURLErrorCancelled {
+            if nsError.domain ==
+                    NSURLErrorDomain &&
+               nsError.code ==
+                    NSURLErrorCancelled {
                 return false
             }
 

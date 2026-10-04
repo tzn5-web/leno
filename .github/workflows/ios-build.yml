@@ -13,7 +13,7 @@ concurrency:
 jobs:
   build:
     runs-on: xcode-27
-    timeout-minutes: 40
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -30,28 +30,30 @@ jobs:
           xcrun swift Scripts/GenerateAppIcon.swift Leno/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
           test -s Leno/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
 
-      - name: V3 source integrity audit
+      - name: Functional-first source audit
         run: |
           set -euo pipefail
-          grep -q 'CFBundleDisplayName: YoutubeVcd' project.yml
-          grep -q 'YouTubeKit' project.yml
-          grep -q 'UIBackgroundModes:' project.yml
-          grep -q 'AVPictureInPictureController' Leno/NativePlaybackController.swift
-          grep -q 'audiovisualBackgroundPlaybackPolicy = .continuesIfPossible' Leno/NativePlaybackController.swift
-          grep -q 'filterVideoAndAudio' Leno/NativePlaybackController.swift
-          grep -q 'AVMutableComposition' Leno/NativePlaybackController.swift
-          grep -q 'filterVideoOnly' Leno/NativePlaybackController.swift
-          grep -q 'filterAudioOnly' Leno/NativePlaybackController.swift
-          grep -q 'messageHandlers?.openVideo' Leno/NavigationBridgeScript.swift
-          grep -q 'session.loadHome()' Leno/YouTubeWebView.swift
 
-          if grep -q 'TextField("Search YouTube"' Leno/YouTubeView.swift; then
-            echo "Legacy native search bar must not exist."
+          grep -q 'CFBundleDisplayName: YoutubeVcd' project.yml
+          grep -q 'UIBackgroundModes:' project.yml
+          grep -q 'allowsPictureInPictureMediaPlayback = true' Leno/YouTubeWebView.swift
+          grep -q 'allowsAirPlayForMediaPlayback = true' Leno/YouTubeWebView.swift
+          grep -q 'mediaTypesRequiringUserActionForPlayback = []' Leno/YouTubeWebView.swift
+          grep -q 'name: "mediaState"' Leno/YouTubeWebView.swift
+          grep -q '__YOUTUBE_VCD_PLAYBACK_BRIDGE__' Leno/PlaybackBridgeScript.swift
+          grep -q 'webkitSetPresentationMode' Leno/PlaybackBridgeScript.swift
+          grep -q 'webkitEnterFullscreen' Leno/PlaybackBridgeScript.swift
+          grep -q 'visibilitychange' Leno/PlaybackBridgeScript.swift
+          grep -q 'AVAudioSession' Leno/YouTubeSession.swift
+          grep -q 'MPRemoteCommandCenter' Leno/YouTubeSession.swift
+
+          if grep -q 'YouTubeKit' project.yml; then
+            echo "YouTubeKit must not be part of the playback build."
             exit 1
           fi
 
-          if grep -q 'mediaState' Leno/YouTubeWebView.swift; then
-            echo "Legacy WebView media engine must not exist."
+          if grep -q 'TextField("Search YouTube"' Leno/YouTubeView.swift; then
+            echo "Duplicate native search bar must not exist."
             exit 1
           fi
 
@@ -62,10 +64,6 @@ jobs:
 
       - name: Generate Xcode project
         run: xcodegen generate
-
-      - name: Resolve Swift packages
-        run: |
-          xcodebuild             -resolvePackageDependencies             -project YoutubeVcd.xcodeproj             -scheme YoutubeVcd
 
       - name: Static analysis
         run: |
@@ -102,7 +100,8 @@ jobs:
 
           sleep 12
           xcrun simctl io "$SIM_UDID" screenshot simulator-smoke.png
-          xcrun simctl spawn "$SIM_UDID" log show             --last 3m             --style compact             --predicate 'process == "YoutubeVcd"' > simulator-runtime.log || true
+
+          xcrun simctl spawn "$SIM_UDID" log show             --last 3m             --style compact             --predicate 'process == "YoutubeVcd"'             > simulator-runtime.log || true
 
           if grep -Eqi 'fatal error|uncaught exception|termination reason|crash' simulator-runtime.log; then
             echo "Potential runtime crash marker detected."
@@ -118,6 +117,7 @@ jobs:
       - name: Audit built app metadata
         run: |
           set -euo pipefail
+
           APP_PATH="build/DerivedData/Build/Products/Release-iphoneos/YoutubeVcd.app"
           PLIST="$APP_PATH/Info.plist"
 
@@ -132,22 +132,25 @@ jobs:
           test "$BUNDLE_ID" = "com.tzn5web.leno"
           test "$BACKGROUND_MODE" = "audio"
 
-          find "$APP_PATH" -maxdepth 1 -iname '*AppIcon*' -print | tee app-icon-files.log
+          find "$APP_PATH" -maxdepth 1 -iname '*AppIcon*' -print             | tee app-icon-files.log
+
           test -s Leno/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
 
       - name: Package unsigned IPA
         run: |
           APP_PATH="build/DerivedData/Build/Products/Release-iphoneos/YoutubeVcd.app"
           test -d "$APP_PATH"
+
           rm -rf Payload
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/
-          ditto -c -k --sequesterRsrc --keepParent Payload YoutubeVcd-unsigned.ipa
+
+          ditto -c -k --sequesterRsrc --keepParent             Payload YoutubeVcd-unsigned.ipa
 
       - name: Upload IPA
         uses: actions/upload-artifact@v7
         with:
-          name: YoutubeVcd-unsigned-ipa
+          name: YoutubeVcd-functional-first-ipa
           path: YoutubeVcd-unsigned.ipa
           if-no-files-found: error
 
