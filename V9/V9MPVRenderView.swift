@@ -84,6 +84,19 @@ final class V9MPVRenderView:
     private var captureBuffer:
         [UInt8] = []
 
+    private var pixelBufferPool:
+        CVPixelBufferPool?
+
+    private var pixelBufferPoolWidth =
+        0
+
+    private var pixelBufferPoolHeight =
+        0
+
+    private var lastCaptureHostTime:
+        CFTimeInterval =
+            0
+
     override init(
         frame: CGRect
     ) {
@@ -435,6 +448,18 @@ final class V9MPVRenderView:
             return
         }
 
+        let now =
+            CACurrentMediaTime()
+
+        if lastCaptureHostTime > 0,
+           now - lastCaptureHostTime <
+            (1.0 / 30.0) {
+            return
+        }
+
+        lastCaptureHostTime =
+            now
+
         let rowBytes =
             width * 4
 
@@ -488,33 +513,13 @@ final class V9MPVRenderView:
                 )
             }
 
-        var pixelBuffer:
-            CVPixelBuffer?
-
-        let attributes:
-            [CFString: Any] = [
-                kCVPixelBufferIOSurfacePropertiesKey:
-                    [:],
-                kCVPixelBufferCGImageCompatibilityKey:
-                    true,
-                kCVPixelBufferCGBitmapContextCompatibilityKey:
-                    true
-            ]
-
-        let result =
-            CVPixelBufferCreate(
-                kCFAllocatorDefault,
-                width,
-                height,
-                kCVPixelFormatType_32BGRA,
-                attributes as
-                    CFDictionary,
-                &pixelBuffer
-            )
-
-        guard result ==
-                kCVReturnSuccess,
-              let pixelBuffer
+        guard let pixelBuffer =
+                acquirePixelBuffer(
+                    width:
+                        width,
+                    height:
+                        height
+                )
         else {
             return
         }
@@ -594,9 +599,113 @@ final class V9MPVRenderView:
         )
     }
 
+    private func acquirePixelBuffer(
+        width:
+            Int,
+        height:
+            Int
+    ) -> CVPixelBuffer? {
+        if pixelBufferPool == nil ||
+           pixelBufferPoolWidth !=
+            width ||
+           pixelBufferPoolHeight !=
+            height {
+            pixelBufferPool =
+                nil
+
+            pixelBufferPoolWidth =
+                width
+
+            pixelBufferPoolHeight =
+                height
+
+            let poolAttributes:
+                [CFString: Any] = [
+                    kCVPixelBufferPoolMinimumBufferCountKey:
+                        4
+                ]
+
+            let pixelAttributes:
+                [CFString: Any] = [
+                    kCVPixelBufferPixelFormatTypeKey:
+                        kCVPixelFormatType_32BGRA,
+                    kCVPixelBufferWidthKey:
+                        width,
+                    kCVPixelBufferHeightKey:
+                        height,
+                    kCVPixelBufferIOSurfacePropertiesKey:
+                        [:],
+                    kCVPixelBufferCGImageCompatibilityKey:
+                        true,
+                    kCVPixelBufferCGBitmapContextCompatibilityKey:
+                        true
+                ]
+
+            var pool:
+                CVPixelBufferPool?
+
+            let result =
+                CVPixelBufferPoolCreate(
+                    kCFAllocatorDefault,
+                    poolAttributes as
+                        CFDictionary,
+                    pixelAttributes as
+                        CFDictionary,
+                    &pool
+                )
+
+            guard result ==
+                    kCVReturnSuccess,
+                  let pool
+            else {
+                pixelBufferPool =
+                    nil
+                return nil
+            }
+
+            pixelBufferPool =
+                pool
+        }
+
+        guard let pixelBufferPool
+        else {
+            return nil
+        }
+
+        var pixelBuffer:
+            CVPixelBuffer?
+
+        let result =
+            CVPixelBufferPoolCreatePixelBuffer(
+                kCFAllocatorDefault,
+                pixelBufferPool,
+                &pixelBuffer
+            )
+
+        guard result ==
+                kCVReturnSuccess
+        else {
+            return nil
+        }
+
+        return pixelBuffer
+    }
+
     private func tearDownGL() {
         onFrame =
             nil
+
+        pixelBufferPool =
+            nil
+
+        pixelBufferPoolWidth =
+            0
+
+        pixelBufferPoolHeight =
+            0
+
+        lastCaptureHostTime =
+            0
 
         if let context {
             EAGLContext.setCurrent(
