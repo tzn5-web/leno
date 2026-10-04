@@ -30,70 +30,11 @@ jobs:
           xcrun swift Scripts/GenerateAppIcon.swift Leno/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
           test -s Leno/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
 
-      - name: Native handoff source audit
+      - name: V9 native media lab structural audit
         run: |
           set -euo pipefail
-
-          grep -q 'CFBundleDisplayName: YoutubeVcd' project.yml
-          grep -q 'UIBackgroundModes:' project.yml
-          grep -q 'MARKETING_VERSION: "0.4.3"' project.yml
-          grep -q 'CURRENT_PROJECT_VERSION: "8"' project.yml
-
-          grep -q 'allowsPictureInPictureMediaPlayback = true' Leno/YouTubeWebView.swift
-          grep -q 'allowsAirPlayForMediaPlayback = true' Leno/YouTubeWebView.swift
-          grep -Fq 'mediaTypesRequiringUserActionForPlayback = []' Leno/YouTubeWebView.swift
-          grep -q 'name: "mediaState"' Leno/YouTubeWebView.swift
-          grep -q 'name: "mediaCandidate"' Leno/YouTubeWebView.swift
-
-          grep -q 'publishMediaCandidate' Leno/AdBlockScript.swift
-          grep -q 'audio/mp4' Leno/AdBlockScript.swift
-          grep -q 'hlsManifestUrl' Leno/AdBlockScript.swift
-
-          grep -q '__YOUTUBE_VCD_PLAYBACK_BRIDGE__' Leno/PlaybackBridgeScript.swift
-          grep -q 'prepareNativeHandoff' Leno/PlaybackBridgeScript.swift
-          grep -q 'resumeFromNative' Leno/PlaybackBridgeScript.swift
-          grep -q 'videoScore' Leno/PlaybackBridgeScript.swift
-
-          grep -q 'final class BackgroundAudioHandoff' Leno/BackgroundAudioHandoff.swift
-          grep -q 'AVPlayer()' Leno/BackgroundAudioHandoff.swift
-          grep -q 'continuesIfPossible' Leno/BackgroundAudioHandoff.swift
-
-          grep -q 'AVAudioSession' Leno/YouTubeSession.swift
-          grep -q 'MPRemoteCommandCenter' Leno/YouTubeSession.swift
-          grep -q 'beginNativeHandoffIfPossible' Leno/YouTubeSession.swift
-          grep -q 'prepareNativeHandoffCall' Leno/YouTubeSession.swift
-          grep -q 'setAllMediaPlaybackSuspended' Leno/YouTubeSession.swift
-          grep -q 'observeApplicationLifecycle' Leno/YouTubeSession.swift
-
-          if grep -Fq 'HTMLMediaElement.prototype.pause' Leno/PlaybackBridgeScript.swift; then
-            echo "Global HTMLMediaElement.pause patch must not return."
-            exit 1
-          fi
-
-          if grep -Fq 'messageHandlers?.mediaState' Leno/AdBlockScript.swift; then
-            echo "AdBlockScript must not compete for media-state reporting."
-            exit 1
-          fi
-
-          if grep -q 'scenePhase' Leno/YouTubeView.swift; then
-            echo "SwiftUI scenePhase must not duplicate lifecycle notifications."
-            exit 1
-          fi
-
-          if grep -q 'StreamResolver.swift' project.yml; then
-            echo "External stream resolver must not be active."
-            exit 1
-          fi
-
-          if grep -q 'YouTubeKit' project.yml; then
-            echo "YouTubeKit must not be an active dependency."
-            exit 1
-          fi
-
-          if grep -q 'JSON.parse = function' Leno/AdBlockScript.swift; then
-            echo "Global JSON.parse hook is forbidden."
-            exit 1
-          fi
+          python3 Scripts/audit_v9.py
+          python3 -m py_compile Resolver/app/main.py
 
       - name: Generate Xcode project
         run: xcodegen generate
@@ -159,11 +100,11 @@ jobs:
           VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST")"
           BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$PLIST")"
 
-          test "$DISPLAY_NAME" = "YoutubeVcd"
+          test "$DISPLAY_NAME" = "YoutubeVcd V9"
           test "$BUNDLE_ID" = "com.tzn5web.leno"
           test "$BACKGROUND_MODE" = "audio"
-          test "$VERSION" = "0.4.3"
-          test "$BUILD" = "8"
+          test "$VERSION" = "0.9.0"
+          test "$BUILD" = "1"
 
           find "$APP_PATH" -maxdepth 1 -iname '*AppIcon*' -print \
             | tee app-icon-files.log
@@ -185,7 +126,7 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v7
         with:
-          name: YoutubeVcd-v3-native-background-handoff-ipa
+          name: YoutubeVcd-v9-media-lab-ipa
           path: YoutubeVcd-unsigned.ipa
           if-no-files-found: error
 
