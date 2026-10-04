@@ -50,6 +50,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     private var pendingRepairShouldPlay = false
     private var foregroundRepairWindowUntil = Date.distantPast
     private var nativeMediaPlaybackState: WKMediaPlaybackState = .none
+    private var pendingWebProcessRecovery = false
 
     private static let homeURL = URL(string: "https://m.youtube.com/")!
 
@@ -143,6 +144,11 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
 
+            if self.appIsBackground {
+                self.pendingWebProcessRecovery = true
+                return
+            }
+
             guard self.retryCount < self.maxRetries else {
                 self.isLoading = false
                 self.state = .failed(
@@ -225,6 +231,30 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                 : .distantPast
 
         activateAudioSession()
+
+        if pendingWebProcessRecovery {
+            pendingWebProcessRecovery = false
+
+            if hasPlaybackContext {
+                pendingRepairResumeTime =
+                    max(
+                        lastStablePlaybackTime,
+                        currentTime
+                    )
+
+                pendingRepairShouldPlay =
+                    wantsPlayback
+            }
+
+            if webView?.url == nil {
+                loadHome()
+            } else {
+                markLoading()
+                webView?.reload()
+            }
+
+            return
+        }
 
         evaluate(
             PlaybackBridgeScript.resumeForegroundCall
