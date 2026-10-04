@@ -49,6 +49,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     private var pendingRepairResumeTime: Double?
     private var pendingRepairShouldPlay = false
     private var foregroundRepairWindowUntil = Date.distantPast
+    private var nativeMediaPlaybackState: WKMediaPlaybackState = .none
 
     private static let homeURL = URL(string: "https://m.youtube.com/")!
 
@@ -228,6 +229,16 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         evaluate(
             PlaybackBridgeScript.resumeForegroundCall
         )
+
+        if returningFromBackground {
+            probeNativeMediaPlaybackState(
+                after: 0.4
+            )
+
+            probeNativeMediaPlaybackState(
+                after: 1.6
+            )
+        }
     }
 
     func togglePlayback() {
@@ -392,7 +403,11 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                 !self.appIsBackground &&
                 !bridgeReallyHidden &&
                 newInDOM &&
-                newReadyState == 0
+                (
+                    newReadyState == 0 ||
+                    self.nativeMediaPlaybackState ==
+                        .suspended
+                )
 
             self.updateFrozenMediaRepair(
                 needed: frozenForegroundMedia
@@ -407,6 +422,51 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                 self.wantsPlayback = false
                 self.hasPlaybackContext = false
                 MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            }
+        }
+    }
+
+    private func probeNativeMediaPlaybackState(
+        after delay: Double
+    ) {
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + delay
+        ) { [weak self] in
+            guard let self,
+                  !self.appIsBackground,
+                  let webView = self.webView else {
+                return
+            }
+
+            webView.requestMediaPlaybackState {
+                [weak self] mediaState in
+
+                DispatchQueue.main.async {
+                    guard let self else {
+                        return
+                    }
+
+                    self.nativeMediaPlaybackState =
+                        mediaState
+
+                    print(
+                        "WKWebView media state: " +
+                        "\(mediaState.rawValue)"
+                    )
+
+                    if mediaState == .suspended &&
+                       self.wantsPlayback &&
+                       self.hasPlaybackContext {
+                        self.updateFrozenMediaRepair(
+                            needed: true
+                        )
+                    } else if mediaState == .playing &&
+                              self.mediaReadyState > 0 {
+                        self.updateFrozenMediaRepair(
+                            needed: false
+                        )
+                    }
+                }
             }
         }
     }
@@ -445,7 +505,11 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                   self.wantsPlayback,
                   self.hasMedia,
                   self.mediaElementInDOM,
-                  self.mediaReadyState == 0,
+                  (
+                      self.mediaReadyState == 0 ||
+                      self.nativeMediaPlaybackState ==
+                          .suspended
+                  ),
                   !self.isLoading,
                   Date().timeIntervalSince(
                     self.lastFrozenRepairDate
@@ -482,7 +546,8 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         print(
             "Repairing frozen WebKit media: " +
             "videoID=\(bridgeVideoID) " +
-            "resume=\(pendingRepairResumeTime ?? 0)"
+            "resume=\(pendingRepairResumeTime ?? 0) " +
+            "wkState=\(nativeMediaPlaybackState.rawValue)"
         )
 
         markLoading()
