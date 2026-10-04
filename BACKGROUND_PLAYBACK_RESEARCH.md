@@ -69,6 +69,30 @@ Independent lessons matching Brave:
 - re-attach/re-assert state when WebKit changes presentation mode or replaces
   the media element.
 
+### Unwatched iOS
+
+Current native iOS project:
+https://github.com/fer0n/Unwatched
+
+Relevant WebKit configuration:
+https://github.com/fer0n/Unwatched/blob/e21de2ecbb4520d9035ae0b378fa864f442dcff9/Unwatched/Unwatched/View/Player/PlayerWebView/PlayerWebView.swift
+
+Relevant scripts:
+https://github.com/fer0n/Unwatched/blob/e21de2ecbb4520d9035ae0b378fa864f442dcff9/Unwatched/Unwatched/View/Player/PlayerWebView/PlayerWebView%2BScripts.swift
+
+Unwatched independently confirms two V4 decisions:
+- inject before YouTube's scripts and neutralize Page Visibility/lifecycle handlers;
+- stop propagation of `webkitpresentationmodechanged`.
+
+Its current code also documents a newer iOS failure mode: after returning from
+background YouTube may rebuild its MediaSource and leave the video element at
+`readyState == 0` (black/unresponsive). V4 records `readyState`,
+`networkState`, and DOM attachment in its bridge telemetry so a physical-device
+failure can distinguish this WebKit/MediaSource condition from an ordinary pause.
+V4 deliberately does not auto-reload the page merely because a transition is
+slow; a destructive reload should only be added if the physical device proves
+the `readyState == 0` condition persists.
+
 ## V4 invariants
 
 - WebKit is the only media engine.
