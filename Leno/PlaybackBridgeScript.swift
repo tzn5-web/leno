@@ -261,7 +261,6 @@ enum PlaybackBridgeScript {
           new Set(),
         lastKnownTime: 0,
         lastReportAt: 0,
-        lastMediaHandlerInstallAt: 0,
         transitionRecoveryUntil: 0,
         actionStamp:
           new Map()
@@ -606,8 +605,6 @@ enum PlaybackBridgeScript {
       // System transport ownership stays native in YouTubeSession.
       // Do not install a second set of JS transport handlers or overwrite
       // playbackState/position from two independent owners.
-      const updateMediaSession = () => {};
-
       const actionAllowed = (
         key,
         minimumGap = 220
@@ -707,12 +704,6 @@ enum PlaybackBridgeScript {
 
         const result =
           safePlay(video);
-
-        installMediaSessionHandlers(
-          true
-        );
-
-        updateMediaSession();
         postState(true);
 
         return result;
@@ -739,8 +730,6 @@ enum PlaybackBridgeScript {
         } catch (_) {
           return false;
         }
-
-        updateMediaSession();
         postState(true);
 
         return true;
@@ -779,8 +768,6 @@ enum PlaybackBridgeScript {
 
           state.lastKnownTime =
             video.currentTime;
-
-          updateMediaSession();
           postState(true);
 
           return true;
@@ -818,18 +805,11 @@ enum PlaybackBridgeScript {
         );
       };
 
-      const installMediaSessionHandlers = () => {};
-
       const onPlay = () => {
         state.wantsPlayback = true;
         state.userPauseUntil = 0;
 
         configureWebAudioSession();
-        installMediaSessionHandlers(
-          true
-        );
-
-        updateMediaSession();
         postState(true);
       };
 
@@ -895,8 +875,6 @@ enum PlaybackBridgeScript {
           state.wantsPlayback = false;
           clearRecoveryTimers();
         }
-
-        updateMediaSession();
         postState(true);
       };
 
@@ -937,8 +915,6 @@ enum PlaybackBridgeScript {
               );
             }
           }
-
-          updateMediaSession();
           postState(true);
         };
 
@@ -1024,8 +1000,6 @@ enum PlaybackBridgeScript {
           state.lastKnownTime =
             video.currentTime;
         }
-
-        updateMediaSession();
         postState(false);
       };
 
@@ -1033,12 +1007,6 @@ enum PlaybackBridgeScript {
         enforceInlinePlayback(
           state.video
         );
-
-        installMediaSessionHandlers(
-          true
-        );
-
-        updateMediaSession();
         postState(true);
       };
 
@@ -1054,8 +1022,6 @@ enum PlaybackBridgeScript {
         ) {
           enforceInlinePlayback(video);
         }
-
-        updateMediaSession();
         postState(false);
       };
 
@@ -1186,9 +1152,6 @@ enum PlaybackBridgeScript {
           !video.paused &&
           !video.ended
         ) {
-          installMediaSessionHandlers(
-            true
-          );
         }
 
         postState(true);
@@ -1278,9 +1241,6 @@ enum PlaybackBridgeScript {
             Date.now() + 2500;
 
           configureWebAudioSession();
-          installMediaSessionHandlers(
-            true
-          );
 
           if (
             !video.paused &&
@@ -1300,8 +1260,6 @@ enum PlaybackBridgeScript {
           ) {
             recoverPlayback(video);
           }
-
-          updateMediaSession();
           postState(true);
 
           return true;
@@ -1323,9 +1281,6 @@ enum PlaybackBridgeScript {
 
         attachVideo(video);
         configureWebAudioSession();
-        installMediaSessionHandlers(
-          true
-        );
 
         if (
           state.wantsPlayback &&
@@ -1334,8 +1289,6 @@ enum PlaybackBridgeScript {
         ) {
           recoverPlayback(video);
         }
-
-        updateMediaSession();
         postState(true);
 
         return true;
@@ -1357,9 +1310,6 @@ enum PlaybackBridgeScript {
 
         attachVideo(video);
         configureWebAudioSession();
-        installMediaSessionHandlers(
-          true
-        );
 
         clearRecoveryTimers();
 
@@ -1372,8 +1322,6 @@ enum PlaybackBridgeScript {
         ) {
           safePlay(video);
         }
-
-        updateMediaSession();
         postState(true);
 
         return true;
@@ -1512,12 +1460,6 @@ enum PlaybackBridgeScript {
             );
           }
         }
-
-        installMediaSessionHandlers(
-          true
-        );
-
-        updateMediaSession();
         postState(true);
 
         return requested;
@@ -2003,12 +1945,6 @@ enum PlaybackBridgeScript {
               state.video
             );
           }
-
-          installMediaSessionHandlers(
-            false
-          );
-
-          updateMediaSession();
           postState(false);
         },
         1500
