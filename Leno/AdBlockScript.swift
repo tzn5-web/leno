@@ -82,7 +82,12 @@ enum AdBlockScript {
         "ytm-in-feed-ad-layout-renderer",
         "ytm-promoted-sparkles-web-renderer",
         "ytm-companion-ad-renderer",
-        "ad-slot-renderer"
+        "ad-slot-renderer",
+        "ytm-open-in-app-button-renderer",
+        "ytm-app-promo",
+        "ytm-promo",
+        "a[href*='mweb_to_native_app']",
+        "a[href*='redirect_app_store_ios=1']"
       ];
 
       const installCosmeticRules = () => {
