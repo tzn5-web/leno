@@ -33,6 +33,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     private var wasPlayingBeforeInterruption = false
     private var wantsPlayback = false
     private var isReallyHidden = false
+    private var transitionArmed = false
     private var presentationMode = "inline"
 
     private static let homeURL = URL(string: "https://m.youtube.com/")!
@@ -275,6 +276,8 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             body["wantsPlayback"] as? Bool ?? false
         let bridgeReallyHidden =
             body["realHidden"] as? Bool ?? false
+        let bridgeTransitionArmed =
+            body["transitionArmed"] as? Bool ?? false
         let bridgePresentationMode =
             body["presentationMode"] as? String ?? "inline"
         let newCurrentTime = numericValue(body["currentTime"])
@@ -288,6 +291,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             self.hasMedia = mediaExists
             self.wantsPlayback = bridgeWantsPlayback
             self.isReallyHidden = bridgeReallyHidden
+            self.transitionArmed = bridgeTransitionArmed
             self.presentationMode = bridgePresentationMode
 
             self.isPlaying =
@@ -295,8 +299,11 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                 (
                     !paused ||
                     (
-                        bridgeReallyHidden &&
-                        bridgeWantsPlayback
+                        bridgeWantsPlayback &&
+                        (
+                            bridgeReallyHidden ||
+                            bridgeTransitionArmed
+                        )
                     )
                 )
 
@@ -527,7 +534,13 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
         let reportingPlaying =
             isPlaying ||
-            (isReallyHidden && wantsPlayback)
+            (
+                wantsPlayback &&
+                (
+                    isReallyHidden ||
+                    transitionArmed
+                )
+            )
 
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: title,
