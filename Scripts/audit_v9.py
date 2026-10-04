@@ -52,14 +52,14 @@ for required in [
     "import Libmpv",
     "mpv_create()",
     "mpv_initialize",
-    '"vo",',
-    '"gpu-next"',
-    '"gpu-api"',
-    '"vulkan"',
-    '"gpu-context"',
-    '"moltenvk"',
+    '"vo"',
+    '"libmpv"',
     '"hwdec"',
-    '"videotoolbox"',
+    '"videotoolbox-copy"',
+    "mpv_render_context_create",
+    "mpv_render_context_update",
+    "mpv_render_context_render",
+    "MPV_RENDER_PARAM_OPENGL_FBO",
     "MPRemoteCommandCenter",
     "MPNowPlayingInfoCenter",
     "desiredPlayback",
@@ -67,10 +67,29 @@ for required in [
 ]:
     require(required in player, f"native MPV invariant missing: {required}")
 
+render_view = read("V9/V9MPVRenderView.swift")
+for required in [
+    "CAEAGLLayer",
+    "EAGLContext",
+    "glBindFramebuffer",
+    "glReadPixels",
+    "CVPixelBufferCreate",
+    "onFrame",
+    "pauseRendering",
+    "resumeRendering",
+]:
+    require(required in render_view, f"libmpv render surface invariant missing: {required}")
+
+require(
+    "V9MetalLayer" not in all_v9,
+    "obsolete wid/CAMetalLayer renderer must not return",
+)
+
 require(
     'case .background:' in player
-    and "Intentionally do not pause MPV" in player,
-    "background lifecycle must not pause the single MPV engine",
+    and ".pauseRendering()" in player
+    and "setPause(" not in player.split("case .background:", 1)[1].split("case .active:", 1)[0],
+    "background lifecycle must pause rendering only, never MPV playback",
 )
 
 require(
