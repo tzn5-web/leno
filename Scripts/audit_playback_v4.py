@@ -66,6 +66,11 @@ require(
     "injectionTime: .atDocumentStart" in webview,
     "playback scripts must inject at document start",
 )
+require(
+    webview.find("source: PlaybackBridgeScript.source")
+    < webview.find("source: AdBlockScript.source"),
+    "PlaybackBridgeScript must be injected before AdBlockScript",
+)
 
 # Core lifecycle model.
 for needle in [
@@ -120,6 +125,7 @@ for needle in [
     "ensureMediaControls",
     "requestPiP",
     "requestFullscreen",
+    "webkitRequestFullscreen",
 ]:
     require(needle in bridge, f"baseline control missing: {needle}")
 
@@ -142,6 +148,7 @@ for needle in [
 require("navigator.audioSession.type" in bridge, "Web AudioSession playback hint missing")
 require("MPRemoteCommandCenter.shared()" in session, "native remote commands missing")
 require("MPNowPlayingInfoCenter.default()" in session, "native Now Playing owner missing")
+require("appIsBackground" in session, "native scene background truth missing from Now Playing")
 
 # JS health telemetry must actually reach Swift.
 for needle in [
@@ -198,5 +205,5 @@ print("V4 SOURCE AUDIT PASSED")
 print(f" - raw isReallyHidden() calls: {raw_hidden_count}")
 print(" - one native transport owner")
 print(" - media replacement intent/position preserved")
-print(" - PiP/fullscreen controls present")
+print(" - PiP/fullscreen controls present and WebKit fallback retained")
 print(" - dormant native playback code absent")
