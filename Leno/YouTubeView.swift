@@ -39,6 +39,9 @@ struct YouTubeView: View {
             case .active:
                 session.applicationDidBecomeActive()
 
+            case .inactive:
+                session.applicationDidEnterBackground()
+
             case .background:
                 session.applicationDidEnterBackground()
 
