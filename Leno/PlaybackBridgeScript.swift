@@ -282,27 +282,43 @@ enum PlaybackBridgeScript {
               }
             );
 
+            const blockedActionHandler =
+              function() {
+                return undefined;
+              };
+
             Object.defineProperty(
               proto,
               "setActionHandler",
               {
                 configurable: true,
                 enumerable: false,
-                writable: true,
-                value:
-                  function() {
-                    return undefined;
-                  }
+                get() {
+                  return blockedActionHandler;
+                },
+                set(_) {}
               }
             );
           }
         } catch (_) {
           try {
-            navigator.mediaSession
-              .setActionHandler =
+            const blockedActionHandler =
               function() {
                 return undefined;
               };
+
+            Object.defineProperty(
+              navigator.mediaSession,
+              "setActionHandler",
+              {
+                configurable: true,
+                enumerable: false,
+                get() {
+                  return blockedActionHandler;
+                },
+                set(_) {}
+              }
+            );
           } catch (_) {}
         }
       };
