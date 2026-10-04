@@ -506,6 +506,50 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
+        if message.name == "browserOpenVideo" {
+            guard let body =
+                    message.body as?
+                        [String: Any],
+                  let value =
+                    body["url"] as?
+                        String,
+                  let url =
+                    URL(
+                        string:
+                            value
+                    ) else {
+                return
+            }
+
+            DispatchQueue.main.async {
+                self.openVideo(url)
+            }
+
+            return
+        }
+
+        if message.name == "browseRequest" {
+            guard let body =
+                    message.body as?
+                        [String: Any],
+                  let value =
+                    body["url"] as?
+                        String,
+                  let url =
+                    URL(
+                        string:
+                            value
+                    ) else {
+                return
+            }
+
+            DispatchQueue.main.async {
+                self.showBrowser(url)
+            }
+
+            return
+        }
+
         if message.name == "mediaIntent" {
             guard let body =
                     message.body as?
