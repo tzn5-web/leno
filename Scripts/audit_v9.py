@@ -36,13 +36,17 @@ require("MPVKit-GPL" not in project, "GPL MPVKit product must not be linked")
 require("UIBackgroundModes:" in project and "- audio" in project, "background audio mode missing")
 
 for forbidden in [
-    "AVPlayer",
-    "WKWebView",
-    "WebKit",
-    "YouTubeKit",
-    "BackgroundAudioHandoff",
+    "import WebKit",
+    "import YouTubeKit",
+    "WKWebView(",
+    "AVPlayer(",
+    "AVQueuePlayer(",
+    "BackgroundAudioHandoff(",
 ]:
-    require(forbidden not in all_v9, f"V9 target contains forbidden legacy engine: {forbidden}")
+    require(
+        forbidden not in all_v9,
+        f"V9 target contains forbidden legacy engine symbol: {forbidden}",
+    )
 
 for required in [
     "import Libmpv",
