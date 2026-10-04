@@ -85,6 +85,48 @@ require(
     "obsolete wid/CAMetalLayer renderer must not return",
 )
 
+pip_bridge = read("V9/V9MPVPiPBridge.swift")
+
+for required in [
+    "AVSampleBufferDisplayLayer",
+    "AVPictureInPictureController",
+    "ContentSource",
+    "AVPictureInPictureSampleBufferPlaybackDelegate",
+    "CMSampleBufferCreateReadyWithImageBuffer",
+    "CMVideoFormatDescriptionCreateForImageBuffer",
+    "sampleBufferRenderer",
+    "pictureInPictureControllerIsPlaybackPaused",
+    "pictureInPictureControllerTimeRangeForPlayback",
+    "skipByInterval",
+    "setPlaying",
+    "shouldKeepRendering",
+]:
+    require(required in pip_bridge, f"native MPV PiP invariant missing: {required}")
+
+for required in [
+    "V9MPVPiPBridge",
+    "isPiPPossible",
+    "isPiPActive",
+    "togglePiP()",
+    "updatePiPPlaybackState",
+    "shouldKeepRendering",
+]:
+    require(required in player, f"V9 PiP service integration missing: {required}")
+
+require(
+    "captureFrames" in render_view
+    and "onFrame" in render_view
+    and "CVPixelBufferCreate" in render_view,
+    "MPV framebuffer is not exposed to native PiP",
+)
+
+require(
+    "NSAllowsLocalNetworking: true" in project
+    and "NSLocalNetworkUsageDescription:" in project
+    and "NSAllowsArbitraryLoads" not in project,
+    "Media Lab local resolver networking is not narrowly configured",
+)
+
 require(
     'case .background:' in player
     and ".pauseRendering()" in player
