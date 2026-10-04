@@ -37,7 +37,7 @@ struct YouTubeWebView: UIViewRepresentable {
         webView.scrollView.contentInsetAdjustmentBehavior = .never
 
         session.attach(webView: webView)
-        installContentRules(on: webView)
+        installContentRules(on: webView, coordinator: context.coordinator)
 
         if let url = URL(string: "https://www.youtube.com/") {
             session.markLoading()
@@ -55,9 +55,9 @@ struct YouTubeWebView: UIViewRepresentable {
         uiView.uiDelegate = nil
     }
 
-    private func installContentRules(on webView: WKWebView) {
+    private func installContentRules(on webView: WKWebView, coordinator: Coordinator) {
         WKContentRuleListStore.default().compileContentRuleList(
-            forIdentifier: "LenoAdBlockRules-v1",
+            forIdentifier: "LenoAdBlockRules-v2",
             encodedContentRuleList: AdBlockScript.contentRules
         ) { ruleList, error in
             guard let ruleList else {
@@ -69,12 +69,20 @@ struct YouTubeWebView: UIViewRepresentable {
 
             DispatchQueue.main.async {
                 webView.configuration.userContentController.add(ruleList)
+
+                guard !coordinator.didReloadAfterInstallingRules else { return }
+                coordinator.didReloadAfterInstallingRules = true
+
+                if webView.url != nil {
+                    webView.reload()
+                }
             }
         }
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         private let session: YouTubeSession
+        var didReloadAfterInstallingRules = false
 
         init(session: YouTubeSession) {
             self.session = session
