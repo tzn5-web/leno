@@ -890,23 +890,27 @@ final class YouTubeSession:
     private func evaluate(
         _ script: String
     ) {
-        let work = {
+        let work: () -> Void = {
             [weak self] in
 
-            self?
-                .webView?
-                .evaluateJavaScript(
-                    script
-                ) {
-                    _,
-                    error in
+            guard let self,
+                  let webView =
+                    self.webView else {
+                return
+            }
 
-                    if let error {
-                        print(
-                            "JavaScript bridge error: \(error.localizedDescription)"
-                        )
-                    }
+            webView.evaluateJavaScript(
+                script
+            ) {
+                _,
+                error in
+
+                if let error {
+                    print(
+                        "JavaScript bridge error: \(error.localizedDescription)"
+                    )
                 }
+            }
         }
 
         if Thread.isMainThread {
