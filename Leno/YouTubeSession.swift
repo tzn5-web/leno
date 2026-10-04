@@ -334,6 +334,13 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
+        if message.name == "hlsProbe" {
+            handleHLSProbe(
+                message.body
+            )
+            return
+        }
+
         guard message.name == "mediaState",
               let body = message.body as? [String: Any] else {
             return
@@ -469,6 +476,91 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                 MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
             }
         }
+    }
+
+    private func handleHLSProbe(
+        _ rawBody: Any
+    ) {
+        guard let body =
+                rawBody as?
+                    [String: Any] else {
+            return
+        }
+
+        let videoID =
+            body["videoID"] as?
+                String ?? ""
+
+        let source =
+            body["source"] as?
+                String ?? "unknown"
+
+        if let error =
+                body["error"] as?
+                    String {
+            print(
+                "V6 HLS probe failed: " +
+                "videoID=\(videoID) " +
+                "source=\(source) " +
+                "error=\(error)"
+            )
+            return
+        }
+
+        let host =
+            body["manifestHost"] as?
+                String ?? ""
+
+        let status =
+            Int(
+                numericValue(
+                    body["status"]
+                )
+            )
+
+        let bytes =
+            Int(
+                numericValue(
+                    body["byteCount"]
+                )
+            )
+
+        let nLength =
+            Int(
+                numericValue(
+                    body["nLength"]
+                )
+            )
+
+        let isM3U8 =
+            body["isM3U8"] as?
+                Bool ?? false
+
+        let hasSPC =
+            body["hasSPC"] as?
+                Bool ?? false
+
+        let hasN =
+            body["hasNChallenge"] as?
+                Bool ?? false
+
+        let hasVariants =
+            body["hasVariants"] as?
+                Bool ?? false
+
+        print(
+            "V6 HLS probe: " +
+            "videoID=\(videoID) " +
+            "source=\(source) " +
+            "host=\(host) " +
+            "HTTP=\(status) " +
+            "m3u8=\(isM3U8) " +
+            "spc=\(hasSPC) " +
+            "n=\(hasN) " +
+            "nLen=\(nLength) " +
+            "variants=\(hasVariants) " +
+            "bytes=\(bytes)"
+        )
     }
 
     private func probeNativeMediaPlaybackState(
