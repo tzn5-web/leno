@@ -93,6 +93,23 @@ V4 deliberately does not auto-reload the page merely because a transition is
 slow; a destructive reload should only be added if the physical device proves
 the `readyState == 0` condition persists.
 
+### Current Brave regression (2026)
+
+Open Brave issue:
+https://github.com/brave/brave-browser/issues/52281
+
+The reported symptom on modern iOS is unusually close to this app: a YouTube
+video stops after backgrounding even though background audio is enabled, but
+playback can return through system media controls. Reports also note that
+desktop-site or fresh/incognito sessions can behave differently from a normal
+signed-in YouTube session.
+
+This matters for architecture: if V4's early lifecycle neutralization still
+fails on a physical device, the next research branch should test a desktop
+YouTube WebKit backend (as Fyoutube does), not return to AVPlayer stream
+resolution. That experiment is intentionally kept separate because changing
+the YouTube presentation mode also changes UI/layout behavior.
+
 ## V4 invariants
 
 - WebKit is the only media engine.
