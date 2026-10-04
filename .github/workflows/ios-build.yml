@@ -157,3 +157,101 @@ jobs:
             simulator-build.log
             app-icon-files.log
           if-no-files-found: ignore
+
+  resolver-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Build VcdResolver image
+        run: docker build -t vcd-resolver:v9.1 Resolver
+
+      - name: Start resolver
+        run: |
+          docker run -d --rm \
+            --name vcd-resolver-v91 \
+            -p 8085:8085 \
+            vcd-resolver:v9.1
+
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8085/health > resolver-health.json; then
+              break
+            fi
+            sleep 1
+          done
+
+          test -s resolver-health.json
+
+      - name: Audit resolver runtime
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import json
+          with open("resolver-health.json", "r", encoding="utf-8") as handle:
+              health = json.load(handle)
+          assert health["ok"] is True
+          assert health["version"] == "0.2.0-lab"
+          assert health["js_runtime"] == "deno"
+          assert int(health["relay_ttl"]) >= 3600
+          print("resolver health:", health)
+          PY
+
+          docker exec vcd-resolver-v91 deno --version | tee resolver-deno.txt
+          grep -q '^deno 2\.9\.7' resolver-deno.txt
+
+          docker exec vcd-resolver-v91 yt-dlp --version | tee resolver-ytdlp.txt
+          grep -q '^2026\.08\.19' resolver-ytdlp.txt
+
+          docker exec vcd-resolver-v91 python - <<'PY'
+          import yt_dlp_ejs
+          from app.main import VIDEO_ID_RE, choose_formats
+
+          assert VIDEO_ID_RE.fullmatch("dQw4w9WgXcQ")
+          assert not VIDEO_ID_RE.fullmatch("../bad-video")
+
+          info = {
+              "formats": [
+                  {
+                      "format_id": "v1",
+                      "url": "https://example.invalid/video",
+                      "vcodec": "avc1.640028",
+                      "acodec": "none",
+                      "ext": "mp4",
+                      "height": 1080,
+                      "tbr": 4000,
+                  },
+                  {
+                      "format_id": "a1",
+                      "url": "https://example.invalid/audio",
+                      "vcodec": "none",
+                      "acodec": "mp4a.40.2",
+                      "ext": "m4a",
+                      "abr": 128,
+                  },
+              ]
+          }
+
+          video, audio = choose_formats(info)
+          assert video["format_id"] == "v1"
+          assert audio["format_id"] == "a1"
+          print("resolver format selection: OK")
+          PY
+
+      - name: Stop resolver
+        if: always()
+        run: docker rm -f vcd-resolver-v91 || true
+
+      - name: Upload resolver evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: resolver-evidence
+          path: |
+            resolver-health.json
+            resolver-deno.txt
+            resolver-ytdlp.txt
+          if-no-files-found: ignore
