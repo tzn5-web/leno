@@ -183,7 +183,22 @@ final class BackgroundAudioHandoff {
 
         isActive = true
 
-        let safeSeconds = max(0, seconds)
+        let isLiveHLS =
+            candidate?.kind == "hls"
+
+        let safeSeconds =
+            isLiveHLS
+                ? 0
+                : max(0, seconds)
+
+        if isLiveHLS {
+            if shouldPlay {
+                player.play()
+            }
+
+            return true
+        }
+
         let target = CMTime(
             seconds: safeSeconds,
             preferredTimescale: 600
