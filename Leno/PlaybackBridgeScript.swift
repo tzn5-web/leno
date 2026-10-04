@@ -579,6 +579,21 @@ enum PlaybackBridgeScript {
         }
       };
 
+      const postTransitionEvent =
+        (reason) => {
+          try {
+            window.webkit
+              ?.messageHandlers
+              ?.transitionEvent
+              ?.postMessage({
+                reason:
+                  String(
+                    reason || ""
+                  )
+              });
+          } catch (_) {}
+        };
+
       const postState = (
         force = false
       ) => {
@@ -1005,6 +1020,17 @@ enum PlaybackBridgeScript {
             video instanceof
               HTMLVideoElement
           ) {
+            const mode =
+              video.webkitPresentationMode ||
+              "inline";
+
+            postTransitionEvent(
+              mode ===
+                "picture-in-picture"
+                ? "pip-enter"
+                : "pip-exit"
+            );
+
             enforceInlinePlayback(video);
 
             if (
@@ -1474,6 +1500,10 @@ enum PlaybackBridgeScript {
       };
 
       const requestPiP = () => {
+        postTransitionEvent(
+          "pip-request"
+        );
+
         const video =
           state.video ||
           findWatchVideo();
