@@ -195,41 +195,58 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     }
 
     func goBack() {
-        let target =
-            isPlayerPresented
-                ? webView
-                : browserWebView
-
-        guard let target,
-              target.canGoBack else {
+        if isPlayerPresented {
+            showBrowser()
             return
         }
 
-        target.goBack()
+        guard let browserWebView,
+              browserWebView.canGoBack else {
+            return
+        }
+
+        browserWebView.goBack()
     }
 
     func goForward() {
-        let target =
-            isPlayerPresented
-                ? webView
-                : browserWebView
-
-        guard let target,
-              target.canGoForward else {
+        guard !isPlayerPresented,
+              let browserWebView,
+              browserWebView.canGoForward else {
             return
         }
 
-        target.goForward()
+        browserWebView.goForward()
     }
 
     func reload() {
-        guard let webView else { return }
+        if isPlayerPresented {
+            guard let webView else {
+                return
+            }
 
-        if webView.url == nil {
-            loadHome()
+            if webView.url == nil ||
+               webView.url?.scheme == "about" {
+                if let currentPlayerURL {
+                    loadPlayer(
+                        currentPlayerURL
+                    )
+                }
+            } else {
+                markLoading()
+                webView.reload()
+            }
+
+            return
+        }
+
+        guard let browserWebView else {
+            return
+        }
+
+        if browserWebView.url == nil {
+            loadBrowserHome()
         } else {
-            markLoading()
-            webView.reload()
+            browserWebView.reload()
         }
     }
 
