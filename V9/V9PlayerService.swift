@@ -22,6 +22,9 @@ final class V9PlayerService:
         case failed(String)
     }
 
+    typealias RefreshProvider =
+        (String) async throws -> ResolvedVideo
+
     @Published
     private(set) var state:
         LabState = .idle
@@ -105,13 +108,51 @@ final class V9PlayerService:
     private var desiredPlayback =
         false
 
+    private var refreshProvider:
+        RefreshProvider?
+
+    private var currentVideoID:
+        String?
+
+    private var refreshTask:
+        Task<Void, Never>?
+
+    private var refreshAttempts =
+        0
+
+    private let maximumRefreshAttempts =
+        2
+
+    private var pendingSeekAfterLoad:
+        Double?
+
+    private var interruptionActive =
+        false
+
+    private var audioNotificationTokens:
+        [NSObjectProtocol] =
+            []
+
     init() {
         configureAudioSession()
+        configureAudioNotifications()
         configureRemoteCommands()
     }
 
     deinit {
         MainActor.assumeIsolated {
+            refreshTask?
+                .cancel()
+
+            for token in
+                audioNotificationTokens {
+                NotificationCenter
+                    .default
+                    .removeObserver(
+                        token
+                    )
+            }
+
             pipBridge?
                 .cleanup()
 
@@ -322,8 +363,13 @@ final class V9PlayerService:
             self.pendingMedia =
                 nil
 
-            load(
-                pendingMedia
+            let resumeAt =
+                pendingSeekAfterLoad
+
+            beginLoad(
+                pendingMedia,
+                resumeAt:
+                    resumeAt
             )
         }
     }
@@ -346,8 +392,15 @@ final class V9PlayerService:
             return false
         }
 
-        var apiType =
-            MPV_RENDER_API_TYPE_OPENGL
+        let apiType =
+            UnsafeMutableRawPointer(
+                mutating:
+                    (
+                        MPV_RENDER_API_TYPE_OPENGL
+                            as NSString
+                    )
+                    .utf8String
+            )
 
         var glParameters =
             mpv_opengl_init_params(
@@ -363,49 +416,42 @@ final class V9PlayerService:
         let result =
             withUnsafeMutablePointer(
                 to:
-                    &apiType
+                    &glParameters
             ) {
-                apiPointer in
+                glPointer in
 
-                withUnsafeMutablePointer(
-                    to:
-                        &glParameters
-                ) {
-                    glPointer in
+                var parameters:
+                    [mpv_render_param] = [
+                        mpv_render_param(
+                            type:
+                                MPV_RENDER_PARAM_API_TYPE,
+                            data:
+                                apiType
+                        ),
+                        mpv_render_param(
+                            type:
+                                MPV_RENDER_PARAM_OPENGL_INIT_PARAMS,
+                            data:
+                                glPointer
+                        ),
+                        mpv_render_param(
+                            type:
+                                MPV_RENDER_PARAM_INVALID,
+                            data:
+                                nil
+                        )
+                    ]
 
-                    var parameters:
-                        [mpv_render_param] = [
-                            mpv_render_param(
-                                type:
-                                    MPV_RENDER_PARAM_API_TYPE,
-                                data:
-                                    apiPointer
-                            ),
-                            mpv_render_param(
-                                type:
-                                    MPV_RENDER_PARAM_OPENGL_INIT_PARAMS,
-                                data:
-                                    glPointer
-                            ),
-                            mpv_render_param(
-                                type:
-                                    MPV_RENDER_PARAM_INVALID,
-                                data:
-                                    nil
-                            )
-                        ]
+                return parameters
+                    .withUnsafeMutableBufferPointer {
+                        buffer in
 
-                    return parameters
-                        .withUnsafeMutableBufferPointer {
-                            buffer in
-
-                            mpv_render_context_create(
-                                &context,
-                                mpv,
-                                buffer.baseAddress
-                            )
-                        }
-                }
+                        mpv_render_context_create(
+                            &context,
+                            mpv,
+                            buffer.baseAddress
+                        )
+                    }
             }
 
         guard result >= 0,
@@ -553,17 +599,59 @@ final class V9PlayerService:
 
     func load(
         _ media:
-            ResolvedVideo
+            ResolvedVideo,
+        refreshProvider:
+            RefreshProvider? = nil
     ) {
+        if let refreshProvider {
+            self.refreshProvider =
+                refreshProvider
+        }
+
+        currentVideoID =
+            media.videoID
+
+        refreshAttempts =
+            0
+
+        pendingSeekAfterLoad =
+            nil
+
+        beginLoad(
+            media,
+            resumeAt:
+                nil
+        )
+    }
+
+    private func beginLoad(
+        _ media:
+            ResolvedVideo,
+        resumeAt:
+            Double?
+    ) {
+        if resumeAt == nil {
+            desiredPlayback =
+                true
+        }
+
+        pendingSeekAfterLoad =
+            resumeAt
+
         guard mpv != nil,
               renderContext != nil
         else {
             pendingMedia =
                 media
+
             title =
                 media.title
+
             return
         }
+
+        pipBridge?
+            .prepareForMediaChange()
 
         title =
             media.title
@@ -578,17 +666,18 @@ final class V9PlayerService:
             false
 
         currentTime =
-            0
+            max(
+                0,
+                resumeAt ?? 0
+            )
 
         duration =
             media.duration ?? 0
 
-        desiredPlayback =
-            true
-
         state =
             .loading
 
+        clearNowPlaying()
         activateAudioSession()
 
         let loadTarget:
@@ -611,16 +700,18 @@ final class V9PlayerService:
                     .absoluteString
         }
 
+        // Keep the replacement paused until FILE_LOADED so a refreshed
+        // stream can be restored to the previous timestamp before resuming.
+        setPause(
+            true
+        )
+
         command(
             [
                 "loadfile",
                 loadTarget,
                 "replace"
             ]
-        )
-
-        setPause(
-            false
         )
     }
 
@@ -733,16 +824,25 @@ final class V9PlayerService:
                     .pauseRendering()
             }
 
-            activateAudioSession()
+            if desiredPlayback,
+               hasLoadedMedia,
+               !interruptionActive {
+                activateAudioSession()
+            }
 
         case .active:
-            activateAudioSession()
+            if desiredPlayback,
+               hasLoadedMedia,
+               !interruptionActive {
+                activateAudioSession()
+            }
 
             renderView?
                 .resumeRendering()
 
             if desiredPlayback,
-               hasLoadedMedia {
+               hasLoadedMedia,
+               !interruptionActive {
                 setPause(
                     false
                 )
@@ -785,10 +885,6 @@ final class V9PlayerService:
                 options:
                     []
             )
-
-            try session.setActive(
-                true
-            )
         } catch {
             print(
                 "V9 audio session: \(error)"
@@ -806,6 +902,194 @@ final class V9PlayerService:
         } catch {
             print(
                 "V9 audio activation: \(error)"
+            )
+        }
+    }
+
+    private func configureAudioNotifications() {
+        let center =
+            NotificationCenter
+                .default
+
+        let session =
+            AVAudioSession
+                .sharedInstance()
+
+        audioNotificationTokens.append(
+            center.addObserver(
+                forName:
+                    AVAudioSession
+                        .interruptionNotification,
+                object:
+                    session,
+                queue:
+                    .main
+            ) {
+                [weak self] notification in
+
+                Task {
+                    @MainActor in
+
+                    self?
+                        .handleAudioInterruption(
+                            notification
+                        )
+                }
+            }
+        )
+
+        audioNotificationTokens.append(
+            center.addObserver(
+                forName:
+                    AVAudioSession
+                        .routeChangeNotification,
+                object:
+                    session,
+                queue:
+                    .main
+            ) {
+                [weak self] notification in
+
+                Task {
+                    @MainActor in
+
+                    self?
+                        .handleRouteChange(
+                            notification
+                        )
+                }
+            }
+        )
+
+        audioNotificationTokens.append(
+            center.addObserver(
+                forName:
+                    AVAudioSession
+                        .mediaServicesWereResetNotification,
+                object:
+                    session,
+                queue:
+                    .main
+            ) {
+                [weak self] _ in
+
+                Task {
+                    @MainActor in
+
+                    self?
+                        .handleMediaServicesReset()
+                }
+            }
+        )
+    }
+
+    private func handleAudioInterruption(
+        _ notification:
+            Notification
+    ) {
+        guard
+            let rawType =
+                notification
+                    .userInfo?[
+                        AVAudioSessionInterruptionTypeKey
+                    ] as?
+                    UInt,
+            let type =
+                AVAudioSession
+                    .InterruptionType(
+                        rawValue:
+                            rawType
+                    )
+        else {
+            return
+        }
+
+        switch type {
+        case .began:
+            interruptionActive =
+                true
+
+            if desiredPlayback,
+               hasLoadedMedia {
+                // System interruption is not a user Pause. Preserve intent.
+                setPause(
+                    true
+                )
+            }
+
+        case .ended:
+            interruptionActive =
+                false
+
+            let rawOptions =
+                notification
+                    .userInfo?[
+                        AVAudioSessionInterruptionOptionKey
+                    ] as?
+                    UInt ?? 0
+
+            let options =
+                AVAudioSession
+                    .InterruptionOptions(
+                        rawValue:
+                            rawOptions
+                    )
+
+            if options.contains(
+                .shouldResume
+            ),
+               desiredPlayback,
+               hasLoadedMedia {
+                activateAudioSession()
+
+                setPause(
+                    false
+                )
+            }
+
+        @unknown default:
+            break
+        }
+    }
+
+    private func handleRouteChange(
+        _ notification:
+            Notification
+    ) {
+        guard
+            let rawReason =
+                notification
+                    .userInfo?[
+                        AVAudioSessionRouteChangeReasonKey
+                    ] as?
+                    UInt,
+            let reason =
+                AVAudioSession
+                    .RouteChangeReason(
+                        rawValue:
+                            rawReason
+                    )
+        else {
+            return
+        }
+
+        if reason ==
+            .oldDeviceUnavailable {
+            // Unplugging headphones is a real safety pause.
+            pause()
+        }
+    }
+
+    private func handleMediaServicesReset() {
+        configureAudioSession()
+
+        if desiredPlayback,
+           hasLoadedMedia,
+           !interruptionActive {
+            activateAudioSession()
+
+            setPause(
+                false
             )
         }
     }
@@ -1123,9 +1407,24 @@ final class V9PlayerService:
                 hasLoadedMedia =
                     true
 
-                if desiredPlayback {
+                if let pendingSeekAfterLoad {
+                    self.pendingSeekAfterLoad =
+                        nil
+
+                    seek(
+                        to:
+                            pendingSeekAfterLoad
+                    )
+                }
+
+                if desiredPlayback,
+                   !interruptionActive {
                     setPause(
                         false
+                    )
+                } else {
+                    setPause(
+                        true
                     )
                 }
 
@@ -1135,13 +1434,9 @@ final class V9PlayerService:
                     .requestRender()
 
             case MPV_EVENT_END_FILE:
-                isPlaying =
-                    false
-
-                state =
-                    .paused
-
-                updateNowPlaying()
+                handleEndFile(
+                    event
+                )
 
             case MPV_EVENT_SHUTDOWN:
                 return
@@ -1150,6 +1445,170 @@ final class V9PlayerService:
                 break
             }
         }
+    }
+
+    private func handleEndFile(
+        _ event:
+            UnsafePointer<mpv_event>
+    ) {
+        guard let raw =
+                event.pointee.data
+        else {
+            return
+        }
+
+        let endFile =
+            raw
+                .assumingMemoryBound(
+                    to:
+                        mpv_event_end_file
+                            .self
+                )
+                .pointee
+
+        switch endFile.reason {
+        case MPV_END_FILE_REASON_EOF:
+            let endedNaturally =
+                duration > 0 &&
+                currentTime >=
+                    max(
+                        0,
+                        duration - 2
+                    )
+
+            if desiredPlayback,
+               !endedNaturally {
+                recoverFromStreamFailure(
+                    "Fluxul s-a închis înainte de final."
+                )
+            } else {
+                desiredPlayback =
+                    false
+
+                isPlaying =
+                    false
+
+                state =
+                    .paused
+
+                updateNowPlaying()
+                updatePiPPlaybackState()
+            }
+
+        case MPV_END_FILE_REASON_ERROR:
+            recoverFromStreamFailure(
+                mpvErrorString(
+                    endFile.error
+                )
+            )
+
+        case MPV_END_FILE_REASON_STOP:
+            // Expected when loadfile replace switches to another source.
+            break
+
+        case MPV_END_FILE_REASON_REDIRECT:
+            break
+
+        case MPV_END_FILE_REASON_QUIT:
+            desiredPlayback =
+                false
+
+            isPlaying =
+                false
+
+        default:
+            if desiredPlayback {
+                recoverFromStreamFailure(
+                    "Redarea s-a oprit neașteptat."
+                )
+            }
+        }
+    }
+
+    private func recoverFromStreamFailure(
+        _ detail:
+            String
+    ) {
+        guard desiredPlayback,
+              let currentVideoID,
+              let refreshProvider
+        else {
+            fail(
+                detail
+            )
+            return
+        }
+
+        guard refreshAttempts <
+                maximumRefreshAttempts
+        else {
+            fail(
+                "Streamul nu a putut fi refăcut după \(maximumRefreshAttempts) încercări. \(detail)"
+            )
+            return
+        }
+
+        refreshAttempts +=
+            1
+
+        let resumeAt =
+            max(
+                0,
+                currentTime
+            )
+
+        hasLoadedMedia =
+            false
+
+        state =
+            .loading
+
+        refreshTask?
+            .cancel()
+
+        refreshTask =
+            Task {
+                [weak self] in
+
+                guard let self else {
+                    return
+                }
+
+                do {
+                    let refreshed =
+                        try await refreshProvider(
+                            currentVideoID
+                        )
+
+                    guard !Task
+                        .isCancelled
+                    else {
+                        return
+                    }
+
+                    self.refreshTask =
+                        nil
+
+                    self.beginLoad(
+                        refreshed,
+                        resumeAt:
+                            resumeAt
+                    )
+                } catch {
+                    guard !Task
+                        .isCancelled
+                    else {
+                        return
+                    }
+
+                    self.refreshTask =
+                        nil
+
+                    self.fail(
+                        "Reîmprospătarea streamului a eșuat: \(error.localizedDescription)"
+                    )
+                }
+            }
     }
 
     private func handlePropertyEvent(
@@ -1391,6 +1850,18 @@ final class V9PlayerService:
                 : .paused
     }
 
+    private func clearNowPlaying() {
+        let center =
+            MPNowPlayingInfoCenter
+                .default()
+
+        center.nowPlayingInfo =
+            nil
+
+        center.playbackState =
+            .stopped
+    }
+
     private func fail(
         _ message:
             String
@@ -1400,8 +1871,14 @@ final class V9PlayerService:
                 message
             )
 
+        hasLoadedMedia =
+            false
+
         isPlaying =
             false
+
+        clearNowPlaying()
+        updatePiPPlaybackState()
     }
 
     private func mpvErrorString(
