@@ -141,6 +141,12 @@ final class V9MPVRenderView:
         }
 
         resizeDrawable()
+
+        service?
+            .updatePiPLayerFrame(
+                bounds
+            )
+
         requestRender()
     }
 
