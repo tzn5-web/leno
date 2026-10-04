@@ -134,8 +134,19 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf YoutubeVcd-V9-source
-          mkdir -p YoutubeVcd-V9-source
-          cp -R V9 Resolver Scripts Leno project.yml V9_ARCHITECTURE_AUDIT.md YoutubeVcd-V9-source/
+          mkdir -p YoutubeVcd-V9-source/Leno
+          cp -R V9 Resolver Scripts YoutubeVcd-V9-source/
+          cp -R Leno/Assets.xcassets YoutubeVcd-V9-source/Leno/
+          cp Leno/Info.plist YoutubeVcd-V9-source/Leno/
+          cp project.yml V9_ARCHITECTURE_AUDIT.md YoutubeVcd-V9-source/
+
+          if find YoutubeVcd-V9-source -type f \
+            \( -name 'YouTubeWebView.swift' -o -name 'NativePlaybackController.swift' -o -name 'BackgroundAudioHandoff.swift' \) \
+            | grep -q .; then
+            echo "Legacy playback sources leaked into V9 source package."
+            exit 1
+          fi
+
           ditto -c -k --sequesterRsrc --keepParent \
             YoutubeVcd-V9-source YoutubeVcd-V9-source.zip
 
