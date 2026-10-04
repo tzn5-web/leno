@@ -299,6 +299,9 @@ final class V9MPVPiPBridge:
         hasEnqueuedFrame =
             false
 
+        lastPresentationTime =
+            .invalid
+
         timebase =
             nil
 
@@ -307,6 +310,33 @@ final class V9MPVPiPBridge:
 
         renderView =
             nil
+    }
+
+    func prepareForMediaChange() {
+        pendingStart =
+            false
+
+        hasEnqueuedFrame =
+            false
+
+        lastPresentationTime =
+            .invalid
+
+        formatDescription =
+            nil
+
+        sampleBufferLayer
+            .sampleBufferRenderer
+            .flush(
+                removingDisplayedImage:
+                    true,
+                completionHandler:
+                    nil
+            )
+
+        renderView?
+            .captureFrames =
+                isActive
     }
 
     func updateLayerFrame(
@@ -401,6 +431,26 @@ final class V9MPVPiPBridge:
         pendingStart =
             true
 
+        // Never allow a new PiP session to reuse a frame/timestamp from
+        // the previously loaded video.
+        hasEnqueuedFrame =
+            false
+
+        lastPresentationTime =
+            .invalid
+
+        formatDescription =
+            nil
+
+        sampleBufferLayer
+            .sampleBufferRenderer
+            .flush(
+                removingDisplayedImage:
+                    true,
+                completionHandler:
+                    nil
+            )
+
         sampleBufferLayer
             .isHidden =
             false
@@ -435,6 +485,36 @@ final class V9MPVPiPBridge:
               height > 0
         else {
             return
+        }
+
+        if lastPresentationTime
+            .isValid,
+           presentationTime
+            .isValid,
+           presentationTime
+            .seconds
+            .isFinite,
+           lastPresentationTime
+            .seconds
+            .isFinite,
+           presentationTime.seconds + 0.5 <
+            lastPresentationTime.seconds {
+            // A new file starts close to t=0. Flush the old PiP timeline
+            // instead of forcing the new file to continue at the old PTS.
+            sampleBufferLayer
+                .sampleBufferRenderer
+                .flush(
+                    removingDisplayedImage:
+                        true,
+                    completionHandler:
+                        nil
+                )
+
+            lastPresentationTime =
+                .invalid
+
+            hasEnqueuedFrame =
+                false
         }
 
         let needsDescription:
@@ -487,6 +567,12 @@ final class V9MPVPiPBridge:
             sampleBufferLayer
                 .sampleBufferRenderer
                 .flush()
+
+            lastPresentationTime =
+                .invalid
+
+            hasEnqueuedFrame =
+                false
         }
 
         guard let formatDescription
@@ -766,6 +852,12 @@ extension V9MPVPiPBridge:
             pendingStart =
                 false
 
+            hasEnqueuedFrame =
+                false
+
+            lastPresentationTime =
+                .invalid
+
             sampleBufferLayer
                 .isHidden =
                 true
@@ -801,6 +893,12 @@ extension V9MPVPiPBridge:
 
             pendingStart =
                 false
+
+            hasEnqueuedFrame =
+                false
+
+            lastPresentationTime =
+                .invalid
 
             sampleBufferLayer
                 .isHidden =
