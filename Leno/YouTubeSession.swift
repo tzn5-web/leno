@@ -176,7 +176,12 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             return false
         }
 
-        guard isYouTubeURL(url) else {
+        let scheme =
+            url.scheme?
+                .lowercased() ?? ""
+
+        guard scheme == "http" ||
+              scheme == "https" else {
             return false
         }
 
@@ -239,6 +244,16 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             self.canGoBack = canGoBack
             self.canGoForward = canGoForward
             self.currentURL = url
+
+            if let url,
+               self.isPlaybackURL(
+                    url
+               ) {
+                self.currentPlayerURL =
+                    url
+                self.playerAvailable =
+                    true
+            }
             self.progress = min(max(progress, 0), 1)
             self.isLoading = isLoading
         }
@@ -895,13 +910,22 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             self.currentPlayerURL =
                 url
 
-            self.markLoading()
+            webView.setAllMediaPlaybackSuspended(
+                false
+            ) { [weak self, weak webView] in
+                guard let self,
+                      let webView else {
+                    return
+                }
 
-            webView.load(
-                URLRequest(
-                    url: url
+                self.markLoading()
+
+                webView.load(
+                    URLRequest(
+                        url: url
+                    )
                 )
-            )
+            }
         }
     }
 
