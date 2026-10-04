@@ -24,51 +24,20 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
-      - name: Debug simulator compile
+      - name: Static analysis
         run: |
           set -o pipefail
-          xcodebuild \
-            -project Leno.xcodeproj \
-            -scheme Leno \
-            -configuration Debug \
-            -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath build/SimulatorDerivedData \
-            CODE_SIGNING_ALLOWED=NO \
-            clean build | tee build-debug.log
-
-      - name: Static analyze
-        run: |
-          set -o pipefail
-          xcodebuild \
-            -project Leno.xcodeproj \
-            -scheme Leno \
-            -configuration Debug \
-            -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath build/AnalyzeDerivedData \
-            CODE_SIGNING_ALLOWED=NO \
-            analyze | tee analyze.log
+          xcodebuild             -project Leno.xcodeproj             -scheme Leno             -configuration Debug             -sdk iphoneos             -destination 'generic/platform=iOS'             -derivedDataPath build/AnalyzeData             CODE_SIGNING_ALLOWED=NO             CODE_SIGNING_REQUIRED=NO             analyze | tee analyze.log
 
       - name: Build unsigned device app
         run: |
           set -o pipefail
-          xcodebuild \
-            -project Leno.xcodeproj \
-            -scheme Leno \
-            -configuration Release \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -derivedDataPath build/DerivedData \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            clean build | tee build-release.log
+          xcodebuild             -project Leno.xcodeproj             -scheme Leno             -configuration Release             -sdk iphoneos             -destination 'generic/platform=iOS'             -derivedDataPath build/DerivedData             CODE_SIGNING_ALLOWED=NO             CODE_SIGNING_REQUIRED=NO             clean build | tee build.log
 
       - name: Package unsigned IPA
         run: |
           APP_PATH="build/DerivedData/Build/Products/Release-iphoneos/Leno.app"
           test -d "$APP_PATH"
-          rm -rf Payload
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/
           ditto -c -k --sequesterRsrc --keepParent Payload Leno-unsigned.ipa
@@ -86,7 +55,6 @@ jobs:
         with:
           name: build-diagnostics
           path: |
-            build-debug.log
             analyze.log
-            build-release.log
+            build.log
           if-no-files-found: ignore
