@@ -36,7 +36,7 @@ struct YouTubeWebView: UIViewRepresentable {
 
         userContentController.add(
             session,
-            name: "hlsProbe"
+            name: "mediaIntent"
         )
 
         let configuration = WKWebViewConfiguration()
@@ -94,7 +94,7 @@ struct YouTubeWebView: UIViewRepresentable {
 
         uiView.configuration.userContentController
             .removeScriptMessageHandler(
-                forName: "hlsProbe"
+                forName: "mediaIntent"
             )
 
         uiView.navigationDelegate = nil
