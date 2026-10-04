@@ -7,17 +7,16 @@ struct HomeView: View {
     var body: some View {
         List {
             Section("Player") {
-                TextField("Direct HTTPS media URL", text: $urlText)
+                TextField("Direct HTTP(S) media URL", text: $urlText)
                     .textInputAutocapitalization(.never)
                     .keyboardType(.URL)
                     .autocorrectionDisabled()
+                    .onSubmit(load)
 
-                Button {
-                    playerModel.load(urlString: urlText)
-                } label: {
+                Button(action: load) {
                     Label("Load media", systemImage: "play.fill")
                 }
-                .disabled(URL(string: urlText)?.scheme?.hasPrefix("http") != true)
+                .disabled(!isValidURL)
             }
 
             if playerModel.hasItem {
@@ -25,6 +24,24 @@ struct HomeView: View {
                     PlayerView(player: playerModel.player)
                         .frame(minHeight: 220)
                         .listRowInsets(EdgeInsets())
+                }
+
+                Section("Status") {
+                    LabeledContent("Playback", value: playerModel.phase.label)
+
+                    if let error = playerModel.errorMessage {
+                        Text(error)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if case .failed = playerModel.phase {
+                        Button {
+                            playerModel.retry()
+                        } label: {
+                            Label("Retry", systemImage: "arrow.clockwise")
+                        }
+                    }
                 }
 
                 Section("Playback") {
@@ -55,16 +72,35 @@ struct HomeView: View {
                         }
                     }
                     .buttonStyle(.borderless)
+
+                    Button(role: .destructive) {
+                        playerModel.clear()
+                        urlText = ""
+                    } label: {
+                        Label("Close media", systemImage: "xmark.circle")
+                    }
                 }
             }
 
-            Section("Design") {
+            Section("Core") {
                 Label("Background audio", systemImage: "waveform")
                 Label("Lock Screen controls", systemImage: "lock")
                 Label("Picture in Picture", systemImage: "pip")
-                Label("No analytics or ad SDKs", systemImage: "hand.raised")
+                Label("Automatic playback recovery", systemImage: "arrow.triangle.2.circlepath")
+                Label("No analytics or third-party ad SDKs", systemImage: "hand.raised")
             }
         }
         .navigationTitle("Leno")
+    }
+
+    private var isValidURL: Bool {
+        guard let url = URL(string: urlText.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let scheme = url.scheme?.lowercased() else { return false }
+        return scheme == "http" || scheme == "https"
+    }
+
+    private func load() {
+        guard isValidURL else { return }
+        playerModel.load(urlString: urlText)
     }
 }
