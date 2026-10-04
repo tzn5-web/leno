@@ -157,8 +157,17 @@ for needle in [
     'body["inDOM"]',
     'body["videoID"]',
     "Web media health warning",
+    "updateFrozenMediaRepair",
+    "repairFrozenWebMedia",
+    "lastStablePlaybackTime",
+    "pendingRepairResumeTime",
 ]:
     require(needle in session, f"native media-health telemetry missing: {needle}")
+
+require(
+    "restoreAfterReloadCall" in bridge,
+    "controlled foreground freeze repair cannot restore playback",
+)
 
 # Scene lifecycle contract.
 for needle in [
@@ -205,5 +214,6 @@ print("V4 SOURCE AUDIT PASSED")
 print(f" - raw isReallyHidden() calls: {raw_hidden_count}")
 print(" - one native transport owner")
 print(" - media replacement intent/position preserved")
+print(" - persistent foreground readyState=0 repair is bounded and resumable")
 print(" - PiP/fullscreen controls present and WebKit fallback retained")
 print(" - dormant native playback code absent")
