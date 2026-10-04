@@ -3,37 +3,43 @@ import SwiftUI
 struct RootView: View {
     var body: some View {
         TabView {
+            YouTubeView()
+                .tabItem {
+                    Label("YouTube", systemImage: "play.rectangle.fill")
+                }
+
             NavigationStack {
                 HomeView()
             }
             .tabItem {
-                Label("Player", systemImage: "play.rectangle")
+                Label("Direct", systemImage: "waveform")
             }
 
             NavigationStack {
-                YouTubeBrowserView()
+                AboutView()
             }
             .tabItem {
-                Label("YouTube", systemImage: "play.square")
-            }
-
-            NavigationStack {
-                LibraryView()
-            }
-            .tabItem {
-                Label("Library", systemImage: "rectangle.stack")
+                Label("About", systemImage: "info.circle")
             }
         }
     }
 }
 
-private struct LibraryView: View {
+private struct AboutView: View {
     var body: some View {
-        ContentUnavailableView(
-            "Library is empty",
-            systemImage: "rectangle.stack",
-            description: Text("Saved and recent native-player items will appear here.")
-        )
-        .navigationTitle("Library")
+        List {
+            Section("Leno") {
+                Label("YouTube ad filtering enabled", systemImage: "shield.checkered")
+                Label("Background audio", systemImage: "waveform")
+                Label("Lock Screen controls", systemImage: "lock")
+                Label("Picture in Picture", systemImage: "pip")
+            }
+
+            Section("Reliability") {
+                Text("Automatic retry is enabled for navigation and WebKit process failures.")
+                Text("A native direct-media player remains available as a fallback and diagnostic path.")
+            }
+        }
+        .navigationTitle("About")
     }
 }
