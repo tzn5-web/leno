@@ -48,7 +48,9 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     }
 
     func recover(after error: Error? = nil) {
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+
             guard self.retryCount < self.maxRetries else {
                 self.state = .failed(error?.localizedDescription ?? "YouTube could not be loaded.")
                 return
@@ -59,8 +61,8 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             self.state = .recovering(attempt)
 
             let delay = min(1.5 * Double(attempt), 4.5)
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                self?.webView?.reload()
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                self.webView?.reload()
             }
         }
     }
@@ -112,7 +114,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         (() => {
           const v = document.querySelector("video");
           if (!v) return false;
-          v.currentTime = Math.max(0, v.currentTime + (safeSeconds));
+          v.currentTime = Math.max(0, v.currentTime + ((safeSeconds)));
           return true;
         })();
         """)
