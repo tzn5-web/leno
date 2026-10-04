@@ -890,7 +890,7 @@ final class YouTubeSession:
     private func evaluate(
         _ script: String
     ) {
-        DispatchQueue.main.async {
+        let work = {
             [weak self] in
 
             self?
@@ -907,6 +907,14 @@ final class YouTubeSession:
                         )
                     }
                 }
+        }
+
+        if Thread.isMainThread {
+            work()
+        } else {
+            DispatchQueue.main.async(
+                execute: work
+            )
         }
     }
 
