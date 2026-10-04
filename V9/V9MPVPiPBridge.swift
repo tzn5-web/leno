@@ -69,6 +69,9 @@ final class V9MPVPiPBridge:
     private var controller:
         AVPictureInPictureController?
 
+    private var possibleObservation:
+        NSKeyValueObservation?
+
     private weak var service:
         V9PlayerService?
 
@@ -230,10 +233,29 @@ final class V9MPVPiPBridge:
         self.controller =
             controller
 
-        onPossibleChanged?(
-            controller
-                .isPictureInPicturePossible
-        )
+        possibleObservation =
+            controller.observe(
+                \.isPictureInPicturePossible,
+                options:
+                    [.initial, .new]
+            ) {
+                [weak self] controller,
+                change in
+
+                let value =
+                    change.newValue ??
+                    controller
+                        .isPictureInPicturePossible
+
+                Task {
+                    @MainActor in
+
+                    self?
+                        .onPossibleChanged?(
+                            value
+                        )
+                }
+            }
     }
 
     func cleanup() {
@@ -246,6 +268,12 @@ final class V9MPVPiPBridge:
 
         controller?
             .stopPictureInPicture()
+
+        possibleObservation?
+            .invalidate()
+
+        possibleObservation =
+            nil
 
         controller?.delegate =
             nil
