@@ -52,7 +52,10 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     private var nativeMediaPlaybackState: WKMediaPlaybackState = .none
     private var pendingWebProcessRecovery = false
 
-    private static let homeURL = URL(string: "https://m.youtube.com/")!
+    private static let homeURL = URL(
+        string:
+            "https://www.youtube.com/?app=desktop&persist_app=1"
+    )!
 
     override init() {
         super.init()
