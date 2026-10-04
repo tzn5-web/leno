@@ -4,6 +4,7 @@ import Foundation
 import Libmpv
 import MediaPlayer
 import SwiftUI
+import UIKit
 
 @MainActor
 final class V9PlayerService:
@@ -53,6 +54,14 @@ final class V9PlayerService:
     private(set) var hasAudioRelay =
         false
 
+    @Published
+    private(set) var isPiPPossible =
+        false
+
+    @Published
+    private(set) var isPiPActive =
+        false
+
     var stateDescription:
         String
     {
@@ -83,6 +92,9 @@ final class V9PlayerService:
     private weak var renderView:
         V9MPVRenderView?
 
+    private var pipBridge:
+        V9MPVPiPBridge?
+
     private var remoteTargets:
         [(MPRemoteCommand, Any)] =
             []
@@ -100,6 +112,9 @@ final class V9PlayerService:
 
     deinit {
         MainActor.assumeIsolated {
+            pipBridge?
+                .cleanup()
+
             for (
                 command,
                 token
@@ -154,6 +169,11 @@ final class V9PlayerService:
                     return
                 }
             }
+
+            setupPiPIfNeeded(
+                renderView:
+                    renderView
+            )
 
             renderView.requestRender()
             return
@@ -289,6 +309,11 @@ final class V9PlayerService:
             )
             return
         }
+
+        setupPiPIfNeeded(
+            renderView:
+                renderView
+        )
 
         state =
             .ready
@@ -665,15 +690,43 @@ final class V9PlayerService:
         )
     }
 
+    func togglePiP() {
+        guard hasLoadedMedia else {
+            return
+        }
+
+        pipBridge?
+            .requestToggle()
+    }
+
+    func updatePiPLayerFrame(
+        _ bounds:
+            CGRect
+    ) {
+        pipBridge?
+            .updateLayerFrame(
+                bounds
+            )
+    }
+
     func handleScenePhase(
         _ phase:
             ScenePhase
     ) {
         switch phase {
         case .background:
-            // Playback remains alive. Only visual rendering stops.
-            renderView?
-                .pauseRendering()
+            // Playback remains alive in the single MPV engine.
+            // Without PiP, stop only visual rendering.
+            // With PiP, keep producing frames for AVSampleBufferDisplayLayer.
+            if pipBridge?
+                .shouldKeepRendering ==
+                true {
+                renderView?
+                    .resumeRendering()
+            } else {
+                renderView?
+                    .pauseRendering()
+            }
 
             activateAudioSession()
 
@@ -1055,6 +1108,8 @@ final class V9PlayerService:
                     )
                 }
 
+                updatePiPPlaybackState()
+
                 renderView?
                     .requestRender()
 
@@ -1132,6 +1187,7 @@ final class V9PlayerService:
                 )
 
             updateNowPlaying()
+            updatePiPPlaybackState()
 
         case "duration":
             guard property.format ==
@@ -1159,6 +1215,7 @@ final class V9PlayerService:
             }
 
             updateNowPlaying()
+            updatePiPPlaybackState()
 
         case "pause":
             guard property.format ==
@@ -1188,10 +1245,87 @@ final class V9PlayerService:
             }
 
             updateNowPlaying()
+            updatePiPPlaybackState()
 
         default:
             break
         }
+    }
+
+    private func setupPiPIfNeeded(
+        renderView:
+            V9MPVRenderView
+    ) {
+        if pipBridge == nil {
+            pipBridge =
+                V9MPVPiPBridge()
+        }
+
+        guard let pipBridge else {
+            return
+        }
+
+        pipBridge.setup(
+            service:
+                self,
+            renderView:
+                renderView
+        )
+
+        pipBridge.onPossibleChanged = {
+            [weak self] possible in
+
+            self?.isPiPPossible =
+                possible
+        }
+
+        pipBridge.onActiveChanged = {
+            [weak self] active in
+
+            guard let self else {
+                return
+            }
+
+            self.isPiPActive =
+                active
+
+            if active {
+                self.renderView?
+                    .resumeRendering()
+            } else if UIApplication
+                .shared
+                .applicationState ==
+                .background {
+                self.renderView?
+                    .pauseRendering()
+            }
+        }
+
+        renderView.onFrame = {
+            [weak pipBridge] pixelBuffer,
+            presentationTime in
+
+            pipBridge?
+                .enqueueFrame(
+                    pixelBuffer,
+                    presentationTime:
+                        presentationTime
+                )
+        }
+
+        updatePiPPlaybackState()
+    }
+
+    private func updatePiPPlaybackState() {
+        pipBridge?
+            .updatePlaybackState(
+                duration:
+                    duration,
+                currentTime:
+                    currentTime,
+                isPaused:
+                    !isPlaying
+            )
     }
 
     private func updateNowPlaying() {
