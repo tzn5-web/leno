@@ -7,6 +7,9 @@ struct V9MediaLabView:
     private var player:
         V9PlayerService
 
+    @Environment(\.scenePhase)
+    private var scenePhase
+
     @AppStorage(
         "v9.resolver.endpoint"
     )
@@ -54,6 +57,16 @@ struct V9MediaLabView:
             )
             .navigationBarTitleDisplayMode(
                 .inline
+            )
+        }
+        .onChange(
+            of: scenePhase
+        ) {
+            _,
+            newPhase in
+
+            player.handleScenePhase(
+                newPhase
             )
         }
     }
