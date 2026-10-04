@@ -162,66 +162,51 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     }
 
     func applicationWillResignActive() {
-        guard hasMedia else {
-            return
-        }
+        backgroundArmed = true
 
-        if wantsPlayback || isPlaying {
-            backgroundArmed = true
+        if isPlaying {
             wantsPlayback = true
         }
 
         activateAudioSession()
 
+        evaluate(
+            PlaybackBridgeScript.armBackgroundCall
+        )
+
+        evaluate(
+            PlaybackBridgeScript.keepAliveCall
+        )
+
         webView?.setAllMediaPlaybackSuspended(
-            false
-        ) { [weak self] in
-            guard let self,
-                  self.backgroundArmed else {
-                return
-            }
-
-            self.evaluate(
-                PlaybackBridgeScript.armBackgroundCall
-            )
-
-            self.evaluate(
-                PlaybackBridgeScript.keepAliveCall
-            )
-        }
+            false,
+            completionHandler: nil
+        )
 
         updateNowPlaying()
     }
 
     func applicationDidEnterBackground() {
-        guard hasMedia else {
-            return
-        }
+        backgroundArmed = true
 
-        if wantsPlayback || isPlaying ||
-           backgroundArmed {
-            backgroundArmed = true
+        if isPlaying {
             wantsPlayback = true
         }
 
         activateAudioSession()
 
+        evaluate(
+            PlaybackBridgeScript.armBackgroundCall
+        )
+
         webView?.setAllMediaPlaybackSuspended(
-            false
-        ) { [weak self] in
-            guard let self,
-                  self.backgroundArmed else {
-                return
-            }
+            false,
+            completionHandler: nil
+        )
 
-            self.evaluate(
-                PlaybackBridgeScript.armBackgroundCall
-            )
-
-            self.evaluate(
-                PlaybackBridgeScript.keepAliveCall
-            )
-        }
+        evaluate(
+            PlaybackBridgeScript.keepAliveCall
+        )
 
         updateNowPlaying()
     }
@@ -240,7 +225,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
         backgroundArmed = false
 
-        if wantsPlayback && hasMedia {
+        if wantsPlayback {
             evaluate(
                 PlaybackBridgeScript.userPlayCall
             )
@@ -257,6 +242,15 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
     func play() {
         wantsPlayback = true
+
+        if UIApplication.shared.applicationState != .active {
+            backgroundArmed = true
+
+            evaluate(
+                PlaybackBridgeScript.armBackgroundCall
+            )
+        }
+
         activateAudioSession()
 
         webView?.setAllMediaPlaybackSuspended(
@@ -267,6 +261,8 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         evaluate(
             PlaybackBridgeScript.userPlayCall
         )
+
+        updateNowPlaying()
     }
 
     func pause() {
@@ -507,7 +503,8 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
         switch type {
         case .began:
-            wasPlayingBeforeInterruption = isPlaying
+            wasPlayingBeforeInterruption =
+                isPlaying || wantsPlayback
 
         case .ended:
             activateAudioSession()
@@ -619,10 +616,14 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     private func updateNowPlaying() {
         guard hasMedia else { return }
 
+        let reportingPlaying =
+            isPlaying ||
+            (backgroundArmed && wantsPlayback)
+
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: title,
             MPNowPlayingInfoPropertyPlaybackRate:
-                isPlaying ? 1.0 : 0.0,
+                reportingPlaying ? 1.0 : 0.0,
             MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
             MPNowPlayingInfoPropertyElapsedPlaybackTime:
                 currentTime
@@ -638,6 +639,6 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
         nowPlaying.nowPlayingInfo = info
         nowPlaying.playbackState =
-            isPlaying ? .playing : .paused
+            reportingPlaying ? .playing : .paused
     }
 }
