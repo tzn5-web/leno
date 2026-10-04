@@ -32,6 +32,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     private var notificationTokens: [NSObjectProtocol] = []
     private var wasPlayingBeforeInterruption = false
     private var wantsPlayback = false
+    private var appIsBackground = false
     private var isReallyHidden = false
     private var transitionArmed = false
     private var presentationMode = "inline"
@@ -178,6 +179,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     }
 
     func applicationDidEnterBackground() {
+        appIsBackground = true
         activateAudioSession()
 
         if isPlaying {
@@ -198,6 +200,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     }
 
     func applicationDidBecomeActive() {
+        appIsBackground = false
         activateAudioSession()
 
         evaluate(
@@ -576,6 +579,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             (
                 wantsPlayback &&
                 (
+                    appIsBackground ||
                     isReallyHidden ||
                     transitionArmed
                 )
