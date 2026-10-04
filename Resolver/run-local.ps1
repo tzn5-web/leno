@@ -17,8 +17,9 @@ if (-not $python) {
     exit 1
 }
 
-if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-    Write-Host "ERROR: Node.js nu este instalat. VcdResolver il foloseste pentru challenge-urile YouTube." -ForegroundColor Red
+if (-not (Get-Command deno -ErrorAction SilentlyContinue)) {
+    Write-Host "ERROR: Deno 2.3+ nu este instalat. VcdResolver il foloseste pentru challenge-urile YouTube." -ForegroundColor Red
+    Write-Host "Instalare oficiala: https://deno.com/"
     exit 1
 }
 
@@ -50,7 +51,7 @@ Write-Host "  http://127.0.0.1:8085"
 Write-Host "Din iPhone, in aceeasi retea:"
 Write-Host ("  http://{0}:8085" -f $lanIP)
 Write-Host ""
-Write-Host "Lasa fereastra deschisa cat timp testezi."
+Write-Host "Lasa fereastra deschisa cat timp testezi. Pentru VPS seteaza optional VCD_API_TOKEN."
 Write-Host ""
 
 & $venvPython -m uvicorn app.main:app --host 0.0.0.0 --port 8085
