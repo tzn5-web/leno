@@ -257,6 +257,7 @@ enum PlaybackBridgeScript {
         userPauseUntil: 0,
         nativeBackground: false,
         videoID: "",
+        systemInterruption: false,
         recoveryTimers:
           new Set(),
         lastKnownTime: 0,
@@ -636,6 +637,7 @@ enum PlaybackBridgeScript {
         if (
           !video ||
           !state.wantsPlayback ||
+          state.systemInterruption ||
           video.ended ||
           Date.now() <=
             state.userPauseUntil
@@ -833,6 +835,12 @@ enum PlaybackBridgeScript {
         }
 
         const now = Date.now();
+
+        if (state.systemInterruption) {
+          clearRecoveryTimers();
+          postState(true);
+          return;
+        }
 
         if (
           now <= state.userPauseUntil ||
@@ -1037,13 +1045,41 @@ enum PlaybackBridgeScript {
           return null;
         }
 
+        const nextVideoID =
+          currentVideoID();
+
         if (state.video === video) {
+          const routeChanged =
+            !!nextVideoID &&
+            !!state.videoID &&
+            nextVideoID !==
+              state.videoID;
+
+          if (routeChanged) {
+            const keepBackgroundIntent =
+              isBackgrounded() &&
+              state.wantsPlayback;
+
+            state.videoID =
+              nextVideoID;
+            state.lastKnownTime = 0;
+            state.transitionRecoveryUntil = 0;
+            clearRecoveryTimers();
+
+            state.wantsPlayback =
+              keepBackgroundIntent ||
+              (
+                !video.paused &&
+                !video.ended
+              );
+          } else if (nextVideoID) {
+            state.videoID =
+              nextVideoID;
+          }
+
           enforceInlinePlayback(video);
           return video;
         }
-
-        const nextVideoID =
-          currentVideoID();
 
         const sameMedia =
           !state.videoID ||
@@ -1172,6 +1208,7 @@ enum PlaybackBridgeScript {
           const backgroundPause =
             isActiveVideo &&
             state.wantsPlayback &&
+            !state.systemInterruption &&
             Date.now() >
               state.userPauseUntil &&
             isBackgrounded() &&
@@ -1666,6 +1703,19 @@ enum PlaybackBridgeScript {
         enterBackground,
         resumeForeground,
 
+        beginSystemInterruption() {
+          state.systemInterruption = true;
+          clearRecoveryTimers();
+          postState(true);
+          return true;
+        },
+
+        endSystemInterruption() {
+          state.systemInterruption = false;
+          postState(true);
+          return true;
+        },
+
         keepAlive() {
           if (
             state.wantsPlayback &&
@@ -2028,6 +2078,28 @@ enum PlaybackBridgeScript {
 
       return control
         ? control.resumeForeground()
+        : false;
+    })();
+    """#
+
+    static let beginSystemInterruptionCall = #"""
+    (() => {
+      const control =
+        window.__YOUTUBE_VCD_MEDIA_CONTROL__;
+
+      return control
+        ? control.beginSystemInterruption()
+        : false;
+    })();
+    """#
+
+    static let endSystemInterruptionCall = #"""
+    (() => {
+      const control =
+        window.__YOUTUBE_VCD_MEDIA_CONTROL__;
+
+      return control
+        ? control.endSystemInterruption()
         : false;
     })();
     """#
