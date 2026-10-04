@@ -628,6 +628,7 @@ enum PlaybackBridgeScript {
               videoID:
                 currentVideoID(),
               paused: true,
+              ended: false,
               hasMedia: false,
               wantsPlayback:
                 state.wantsPlayback,
@@ -664,6 +665,7 @@ enum PlaybackBridgeScript {
             videoID:
               currentVideoID(),
             paused: !!video.paused,
+            ended: !!video.ended,
             hasMedia: true,
             wantsPlayback:
               state.wantsPlayback,
