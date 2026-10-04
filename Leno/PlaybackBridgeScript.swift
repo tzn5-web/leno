@@ -474,6 +474,9 @@ enum PlaybackBridgeScript {
               hasMedia: false,
               wantsPlayback:
                 state.wantsPlayback,
+              transitionArmed:
+                Date.now() <=
+                  state.transitionRecoveryUntil,
               realHidden:
                 isReallyHidden(),
               presentationMode:
@@ -502,6 +505,9 @@ enum PlaybackBridgeScript {
             hasMedia: true,
             wantsPlayback:
               state.wantsPlayback,
+            transitionArmed:
+              Date.now() <=
+                state.transitionRecoveryUntil,
             realHidden:
               isReallyHidden(),
             presentationMode,
