@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ios-build-${{ github.ref }}
+  group: ios-build-\${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,6 +25,25 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      - name: Generate app icon
+        run: |
+          xcrun swift Scripts/GenerateAppIcon.swift Leno/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
+          test -s Leno/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
+
+      - name: V2 source integrity audit
+        run: |
+          set -euo pipefail
+          grep -q 'CFBundleDisplayName: YoutubeVcd' project.yml
+          grep -q 'PRODUCT_NAME: YoutubeVcd' project.yml
+          grep -q 'func search(_ query: String)' Leno/YouTubeSession.swift
+          grep -q 'func goBack()' Leno/YouTubeSession.swift
+          grep -q 'createWebViewWith configuration' Leno/YouTubeWebView.swift
+          grep -q '/youtubei/v1/player' Leno/AdBlockScript.swift
+          if grep -q 'JSON.parse = function' Leno/AdBlockScript.swift; then
+            echo "Global JSON.parse hook is forbidden in V2."
+            exit 1
+          fi
+
       - name: Generate Xcode project
         run: xcodegen generate
 
@@ -32,8 +51,8 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild \
-            -project Leno.xcodeproj \
-            -scheme Leno \
+            -project YoutubeVcd.xcodeproj \
+            -scheme YoutubeVcd \
             -configuration Debug \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
@@ -63,8 +82,8 @@ jobs:
 
           set -o pipefail
           xcodebuild \
-            -project Leno.xcodeproj \
-            -scheme Leno \
+            -project YoutubeVcd.xcodeproj \
+            -scheme YoutubeVcd \
             -configuration Debug \
             -sdk iphonesimulator \
             -destination "id=$SIM_UDID" \
@@ -73,18 +92,18 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             clean build | tee simulator-build.log
 
-          SIM_APP="build/SimulatorData/Build/Products/Debug-iphonesimulator/Leno.app"
+          SIM_APP="build/SimulatorData/Build/Products/Debug-iphonesimulator/YoutubeVcd.app"
           test -d "$SIM_APP"
 
           xcrun simctl install "$SIM_UDID" "$SIM_APP"
           xcrun simctl launch "$SIM_UDID" com.tzn5web.leno | tee simulator-launch.log
 
-          sleep 8
+          sleep 10
           xcrun simctl io "$SIM_UDID" screenshot simulator-smoke.png
           xcrun simctl spawn "$SIM_UDID" log show \
-            --last 2m \
+            --last 3m \
             --style compact \
-            --predicate 'process == "Leno"' > simulator-runtime.log || true
+            --predicate 'process == "YoutubeVcd"' > simulator-runtime.log || true
 
           if grep -Eqi 'fatal error|uncaught exception|termination reason|crash' simulator-runtime.log; then
             echo "Potential runtime crash marker detected."
@@ -96,8 +115,8 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild \
-            -project Leno.xcodeproj \
-            -scheme Leno \
+            -project YoutubeVcd.xcodeproj \
+            -scheme YoutubeVcd \
             -configuration Release \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
@@ -106,20 +125,40 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             clean build | tee build.log
 
+      - name: Audit built app metadata
+        run: |
+          set -euo pipefail
+          APP_PATH="build/DerivedData/Build/Products/Release-iphoneos/YoutubeVcd.app"
+          PLIST="$APP_PATH/Info.plist"
+
+          test -d "$APP_PATH"
+          test -f "$PLIST"
+
+          DISPLAY_NAME="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$PLIST")"
+          BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$PLIST")"
+          BACKGROUND_MODE="$(/usr/libexec/PlistBuddy -c 'Print :UIBackgroundModes:0' "$PLIST")"
+
+          test "$DISPLAY_NAME" = "YoutubeVcd"
+          test "$BUNDLE_ID" = "com.tzn5web.leno"
+          test "$BACKGROUND_MODE" = "audio"
+
+          find "$APP_PATH" -maxdepth 1 -iname '*AppIcon*' -print | tee app-icon-files.log
+          test -s Leno/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
+
       - name: Package unsigned IPA
         run: |
-          APP_PATH="build/DerivedData/Build/Products/Release-iphoneos/Leno.app"
+          APP_PATH="build/DerivedData/Build/Products/Release-iphoneos/YoutubeVcd.app"
           test -d "$APP_PATH"
           rm -rf Payload
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/
-          ditto -c -k --sequesterRsrc --keepParent Payload Leno-unsigned.ipa
+          ditto -c -k --sequesterRsrc --keepParent Payload YoutubeVcd-unsigned.ipa
 
       - name: Upload IPA
         uses: actions/upload-artifact@v7
         with:
-          name: Leno-unsigned-ipa
-          path: Leno-unsigned.ipa
+          name: YoutubeVcd-unsigned-ipa
+          path: YoutubeVcd-unsigned.ipa
           if-no-files-found: error
 
       - name: Upload simulator evidence
@@ -132,6 +171,7 @@ jobs:
             simulator-launch.log
             simulator-runtime.log
             simulator-build.log
+            app-icon-files.log
           if-no-files-found: ignore
 
       - name: Upload diagnostics on failure
@@ -145,4 +185,5 @@ jobs:
             simulator-build.log
             simulator-launch.log
             simulator-runtime.log
+            app-icon-files.log
           if-no-files-found: ignore

@@ -2,49 +2,98 @@ import SwiftUI
 
 struct YouTubeView: View {
     @StateObject private var session = YouTubeSession()
+    @State private var searchText = ""
+    @FocusState private var searchFocused: Bool
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        ZStack(alignment: .top) {
-            YouTubeWebView(session: session)
-                .ignoresSafeArea()
+        VStack(spacing: 0) {
+            browserBar
 
-            if shouldShowStatus {
-                statusPill
-                    .padding(.top, 8)
+            if session.isLoading {
+                ProgressView(value: session.progress)
+                    .progressViewStyle(.linear)
+                    .frame(height: 2)
             }
 
-            if case .failed(let message) = session.state {
-                failureOverlay(message: message)
+            ZStack(alignment: .top) {
+                YouTubeWebView(session: session)
+
+                if case .recovering(let attempt) = session.state {
+                    Label("Recovering \(attempt)/3", systemImage: "wrench.and.screwdriver")
+                        .statusPill()
+                        .padding(.top, 8)
+                }
+
+                if case .failed(let message) = session.state {
+                    failureOverlay(message: message)
+                }
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if session.isPlaying {
+            if session.hasMedia {
                 mediaBar
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            switch newPhase {
+            case .active:
+                session.applicationDidBecomeActive()
+            case .background:
+                session.applicationDidEnterBackground()
+            default:
+                break
             }
         }
     }
 
-    private var shouldShowStatus: Bool {
-        switch session.state {
-        case .loading, .recovering:
-            return true
-        default:
-            return false
-        }
-    }
+    private var browserBar: some View {
+        HStack(spacing: 10) {
+            Button {
+                session.goBack()
+            } label: {
+                Image(systemName: "chevron.left")
+            }
+            .disabled(!session.canGoBack)
+            .accessibilityLabel("Back")
 
-    @ViewBuilder
-    private var statusPill: some View {
-        switch session.state {
-        case .loading:
-            Label("Loading YouTube", systemImage: "arrow.triangle.2.circlepath")
-                .statusPill()
-        case .recovering(let attempt):
-            Label("Recovering \(attempt)/3", systemImage: "wrench.and.screwdriver")
-                .statusPill()
-        default:
-            EmptyView()
+            Button {
+                session.goForward()
+            } label: {
+                Image(systemName: "chevron.right")
+            }
+            .disabled(!session.canGoForward)
+            .accessibilityLabel("Forward")
+
+            TextField("Search YouTube", text: $searchText)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .focused($searchFocused)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit {
+                    submitSearch()
+                }
+
+            Button {
+                session.loadHome()
+                searchFocused = false
+            } label: {
+                Image(systemName: "house.fill")
+            }
+            .accessibilityLabel("Home")
+
+            Button {
+                session.reload()
+            } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+            .accessibilityLabel("Reload")
         }
+        .font(.body.weight(.semibold))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(.thinMaterial)
     }
 
     private var mediaBar: some View {
@@ -67,7 +116,12 @@ struct YouTubeView: View {
                 Image(systemName: "goforward.15")
             }
 
-            Spacer()
+            Text(session.title)
+                .font(.caption)
+                .lineLimit(1)
+                .foregroundStyle(.secondary)
+
+            Spacer(minLength: 8)
 
             Button {
                 session.requestPictureInPicture()
@@ -76,9 +130,16 @@ struct YouTubeView: View {
             }
         }
         .font(.title3)
-        .padding(.horizontal, 18)
-        .frame(height: 50)
+        .padding(.horizontal, 16)
+        .frame(height: 52)
         .background(.ultraThinMaterial)
+    }
+
+    private func submitSearch() {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return }
+        session.search(query)
+        searchFocused = false
     }
 
     private func failureOverlay(message: String) -> some View {

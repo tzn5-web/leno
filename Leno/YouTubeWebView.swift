@@ -38,12 +38,8 @@ struct YouTubeWebView: UIViewRepresentable {
         webView.scrollView.contentInsetAdjustmentBehavior = .never
 
         session.attach(webView: webView)
-        installContentRules(on: webView, coordinator: context.coordinator)
-
-        if let url = URL(string: "https://www.youtube.com/") {
-            session.markLoading()
-            webView.load(URLRequest(url: url))
-        }
+        context.coordinator.observe(webView)
+        installContentRulesThenLoad(on: webView, coordinator: context.coordinator)
 
         return webView
     }
@@ -51,50 +47,77 @@ struct YouTubeWebView: UIViewRepresentable {
     func updateUIView(_ uiView: WKWebView, context: Context) {}
 
     static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
+        coordinator.invalidateObservations()
         uiView.configuration.userContentController.removeScriptMessageHandler(forName: "mediaState")
         uiView.navigationDelegate = nil
         uiView.uiDelegate = nil
     }
 
-    private func installContentRules(on webView: WKWebView, coordinator: Coordinator) {
+    private func installContentRulesThenLoad(on webView: WKWebView, coordinator: Coordinator) {
         WKContentRuleListStore.default().compileContentRuleList(
-            forIdentifier: "LenoAdBlockRules-v2",
+            forIdentifier: "YoutubeVcdAdRules-v3",
             encodedContentRuleList: AdBlockScript.contentRules
         ) { ruleList, error in
-            guard let ruleList else {
-                if let error {
+            DispatchQueue.main.async {
+                if let ruleList {
+                    webView.configuration.userContentController.add(ruleList)
+                } else if let error {
                     print("Content rule compilation failed: \(error.localizedDescription)")
                 }
-                return
-            }
 
-            DispatchQueue.main.async {
-                webView.configuration.userContentController.add(ruleList)
-
-                guard !coordinator.didReloadAfterInstallingRules else { return }
-                coordinator.didReloadAfterInstallingRules = true
-
-                if webView.url != nil {
-                    webView.reload()
-                }
+                guard !coordinator.didLoadInitialPage else { return }
+                coordinator.didLoadInitialPage = true
+                session.loadHome()
             }
         }
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         private let session: YouTubeSession
-        var didReloadAfterInstallingRules = false
+        private var observations: [NSKeyValueObservation] = []
+        var didLoadInitialPage = false
 
         init(session: YouTubeSession) {
             self.session = session
         }
 
+        func observe(_ webView: WKWebView) {
+            observations = [
+                webView.observe(\.canGoBack, options: [.initial, .new]) { [weak self] webView, _ in
+                    self?.syncNavigationState(from: webView)
+                },
+                webView.observe(\.canGoForward, options: [.initial, .new]) { [weak self] webView, _ in
+                    self?.syncNavigationState(from: webView)
+                },
+                webView.observe(\.estimatedProgress, options: [.initial, .new]) { [weak self] webView, _ in
+                    self?.syncNavigationState(from: webView)
+                },
+                webView.observe(\.url, options: [.initial, .new]) { [weak self] webView, _ in
+                    self?.syncNavigationState(from: webView)
+                },
+                webView.observe(\.isLoading, options: [.initial, .new]) { [weak self] webView, _ in
+                    self?.syncNavigationState(from: webView)
+                }
+            ]
+        }
+
+        func invalidateObservations() {
+            observations.forEach { $0.invalidate() }
+            observations.removeAll()
+        }
+
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
             session.markLoading()
+            syncNavigationState(from: webView)
+        }
+
+        func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+            syncNavigationState(from: webView)
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             session.markReady()
+            syncNavigationState(from: webView)
         }
 
         func webView(
@@ -121,6 +144,18 @@ struct YouTubeWebView: UIViewRepresentable {
 
         func webView(
             _ webView: WKWebView,
+            createWebViewWith configuration: WKWebViewConfiguration,
+            for navigationAction: WKNavigationAction,
+            windowFeatures: WKWindowFeatures
+        ) -> WKWebView? {
+            if navigationAction.targetFrame == nil {
+                webView.load(navigationAction.request)
+            }
+            return nil
+        }
+
+        func webView(
+            _ webView: WKWebView,
             decidePolicyFor navigationAction: WKNavigationAction,
             decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
         ) {
@@ -130,11 +165,22 @@ struct YouTubeWebView: UIViewRepresentable {
             }
 
             let scheme = url.scheme?.lowercased()
-            if scheme == "http" || scheme == "https" || scheme == "about" {
+            switch scheme {
+            case "http", "https", "about", "data", "blob":
                 decisionHandler(.allow)
-            } else {
+            default:
                 decisionHandler(.cancel)
             }
+        }
+
+        private func syncNavigationState(from webView: WKWebView) {
+            session.updateNavigationState(
+                canGoBack: webView.canGoBack,
+                canGoForward: webView.canGoForward,
+                url: webView.url,
+                progress: webView.estimatedProgress,
+                isLoading: webView.isLoading
+            )
         }
 
         private func shouldRecover(from error: Error) -> Bool {

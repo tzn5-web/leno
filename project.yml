@@ -1,4 +1,4 @@
-name: Leno
+name: YoutubeVcd
 options:
   bundleIdPrefix: com.tzn5web
   deploymentTarget:
@@ -11,7 +11,7 @@ settings:
     CODE_SIGN_STYLE: Automatic
 
 targets:
-  Leno:
+  YoutubeVcd:
     type: application
     platform: iOS
     sources:
@@ -19,7 +19,7 @@ targets:
     info:
       path: Leno/Info.plist
       properties:
-        CFBundleDisplayName: Leno
+        CFBundleDisplayName: YoutubeVcd
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
@@ -32,11 +32,16 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.tzn5web.leno
-        PRODUCT_NAME: Leno
-        MARKETING_VERSION: "0.1.0"
-        CURRENT_PROJECT_VERSION: "2"
+        PRODUCT_NAME: YoutubeVcd
+        MARKETING_VERSION: "0.2.0"
+        CURRENT_PROJECT_VERSION: "3"
         TARGETED_DEVICE_FAMILY: "1"
         SUPPORTS_MACCATALYST: NO
         GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    preBuildScripts:
+      - name: Generate App Icon
+        script: |
+          xcrun swift "$SRCROOT/Scripts/GenerateAppIcon.swift" "$SRCROOT/Leno/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
     scheme:
       testTargets: []
