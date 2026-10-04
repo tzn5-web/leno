@@ -97,6 +97,83 @@ enum AdBlockScript {
         (document.head || document.documentElement)?.appendChild(style);
       };
 
+      const removeOpenInYouTubePromos = () => {
+        try {
+          const appLinkPattern =
+            /^(?:youtube|vnd\.youtube|itms-apps|itms-services):|apps\.apple\.com|itunes\.apple\.com/i;
+
+          const textPattern =
+            /^(?:open|open in|watch in|deschide|deschide în|deschide in)\s+(?:the\s+)?youtube(?:\s+app)?$/i;
+
+          for (
+            const anchor of
+            document.querySelectorAll(
+              "a[href], button, [role='button']"
+            )
+          ) {
+            const href =
+              anchor instanceof HTMLAnchorElement
+                ? anchor.href
+                : "";
+
+            const label =
+              String(
+                anchor.getAttribute?.(
+                  "aria-label"
+                ) ||
+                anchor.textContent ||
+                ""
+              )
+              .replace(/\s+/g, " ")
+              .trim();
+
+            const isExplicitAppLink =
+              href &&
+              appLinkPattern.test(href);
+
+            const isOpenYouTubeControl =
+              textPattern.test(label);
+
+            if (
+              !isExplicitAppLink &&
+              !isOpenYouTubeControl
+            ) {
+              continue;
+            }
+
+            const host =
+              anchor.closest(
+                [
+                  "ytm-app-promo",
+                  "ytm-promo",
+                  "ytm-mobile-topbar-renderer",
+                  "ytd-banner-promo-renderer",
+                  "[class*='app-promo']",
+                  "[class*='open-app']"
+                ].join(",")
+              ) ||
+              anchor;
+
+            if (host instanceof HTMLElement) {
+              host.style.setProperty(
+                "display",
+                "none",
+                "important"
+              );
+            }
+          }
+
+          for (
+            const meta of
+            document.querySelectorAll(
+              'meta[name="apple-itunes-app"]'
+            )
+          ) {
+            meta.remove();
+          }
+        } catch (_) {}
+      };
+
       const clickSkipButton = () => {
         try {
           const player = document.querySelector(".html5-video-player.ad-showing, .ad-showing");
@@ -121,12 +198,14 @@ enum AdBlockScript {
         setTimeout(() => {
           maintenanceScheduled = false;
           installCosmeticRules();
+          removeOpenInYouTubePromos();
           cleanKnownPlayerGlobal();
           clickSkipButton();
         }, 180);
       };
 
       installCosmeticRules();
+      removeOpenInYouTubePromos();
       cleanKnownPlayerGlobal();
       clickSkipButton();
 
@@ -150,6 +229,7 @@ enum AdBlockScript {
       }
 
       setInterval(() => {
+        removeOpenInYouTubePromos();
         cleanKnownPlayerGlobal();
         clickSkipButton();
       }, 2000);
