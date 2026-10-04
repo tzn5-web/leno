@@ -153,6 +153,7 @@ require("navigator.audioSession.type" in bridge, "Web AudioSession playback hint
 require("MPRemoteCommandCenter.shared()" in session, "native remote commands missing")
 require("MPNowPlayingInfoCenter.default()" in session, "native Now Playing owner missing")
 require("appIsBackground" in session, "native scene background truth missing from Now Playing")
+require("hasPlaybackContext" in session, "remote-control context is not preserved across media replacement")
 
 # JS health telemetry must actually reach Swift.
 for needle in [
@@ -223,5 +224,6 @@ print(" - one native transport owner")
 print(" - media replacement intent/position preserved")
 print(" - persistent foreground readyState=0 repair is bounded and resumable")
 print(" - same-element route changes and AVAudioSession interruptions are isolated")
+print(" - lock-screen context survives transient video-element replacement")
 print(" - PiP/fullscreen controls present and WebKit fallback retained")
 print(" - dormant native playback code absent")
