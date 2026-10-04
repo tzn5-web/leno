@@ -2027,6 +2027,94 @@ enum PlaybackBridgeScript {
           } catch (_) {}
         };
 
+      const routeBrowseURL =
+        (value) => {
+          try {
+            const url =
+              new URL(
+                value,
+                location.href
+              );
+
+            const protocol =
+              url.protocol
+                .toLowerCase();
+
+            const webURL =
+              protocol === "http:" ||
+              protocol === "https:";
+
+            if (
+              !webURL ||
+              isPlaybackNavigationURL(
+                url.href
+              )
+            ) {
+              return false;
+            }
+
+            window.webkit
+              ?.messageHandlers
+              ?.browseRequest
+              ?.postMessage({
+                url:
+                  url.href
+              });
+
+            return true;
+          } catch (_) {
+            return false;
+          }
+        };
+
+      const nativeHistoryPushState =
+        history.pushState
+          .bind(history);
+
+      history.pushState =
+        function(
+          state,
+          title,
+          url
+        ) {
+          if (
+            url &&
+            routeBrowseURL(url)
+          ) {
+            return;
+          }
+
+          return nativeHistoryPushState(
+            state,
+            title,
+            url
+          );
+        };
+
+      const nativeHistoryReplaceState =
+        history.replaceState
+          .bind(history);
+
+      history.replaceState =
+        function(
+          state,
+          title,
+          url
+        ) {
+          if (
+            url &&
+            routeBrowseURL(url)
+          ) {
+            return;
+          }
+
+          return nativeHistoryReplaceState(
+            state,
+            title,
+            url
+          );
+        };
+
       const recordPlayerControlIntent =
         (event) => {
           const target =
