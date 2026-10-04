@@ -117,7 +117,21 @@ enum AdBlockScript {
           const bridge = window.webkit?.messageHandlers?.mediaState;
           if (!bridge) return;
 
-          const video = document.querySelector("video");
+          const videos = Array.from(document.querySelectorAll("video"));
+          const video =
+            videos.find((item) =>
+              !item.paused &&
+              !item.ended &&
+              item.readyState >= 2 &&
+              !!item.currentSrc
+            ) ||
+            videos.find((item) => {
+              const rect = item.getBoundingClientRect();
+              return rect.width * rect.height > 12000 &&
+                     item.readyState >= 1 &&
+                     !!item.currentSrc;
+            }) ||
+            null;
 
           if (!video) {
             bridge.postMessage({

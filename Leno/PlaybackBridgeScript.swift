@@ -11,7 +11,36 @@ enum PlaybackBridgeScript {
       let shouldKeepPlaying = false;
       let lastKnownTime = 0;
 
-      const currentVideo = () => document.querySelector("video");
+      const currentVideo = () => {
+        const videos = Array.from(document.querySelectorAll("video"));
+
+        const playing = videos.find((video) =>
+          !video.paused &&
+          !video.ended &&
+          video.readyState >= 2 &&
+          !!video.currentSrc
+        );
+
+        if (playing) return playing;
+
+        const visible = videos
+          .map((video) => {
+            const rect = video.getBoundingClientRect();
+            const area =
+              Math.max(0, rect.width) *
+              Math.max(0, rect.height);
+
+            return { video, area };
+          })
+          .filter(({ video, area }) =>
+            area > 12000 &&
+            video.readyState >= 1 &&
+            !!video.currentSrc
+          )
+          .sort((a, b) => b.area - a.area)[0];
+
+        return visible?.video || null;
+      };
 
       const postState = () => {
         try {

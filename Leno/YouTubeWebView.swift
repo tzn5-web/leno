@@ -325,126 +325,90 @@ struct YouTubeWebView: UIViewRepresentable {
         private func ensureHomeContainsVideos(
             _ webView: WKWebView
         ) {
-            guard let url = webView.url else {
-                return
-            }
-
-            let path = url.path
-
-            guard path == "/" ||
-                  path == "/feed/trending" else {
+            guard let url = webView.url,
+                  url.path == "/" else {
                 return
             }
 
             DispatchQueue.main.asyncAfter(
-                deadline: .now() + 1.8
+                deadline: .now() + 2.0
             ) { [weak webView] in
                 guard let webView,
-                      let currentURL = webView.url,
-                      currentURL.path == path else {
+                      webView.url?.path == "/" else {
                     return
                 }
 
                 let script = #"""
                 (() => {
-                  const validID = (value) =>
-                    typeof value === "string" &&
-                    /^[A-Za-z0-9_-]{11}$/.test(value);
+                  const text =
+                    (document.body?.innerText || "")
+                      .toLowerCase();
 
-                  return Array.from(
-                    document.querySelectorAll("a[href]")
-                  ).some((anchor) => {
-                    try {
-                      const url = new URL(
-                        anchor.href,
-                        location.href
-                      );
+                  const emptyPrompt =
+                    text.includes("try searching to get started") ||
+                    text.includes("start watching videos");
 
-                      if (url.pathname === "/watch") {
-                        return validID(
-                          url.searchParams.get("v") || ""
-                        );
-                      }
+                  const candidates = Array.from(
+                    document.querySelectorAll(
+                      'a[href*="/watch?v="], ytm-video-with-context-renderer, ytm-compact-video-renderer'
+                    )
+                  );
 
-                      const parts =
-                        url.pathname
-                          .split("/")
-                          .filter(Boolean);
-
-                      if (
-                        parts[0] === "shorts" &&
-                        parts.length >= 2
-                      ) {
-                        return validID(parts[1]);
-                      }
-
-                      if (
-                        url.hostname === "youtu.be" &&
-                        parts.length >= 1
-                      ) {
-                        return validID(parts[0]);
-                      }
-
-                      return false;
-                    } catch (_) {
-                      return false;
-                    }
+                  const visibleVideoCard = candidates.some((node) => {
+                    const rect = node.getBoundingClientRect();
+                    return rect.width > 120 &&
+                           rect.height > 60 &&
+                           rect.bottom > 0 &&
+                           rect.top < window.innerHeight * 2;
                   });
+
+                  return {
+                    emptyPrompt,
+                    visibleVideoCard
+                  };
                 })();
                 """#
 
                 webView.evaluateJavaScript(
                     script
                 ) { result, _ in
-                    let hasVideo =
-                        result as? Bool ?? false
+                    guard let result =
+                            result as? [String: Any] else {
+                        return
+                    }
 
-                    guard !hasVideo else {
+                    let emptyPrompt =
+                        result["emptyPrompt"] as? Bool ?? false
+
+                    let visibleVideoCard =
+                        result["visibleVideoCard"] as? Bool ?? false
+
+                    guard emptyPrompt ||
+                          !visibleVideoCard else {
+                        return
+                    }
+
+                    var components = URLComponents(
+                        string:
+                          "https://m.youtube.com/results"
+                    )
+
+                    components?.queryItems = [
+                        URLQueryItem(
+                            name: "search_query",
+                            value: "trending videos"
+                        )
+                    ]
+
+                    guard let fallback =
+                            components?.url else {
                         return
                     }
 
                     DispatchQueue.main.async {
-                        if path == "/" {
-                            guard let trending =
-                                    URL(
-                                      string:
-                                        "https://m.youtube.com/feed/trending"
-                                    ) else {
-                                return
-                            }
-
-                            webView.load(
-                                URLRequest(
-                                    url: trending
-                                )
-                            )
-                        } else {
-                            var components =
-                                URLComponents(
-                                  string:
-                                    "https://m.youtube.com/results"
-                                )
-
-                            components?.queryItems = [
-                                URLQueryItem(
-                                    name:
-                                      "search_query",
-                                    value:
-                                      "trending videos"
-                                )
-                            ]
-
-                            guard let fallback =
-                                    components?.url else {
-                                return
-                            }
-
-                            webView.load(
-                                URLRequest(
-                                    url: fallback
-                                )
-                            )
-                        }
+                        webView.load(
+                            URLRequest(url: fallback)
+                        )
                     }
                 }
             }
