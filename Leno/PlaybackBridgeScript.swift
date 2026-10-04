@@ -551,6 +551,15 @@ enum PlaybackBridgeScript {
               readyState: 0,
               networkState: 0,
               inDOM: false,
+              desktopBackend:
+                !!window.__YOUTUBE_VCD_DESKTOP_STATE__
+                  ?.active,
+              mediaSessionShielded:
+                !!window.__YOUTUBE_VCD_DESKTOP_STATE__
+                  ?.mediaSessionShielded,
+              backendHost:
+                window.__YOUTUBE_VCD_DESKTOP_STATE__
+                  ?.host || location.hostname,
               currentTime: 0,
               duration: 0
             });
@@ -587,6 +596,15 @@ enum PlaybackBridgeScript {
               video.networkState,
             inDOM:
               document.contains(video),
+            desktopBackend:
+              !!window.__YOUTUBE_VCD_DESKTOP_STATE__
+                ?.active,
+            mediaSessionShielded:
+              !!window.__YOUTUBE_VCD_DESKTOP_STATE__
+                ?.mediaSessionShielded,
+            backendHost:
+              window.__YOUTUBE_VCD_DESKTOP_STATE__
+                ?.host || location.hostname,
             currentTime:
               Number.isFinite(
                 video.currentTime
