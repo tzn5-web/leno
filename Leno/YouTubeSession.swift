@@ -31,6 +31,9 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     private var remoteTargets: [(MPRemoteCommand, Any)] = []
     private var notificationTokens: [NSObjectProtocol] = []
     private var wasPlayingBeforeInterruption = false
+    private var wantsPlayback = false
+    private var isReallyHidden = false
+    private var presentationMode = "inline"
 
     private static let homeURL = URL(string: "https://m.youtube.com/")!
 
@@ -152,11 +155,37 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         }
     }
 
+    func applicationWillResignActive() {
+        activateAudioSession()
+
+        if isPlaying {
+            wantsPlayback = true
+        }
+
+        if wantsPlayback {
+            evaluate(
+                PlaybackBridgeScript.prepareBackgroundCall
+            )
+        }
+
+        updateNowPlaying()
+    }
+
     func applicationDidEnterBackground() {
         activateAudioSession()
 
         if isPlaying {
-            evaluate(PlaybackBridgeScript.keepAliveCall)
+            wantsPlayback = true
+        }
+
+        if wantsPlayback {
+            evaluate(
+                PlaybackBridgeScript.prepareBackgroundCall
+            )
+
+            evaluate(
+                PlaybackBridgeScript.keepAliveCall
+            )
         }
 
         updateNowPlaying()
@@ -164,83 +193,60 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
     func applicationDidBecomeActive() {
         activateAudioSession()
+
+        evaluate(
+            PlaybackBridgeScript.resumeForegroundCall
+        )
     }
 
     func togglePlayback() {
-        evaluate(#"""
-        (() => {
-          const video = document.querySelector("video");
-          if (!video) return false;
-
-          if (video.paused) {
-            video.play().catch(() => {});
-          } else {
-            video.pause();
-          }
-
-          return true;
-        })();
-        """#)
+        if wantsPlayback || isPlaying {
+            pause()
+        } else {
+            play()
+        }
     }
 
     func play() {
+        wantsPlayback = true
         activateAudioSession()
-        evaluate(PlaybackBridgeScript.keepAliveCall)
+
+        evaluate(
+            PlaybackBridgeScript.playCall
+        )
+
+        updateNowPlaying()
     }
 
     func pause() {
-        evaluate(#"""
-        (() => {
-          const video = document.querySelector("video");
-          if (!video) return false;
-          video.pause();
-          return true;
-        })();
-        """#)
+        wantsPlayback = false
+
+        evaluate(
+            PlaybackBridgeScript.pauseCall
+        )
+
+        isPlaying = false
+        updateNowPlaying()
     }
 
     func seek(by seconds: Double) {
         let safeSeconds = max(-60, min(60, seconds))
 
-        evaluate("""
-        (() => {
-          const video = document.querySelector("video");
-          if (!video) return false;
-
-          const duration = Number.isFinite(video.duration)
-            ? video.duration
-            : Number.POSITIVE_INFINITY;
-
-          video.currentTime = Math.max(
-            0,
-            Math.min(duration, video.currentTime + \(safeSeconds))
-          );
-
-          return true;
-        })();
-        """)
+        evaluate(
+            PlaybackBridgeScript.seekByCall(
+                seconds: safeSeconds
+            )
+        )
     }
 
     func seek(to seconds: Double) {
         let safeSeconds = max(0, seconds)
 
-        evaluate("""
-        (() => {
-          const video = document.querySelector("video");
-          if (!video) return false;
-
-          const duration = Number.isFinite(video.duration)
-            ? video.duration
-            : Number.POSITIVE_INFINITY;
-
-          video.currentTime = Math.max(
-            0,
-            Math.min(duration, \(safeSeconds))
-          );
-
-          return true;
-        })();
-        """)
+        evaluate(
+            PlaybackBridgeScript.seekToCall(
+                seconds: safeSeconds
+            )
+        )
     }
 
     func requestPictureInPicture() {
@@ -265,6 +271,12 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
         let paused = body["paused"] as? Bool ?? true
         let mediaExists = body["hasMedia"] as? Bool ?? false
+        let bridgeWantsPlayback =
+            body["wantsPlayback"] as? Bool ?? false
+        let bridgeReallyHidden =
+            body["realHidden"] as? Bool ?? false
+        let bridgePresentationMode =
+            body["presentationMode"] as? String ?? "inline"
         let newCurrentTime = numericValue(body["currentTime"])
         let newDuration = numericValue(body["duration"])
 
@@ -274,13 +286,27 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                 : "YouTube"
 
             self.hasMedia = mediaExists
-            self.isPlaying = mediaExists && !paused
+            self.wantsPlayback = bridgeWantsPlayback
+            self.isReallyHidden = bridgeReallyHidden
+            self.presentationMode = bridgePresentationMode
+
+            self.isPlaying =
+                mediaExists &&
+                (
+                    !paused ||
+                    (
+                        bridgeReallyHidden &&
+                        bridgeWantsPlayback
+                    )
+                )
+
             self.currentTime = max(0, newCurrentTime)
             self.duration = max(0, newDuration)
 
             if mediaExists {
                 self.updateNowPlaying()
-            } else {
+            } else if !bridgeReallyHidden {
+                self.wantsPlayback = false
                 MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
             }
         }
@@ -299,14 +325,24 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     }
 
     private func evaluate(_ script: String) {
-        DispatchQueue.main.async { [weak self] in
-            self?.webView?.evaluateJavaScript(script) { _, error in
+        let work: () -> Void = { [weak self] in
+            guard let webView = self?.webView else {
+                return
+            }
+
+            webView.evaluateJavaScript(script) { _, error in
                 if let error {
                     print(
                         "JavaScript bridge error: \(error.localizedDescription)"
                     )
                 }
             }
+        }
+
+        if Thread.isMainThread {
+            work()
+        } else {
+            DispatchQueue.main.async(execute: work)
         }
     }
 
@@ -376,7 +412,8 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
         switch type {
         case .began:
-            wasPlayingBeforeInterruption = isPlaying
+            wasPlayingBeforeInterruption =
+                isPlaying || wantsPlayback
 
         case .ended:
             activateAudioSession()
@@ -488,10 +525,14 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     private func updateNowPlaying() {
         guard hasMedia else { return }
 
+        let reportingPlaying =
+            isPlaying ||
+            (isReallyHidden && wantsPlayback)
+
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: title,
             MPNowPlayingInfoPropertyPlaybackRate:
-                isPlaying ? 1.0 : 0.0,
+                reportingPlaying ? 1.0 : 0.0,
             MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
             MPNowPlayingInfoPropertyElapsedPlaybackTime:
                 currentTime
@@ -507,6 +548,6 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
         nowPlaying.nowPlayingInfo = info
         nowPlaying.playbackState =
-            isPlaying ? .playing : .paused
+            reportingPlaying ? .playing : .paused
     }
 }
