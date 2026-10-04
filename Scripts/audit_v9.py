@@ -96,8 +96,8 @@ require(
 for required in [
     "configureAudioNotifications()",
     "handleAudioInterruption",
-    "AVAudioSession.interruptionNotification",
-    "AVAudioSession.routeChangeNotification",
+    "interruptionNotification",
+    "routeChangeNotification",
     "mediaServicesWereResetNotification",
     "interruptionActive",
 ]:
