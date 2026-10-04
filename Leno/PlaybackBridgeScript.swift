@@ -194,6 +194,7 @@ enum PlaybackBridgeScript {
         video: null,
         wantsPlayback: false,
         userPauseUntil: 0,
+        nativeBackground: false,
         recoveryTimers:
           new Set(),
         lastKnownTime: 0,
@@ -478,7 +479,10 @@ enum PlaybackBridgeScript {
                 Date.now() <=
                   state.transitionRecoveryUntil,
               realHidden:
-                isReallyHidden(),
+                (
+                  isReallyHidden() ||
+                  state.nativeBackground
+                ),
               presentationMode:
                 "none",
               currentTime: 0,
@@ -929,7 +933,10 @@ enum PlaybackBridgeScript {
 
           const waitForHidden = () => {
             if (
-              isReallyHidden() &&
+              (
+                isReallyHidden() ||
+                state.nativeBackground
+              ) &&
               state.wantsPlayback &&
               Date.now() >
                 state.userPauseUntil &&
@@ -1333,7 +1340,43 @@ enum PlaybackBridgeScript {
           return true;
         };
 
+      const enterBackground = () => {
+        state.nativeBackground = true;
+        state.transitionRecoveryUntil =
+          Date.now() + 2500;
+
+        const video =
+          state.video ||
+          findWatchVideo();
+
+        if (!video) {
+          postState(true);
+          return false;
+        }
+
+        attachVideo(video);
+        configureWebAudioSession();
+        installMediaSessionHandlers(
+          true
+        );
+
+        if (
+          state.wantsPlayback &&
+          Date.now() >
+            state.userPauseUntil
+        ) {
+          recoverPlayback(video);
+        }
+
+        updateMediaSession();
+        postState(true);
+
+        return true;
+      };
+
       const resumeForeground = () => {
+        state.nativeBackground = false;
+
         const video =
           state.video ||
           findWatchVideo();
@@ -1578,6 +1621,7 @@ enum PlaybackBridgeScript {
         seekTo,
 
         prepareForBackground,
+        enterBackground,
         resumeForeground,
 
         keepAlive() {
@@ -1915,6 +1959,17 @@ enum PlaybackBridgeScript {
 
       return control
         ? control.prepareForBackground()
+        : false;
+    })();
+    """#
+
+    static let enterBackgroundCall = #"""
+    (() => {
+      const control =
+        window.__YOUTUBE_VCD_MEDIA_CONTROL__;
+
+      return control
+        ? control.enterBackground()
         : false;
     })();
     """#
