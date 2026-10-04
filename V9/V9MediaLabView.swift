@@ -273,6 +273,20 @@ struct V9MediaLabView:
                             "goforward.15"
                     )
                 }
+
+                Button {
+                    player.togglePiP()
+                } label: {
+                    Image(
+                        systemName:
+                            player.isPiPActive
+                                ? "pip.exit"
+                                : "pip.enter"
+                    )
+                }
+                .accessibilityLabel(
+                    "Picture in Picture"
+                )
             }
             .buttonStyle(
                 .bordered
@@ -341,6 +355,14 @@ struct V9MediaLabView:
 
             Text(
                 "Audio relay separat: \(player.hasAudioRelay ? "DA" : "NU")"
+            )
+
+            Text(
+                "PiP posibil: \(player.isPiPPossible ? "DA" : "NU")"
+            )
+
+            Text(
+                "PiP activ: \(player.isPiPActive ? "DA" : "NU")"
             )
 
             if let errorText {
