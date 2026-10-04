@@ -32,6 +32,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     private var notificationTokens: [NSObjectProtocol] = []
     private var wasPlayingBeforeInterruption = false
     private var wantsPlayback = false
+    private var hasPlaybackContext = false
     private var appIsBackground = false
     private var isReallyHidden = false
     private var transitionArmed = false
@@ -327,6 +328,10 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
             self.hasMedia = mediaExists
             self.wantsPlayback = bridgeWantsPlayback
+
+            if mediaExists {
+                self.hasPlaybackContext = true
+            }
             self.isReallyHidden = bridgeReallyHidden
             self.transitionArmed = bridgeTransitionArmed
             self.presentationMode = bridgePresentationMode
@@ -394,8 +399,12 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
             if mediaExists {
                 self.updateNowPlaying()
-            } else if !bridgeReallyHidden {
+            } else if !bridgeWantsPlayback &&
+                      !bridgeReallyHidden &&
+                      !bridgeTransitionArmed &&
+                      !self.appIsBackground {
                 self.wantsPlayback = false
+                self.hasPlaybackContext = false
                 MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
             }
         }
@@ -648,7 +657,8 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
         center.playCommand.isEnabled = true
         addRemoteTarget(center.playCommand) { [weak self] _ in
-            guard let self, self.hasMedia else {
+            guard let self,
+                  self.hasPlaybackContext else {
                 return .commandFailed
             }
 
@@ -658,7 +668,8 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
         center.pauseCommand.isEnabled = true
         addRemoteTarget(center.pauseCommand) { [weak self] _ in
-            guard let self, self.hasMedia else {
+            guard let self,
+                  self.hasPlaybackContext else {
                 return .commandFailed
             }
 
@@ -668,7 +679,8 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
         center.togglePlayPauseCommand.isEnabled = true
         addRemoteTarget(center.togglePlayPauseCommand) { [weak self] _ in
-            guard let self, self.hasMedia else {
+            guard let self,
+                  self.hasPlaybackContext else {
                 return .commandFailed
             }
 
@@ -728,7 +740,10 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     }
 
     private func updateNowPlaying() {
-        guard hasMedia else { return }
+        guard hasMedia ||
+              hasPlaybackContext else {
+            return
+        }
 
         let reportingPlaying =
             isPlaying ||
