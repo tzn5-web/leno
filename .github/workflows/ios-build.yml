@@ -6,10 +6,14 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: xcode-27
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -27,17 +31,86 @@ jobs:
       - name: Static analysis
         run: |
           set -o pipefail
-          xcodebuild             -project Leno.xcodeproj             -scheme Leno             -configuration Debug             -sdk iphoneos             -destination 'generic/platform=iOS'             -derivedDataPath build/AnalyzeData             CODE_SIGNING_ALLOWED=NO             CODE_SIGNING_REQUIRED=NO             analyze | tee analyze.log
+          xcodebuild \
+            -project Leno.xcodeproj \
+            -scheme Leno \
+            -configuration Debug \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/AnalyzeData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            analyze | tee analyze.log
+
+      - name: Simulator smoke test
+        run: |
+          set -euo pipefail
+
+          SIM_UDID="$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)
+          for runtime in data.get("devices", {}).values():
+              for device in runtime:
+                  if device.get("isAvailable") and device.get("name", "").startswith("iPhone"):
+                      print(device["udid"])
+                      raise SystemExit(0)
+          raise SystemExit("No available iPhone simulator found")
+          ')"
+
+          echo "Using simulator: $SIM_UDID"
+          xcrun simctl boot "$SIM_UDID" || true
+          xcrun simctl bootstatus "$SIM_UDID" -b
+
+          set -o pipefail
+          xcodebuild \
+            -project Leno.xcodeproj \
+            -scheme Leno \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "id=$SIM_UDID" \
+            -derivedDataPath build/SimulatorData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            clean build | tee simulator-build.log
+
+          SIM_APP="build/SimulatorData/Build/Products/Debug-iphonesimulator/Leno.app"
+          test -d "$SIM_APP"
+
+          xcrun simctl install "$SIM_UDID" "$SIM_APP"
+          xcrun simctl launch "$SIM_UDID" com.tzn5web.leno | tee simulator-launch.log
+
+          sleep 8
+          xcrun simctl io "$SIM_UDID" screenshot simulator-smoke.png
+          xcrun simctl spawn "$SIM_UDID" log show \
+            --last 2m \
+            --style compact \
+            --predicate 'process == "Leno"' > simulator-runtime.log || true
+
+          if grep -Eqi 'fatal error|uncaught exception|termination reason|crash' simulator-runtime.log; then
+            echo "Potential runtime crash marker detected."
+            cat simulator-runtime.log
+            exit 1
+          fi
 
       - name: Build unsigned device app
         run: |
           set -o pipefail
-          xcodebuild             -project Leno.xcodeproj             -scheme Leno             -configuration Release             -sdk iphoneos             -destination 'generic/platform=iOS'             -derivedDataPath build/DerivedData             CODE_SIGNING_ALLOWED=NO             CODE_SIGNING_REQUIRED=NO             clean build | tee build.log
+          xcodebuild \
+            -project Leno.xcodeproj \
+            -scheme Leno \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            clean build | tee build.log
 
       - name: Package unsigned IPA
         run: |
           APP_PATH="build/DerivedData/Build/Products/Release-iphoneos/Leno.app"
           test -d "$APP_PATH"
+          rm -rf Payload
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/
           ditto -c -k --sequesterRsrc --keepParent Payload Leno-unsigned.ipa
@@ -49,6 +122,18 @@ jobs:
           path: Leno-unsigned.ipa
           if-no-files-found: error
 
+      - name: Upload simulator evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulator-smoke
+          path: |
+            simulator-smoke.png
+            simulator-launch.log
+            simulator-runtime.log
+            simulator-build.log
+          if-no-files-found: ignore
+
       - name: Upload diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -57,4 +142,7 @@ jobs:
           path: |
             analyze.log
             build.log
+            simulator-build.log
+            simulator-launch.log
+            simulator-runtime.log
           if-no-files-found: ignore
