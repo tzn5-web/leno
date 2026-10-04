@@ -51,6 +51,9 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     private var foregroundRepairWindowUntil = Date.distantPast
     private var nativeMediaPlaybackState: WKMediaPlaybackState = .none
     private var pendingWebProcessRecovery = false
+    private var desktopBackendActive = false
+    private var mediaSessionShielded = false
+    private var backendHost = ""
 
     private static let homeURL = URL(
         string:
@@ -363,6 +366,12 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             Int(numericValue(body["networkState"]))
         let newInDOM =
             body["inDOM"] as? Bool ?? false
+        let newDesktopBackend =
+            body["desktopBackend"] as? Bool ?? false
+        let newMediaSessionShielded =
+            body["mediaSessionShielded"] as? Bool ?? false
+        let newBackendHost =
+            body["backendHost"] as? String ?? ""
         let newCurrentTime = numericValue(body["currentTime"])
         let newDuration = numericValue(body["duration"])
 
@@ -399,12 +408,25 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             self.mediaReadyState = newReadyState
             self.mediaNetworkState = newNetworkState
             self.mediaElementInDOM = newInDOM
+            self.desktopBackendActive =
+                newDesktopBackend
+            self.mediaSessionShielded =
+                newMediaSessionShielded
+            self.backendHost =
+                newBackendHost
 
             let healthSignature =
                 "\(newVideoID)|\(newReadyState)|\(newNetworkState)|\(newInDOM)|\(bridgeReallyHidden)"
 
             if healthSignature != self.lastMediaHealthSignature {
                 self.lastMediaHealthSignature = healthSignature
+
+                print(
+                    "Web backend state: " +
+                    "host=\(newBackendHost) " +
+                    "desktop=\(newDesktopBackend) " +
+                    "mediaSessionShielded=\(newMediaSessionShielded)"
+                )
 
                 if mediaExists &&
                    !bridgeReallyHidden &&
