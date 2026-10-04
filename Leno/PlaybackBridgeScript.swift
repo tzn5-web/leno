@@ -2076,6 +2076,42 @@ enum PlaybackBridgeScript {
     })();
     """#
 
+    static func restoreAfterReloadCall(
+        seconds: Double,
+        shouldPlay: Bool
+    ) -> String {
+        let safeSeconds =
+            max(
+                0,
+                seconds
+            )
+
+        let playLiteral =
+            shouldPlay
+                ? "true"
+                : "false"
+
+        return """
+        (() => {
+          const control =
+            window.__YOUTUBE_VCD_MEDIA_CONTROL__;
+
+          if (!control) {
+            return false;
+          }
+
+          const seeked =
+            control.seekTo(\(safeSeconds));
+
+          if (\(playLiteral)) {
+            control.play();
+          }
+
+          return seeked;
+        })();
+        """
+    }
+
     static func seekByCall(
         seconds: Double
     ) -> String {
