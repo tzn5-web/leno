@@ -140,7 +140,7 @@ async def extract_video(video_id: str) -> dict[str, Any]:
         "--skip-download",
         "--no-warnings",
         "--js-runtimes",
-        "deno",
+        "node",
         url,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
