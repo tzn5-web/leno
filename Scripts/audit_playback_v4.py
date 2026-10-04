@@ -86,6 +86,9 @@ for needle in [
     "const preserveIntent =",
     "const preservePosition =",
     "const sameMedia =",
+    "systemInterruption",
+    "beginSystemInterruption",
+    "endSystemInterruption",
 ]:
     require(needle in bridge, f"background invariant missing: {needle}")
 
@@ -107,6 +110,7 @@ require(
 for needle in [
     'videoID: ""',
     "state.videoID === nextVideoID",
+    "const routeChanged =",
     "preserveIntent ||",
     "state.lastKnownTime > 1",
     "Math.abs(",
@@ -161,6 +165,9 @@ for needle in [
     "repairFrozenWebMedia",
     "lastStablePlaybackTime",
     "pendingRepairResumeTime",
+    "foregroundRepairWindowUntil",
+    "beginSystemInterruptionCall",
+    "endSystemInterruptionCall",
 ]:
     require(needle in session, f"native media-health telemetry missing: {needle}")
 
@@ -215,5 +222,6 @@ print(f" - raw isReallyHidden() calls: {raw_hidden_count}")
 print(" - one native transport owner")
 print(" - media replacement intent/position preserved")
 print(" - persistent foreground readyState=0 repair is bounded and resumable")
+print(" - same-element route changes and AVAudioSession interruptions are isolated")
 print(" - PiP/fullscreen controls present and WebKit fallback retained")
 print(" - dormant native playback code absent")
