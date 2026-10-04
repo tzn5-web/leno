@@ -7,6 +7,8 @@ struct ResolverHealth:
     let ok: Bool
     let version: String
     let relayTTL: Int
+    let jsRuntime: String?
+    let authRequired: Bool?
 
     enum CodingKeys:
         String,
@@ -15,6 +17,8 @@ struct ResolverHealth:
         case ok
         case version
         case relayTTL = "relay_ttl"
+        case jsRuntime = "js_runtime"
+        case authRequired = "auth_required"
     }
 }
 
