@@ -1315,12 +1315,14 @@ enum PlaybackBridgeScript {
 
         if (
           state.wantsPlayback &&
-          video.paused &&
           !video.ended &&
           Date.now() >
             state.userPauseUntil
         ) {
-          safePlay(video);
+          // recoverPlayback also restores lastKnownTime if WebKit rebuilt the
+          // MediaSource at position zero, even when the replacement element
+          // has already started playing.
+          recoverPlayback(video);
         }
         postState(true);
 
@@ -1347,6 +1349,7 @@ enum PlaybackBridgeScript {
           Date.now() + 1800;
 
         if (
+          shouldResume &&
           video.paused &&
           !video.ended
         ) {
@@ -1390,6 +1393,10 @@ enum PlaybackBridgeScript {
               video.webkitSetPresentationMode(
                 "inline"
               );
+
+              // The WebKit presentation API handled the toggle. Without this,
+              // the standards fallback below can immediately request PiP again.
+              requested = true;
             } else {
               const supports =
                 typeof video
@@ -1504,6 +1511,15 @@ enum PlaybackBridgeScript {
                 () => {}
               );
 
+            return true;
+          }
+
+          if (
+            typeof player
+              .webkitRequestFullscreen ===
+            "function"
+          ) {
+            player.webkitRequestFullscreen();
             return true;
           }
         } catch (_) {}
