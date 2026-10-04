@@ -60,19 +60,39 @@ final class StreamResolver: @unchecked Sendable {
             throw StreamResolverError.invalidVideoID
         }
 
-        let piped = await resolvePipedBatch(videoID: videoID)
+        async let pipedTask =
+            resolvePipedBatch(videoID: videoID)
 
-        if !piped.isEmpty {
-            return Array(piped.prefix(4))
+        async let invidiousTask =
+            resolveInvidiousBatch(videoID: videoID)
+
+        let piped = await pipedTask
+        let invidious = await invidiousTask
+
+        var candidates: [ResolvedMedia] = []
+
+        let maximum =
+            max(piped.count, invidious.count)
+
+        for index in 0..<maximum {
+            if index < piped.count {
+                candidates.append(piped[index])
+            }
+
+            if index < invidious.count {
+                candidates.append(invidious[index])
+            }
+
+            if candidates.count >= 6 {
+                break
+            }
         }
 
-        let invidious = await resolveInvidiousBatch(videoID: videoID)
-
-        if !invidious.isEmpty {
-            return Array(invidious.prefix(4))
+        guard !candidates.isEmpty else {
+            throw StreamResolverError.noPublicStream
         }
 
-        throw StreamResolverError.noPublicStream
+        return candidates
     }
 
     private func resolvePipedBatch(videoID: String) async -> [ResolvedMedia] {
