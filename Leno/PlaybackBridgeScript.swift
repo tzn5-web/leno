@@ -600,6 +600,8 @@ enum PlaybackBridgeScript {
               hasMedia: false,
               wantsPlayback:
                 state.wantsPlayback,
+              explicitPause:
+                state.explicitPause,
               transitionArmed:
                 Date.now() <=
                   state.transitionRecoveryUntil,
@@ -634,6 +636,8 @@ enum PlaybackBridgeScript {
             hasMedia: true,
             wantsPlayback:
               state.wantsPlayback,
+            explicitPause:
+              state.explicitPause,
             transitionArmed:
               Date.now() <=
                 state.transitionRecoveryUntil,
@@ -989,6 +993,7 @@ enum PlaybackBridgeScript {
 
             if (
               state.wantsPlayback &&
+              !state.explicitPause &&
               video.paused &&
               !video.ended
             ) {
@@ -1462,10 +1467,13 @@ enum PlaybackBridgeScript {
         attachVideo(video);
 
         const shouldResume =
-          state.wantsPlayback ||
+          !state.explicitPause &&
           (
-            !video.paused &&
-            !video.ended
+            state.wantsPlayback ||
+            (
+              !video.paused &&
+              !video.ended
+            )
           );
 
         state.transitionRecoveryUntil =
@@ -1580,6 +1588,7 @@ enum PlaybackBridgeScript {
               () => {
                 if (
                   state.wantsPlayback &&
+                  !state.explicitPause &&
                   video.paused &&
                   !video.ended
                 ) {
