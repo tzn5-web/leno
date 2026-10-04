@@ -168,6 +168,31 @@ enum BrowserRoutingScript {
           );
         };
 
+      const nativeReplaceState =
+        history.replaceState
+          .bind(history);
+
+      history.replaceState =
+        function(
+          state,
+          title,
+          url
+        ) {
+          if (
+            url &&
+            isPlaybackURL(url)
+          ) {
+            postVideo(url);
+            return;
+          }
+
+          return nativeReplaceState(
+            state,
+            title,
+            url
+          );
+        };
+
       // Browsing view must never own Lock Screen / Control Center transport.
       try {
         const mediaSession =
