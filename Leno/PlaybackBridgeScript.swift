@@ -16,8 +16,111 @@ enum PlaybackBridgeScript {
           };
 
       let lastKnownTime = 0;
+      let nativePauseAllowed = 0;
 
-      const currentVideo = () => document.querySelector("video");
+      const videos = () =>
+        Array.from(document.querySelectorAll("video"));
+
+      const videoScore = (video) => {
+        if (!video || video.ended) return -1;
+
+        let score = 0;
+
+        if (!video.paused) score += 1_000_000;
+        if (video.readyState >= 2) score += 20_000;
+        if (video.currentSrc) score += 10_000;
+
+        if (Number.isFinite(video.duration) && video.duration > 0) {
+          score += 5_000;
+        }
+
+        try {
+          const mode = video.webkitPresentationMode;
+
+          if (
+            mode === "picture-in-picture" ||
+            mode === "fullscreen"
+          ) {
+            score += 2_000_000;
+          }
+        } catch (_) {}
+
+        try {
+          const rect = video.getBoundingClientRect();
+          const area =
+            Math.max(0, rect.width) *
+            Math.max(0, rect.height);
+
+          score +=
+            Math.min(area, 1_000_000) / 100;
+        } catch (_) {}
+
+        return score;
+      };
+
+      const currentVideo = () => {
+        let best = null;
+        let bestScore = -1;
+
+        for (const video of videos()) {
+          const score = videoScore(video);
+
+          if (score > bestScore) {
+            best = video;
+            bestScore = score;
+          }
+        }
+
+        return best;
+      };
+
+      const nativePlay =
+        HTMLMediaElement.prototype.play;
+
+      const nativePause =
+        HTMLMediaElement.prototype.pause;
+
+      const safePlay = (video) => {
+        if (!video) return false;
+
+        try {
+          const result =
+            nativePlay.call(video);
+
+          if (
+            result &&
+            typeof result.catch === "function"
+          ) {
+            result.catch(() => {});
+          }
+
+          return true;
+        } catch (_) {
+          return false;
+        }
+      };
+
+      HTMLMediaElement.prototype.pause =
+        function(...args) {
+          try {
+            const active = currentVideo();
+
+            if (
+              nativePauseAllowed === 0 &&
+              state.backgroundArmed &&
+              state.wantsPlayback &&
+              active === this &&
+              !this.ended
+            ) {
+              return;
+            }
+          } catch (_) {}
+
+          return nativePause.apply(
+            this,
+            args
+          );
+        };
 
       const postState = () => {
         try {
@@ -58,7 +161,7 @@ enum PlaybackBridgeScript {
               video.currentTime = lastKnownTime;
             }
 
-            video.play().catch(() => {});
+            safePlay(video);
           }
         } catch (_) {}
       };
@@ -66,13 +169,25 @@ enum PlaybackBridgeScript {
       window.__YOUTUBE_VCD_MEDIA_CONTROL__ = {
         armBackground() {
           state.backgroundArmed = true;
-          state.wantsPlayback = true;
-          resumeIfNeeded();
+
+          const video = currentVideo();
+          if (!video) return false;
+
+          if (!video.paused && !video.ended) {
+            state.wantsPlayback = true;
+          }
+
+          if (state.wantsPlayback) {
+            resumeIfNeeded();
+          }
+
+          postState();
           return true;
         },
 
         disarmBackground() {
           state.backgroundArmed = false;
+          postState();
           return true;
         },
 
@@ -82,12 +197,11 @@ enum PlaybackBridgeScript {
           const video = currentVideo();
           if (!video) return false;
 
-          try {
-            video.play().catch(() => {});
-            return true;
-          } catch (_) {
-            return false;
-          }
+          const started =
+            safePlay(video);
+
+          postState();
+          return started;
         },
 
         pause() {
@@ -96,18 +210,29 @@ enum PlaybackBridgeScript {
           const video = currentVideo();
           if (!video) return false;
 
+          nativePauseAllowed += 1;
+
           try {
-            video.pause();
+            nativePause.call(video);
+            postState();
             return true;
           } catch (_) {
             return false;
+          } finally {
+            nativePauseAllowed =
+              Math.max(
+                0,
+                nativePauseAllowed - 1
+              );
           }
         },
 
         keepAlive() {
-          state.wantsPlayback = true;
-          resumeIfNeeded();
-          return true;
+          if (state.wantsPlayback) {
+            resumeIfNeeded();
+          }
+
+          return state.wantsPlayback;
         }
       };
 
@@ -151,6 +276,7 @@ enum PlaybackBridgeScript {
         }
       }, true);
 
+      document.addEventListener("playing", postState, true);
       document.addEventListener("loadedmetadata", postState, true);
       document.addEventListener("durationchange", postState, true);
       document.addEventListener("emptied", postState, true);
