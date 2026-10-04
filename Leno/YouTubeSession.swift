@@ -39,7 +39,9 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     private var notificationTokens: [NSObjectProtocol] = []
     private var wasPlayingBeforeInterruption = false
     private var wantsPlayback = false
+    private var desiredPlayback = false
     private var explicitPauseActive = false
+    private var systemInterruptionActive = false
     private var hasPlaybackContext = false
     private var appIsBackground = false
     private var isReallyHidden = false
@@ -58,6 +60,10 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     private var foregroundRepairWindowUntil = Date.distantPast
     private var nativeMediaPlaybackState: WKMediaPlaybackState = .none
     private var pendingWebProcessRecovery = false
+    private var transitionRecoveryGeneration = 0
+    private var transitionRecoveryDeadline = Date.distantPast
+    private var transitionRecoveryWorkItems: [DispatchWorkItem] = []
+    private var lastTransitionReason = ""
 
     private static let homeURL = URL(string: "https://m.youtube.com/")!
 
@@ -110,6 +116,9 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         playerAvailable = true
         isPlayerPresented = true
         explicitPauseActive = false
+        desiredPlayback = true
+        wantsPlayback = true
+        cancelTransitionRecovery()
 
         if playerWebViewReady {
             loadPlayer(url)
@@ -340,15 +349,22 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     func applicationWillResignActive() {
         activateAudioSession()
 
-        if isPlaying &&
+        if (
+            isPlaying ||
+            wantsPlayback
+        ) &&
            !explicitPauseActive {
+            desiredPlayback = true
             wantsPlayback = true
         }
 
-        if wantsPlayback &&
-           !explicitPauseActive {
+        if shouldRecoverDesiredPlayback {
             evaluate(
                 PlaybackBridgeScript.prepareBackgroundCall
+            )
+
+            beginTransitionRecovery(
+                reason: "inactive"
             )
         }
 
@@ -363,8 +379,12 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         frozenRepairWorkItem = nil
         activateAudioSession()
 
-        if isPlaying &&
+        if (
+            isPlaying ||
+            wantsPlayback
+        ) &&
            !explicitPauseActive {
+            desiredPlayback = true
             wantsPlayback = true
         }
 
@@ -372,10 +392,13 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             PlaybackBridgeScript.enterBackgroundCall
         )
 
-        if wantsPlayback &&
-           !explicitPauseActive {
+        if shouldRecoverDesiredPlayback {
             evaluate(
                 PlaybackBridgeScript.keepAliveCall
+            )
+
+            beginTransitionRecovery(
+                reason: "background"
             )
         }
 
@@ -425,6 +448,8 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         }
 
         if explicitPauseActive {
+            cancelTransitionRecovery()
+
             evaluate(
                 PlaybackBridgeScript.pauseCall
             )
@@ -434,17 +459,13 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             evaluate(
                 PlaybackBridgeScript.resumeForegroundCall
             )
-        }
 
-        if returningFromBackground &&
-           !explicitPauseActive {
-            probeNativeMediaPlaybackState(
-                after: 0.4
-            )
-
-            probeNativeMediaPlaybackState(
-                after: 1.6
-            )
+            if returningFromBackground &&
+               shouldRecoverDesiredPlayback {
+                beginTransitionRecovery(
+                    reason: "foreground"
+                )
+            }
         }
     }
 
@@ -458,7 +479,9 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
     func play() {
         explicitPauseActive = false
+        desiredPlayback = true
         wantsPlayback = true
+        cancelTransitionRecovery()
         activateAudioSession()
 
         guard let webView else {
@@ -481,15 +504,21 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                 PlaybackBridgeScript.playCall
             )
 
+            self.beginTransitionRecovery(
+                reason: "manual-play"
+            )
+
             self.updateNowPlaying()
         }
     }
 
     func pause() {
         explicitPauseActive = true
+        desiredPlayback = false
         wantsPlayback = false
         wasPlayingBeforeInterruption = false
         isPlaying = false
+        cancelTransitionRecovery()
 
         evaluate(
             PlaybackBridgeScript.pauseCall
@@ -527,7 +556,15 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
     }
 
     func requestPictureInPicture() {
-        evaluate(PlaybackBridgeScript.requestPiPCall)
+        if shouldRecoverDesiredPlayback {
+            beginTransitionRecovery(
+                reason: "pip-request"
+            )
+        }
+
+        evaluate(
+            PlaybackBridgeScript.requestPiPCall
+        )
     }
 
     func requestFullscreen() {
@@ -644,9 +681,20 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
             self.hasMedia = mediaExists
 
+            if mediaExists &&
+               !paused &&
+               !self.explicitPauseActive &&
+               !self.appIsBackground &&
+               !bridgeReallyHidden &&
+               !bridgeTransitionArmed {
+                self.desiredPlayback = true
+            }
+
             let preserveNativeIntent =
-                self.wantsPlayback &&
+                self.desiredPlayback &&
+                !self.explicitPauseActive &&
                 (
+                    self.isTransitionRecoveryActive ||
                     self.appIsBackground ||
                     self.isLoading ||
                     bridgeReallyHidden ||
@@ -673,7 +721,31 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             }
             self.isReallyHidden = bridgeReallyHidden
             self.transitionArmed = bridgeTransitionArmed
-            self.presentationMode = bridgePresentationMode
+
+            let previousPresentationMode =
+                self.presentationMode
+
+            self.presentationMode =
+                bridgePresentationMode
+
+            if previousPresentationMode !=
+                bridgePresentationMode &&
+               (
+                   previousPresentationMode ==
+                       "picture-in-picture" ||
+                   bridgePresentationMode ==
+                       "picture-in-picture"
+               ) &&
+               self.shouldRecoverDesiredPlayback {
+                self.beginTransitionRecovery(
+                    reason:
+                        bridgePresentationMode ==
+                            "picture-in-picture"
+                            ? "pip-enter"
+                            : "pip-exit"
+                )
+            }
+
             self.bridgeVideoID = newVideoID
             self.mediaReadyState = newReadyState
             self.mediaNetworkState = newNetworkState
@@ -728,6 +800,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             let frozenForegroundMedia =
                 mediaExists &&
                 effectiveWantsPlayback &&
+                !self.isTransitionRecoveryActive &&
                 !self.appIsBackground &&
                 !bridgeReallyHidden &&
                 newInDOM &&
@@ -754,47 +827,203 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         }
     }
 
-    private func probeNativeMediaPlaybackState(
-        after delay: Double
-    ) {
-        DispatchQueue.main.asyncAfter(
-            deadline: .now() + delay
-        ) { [weak self] in
-            guard let self,
-                  !self.appIsBackground,
-                  let webView = self.webView else {
-                return
+    private var shouldRecoverDesiredPlayback:
+        Bool
+    {
+        desiredPlayback &&
+        !explicitPauseActive &&
+        !systemInterruptionActive &&
+        hasPlaybackContext
+    }
+
+    private var isTransitionRecoveryActive:
+        Bool
+    {
+        shouldRecoverDesiredPlayback &&
+        Date() <=
+            transitionRecoveryDeadline
+    }
+
+    private func cancelTransitionRecovery() {
+        transitionRecoveryGeneration += 1
+        transitionRecoveryDeadline =
+            .distantPast
+        lastTransitionReason = ""
+
+        transitionRecoveryWorkItems
+            .forEach {
+                $0.cancel()
             }
 
-            webView.requestMediaPlaybackState {
-                [weak self] mediaState in
+        transitionRecoveryWorkItems
+            .removeAll()
+    }
 
-                DispatchQueue.main.async {
-                    guard let self else {
-                        return
-                    }
+    private func beginTransitionRecovery(
+        reason: String
+    ) {
+        guard shouldRecoverDesiredPlayback,
+              webView != nil else {
+            cancelTransitionRecovery()
+            return
+        }
 
-                    self.nativeMediaPlaybackState =
-                        mediaState
+        transitionRecoveryGeneration += 1
+        let generation =
+            transitionRecoveryGeneration
 
-                    print(
-                        "WKWebView media state: " +
-                        "\(mediaState.rawValue)"
+        lastTransitionReason =
+            reason
+
+        let delays:
+            [TimeInterval] = [
+                0,
+                0.08,
+                0.20,
+                0.45,
+                0.90,
+                1.60,
+                2.80
+            ]
+
+        transitionRecoveryDeadline =
+            Date()
+                .addingTimeInterval(
+                    3.4
+                )
+
+        transitionRecoveryWorkItems
+            .forEach {
+                $0.cancel()
+            }
+
+        transitionRecoveryWorkItems
+            .removeAll()
+
+        frozenRepairWorkItem?
+            .cancel()
+
+        frozenRepairWorkItem = nil
+
+        for delay in delays {
+            let workItem =
+                DispatchWorkItem {
+                    [weak self] in
+
+                    self?
+                        .attemptTransitionRecovery(
+                            generation:
+                                generation,
+                            reason:
+                                reason
+                        )
+                }
+
+            transitionRecoveryWorkItems
+                .append(
+                    workItem
+                )
+
+            DispatchQueue.main
+                .asyncAfter(
+                    deadline:
+                        .now() +
+                        delay,
+                    execute:
+                        workItem
+                )
+        }
+    }
+
+    private func attemptTransitionRecovery(
+        generation: Int,
+        reason: String
+    ) {
+        guard generation ==
+                transitionRecoveryGeneration,
+              shouldRecoverDesiredPlayback,
+              Date() <=
+                transitionRecoveryDeadline,
+              let webView else {
+            return
+        }
+
+        webView.requestMediaPlaybackState {
+            [weak self, weak webView]
+            mediaState in
+
+            DispatchQueue.main.async {
+                guard let self,
+                      let webView,
+                      generation ==
+                        self
+                            .transitionRecoveryGeneration,
+                      self
+                        .shouldRecoverDesiredPlayback,
+                      Date() <=
+                        self
+                            .transitionRecoveryDeadline else {
+                    return
+                }
+
+                self.nativeMediaPlaybackState =
+                    mediaState
+
+                switch mediaState {
+                case .playing:
+                    self.wantsPlayback =
+                        true
+                    self.isPlaying =
+                        true
+                    self.updateFrozenMediaRepair(
+                        needed:
+                            false
                     )
 
-                    if mediaState == .suspended &&
-                       self.wantsPlayback &&
-                       self.hasPlaybackContext {
-                        self.updateFrozenMediaRepair(
-                            needed: true
-                        )
-                    } else if mediaState == .playing &&
-                              self.mediaReadyState > 0 {
-                        self.updateFrozenMediaRepair(
-                            needed: false
-                        )
-                    }
+                case .paused,
+                     .suspended,
+                     .none:
+                    self.wantsPlayback =
+                        true
+
+                    webView
+                        .setAllMediaPlaybackSuspended(
+                            false
+                        ) { [weak self] in
+                            DispatchQueue.main.async {
+                                guard let self,
+                                      generation ==
+                                        self
+                                            .transitionRecoveryGeneration,
+                                      self
+                                        .shouldRecoverDesiredPlayback else {
+                                    return
+                                }
+
+                                self.evaluate(
+                                    PlaybackBridgeScript
+                                        .playCall
+                                )
+
+                                self.evaluate(
+                                    PlaybackBridgeScript
+                                        .keepAliveCall
+                                )
+
+                                self.updateNowPlaying()
+                            }
+                        }
+
+                @unknown default:
+                    break
                 }
+
+                print(
+                    "V8 transition recovery: " +
+                    "reason=\(reason) " +
+                    "state=\(mediaState.rawValue) " +
+                    "generation=\(generation)"
+                )
             }
         }
     }
@@ -809,6 +1038,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
         }
 
         guard frozenRepairWorkItem == nil,
+              !isTransitionRecoveryActive,
               !isLoading,
               Date() <=
                 foregroundRepairWindowUntil,
@@ -1089,6 +1319,9 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
 
         switch type {
         case .began:
+            systemInterruptionActive = true
+            cancelTransitionRecovery()
+
             wasPlayingBeforeInterruption =
                 isPlaying || wantsPlayback
 
@@ -1098,6 +1331,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
             )
 
         case .ended:
+            systemInterruptionActive = false
             activateAudioSession()
 
             evaluate(
@@ -1114,7 +1348,7 @@ final class YouTubeSession: NSObject, ObservableObject, WKScriptMessageHandler {
                 AVAudioSession.InterruptionOptions(rawValue: rawOptions)
 
             if wasPlayingBeforeInterruption &&
-               wantsPlayback &&
+               desiredPlayback &&
                !explicitPauseActive &&
                options.contains(.shouldResume) {
                 play()
