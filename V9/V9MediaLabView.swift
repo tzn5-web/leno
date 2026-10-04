@@ -15,7 +15,13 @@ struct V9MediaLabView:
         "v9.resolver.endpoint"
     )
     private var endpoint =
-        "http://127.0.0.1:8085"
+        ""
+
+    @AppStorage(
+        "v9.resolver.token"
+    )
+    private var resolverToken =
+        ""
 
     @State
     private var videoID =
@@ -23,7 +29,7 @@ struct V9MediaLabView:
 
     @State
     private var healthText =
-        "Resolver neverificat"
+        "Configurează IP-ul LAN al PC-ului sau un resolver HTTPS."
 
     @State
     private var busy =
@@ -168,6 +174,19 @@ struct V9MediaLabView:
                 .roundedBorder
             )
 
+            SecureField(
+                "Token resolver (opțional)",
+                text:
+                    $resolverToken
+            )
+            .textInputAutocapitalization(
+                .never
+            )
+            .autocorrectionDisabled()
+            .textFieldStyle(
+                .roundedBorder
+            )
+
             TextField(
                 "YouTube video ID (11 caractere)",
                 text:
@@ -200,7 +219,13 @@ struct V9MediaLabView:
                 )
                 .disabled(
                     busy ||
-                    videoID.count != 11
+                    videoID.count != 11 ||
+                    endpoint
+                        .trimmingCharacters(
+                            in:
+                                .whitespacesAndNewlines
+                        )
+                        .isEmpty
                 )
             }
 
@@ -411,8 +436,18 @@ struct V9MediaLabView:
                         )
 
                 await MainActor.run {
+                    let runtime =
+                        health.jsRuntime ??
+                        "necunoscut"
+
+                    let auth =
+                        health.authRequired ==
+                        true
+                            ? "auth ON"
+                            : "auth OFF"
+
                     healthText =
-                        "OK • \(health.version) • relay TTL \(health.relayTTL)s"
+                        "OK • \(health.version) • \(runtime) • \(auth) • relay TTL \(health.relayTTL)s"
                 }
             } catch {
                 await MainActor.run {
@@ -443,18 +478,40 @@ struct V9MediaLabView:
             }
 
             do {
+                let endpointSnapshot =
+                    endpoint
+
+                let tokenSnapshot =
+                    resolverToken
+
                 let resolved =
                     try await resolver
                         .resolve(
                             videoID:
                                 videoID,
                             endpoint:
-                                endpoint
+                                endpointSnapshot,
+                            bearerToken:
+                                tokenSnapshot
                         )
 
                 await MainActor.run {
                     player.load(
-                        resolved
+                        resolved,
+                        refreshProvider:
+                            {
+                                id in
+
+                                try await resolver
+                                    .resolve(
+                                        videoID:
+                                            id,
+                                        endpoint:
+                                            endpointSnapshot,
+                                        bearerToken:
+                                            tokenSnapshot
+                                    )
+                            }
                     )
                 }
             } catch {
