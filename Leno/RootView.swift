@@ -7,14 +7,14 @@ struct RootView: View {
                 HomeView()
             }
             .tabItem {
-                Label("Home", systemImage: "house")
+                Label("Player", systemImage: "play.rectangle")
             }
 
             NavigationStack {
-                SearchView()
+                YouTubeBrowserView()
             }
             .tabItem {
-                Label("Search", systemImage: "magnifyingglass")
+                Label("YouTube", systemImage: "play.square")
             }
 
             NavigationStack {
@@ -27,23 +27,12 @@ struct RootView: View {
     }
 }
 
-private struct SearchView: View {
-    var body: some View {
-        ContentUnavailableView(
-            "Search provider not connected",
-            systemImage: "magnifyingglass",
-            description: Text("The player is ready. A lawful media provider can be connected here without changing playback architecture.")
-        )
-        .navigationTitle("Search")
-    }
-}
-
 private struct LibraryView: View {
     var body: some View {
         ContentUnavailableView(
             "Library is empty",
             systemImage: "rectangle.stack",
-            description: Text("Saved and recent items will appear here.")
+            description: Text("Saved and recent native-player items will appear here.")
         )
         .navigationTitle("Library")
     }
