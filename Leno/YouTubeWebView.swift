@@ -144,6 +144,7 @@ struct YouTubeWebView: UIViewRepresentable {
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             session.markReady()
             syncNavigationState(from: webView)
+            ensureHomeContainsVideos(webView)
         }
 
         func webView(
@@ -207,6 +208,62 @@ struct YouTubeWebView: UIViewRepresentable {
             decisionHandler(
                 allowedSchemes.contains(scheme) ? .allow : .cancel
             )
+        }
+
+        private func ensureHomeContainsVideos(_ webView: WKWebView) {
+            guard let url = webView.url else { return }
+
+            let path = url.path
+            guard path == "/" || path == "/feed/trending" else { return }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { [weak webView] in
+                guard let webView,
+                      let currentURL = webView.url,
+                      currentURL.path == path else {
+                    return
+                }
+
+                let script = #"""
+                (() => {
+                  const selectors = [
+                    'a[href*="/watch?v="]',
+                    'a[href^="/shorts/"]',
+                    'a[href*="youtu.be/"]'
+                  ];
+                  return selectors.some((selector) =>
+                    document.querySelector(selector) !== null
+                  );
+                })();
+                """#
+
+                webView.evaluateJavaScript(script) { result, _ in
+                    let hasVideo = result as? Bool ?? false
+                    guard !hasVideo else { return }
+
+                    DispatchQueue.main.async {
+                        if path == "/" {
+                            guard let trending = URL(
+                                string: "https://m.youtube.com/feed/trending"
+                            ) else { return }
+
+                            webView.load(URLRequest(url: trending))
+                        } else {
+                            var components = URLComponents(
+                                string: "https://m.youtube.com/results"
+                            )
+                            components?.queryItems = [
+                                URLQueryItem(
+                                    name: "search_query",
+                                    value: "trending videos"
+                                )
+                            ]
+
+                            guard let fallback = components?.url else { return }
+                            webView.load(URLRequest(url: fallback))
+                        }
+                    }
+                }
+            }
         }
 
         private func syncNavigationState(from webView: WKWebView) {
