@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 import WebKit
 
@@ -112,7 +113,10 @@ struct YouTubeWebView: UIViewRepresentable {
     ) {
         guard let store =
                 WKContentRuleListStore.default() else {
-            session.loadHome()
+            startInitialLoad(
+                on: webView,
+                coordinator: coordinator
+            )
             return
         }
 
@@ -132,7 +136,12 @@ struct YouTubeWebView: UIViewRepresentable {
                         .add(cached)
 
                     coordinator.didStartInitialLoad = true
-                    session.loadHome()
+
+                    startInitialLoad(
+                        on: webView,
+                        coordinator: coordinator
+                    )
+
                     return
                 }
 
@@ -157,11 +166,62 @@ struct YouTubeWebView: UIViewRepresentable {
                         }
 
                         coordinator.didStartInitialLoad = true
-                        session.loadHome()
+
+                        startInitialLoad(
+                            on: webView,
+                            coordinator: coordinator
+                        )
                     }
                 }
             }
         }
+    }
+
+    private func startInitialLoad(
+        on webView: WKWebView,
+        coordinator: Coordinator
+    ) {
+        let properties:
+            [HTTPCookiePropertyKey: Any] = [
+                .name: "SOCS",
+                .value: "CAI",
+                .domain: ".youtube.com",
+                .path: "/",
+                .secure: true,
+                .sameSitePolicy: "None",
+                .expires:
+                    Date(
+                        timeIntervalSinceNow:
+                            365 * 24 * 60 * 60
+                    )
+            ]
+
+        guard let cookie =
+                HTTPCookie(
+                    properties:
+                        properties
+                ) else {
+            session.loadHome()
+            return
+        }
+
+        webView.configuration
+            .websiteDataStore
+            .httpCookieStore
+            .setCookie(cookie) {
+                DispatchQueue.main.async {
+                    guard coordinator
+                        .didStartInitialLoad else {
+                        return
+                    }
+
+                    print(
+                        "YouTube SOCS consent cookie seeded"
+                    )
+
+                    session.loadHome()
+                }
+            }
     }
 
     final class Coordinator:
@@ -321,6 +381,15 @@ struct YouTubeWebView: UIViewRepresentable {
                 return
             }
 
+            let host =
+                url.host?.lowercased() ?? ""
+
+            if host == "consent.youtube.com" ||
+               host == "consent.google.com" {
+                decisionHandler(.allow)
+                return
+            }
+
             let scheme =
                 url.scheme?.lowercased() ?? ""
 
@@ -430,30 +499,46 @@ struct YouTubeWebView: UIViewRepresentable {
                     "www.youtube.com"
             }
 
-            var queryItems =
-                components.queryItems ?? []
+            let path =
+                components.path
 
-            queryItems.removeAll {
-                $0.name == "app" ||
-                $0.name == "persist_app"
+            let contentRoute =
+                path == "/" ||
+                path == "/watch" ||
+                path.hasPrefix("/shorts/") ||
+                path.hasPrefix("/live/") ||
+                path.hasPrefix("/feed/") ||
+                path == "/results" ||
+                path == "/playlist" ||
+                path.hasPrefix("/channel/") ||
+                path.hasPrefix("/@")
+
+            if contentRoute {
+                var queryItems =
+                    components.queryItems ?? []
+
+                queryItems.removeAll {
+                    $0.name == "app" ||
+                    $0.name == "persist_app"
+                }
+
+                queryItems.append(
+                    URLQueryItem(
+                        name: "app",
+                        value: "desktop"
+                    )
+                )
+
+                queryItems.append(
+                    URLQueryItem(
+                        name: "persist_app",
+                        value: "1"
+                    )
+                )
+
+                components.queryItems =
+                    queryItems
             }
-
-            queryItems.append(
-                URLQueryItem(
-                    name: "app",
-                    value: "desktop"
-                )
-            )
-
-            queryItems.append(
-                URLQueryItem(
-                    name: "persist_app",
-                    value: "1"
-                )
-            )
-
-            components.queryItems =
-                queryItems
 
             return components.url
         }
