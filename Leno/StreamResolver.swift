@@ -75,12 +75,15 @@ final class StreamResolver: @unchecked Sendable {
             max(piped.count, invidious.count)
 
         for index in 0..<maximum {
-            if index < piped.count {
-                candidates.append(piped[index])
-            }
-
+            // Invidious is preferred first because its current
+            // public instances are actively maintained while Piped
+            // remains useful as an independent fallback family.
             if index < invidious.count {
                 candidates.append(invidious[index])
+            }
+
+            if index < piped.count {
+                candidates.append(piped[index])
             }
 
             if candidates.count >= 6 {
