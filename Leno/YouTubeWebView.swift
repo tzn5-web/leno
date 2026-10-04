@@ -23,6 +23,14 @@ struct YouTubeWebView: UIViewRepresentable {
 
         userContentController.addUserScript(
             WKUserScript(
+                source: DesktopBackendScript.source,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
+
+        userContentController.addUserScript(
+            WKUserScript(
                 source: AdBlockScript.source,
                 injectionTime: .atDocumentStart,
                 forMainFrameOnly: false
