@@ -570,6 +570,8 @@ final class V9PlayerService:
         setPause(
             true
         )
+
+        deactivateAudioSession()
     }
 
     func toggle() {
@@ -593,6 +595,11 @@ final class V9PlayerService:
         to seconds:
             Double
     ) {
+        guard hasLoadedMedia
+        else {
+            return
+        }
+
         let target =
             max(
                 0,
@@ -773,6 +780,22 @@ final class V9PlayerService:
         } catch {
             print(
                 "V9 audio activation: \(error)"
+            )
+        }
+    }
+
+    private func deactivateAudioSession() {
+        do {
+            try AVAudioSession
+                .sharedInstance()
+                .setActive(
+                    false,
+                    options:
+                        .notifyOthersOnDeactivation
+                )
+        } catch {
+            print(
+                "V9 audio deactivation: \(error)"
             )
         }
     }
@@ -1382,6 +1405,7 @@ final class V9PlayerService:
                 pipBridge?
                     .stopIfActive()
 
+                deactivateAudioSession()
                 updateNowPlaying()
                 updatePiPPlaybackState()
             }
@@ -1799,6 +1823,7 @@ final class V9PlayerService:
         isPlaying =
             false
 
+        deactivateAudioSession()
         clearNowPlaying()
         updatePiPPlaybackState()
     }
