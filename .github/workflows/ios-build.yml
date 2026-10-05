@@ -178,14 +178,14 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Build VcdResolver image
-        run: docker build -t vcd-resolver:v0.10 Resolver
+        run: docker build -t vcd-resolver:fallback-0.4 Resolver
 
       - name: Start resolver
         run: |
           docker run -d --rm \
             --name vcd-resolver-v010 \
             -p 8085:8085 \
-            vcd-resolver:v0.10
+            vcd-resolver:fallback-0.4
 
           for attempt in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8085/health > resolver-health.json; then
@@ -333,7 +333,7 @@ jobs:
             -p 8086:8085 \
             -v "$PWD/Resolver/tests:/tests:ro" \
             -e YTDLP_BIN=/tests/fake_ytdlp.py \
-            vcd-resolver:v0.10
+            vcd-resolver:fallback-0.4
 
           cleanup() {
             docker rm -f vcd-resolver-client-smoke >/dev/null 2>&1 || true
