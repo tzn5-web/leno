@@ -153,10 +153,12 @@ static void VSBFetchSegments(NSString *videoID, void (^completion)(NSArray<NSDic
     [[[NSURLSession sharedSession] dataTaskWithRequest:request
         completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         NSArray *segments = @[];
+        BOOL cacheResult = NO;
         NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
         if (!error && http.statusCode == 200 && data.length > 0) {
             id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
             if ([json isKindOfClass:[NSArray class]]) {
+                cacheResult = YES;
                 for (id candidate in (NSArray *)json) {
                     if (![candidate isKindOfClass:[NSDictionary class]]) continue;
                     if ([candidate[@"videoID"] isEqualToString:videoID]) {
@@ -165,8 +167,10 @@ static void VSBFetchSegments(NSString *videoID, void (^completion)(NSArray<NSDic
                     }
                 }
             }
+        } else if (!error && http.statusCode == 404) {
+            cacheResult = YES;
         }
-        [VSBSegmentCache() setObject:segments forKey:videoID];
+        if (cacheResult) [VSBSegmentCache() setObject:segments forKey:videoID];
         dispatch_async(dispatch_get_main_queue(), ^{
             completion(segments);
         });
@@ -205,11 +209,19 @@ static double VSBTime(id timeObject) {
     return ((double (*)(id, SEL))objc_msgSend)(timeObject, selector);
 }
 
-static double VSBMediaDuration(id video) {
-    if (!video) return NAN;
-    SEL selector = sel_registerName("totalMediaTime");
-    if (![video respondsToSelector:selector]) return NAN;
-    return ((double (*)(id, SEL))objc_msgSend)(video, selector);
+static double VSBMediaDuration(id player, id video) {
+    SEL videoSelector = sel_registerName("totalMediaTime");
+    if (video && [video respondsToSelector:videoSelector]) {
+        double duration = ((double (*)(id, SEL))objc_msgSend)(video, videoSelector);
+        if (isfinite(duration) && duration > 0) return duration;
+    }
+
+    SEL playerSelector = sel_registerName("currentVideoTotalMediaTime");
+    if (player && [player respondsToSelector:playerSelector]) {
+        double duration = ((double (*)(id, SEL))objc_msgSend)(player, playerSelector);
+        if (isfinite(duration) && duration > 0) return duration;
+    }
+    return NAN;
 }
 
 static BOOL VSBEntryMatchesDuration(NSDictionary *entry, double currentDuration) {
@@ -236,7 +248,7 @@ static void VSBHandleTick(id player, id video, id timeObject) {
 
     double now = VSBTime(timeObject);
     if (!isfinite(now)) return;
-    double currentDuration = VSBMediaDuration(video);
+    double currentDuration = VSBMediaDuration(player, video);
     for (NSDictionary *entry in state.segments) {
         if (!VSBEntryMatchesDuration(entry, currentDuration)) continue;
         NSArray *range = entry[@"segment"];
