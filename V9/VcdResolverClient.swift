@@ -5,6 +5,8 @@ enum ResolverClientError:
 {
     case invalidEndpoint
     case loopbackEndpointOnDevice
+    case insecurePublicHTTP
+    case insecureTokenTransport
     case invalidVideoID
     case badResponse(Int)
     case server(String)
@@ -16,6 +18,12 @@ enum ResolverClientError:
 
         case .loopbackEndpointOnDevice:
             return "127.0.0.1/localhost indică iPhone-ul, nu PC-ul. Folosește IP-ul LAN al PC-ului sau un resolver HTTPS."
+
+        case .insecurePublicHTTP:
+            return "HTTP simplu este permis doar pentru resolverul din rețeaua locală. Pentru Internet/VPS folosește HTTPS."
+
+        case .insecureTokenTransport:
+            return "Tokenul resolverului nu este trimis prin HTTP necriptat. Folosește HTTPS sau golește tokenul pentru test LAN."
 
         case .invalidVideoID:
             return "Video ID trebuie să aibă exact 11 caractere valide."
@@ -161,6 +169,14 @@ actor VcdResolverClient {
         }
         #endif
 
+        if scheme == "http",
+           !isLocalNetworkHost(
+                host
+           ) {
+            throw ResolverClientError
+                .insecurePublicHTTP
+        }
+
         components.path =
             components.path
                 .trimmingCharacters(
@@ -207,6 +223,14 @@ actor VcdResolverClient {
                 )
 
         if !trimmedToken.isEmpty {
+            guard url.scheme?
+                    .lowercased() ==
+                    "https"
+            else {
+                throw ResolverClientError
+                    .insecureTokenTransport
+            }
+
             request.setValue(
                 "Bearer \(trimmedToken)",
                 forHTTPHeaderField:
@@ -258,6 +282,91 @@ actor VcdResolverClient {
         }
 
         return data
+    }
+
+    private func isLocalNetworkHost(
+        _ host:
+            String
+    ) -> Bool {
+        let value =
+            host.lowercased()
+
+        if value == "localhost" ||
+           value == "::1" ||
+           value.hasSuffix(
+                ".local"
+           ) ||
+           !value.contains(
+                "."
+           ) {
+            return true
+        }
+
+        if value.hasPrefix(
+            "fe80:"
+        ) ||
+           value.hasPrefix(
+                "fc"
+           ) ||
+           value.hasPrefix(
+                "fd"
+           ) {
+            return true
+        }
+
+        let parts =
+            value
+                .split(
+                    separator:
+                        "."
+                )
+                .compactMap {
+                    Int(
+                        $0
+                    )
+                }
+
+        guard parts.count ==
+                4,
+              parts.allSatisfy({
+                  (0...255)
+                      .contains(
+                          $0
+                      )
+              })
+        else {
+            return false
+        }
+
+        if parts[0] ==
+            10 {
+            return true
+        }
+
+        if parts[0] ==
+                172,
+           (16...31)
+            .contains(
+                parts[1]
+            ) {
+            return true
+        }
+
+        if parts[0] ==
+                192,
+           parts[1] ==
+                168 {
+            return true
+        }
+
+        if parts[0] ==
+                169,
+           parts[1] ==
+                254 {
+            return true
+        }
+
+        return false
     }
 
     private func parseServerDetail(
