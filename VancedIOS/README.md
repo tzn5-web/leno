@@ -44,7 +44,7 @@ All external source repositories are pinned to exact 40-character commits in
 
 ## Required behavior
 
-The architecture preserves the original YouTube navigation, account, Home,
+The architecture preserves the official YouTube UI and original navigation, account, Home,
 Search, Subscriptions, comments and player pipeline while adding:
 
 - ad filtering;
