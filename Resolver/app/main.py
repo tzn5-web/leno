@@ -415,7 +415,15 @@ async def video(video_id: str, request: Request) -> dict[str, Any]:
     video_format, audio_format = choose_formats(info)
 
     if video_format is None:
-        raise HTTPException(status_code=502, detail="no playable stream")
+        detail = (
+            "live/HLS or fragmented stream is not yet supported by the V9.2 relay"
+            if info.get("is_live")
+            else "no directly relayable HTTP/HTTPS stream is available"
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=detail,
+        )
 
     base = resolved_public_base(request)
     split_streams = audio_format is not None
