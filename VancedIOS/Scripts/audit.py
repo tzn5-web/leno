@@ -121,7 +121,7 @@ BINARY_EVIDENCE = {
     "return_youtube_dislike": [
         ["YTQTMButton"],
         ["YTReelWatchLikesController"],
-        ["updateLikeButtonWithRenderer:"],
+        ["updateLikeButtonWithRenderer:", "updateLikeButtonWithModel:animated:"],
         ["playbackController:didActivateVideo:withPlaybackData:"],
         ["currentVideoID", "contentVideoID"],
     ],
@@ -161,6 +161,7 @@ FEATURE_SOURCE_EVIDENCE = {
         "YTQTMButton",
         "YTReelWatchLikesController",
         "updateLikeButtonWithRenderer:",
+        "updateLikeButtonWithModel:animated:",
         "VancedReturnYouTubeDislikeEnabled",
     ],
 }
