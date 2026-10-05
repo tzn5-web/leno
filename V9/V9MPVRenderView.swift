@@ -565,6 +565,75 @@ final class V9MPVRenderView:
                 )
             )
 
+        if service?
+            .prefersPiPQualityRender ==
+            true {
+            let minimumLongEdge =
+                640.0
+
+            let minimumShortEdge =
+                360.0
+
+            let currentLong =
+                Double(
+                    max(
+                        width,
+                        height
+                    )
+                )
+
+            let currentShort =
+                Double(
+                    min(
+                        width,
+                        height
+                    )
+                )
+
+            let upscale =
+                max(
+                    1.0,
+                    minimumLongEdge /
+                    max(
+                        1,
+                        currentLong
+                    ),
+                    minimumShortEdge /
+                    max(
+                        1,
+                        currentShort
+                    )
+                )
+
+            width =
+                max(
+                    2,
+                    Int(
+                        (
+                            Double(
+                                width
+                            ) *
+                            upscale
+                        )
+                        .rounded()
+                    )
+                )
+
+            height =
+                max(
+                    2,
+                    Int(
+                        (
+                            Double(
+                                height
+                            ) *
+                            upscale
+                        )
+                        .rounded()
+                    )
+                )
+        }
+
         let maximumLongEdge =
             1280.0
 
