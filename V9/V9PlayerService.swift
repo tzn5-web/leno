@@ -199,16 +199,17 @@ final class V9PlayerService:
             renderView
 
         if mpv != nil {
-            if renderContext == nil {
-                guard renderView.attach(
-                    service:
-                        self
-                ) else {
-                    fail(
-                        "Nu am putut crea suprafața libmpv."
-                    )
-                    return
-                }
+            // SwiftUI may recreate the UIView while the mpv core/render
+            // context stays alive. Always bind the new surface to the
+            // persistent service; createRenderContext() is idempotent.
+            guard renderView.attach(
+                service:
+                    self
+            ) else {
+                fail(
+                    "Nu am putut atașa suprafața libmpv."
+                )
+                return
             }
 
             setupPiPIfNeeded(
