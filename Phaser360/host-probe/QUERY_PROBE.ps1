@@ -18,7 +18,7 @@ namespace P360 {
 }
 '@
 }
-$h=[P360.IO]::CreateFile('\\.\P360AdspProbe',0x80000000,0,[IntPtr]::Zero,3,0,[IntPtr]::Zero)
+$h=[P360.IO]::CreateFile('\\.\P360AdspProbe',[uint32]2147483648,0,[IntPtr]::Zero,3,0,[IntPtr]::Zero)
 if($h -eq [IntPtr](-1)){
   throw "Probe not accessible; Win32=$([Runtime.InteropServices.Marshal]::GetLastWin32Error()). Install the diagnostic function driver first."
 }
