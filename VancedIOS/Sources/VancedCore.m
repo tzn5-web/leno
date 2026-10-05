@@ -8,9 +8,13 @@
 static NSString * const kDiagnosticsKey = @"VancedDiagnosticsEnabled";
 static NSString * const kRememberSpeedKey = @"VancedRememberPlaybackSpeed";
 static NSString * const kLastSpeedKey = @"VancedLastPlaybackRate";
+static NSString * const kRememberQualityKey = @"VancedRememberVideoQuality";
+static NSString * const kLastQualityKey = @"VancedLastVideoQualityLabel";
 
 static IMP gOriginalPlayerLoad = NULL;
 static IMP gOriginalOverlaySetPlaybackRate = NULL;
+static IMP gOriginalQualityOriginalSelection = NULL;
+static IMP gOriginalQualityRedesignedSelection = NULL;
 
 static void VLog(NSString *format, ...) {
     if (![[NSUserDefaults standardUserDefaults] boolForKey:kDiagnosticsKey]) return;
@@ -42,6 +46,13 @@ static BOOL VHookInstanceMethod(const char *className,
     return YES;
 }
 
+static id VSendId(id object, const char *selectorName) {
+    if (!object) return nil;
+    SEL selector = sel_registerName(selectorName);
+    if (![object respondsToSelector:selector]) return nil;
+    return ((id (*)(id, SEL))objc_msgSend)(object, selector);
+}
+
 static void VOverlaySetPlaybackRate(id self, SEL _cmd, double rate) {
     if ([[NSUserDefaults standardUserDefaults] boolForKey:kRememberSpeedKey] &&
         isfinite(rate) && rate >= 0.1 && rate <= 8.0) {
@@ -52,23 +63,100 @@ static void VOverlaySetPlaybackRate(id self, SEL _cmd, double rate) {
     }
 }
 
+static void VRememberQualityFromFormat(id format) {
+    if (![[NSUserDefaults standardUserDefaults] boolForKey:kRememberQualityKey]) return;
+    NSString *label = VSendId(format, "qualityLabel");
+    if (![label isKindOfClass:[NSString class]] || label.length == 0) return;
+    [[NSUserDefaults standardUserDefaults] setObject:label forKey:kLastQualityKey];
+    VLog(@"remembered video quality %@", label);
+}
+
+static void VQualityOriginalSelection(id self, SEL _cmd, id video, id format) {
+    VRememberQualityFromFormat(format);
+    if (gOriginalQualityOriginalSelection) {
+        ((void (*)(id, SEL, id, id))gOriginalQualityOriginalSelection)(self, _cmd, video, format);
+    }
+}
+
+static void VQualityRedesignedSelection(id self, SEL _cmd, id video, id format) {
+    VRememberQualityFromFormat(format);
+    if (gOriginalQualityRedesignedSelection) {
+        ((void (*)(id, SEL, id, id))gOriginalQualityRedesignedSelection)(self, _cmd, video, format);
+    }
+}
+
+static NSInteger VResolutionFromLabel(NSString *label) {
+    if (![label isKindOfClass:[NSString class]]) return NSNotFound;
+    NSRange p = [label rangeOfString:@"p" options:NSCaseInsensitiveSearch];
+    if (p.location == NSNotFound) return NSNotFound;
+    NSString *prefix = [label substringToIndex:p.location];
+    NSCharacterSet *nonDigits = [[NSCharacterSet decimalDigitCharacterSet] invertedSet];
+    NSString *digits = [[prefix componentsSeparatedByCharactersInSet:nonDigits] componentsJoinedByString:@""];
+    return digits.length ? digits.integerValue : NSNotFound;
+}
+
+static NSString *VBestAvailableQualityLabel(NSArray *formats, NSString *requested) {
+    if (![formats isKindOfClass:[NSArray class]] || formats.count == 0) return nil;
+    NSString *firstLabel = nil;
+    NSInteger requestedResolution = VResolutionFromLabel(requested);
+    NSInteger bestDifference = NSIntegerMax;
+    NSString *closest = nil;
+
+    for (id format in formats) {
+        NSString *label = VSendId(format, "qualityLabel");
+        if (![label isKindOfClass:[NSString class]] || label.length == 0) continue;
+        if (!firstLabel) firstLabel = label;
+        if ([label isEqualToString:requested]) return label;
+        NSInteger resolution = VResolutionFromLabel(label);
+        if (requestedResolution != NSNotFound && resolution != NSNotFound) {
+            NSInteger difference = labs(resolution - requestedResolution);
+            if (difference < bestDifference) {
+                bestDifference = difference;
+                closest = label;
+            }
+        }
+    }
+    return closest ?: firstLabel;
+}
+
 static void VApplyRememberedSpeed(id playerController) {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     if (![defaults boolForKey:kRememberSpeedKey]) return;
     if ([defaults objectForKey:kLastSpeedKey] == nil) return;
-
     double rate = [defaults doubleForKey:kLastSpeedKey];
     if (!isfinite(rate) || rate < 0.1 || rate > 8.0) return;
 
-    SEL overlaySelector = sel_registerName("activeVideoPlayerOverlay");
-    if (![playerController respondsToSelector:overlaySelector]) return;
-    id overlay = ((id (*)(id, SEL))objc_msgSend)(playerController, overlaySelector);
-    if (!overlay) return;
-
+    id overlay = VSendId(playerController, "activeVideoPlayerOverlay");
     SEL setRateSelector = sel_registerName("setPlaybackRate:");
-    if (![overlay respondsToSelector:setRateSelector]) return;
+    if (!overlay || ![overlay respondsToSelector:setRateSelector]) return;
     ((void (*)(id, SEL, double))objc_msgSend)(overlay, setRateSelector, rate);
     VLog(@"restored playback rate %.2fx", rate);
+}
+
+static void VApplyRememberedQuality(id playerController) {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    if (![defaults boolForKey:kRememberQualityKey]) return;
+    NSString *requested = [defaults stringForKey:kLastQualityKey];
+    if (requested.length == 0) return;
+
+    id activeVideo = VSendId(playerController, "activeVideo");
+    NSArray *formats = VSendId(activeVideo, "selectableVideoFormats");
+    NSString *qualityLabel = VBestAvailableQualityLabel(formats, requested);
+    if (qualityLabel.length == 0) return;
+
+    Class constraintClass = objc_getClass("MLQuickMenuVideoQualitySettingFormatConstraint");
+    if (!constraintClass) return;
+    id constraint = ((id (*)(id, SEL))objc_msgSend)(constraintClass, sel_registerName("alloc"));
+    SEL initSelector = sel_registerName("initWithVideoQualitySetting:formatSelectionReason:qualityLabel:");
+    if (!constraint || ![constraint respondsToSelector:initSelector]) return;
+    constraint = ((id (*)(id, SEL, NSInteger, NSInteger, id))objc_msgSend)(
+        constraint, initSelector, 3, 2, qualityLabel);
+
+    SEL setConstraintSelector = sel_registerName("setVideoFormatConstraint:");
+    if (constraint && activeVideo && [activeVideo respondsToSelector:setConstraintSelector]) {
+        ((void (*)(id, SEL, id))objc_msgSend)(activeVideo, setConstraintSelector, constraint);
+        VLog(@"restored video quality %@", qualityLabel);
+    }
 }
 
 static void VPlayerLoad(id self, SEL _cmd, id transition, id playbackConfig) {
@@ -79,7 +167,9 @@ static void VPlayerLoad(id self, SEL _cmd, id transition, id playbackConfig) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(750 * NSEC_PER_MSEC)),
                    dispatch_get_main_queue(), ^{
         id strongSelf = weakSelf;
-        if (strongSelf) VApplyRememberedSpeed(strongSelf);
+        if (!strongSelf) return;
+        VApplyRememberedSpeed(strongSelf);
+        VApplyRememberedQuality(strongSelf);
     });
 }
 
@@ -92,6 +182,14 @@ static void VInstallSafeCustomizationHooks(void) {
                         "loadWithPlayerTransition:playbackConfig:",
                         (IMP)VPlayerLoad,
                         &gOriginalPlayerLoad);
+    VHookInstanceMethod("YTVideoQualitySwitchOriginalController",
+                        "singleVideo:didSelectVideoFormat:",
+                        (IMP)VQualityOriginalSelection,
+                        &gOriginalQualityOriginalSelection);
+    VHookInstanceMethod("YTVideoQualitySwitchRedesignedController",
+                        "singleVideo:didSelectVideoFormat:",
+                        (IMP)VQualityRedesignedSelection,
+                        &gOriginalQualityRedesignedSelection);
 }
 
 __attribute__((constructor))
@@ -102,12 +200,13 @@ static void VancedCoreInitialize(void) {
 
         [[NSUserDefaults standardUserDefaults] registerDefaults:@{
             kDiagnosticsKey: @NO,
-            kRememberSpeedKey: @YES
+            kRememberSpeedKey: @YES,
+            kRememberQualityKey: @YES
         }];
 
         dispatch_async(dispatch_get_main_queue(), ^{
             VInstallSafeCustomizationHooks();
-            for (NSNumber *delay in @[@1, @3, @8]) {
+            for (NSNumber *delay in @[@1, @3, @8, @20, @60]) {
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
                                              (int64_t)(delay.doubleValue * NSEC_PER_SEC)),
                                dispatch_get_main_queue(), ^{
