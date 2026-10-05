@@ -2,6 +2,7 @@
 #import <dispatch/dispatch.h>
 #import <math.h>
 #import <stdarg.h>
+#import <stdlib.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
 
@@ -97,7 +98,6 @@ static NSInteger VResolutionFromLabel(NSString *label) {
 
 static NSString *VBestAvailableQualityLabel(NSArray *formats, NSString *requested) {
     if (![formats isKindOfClass:[NSArray class]] || formats.count == 0) return nil;
-    NSString *firstLabel = nil;
     NSInteger requestedResolution = VResolutionFromLabel(requested);
     NSInteger bestDifference = NSIntegerMax;
     NSString *closest = nil;
@@ -105,7 +105,6 @@ static NSString *VBestAvailableQualityLabel(NSArray *formats, NSString *requeste
     for (id format in formats) {
         NSString *label = VSendId(format, "qualityLabel");
         if (![label isKindOfClass:[NSString class]] || label.length == 0) continue;
-        if (!firstLabel) firstLabel = label;
         if ([label isEqualToString:requested]) return label;
         NSInteger resolution = VResolutionFromLabel(label);
         if (requestedResolution != NSNotFound && resolution != NSNotFound) {
@@ -116,7 +115,7 @@ static NSString *VBestAvailableQualityLabel(NSArray *formats, NSString *requeste
             }
         }
     }
-    return closest ?: firstLabel;
+    return closest;
 }
 
 static void VApplyRememberedSpeed(id playerController) {
