@@ -306,6 +306,10 @@ final class V9PlayerService:
                 "videotoolbox-copy"
             ),
             setOptionString(
+                "profile",
+                "sw-fast"
+            ),
+            setOptionString(
                 "keep-open",
                 "yes"
             ),
