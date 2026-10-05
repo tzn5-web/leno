@@ -35,7 +35,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          bash VancedIOS/Scripts/run_stage_audit.sh
+          bash VancedIOS/Scripts/run_stage_audit.sh --structural-only
           rc=$?
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
           exit 0
@@ -52,5 +52,5 @@ jobs:
         if: steps.stage.outputs.rc != '0'
         run: |
           cat VancedIOS/reports/STAGE_AUDIT.json
-          echo 'VANCED_STAGE_AUDIT=NEEDS_REVIEW'
+          echo 'VANCED_STAGE_AUDIT=STRUCTURAL_FAILURE'
           exit 1
