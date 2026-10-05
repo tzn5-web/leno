@@ -81,7 +81,13 @@ jobs:
           if (!(Test-Path $signtool)) { throw "signtool.exe not found: $signtool" }
 
           $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=PHASER360 Test Driver' -CertStoreLocation 'Cert:\CurrentUser\My' -KeyExportPolicy Exportable -NotAfter (Get-Date).AddYears(2)
-          Export-Certificate -Cert $cert -FilePath (Join-Path $stage 'PHASER360_TEST_DRIVER.cer') | Out-Null
+          $cerPath = Join-Path $stage 'PHASER360_TEST_DRIVER.cer'
+          Export-Certificate -Cert $cert -FilePath $cerPath | Out-Null
+
+          # Trust the ephemeral test certificate on the CI runner only so signature
+          # verification tests the same chain the target will use after installer import.
+          Import-Certificate -FilePath $cerPath -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
+          Import-Certificate -FilePath $cerPath -CertStoreLocation 'Cert:\CurrentUser\TrustedPublisher' | Out-Null
 
           & $signtool sign /v /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $stage 'sklhdaudbus.sys')
           if ($LASTEXITCODE -ne 0) { throw "signtool failed for SYS" }
