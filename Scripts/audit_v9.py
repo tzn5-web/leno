@@ -255,6 +255,7 @@ for required in [
     "VCD_PUBLIC_BASE_URL",
     "VCD_COOKIES_FILE",
     "VCD_MAX_RELAY_ENTRIES",
+    "VCD_MAX_CONCURRENT_EXTRACTS",
     "VCD_UPSTREAM_READ_TIMEOUT",
     "secrets.compare_digest",
     "YTDLP_JS_RUNTIME",
@@ -283,6 +284,21 @@ require(
 require(
     "aiter_bytes" not in resolver,
     "relay must stream raw upstream bytes without transparent decompression",
+)
+
+require(
+    '"thumbnail": None' in resolver
+    and '"thumbnail": info.get("thumbnail")' not in resolver,
+    "raw upstream thumbnail URL can still leak to the iOS client",
+)
+require(
+    "extraction_semaphore" in resolver
+    and "MAX_CONCURRENT_EXTRACTS" in resolver,
+    "yt-dlp extraction concurrency is not bounded",
+)
+require(
+    'detail="yt-dlp extraction failed"' in resolver,
+    "yt-dlp stderr may still be exposed to API clients",
 )
 require(
     'protocol not in {"http", "https"}' in resolver
