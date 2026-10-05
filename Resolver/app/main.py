@@ -132,14 +132,19 @@ def resolved_public_base(request: Request) -> str:
         return PUBLIC_BASE_URL
 
     host = request.url.hostname or ""
+    peer_host = request.client.host if request.client else ""
 
-    # request.base_url is derived from the incoming Host header. For LAN use
-    # that is convenient; for Internet deployment it must never become a
-    # capability URL without an explicitly trusted public base.
-    if not is_local_network_host(host):
+    # request.base_url is derived from the incoming Host header. A remote
+    # caller can spoof Host, so LAN mode requires both the advertised host and
+    # the actual peer (or trusted proxy-derived client) to be local/private.
+    if (
+        not is_local_network_host(host)
+        or not peer_host
+        or not is_local_network_host(peer_host)
+    ):
         raise HTTPException(
             status_code=500,
-            detail="set VCD_PUBLIC_BASE_URL for non-LAN deployments",
+            detail="set VCD_PUBLIC_BASE_URL and VCD_API_TOKEN for non-LAN deployments",
         )
 
     return str(request.base_url).rstrip("/")
