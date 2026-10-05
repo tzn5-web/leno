@@ -52,3 +52,88 @@ struct ResolvedVideo:
     let audio: ResolvedStream?
     let expiresIn: Int
 }
+
+
+struct BrowseVideo:
+    Decodable,
+    Equatable,
+    Hashable,
+    Identifiable
+{
+    let id: String
+    let title: String
+    let channel: String
+    let channelID: String?
+    let duration: Double?
+    let viewCount: Int?
+    let thumbnailURL: URL
+    let isLive: Bool
+}
+
+struct BrowseResponse:
+    Decodable,
+    Equatable
+{
+    let title: String
+    let channelID: String?
+    let items: [BrowseVideo]
+
+    enum CodingKeys:
+        String,
+        CodingKey
+    {
+        case title
+        case channelID
+        case items
+    }
+
+    init(
+        title:
+            String,
+        channelID:
+            String? = nil,
+        items:
+            [BrowseVideo]
+    ) {
+        self.title =
+            title
+
+        self.channelID =
+            channelID
+
+        self.items =
+            items
+    }
+
+    init(
+        from decoder:
+            Decoder
+    ) throws {
+        let container =
+            try decoder.container(
+                keyedBy:
+                    CodingKeys.self
+            )
+
+        title =
+            try container.decode(
+                String.self,
+                forKey:
+                    .title
+            )
+
+        channelID =
+            try container.decodeIfPresent(
+                String.self,
+                forKey:
+                    .channelID
+            )
+
+        items =
+            try container.decode(
+                [BrowseVideo].self,
+                forKey:
+                    .items
+            )
+    }
+}
