@@ -1,6 +1,6 @@
-# VcdResolver V9.2 / resolver 0.3.0-lab
+# VcdResolver V9.3 / resolver 0.3.0-lab
 
-Resolver separat pentru YoutubeVcd V9.2. Extracția YouTube rămâne în afara IPA-ului, iar iPhone-ul primește URL-uri de relay controlate de resolver.
+Resolver separat pentru YoutubeVcd V9.3. Extracția YouTube rămâne în afara IPA-ului, iar iPhone-ul primește URL-uri de relay controlate de resolver.
 
 ## Stack validat
 
@@ -16,10 +16,15 @@ Resolver separat pentru YoutubeVcd V9.2. Extracția YouTube rămâne în afara I
 - Selecție conservatoare H.264/AAC când există.
 - Cookie file opțional pentru conținut care necesită sesiune.
 - Token opțional pentru endpoint-ul de resolve.
+- Deployment public: HTTPS + `VCD_API_TOKEN` sunt obligatorii.
+- Relay-ul clientului rămâne pe aceeași origine ca resolverul; redirect-urile API sunt refuzate.
+- Upstream media local/loopback/private este refuzat.
+- `Accept-Encoding: identity` păstrează Range/Content-Length pe bytes originali.
+- Sursa video este limitată implicit la 1080p / 30 fps, configurabil, pentru a evita decode inutil de 4K/8K pe iPhone.
 
 ## Limită intenționată în V9.2
 
-V9.2 acceptă doar streamuri media directe cu protocol HTTP/HTTPS. Playlisturile HLS/m3u8 și formatele cu liste de fragmente sunt refuzate în loc să lase URL-uri upstream să ajungă pe iPhone.
+V9.3 acceptă doar streamuri media directe cu protocol HTTP/HTTPS. Playlisturile HLS/m3u8 și formatele cu liste de fragmente sunt refuzate în loc să lase URL-uri upstream să ajungă pe iPhone.
 
 Asta înseamnă că unele livestreamuri nu sunt încă suportate. Un relay HLS dedicat trebuie să rescrie fiecare segment, EXT-X-KEY și EXT-X-MAP înainte să putem declara live-ul sigur și complet.
 
@@ -40,7 +45,7 @@ Nu folosi `127.0.0.1` sau `localhost` pe iPhone; acestea indică telefonul însu
 
 ## VPS / Internet
 
-Pentru un resolver public folosește HTTPS și setează explicit `VCD_PUBLIC_BASE_URL`. Clientul V9.2 validează și URL-urile relay primite de la server și refuză:
+Pentru un resolver public folosește HTTPS și setează explicit `VCD_PUBLIC_BASE_URL`. Clientul V9.3 validează și URL-urile relay primite de la server și refuză:
 
 - HTTP public în afara rețelei locale.
 - trimiterea bearer token-ului prin HTTP necriptat.
@@ -78,6 +83,8 @@ Cookies nu garantează conținutul members-only/age-restricted: unele cazuri You
 - `VCD_RELAY_TTL`: TTL relay, implicit 21600 secunde.
 - `VCD_MAX_RELAY_ENTRIES`: implicit 1024.
 - `VCD_MAX_CONCURRENT_EXTRACTS`: numărul maxim de procese yt-dlp simultane, implicit 2.
+- `VCD_MAX_VIDEO_HEIGHT`: plafon preferat pentru video, implicit 1080.
+- `VCD_MAX_VIDEO_FPS`: plafon preferat pentru frame-rate, implicit 30.
 - `VCD_UPSTREAM_READ_TIMEOUT`: implicit 45 secunde.
 - `YTDLP_TIMEOUT`: timeout extracție, implicit 90 secunde.
 - `YTDLP_JS_RUNTIME`: implicit deno.
