@@ -21,6 +21,7 @@ app = read("V9/V9App.swift")
 root = read("V9/V9ClientRootView.swift")
 browse = read("V9/V9BrowseViews.swift")
 native = read("V9/V9NativeYouTubeClient.swift")
+playback_worker = read("V9/V9NativePlaybackWorker.swift")
 player_ui = read("V9/V9PlayerUI.swift")
 player = read("V9/V9PlayerService.swift")
 player_view = read("V9/V9MPVPlayerView.swift")
@@ -38,10 +39,10 @@ all_v9 = "\n".join(
 )
 
 # Release identity.
-require('MARKETING_VERSION: "0.11.0"' in project, "version must be 0.11.0")
-require('CURRENT_PROJECT_VERSION: "7"' in project, "build must be 7")
-require('test "$VERSION" = "0.11.0"' in workflow, "CI version audit is stale")
-require('test "$BUILD" = "7"' in workflow, "CI build audit is stale")
+require('MARKETING_VERSION: "0.11.1"' in project, "version must be 0.11.1")
+require('CURRENT_PROJECT_VERSION: "8"' in project, "build must be 8")
+require('test "$VERSION" = "0.11.1"' in workflow, "CI version audit is stale")
+require('test "$BUILD" = "8"' in workflow, "CI build audit is stale")
 require("V9ClientRootView()" in app, "app does not launch native client")
 
 # Native autonomous YouTube dependency.
@@ -61,21 +62,55 @@ for required in [
     "fetchContinuationThrowing",
     "mergeContinuation",
     "getChannelContentContinuationThrowing",
+    "V9NativeYouTubeClient",
+    "V9NativePlaybackWorker",
+    "discoveryState",
+]:
+    require(required in native, f"native YouTube invariant missing: {required}")
+
+
+# Native playback resolution must stay off MainActor and use the JSON Innertube
+# response type for TVHTML5. The previous .videoInfos override fed JSON into an
+# HTML watch-page decoder and was not a valid fallback.
+for required in [
+    "actor V9NativePlaybackWorker",
+    "VideoInfosWithDownloadFormatsResponse",
+    ".videoInfosWithDownloadFormats",
+    '"TVHTML5"',
+    '"7.20260707.07.00"',
+    '"X-Youtube-Client-Name"',
+    '"7"',
+    "streamingURL",
+    '"hls-vod"',
+    '"hls-live"',
     "fetchStreamingInfosWithDownloadFormatsThrowing",
     "deciphersURLs",
     "VideoDownloadFormat",
     "AudioOnlyFormat",
-    "streamingURL",
-    "V9NativeYouTubeClient",
-    "TVHTML5_SIMPLY_EMBEDDED_PLAYER",
-    "installTVHTML5Overrides",
     "ensureVisitorData",
-    "tvHtml",
-    "progressiveFormats",
-    "adaptiveFormats",
-    "discoveryState",
 ]:
-    require(required in native, f"native YouTube invariant missing: {required}")
+    require(required in playback_worker, f"native playback worker invariant missing: {required}")
+
+require(
+    "TVHTML5_SIMPLY_EMBEDDED_PLAYER" not in playback_worker,
+    "obsolete TVHTML5_SIMPLY_EMBEDDED_PLAYER path returned",
+)
+require(
+    ".videoInfos\n" not in playback_worker
+    and "customHeaders[\n                .videoInfos\n" not in playback_worker,
+    "TV Innertube JSON was wired back to the HTML .videoInfos decoder",
+)
+require(
+    "if let hls =" in playback_worker
+    and "info.streamingURL" in playback_worker
+    and "isLive" not in playback_worker.split("if let hls =", 1)[0][-160:],
+    "HLS-first policy is not applied to both VOD and live media",
+)
+require(
+    "private let playbackWorker" in native
+    and "try await playbackWorker" in native,
+    "MainActor client still performs heavy stream resolution itself",
+)
 
 # Normal UI may not require/configure an external resolver.
 require("V9HomeFeedView" in root and "V9SearchView" in root, "Home/Search missing")
@@ -226,22 +261,10 @@ require(
 
 # Native playback supports live HLS without AVPlayer.
 require(
-    "info.isLive" in native
-    and "info.streamingURL" in native
-    and '"m3u8"' in native,
-    "native live HLS path missing",
-)
-require(
-    "TVHTML5_SIMPLY_EMBEDDED_PLAYER" in native
-    and "customHeaders" in native
-    and ".videoInfos" in native,
-    "PoT-resistant TVHTML5 native fallback is missing",
-)
-require(
-    "adaptiveFormats:" in native
-    and "progressiveFormats:" in native
-    and '"embedded"' in native,
-    "native resolver can mix muxed/progressive video with a second audio stream",
+    "adaptiveFormats:" in playback_worker
+    and "progressiveFormats:" in playback_worker
+    and '"embedded"' in playback_worker,
+    "native resolver cannot handle adaptive/progressive fallback media",
 )
 require(
     "discoveryState" in native
@@ -261,10 +284,10 @@ for required in [
     '"mp4a"',
     '"aac"',
 ]:
-    require(required in native, f"native format policy missing: {required}")
+    require(required in playback_worker, f"native format policy missing: {required}")
 
 require(
-    "fps" in native and "30" in native,
+    "fps" in playback_worker and "30" in playback_worker,
     "native video frame-rate cap is missing",
 )
 
@@ -299,9 +322,10 @@ if errors:
         print(f" - {error}")
     sys.exit(1)
 
-print("YOUTUBEVCD 0.11 AUTONOMOUS CLIENT AUDIT PASSED")
+print("YOUTUBEVCD 0.11.1 AUTONOMOUS CLIENT AUDIT PASSED")
 print(" - Home/Search/Channel are native on-device and paginated")
-print(" - video stream URLs are resolved on-device with YouTubeKit")
+print(" - video stream URLs are resolved off-MainActor with YouTubeKit")
+print(" - TVHTML5 Innertube JSON uses the correct response decoder and HLS-first playback")
 print(" - resolver is optional fallback, not an app prerequisite")
 print(" - VOD split streams and live HLS feed the same persistent MPV engine")
 print(" - no WebKit/AVPlayer/OpenGL ES playback path")
