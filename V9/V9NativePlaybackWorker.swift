@@ -756,7 +756,7 @@ actor V9NativePlaybackWorker
                 httpBody:
                     [
                         bodyPrefix,
-                        ""}"
+                        "\"}"
                     ],
                 parameters:
                     [
