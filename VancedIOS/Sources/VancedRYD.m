@@ -12,6 +12,7 @@ static IMP gRYDOriginalActivateVideo = NULL;
 static IMP gRYDOriginalButtonDidMoveToWindow = NULL;
 static IMP gRYDOriginalButtonLayoutSubviews = NULL;
 static IMP gRYDOriginalReelUpdate = NULL;
+static IMP gRYDOriginalReelModelUpdate = NULL;
 static NSString *gRYDCurrentVideoID = nil;
 static NSDate *gRYDBackoffUntil = nil;
 
@@ -236,8 +237,20 @@ static void VRYDReelUpdate(id self, SEL _cmd, id renderer) {
     }
     if (![[NSUserDefaults standardUserDefaults] boolForKey:kRYDEnabledKey]) return;
     NSString *videoID = VRYDVideoIDFromRenderer(renderer);
+    if (videoID.length == 0) videoID = gRYDCurrentVideoID;
     id button = VRYDSendId(self, "dislikeButton");
     if (videoID.length && button) VRYDUpdateButton(button, videoID);
+}
+
+static void VRYDReelModelUpdate(id self, SEL _cmd, id model, BOOL animated) {
+    if (gRYDOriginalReelModelUpdate) {
+        ((void (*)(id, SEL, id, BOOL))gRYDOriginalReelModelUpdate)(self, _cmd, model, animated);
+    }
+    if (![[NSUserDefaults standardUserDefaults] boolForKey:kRYDEnabledKey]) return;
+    id button = VRYDSendId(self, "dislikeButton");
+    if (gRYDCurrentVideoID.length && button) {
+        VRYDUpdateButton(button, gRYDCurrentVideoID);
+    }
 }
 
 static void VRYDInstallHooks(void) {
@@ -257,6 +270,10 @@ static void VRYDInstallHooks(void) {
              "updateLikeButtonWithRenderer:",
              (IMP)VRYDReelUpdate,
              &gRYDOriginalReelUpdate);
+    VRYDHook("YTReelWatchLikesController",
+             "updateLikeButtonWithModel:animated:",
+             (IMP)VRYDReelModelUpdate,
+             &gRYDOriginalReelModelUpdate);
 }
 
 __attribute__((constructor))
