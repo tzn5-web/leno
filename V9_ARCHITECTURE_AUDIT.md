@@ -86,6 +86,12 @@ only to downscale it for the phone.
 The foreground/PiP software output is further bounded to roughly a 1280x720
 pixel budget and at most ~30 rendered frames per second.
 
+When the persistent surface is hosted by the compact mini-player, normal
+navigation keeps the render target small to save CPU. If PiP becomes pending or
+active, the renderer temporarily enforces at least a 640x360 target before the
+same sample-buffer layer is handed to PiP. This avoids a PiP window inheriting
+the tiny mini-player buffer size.
+
 ## Playback engine
 
 Playback remains MPVKit 1.0.1 non-GPL / libmpv.
