@@ -1,0 +1,65 @@
+diff --git a/sklhdaudbus/sklhdaudbus.inf b/sklhdaudbus/sklhdaudbus.inf
+index c1afa40..0000000 100644
+--- a/sklhdaudbus/sklhdaudbus.inf
++++ b/sklhdaudbus/sklhdaudbus.inf
+@@ -17,7 +17,7 @@ Signature   = "$WINDOWS NT$"
+ ClassGuid   = {4d36e97d-e325-11ce-bfc1-08002be10318}
+ Provider    = CoolStar
+-DriverVer   = 8/15/2022,1.0.0
++DriverVer   = 10/06/2026,1.1.0.360
+ CatalogFile = sklhdaudbus.cat
+ PnpLockdown = 1
+ 
+@@ -48,7 +48,7 @@ sklhdaudbus.sys  = 1,,
+ %SklHDAudBus.DeviceDesc%=SklHDAudBus_Device, PCI\VEN_8086&DEV_9D71&CC_0401 ;Intel Kaby Lake
+ %SklHDAudBus.DeviceDesc%=SklHDAudBus_Device, PCI\VEN_8086&DEV_5A98&CC_0401 ;Intel Apollo Lake
+-%SklHDAudBus.DeviceDesc%=SklHDAudBus_Device, PCI\VEN_8086&DEV_3198&CC_0401 ;Intel Gemini Lake
++%P360SklHDAudBus.DeviceDesc%=SklHDAudBus_Device, PCI\VEN_8086&DEV_3198&CC_0401 ;Google Phaser360 / Intel Gemini Lake
+ %SklHDAudBus.DeviceDesc%=SklHDAudBus_Device, PCI\VEN_8086&DEV_02C8&CC_0401 ;Intel Comet Lake
+ %SklHDAudBus.DeviceDesc%=SklHDAudBus_Device, PCI\VEN_8086&DEV_4DC8&CC_0401 ;Intel Jasper Lake
+ %SklHDAudBus.DeviceDesc%=SklHDAudBus_Device, PCI\VEN_8086&DEV_A0C8&CC_0401 ;Intel Tiger Lake
+@@ -70,6 +70,8 @@ sklhdaudbus.sys
+ [SklHDAudBus_AddReg]
+ ; Set to 1 to connect the first interrupt resource found, 0 to leave disconnected
+ HKR,Settings,"ConnectInterrupt",0x00010001,0
++; Marker used by PHASER360 diagnostics/rollback tooling.
++HKR,Settings,"Phaser360Mode",0x00010001,1
+ 
+ ;-------------- Service installation
+ [SklHDAudBus_Device.NT.Services]
+@@ -91,5 +93,6 @@ StdMfg                 = "CoolStar"
+ DiskId1                = "CoolStar HD Audio Installation Disk #1"
+ SklHDAudBus.DeviceDesc = "CoolStar HD Audio"
++P360SklHDAudBus.DeviceDesc = "PHASER360 Gemini Lake HD Audio Bus"
+ SklHDAudBus.SVCDESC    = "CoolStar HD Audio Service"
+diff --git a/sklhdaudbus/buspdo.cpp b/sklhdaudbus/buspdo.cpp
+index b7769e2..0000000 100644
+--- a/sklhdaudbus/buspdo.cpp
++++ b/sklhdaudbus/buspdo.cpp
+@@ -222,6 +222,23 @@ Bus_EvtDeviceListCreatePdo(
+         status = WdfPdoInitAddCompatibleID(DeviceInit, &compatId);
+         if (!NT_SUCCESS(status)) {
+             return status;
+         }
++
++        /*
++         * PHASER360 / Gemini Lake bridge identity.
++         *
++         * Keep the canonical CSAUDIO\ADSP device/hardware ID above because
++         * production SOF drivers use it and query GUID_ADSP_BUS_INTERFACE.
++         * Add a project-specific compatible ID so the PHASER360 host driver
++         * can bind without reintroducing direct PCI/MMIO ownership.
++         */
++        if (Desc->CodecIds.CtlrVenId == 0x8086 &&
++            Desc->CodecIds.CtlrDevId == 0x3198) {
++            status = RtlUnicodeStringPrintf(
++                &compatId,
++                L"P360AUDIO\\ADSP_GEMINILAKE");
++            if (!NT_SUCCESS(status))
++                return status;
++            status = WdfPdoInitAddCompatibleID(DeviceInit, &compatId);
++            if (!NT_SUCCESS(status))
++                return status;
++        }
+     }
+     else {
