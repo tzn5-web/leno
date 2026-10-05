@@ -136,6 +136,8 @@ for required in [
     "MPV_END_FILE_REASON_ERROR",
     "maximumRefreshAttempts",
     "pendingSeekAfterLoad",
+    "prepareForSeek",
+    "backgroundRenderGraceTask",
     "refreshTask?\n            .cancel()",
     "800_000_000",
     "2_000_000_000",
@@ -253,12 +255,23 @@ for required in [
     "generation",
     "enforce_relay_capacity",
     "UPSTREAM_READ_TIMEOUT",
+    "is_relayable_format",
+    "aiter_raw",
 ]:
     require(required in resolver, f"resolver invariant missing: {required}")
 
 require(
     "read=None" not in resolver,
     "upstream media read timeout is still unbounded",
+)
+require(
+    "aiter_bytes" not in resolver,
+    "relay must stream raw upstream bytes without transparent decompression",
+)
+require(
+    'protocol not in {"http", "https"}' in resolver
+    and 'format_info.get("fragments")' in resolver,
+    "manifest/fragment formats can still bypass the controlled relay",
 )
 
 require(
