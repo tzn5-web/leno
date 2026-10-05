@@ -48,6 +48,16 @@ LEGACY_TOKENS = [
 
 CODE_SUFFIXES = {".m", ".mm", ".xm", ".x", ".swift", ".sh", ".py"}
 
+FEATURE_SOURCE_EVIDENCE = {
+    "speed_memory_controls": [
+        "YTMainAppVideoPlayerOverlayViewController",
+        "setPlaybackRate:",
+        "YTPlayerViewController",
+        "loadWithPlayerTransition:playbackConfig:",
+        "VancedLastPlaybackRate",
+    ],
+}
+
 
 class Audit:
     def __init__(self):
@@ -128,6 +138,13 @@ def audit_source(audit: Audit) -> None:
     }
     if incomplete:
         audit.error(f"required features are not yet implemented/validated: {incomplete}")
+
+    core_text = (ROOT / "Sources" / "VancedCore.m").read_text(encoding="utf-8", errors="ignore") if (ROOT / "Sources" / "VancedCore.m").exists() else ""
+    for feature, tokens in FEATURE_SOURCE_EVIDENCE.items():
+        state = implementation.get(feature, {}).get("state", "missing")
+        if state != "not_implemented":
+            absent = [token for token in tokens if token not in core_text]
+            audit.check(not absent, f"source evidence missing for {feature}: {absent}")
 
     missing_impl = [str(path.relative_to(ROOT)) for path in EXPECTED_IMPLEMENTATION_FILES if not path.exists()]
     if missing_impl:
