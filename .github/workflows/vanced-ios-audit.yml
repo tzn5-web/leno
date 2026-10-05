@@ -27,6 +27,9 @@ jobs:
       - name: Python syntax check
         run: python3 -m py_compile VancedIOS/Scripts/audit.py
 
+      - name: Run audit self-tests
+        run: python3 -m unittest discover -s VancedIOS/Tests -p 'test_*.py'
+
       - name: Run stage audit
         id: stage
         shell: bash
