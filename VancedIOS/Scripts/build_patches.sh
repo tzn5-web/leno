@@ -19,29 +19,47 @@ print(data["dependencies"][sys.argv[2]][sys.argv[3]])
 PY
 }
 
+head_matches() {
+  local dst="$1"
+  local expected="$2"
+  [[ -d "$dst/.git" ]] || return 1
+  [[ "$(git -C "$dst" rev-parse HEAD 2>/dev/null || true)" == "$expected" ]]
+}
+
 clone_at() {
   local name="$1"
   local dst="$2"
   local url commit
   url="$(dep "$name" repo)"
   commit="$(dep "$name" commit)"
+
+  if head_matches "$dst" "$commit"; then
+    echo "==> Reuse pinned $name @ $commit"
+    return 0
+  fi
+
+  echo "==> Checkout pinned $name @ $commit"
   rm -rf "$dst"
   git init -q "$dst"
   git -C "$dst" remote add origin "$url"
   git -C "$dst" fetch -q --depth=1 origin "$commit"
   git -C "$dst" checkout -q --detach FETCH_HEAD
+
+  local actual
+  actual="$(git -C "$dst" rev-parse HEAD)"
+  [[ "$actual" == "$commit" ]] || {
+    echo "Pinned checkout mismatch for $name: expected $commit got $actual" >&2
+    exit 1
+  }
 }
 
 echo "==> Audit architecture"
 python3 "$ROOT/VancedIOS/Scripts/audit.py"
 
-if [[ ! -d "$THEOS/.git" ]]; then
-  echo "==> Setup pinned Theos"
-  clone_at Theos "$THEOS"
-  git -C "$THEOS" submodule update --init --recursive --depth=1
-fi
-
+clone_at Theos "$THEOS"
+git -C "$THEOS" submodule update --init --recursive --depth=1
 export THEOS
+
 if command -v brew >/dev/null 2>&1; then
   GNU_MAKE_PREFIX="$(brew --prefix make 2>/dev/null || true)"
   if [[ -n "$GNU_MAKE_PREFIX" ]]; then
@@ -50,20 +68,24 @@ if command -v brew >/dev/null 2>&1; then
 fi
 
 SDK_NAME="$(dep iOSSDKs sdk)"
-if [[ ! -d "$THEOS/sdks/$SDK_NAME" ]]; then
-  echo "==> Install pinned iOS SDK: $SDK_NAME"
-  SDK_REPO="$WORK/iOS-SDKs"
-  SDK_URL="$(dep iOSSDKs repo)"
-  SDK_COMMIT="$(dep iOSSDKs commit)"
-  rm -rf "$SDK_REPO"
-  git init -q "$SDK_REPO"
-  git -C "$SDK_REPO" remote add origin "$SDK_URL"
-  git -C "$SDK_REPO" config core.sparseCheckout true
-  printf "%s\n" "$SDK_NAME" > "$SDK_REPO/.git/info/sparse-checkout"
-  git -C "$SDK_REPO" fetch -q --depth=1 origin "$SDK_COMMIT"
-  git -C "$SDK_REPO" checkout -q --detach FETCH_HEAD
-  mkdir -p "$THEOS/sdks"
+SDK_REPO="$WORK/iOS-SDKs"
+SDK_COMMIT="$(dep iOSSDKs commit)"
+SDK_MARKER="$THEOS/sdks/.vancedios-${SDK_NAME}.commit"
+
+clone_at iOSSDKs "$SDK_REPO"
+mkdir -p "$THEOS/sdks"
+
+INSTALLED_SDK_COMMIT=""
+if [[ -f "$SDK_MARKER" ]]; then
+  INSTALLED_SDK_COMMIT="$(cat "$SDK_MARKER")"
+fi
+if [[ ! -d "$THEOS/sdks/$SDK_NAME" || "$INSTALLED_SDK_COMMIT" != "$SDK_COMMIT" ]]; then
+  echo "==> Install pinned iOS SDK: $SDK_NAME @ $SDK_COMMIT"
+  rm -rf "$THEOS/sdks/$SDK_NAME"
   cp -R "$SDK_REPO/$SDK_NAME" "$THEOS/sdks/$SDK_NAME"
+  printf "%s\n" "$SDK_COMMIT" > "$SDK_MARKER"
+else
+  echo "==> Reuse pinned iOS SDK: $SDK_NAME @ $SDK_COMMIT"
 fi
 
 echo "==> Install pinned headers"
@@ -84,15 +106,28 @@ build_deb() {
   local dir="$1"
   local out="$2"
   shift 2
+
   echo "==> Build $out"
   (
     cd "$dir"
     make clean >/dev/null 2>&1 || true
+    rm -rf packages
     make package DEBUG=0 FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless "$@"
   )
-  local pkg
-  pkg="$(find "$dir/packages" -type f -name '*.deb' | sort | tail -n1)"
-  test -n "$pkg" -a -f "$pkg"
+
+  local count pkg
+  count="$(find "$dir/packages" -type f -name '*.deb' 2>/dev/null | wc -l | tr -d '[:space:]')"
+  [[ "$count" == "1" ]] || {
+    echo "Expected exactly one package from $dir, found $count" >&2
+    find "$dir/packages" -type f -name '*.deb' -print 2>/dev/null || true
+    exit 1
+  }
+
+  pkg="$(find "$dir/packages" -type f -name '*.deb' -print -quit)"
+  [[ -n "$pkg" && -f "$pkg" ]] || {
+    echo "Package missing after build: $dir" >&2
+    exit 1
+  }
   cp "$pkg" "$DIST/$out"
 }
 
@@ -104,8 +139,14 @@ build_deb "$WORK/Return-YouTube-Dislikes" "return-youtube-dislikes.deb"
 build_deb "$ROOT/VancedIOS/Core" "vancedios-core.deb"
 
 python3 - "$DIST" <<'PY'
-import hashlib, pathlib, sys
+import hashlib
+import pathlib
+import sys
+
 root = pathlib.Path(sys.argv[1])
-for p in sorted(root.glob("*.deb")):
+packages = sorted(root.glob("*.deb"))
+if len(packages) != 6:
+    raise SystemExit(f"expected 6 VancedIOS packages, got {len(packages)}")
+for p in packages:
     print(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}")
 PY
