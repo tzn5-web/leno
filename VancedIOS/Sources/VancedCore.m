@@ -11,11 +11,13 @@ static NSString * const kRememberSpeedKey = @"VancedRememberPlaybackSpeed";
 static NSString * const kLastSpeedKey = @"VancedLastPlaybackRate";
 static NSString * const kRememberQualityKey = @"VancedRememberVideoQuality";
 static NSString * const kLastQualityKey = @"VancedLastVideoQualityLabel";
+static NSString * const kHideShortsKey = @"VancedHideShortsInFeeds";
 
 static IMP gOriginalPlayerLoad = NULL;
 static IMP gOriginalOverlaySetPlaybackRate = NULL;
 static IMP gOriginalQualityOriginalSelection = NULL;
 static IMP gOriginalQualityRedesignedSelection = NULL;
+static IMP gOriginalElementData = NULL;
 
 static void VLog(NSString *format, ...) {
     if (![[NSUserDefaults standardUserDefaults] boolForKey:kDiagnosticsKey]) return;
@@ -125,6 +127,32 @@ static NSString *VBestAvailableQualityLabel(NSArray *formats, NSString *requeste
     return closest;
 }
 
+static id VElementData(id self, SEL _cmd) {
+    id original = gOriginalElementData
+        ? ((id (*)(id, SEL))gOriginalElementData)(self, _cmd)
+        : nil;
+    if (![[NSUserDefaults standardUserDefaults] boolForKey:kHideShortsKey]) return original;
+
+    NSString *description = [self description] ?: @"";
+    NSString *lower = description.lowercaseString;
+    if ([lower containsString:@"history"]) return original;
+
+    NSArray<NSString *> *tokens = @[
+        @"shorts_shelf.eml",
+        @"shorts_video_cell.eml",
+        @"eml.shorts-grid",
+        @"eml.shorts-shelf",
+        @"reel_shelf",
+        @"6shorts"
+    ];
+    for (NSString *token in tokens) {
+        if ([lower containsString:token]) {
+            VLog(@"filtered Shorts renderer containing %@", token);
+            return nil;
+        }
+    }
+    return original;
+}
 static void VApplyRememberedSpeed(id playerController) {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     if (![defaults boolForKey:kRememberSpeedKey]) return;
@@ -196,6 +224,10 @@ static void VInstallSafeCustomizationHooks(void) {
                         "singleVideo:didSelectVideoFormat:",
                         (IMP)VQualityRedesignedSelection,
                         &gOriginalQualityRedesignedSelection);
+    VHookInstanceMethod("YTIElementRenderer",
+                        "elementData",
+                        (IMP)VElementData,
+                        &gOriginalElementData);
 }
 
 __attribute__((constructor))
@@ -207,7 +239,8 @@ static void VancedCoreInitialize(void) {
         [[NSUserDefaults standardUserDefaults] registerDefaults:@{
             kDiagnosticsKey: @NO,
             kRememberSpeedKey: @YES,
-            kRememberQualityKey: @YES
+            kRememberQualityKey: @YES,
+            kHideShortsKey: @NO
         }];
 
         dispatch_async(dispatch_get_main_queue(), ^{
