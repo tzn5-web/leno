@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 
+@MainActor
 struct V9ClientRootView:
     View
 {
@@ -11,10 +12,14 @@ struct V9ClientRootView:
     @Environment(\.scenePhase)
     private var scenePhase
 
+    @StateObject
+    private var native =
+        V9NativeYouTubeClient()
+
     @AppStorage(
         "v9.resolver.endpoint"
     )
-    private var endpoint =
+    private var fallbackEndpoint =
         ""
 
     @State
@@ -34,18 +39,18 @@ struct V9ClientRootView:
     private var clientError:
         String?
 
+    @State
+    private var resolvingVideoID:
+        String?
+
     private let resolver =
         VcdResolverClient()
 
     var body: some View {
         TabView {
             V9HomeFeedView(
-                resolver:
-                    resolver,
-                endpoint:
-                    endpoint,
-                resolverToken:
-                    resolverToken,
+                native:
+                    native,
                 play:
                     play
             )
@@ -58,12 +63,8 @@ struct V9ClientRootView:
             }
 
             V9SearchView(
-                resolver:
-                    resolver,
-                endpoint:
-                    endpoint,
-                resolverToken:
-                    resolverToken,
+                native:
+                    native,
                 play:
                     play
             )
@@ -77,7 +78,7 @@ struct V9ClientRootView:
 
             V9SettingsSummaryView(
                 endpoint:
-                    endpoint,
+                    fallbackEndpoint,
                 openSettings:
                     {
                         showSettings =
@@ -111,6 +112,33 @@ struct V9ClientRootView:
                 )
             }
         }
+        .overlay {
+            if resolvingVideoID !=
+                nil {
+                ZStack {
+                    Color.black
+                        .opacity(
+                            0.18
+                        )
+                        .ignoresSafeArea()
+
+                    ProgressView(
+                        "Pregătesc videoclipul…"
+                    )
+                    .padding(
+                        20
+                    )
+                    .background(
+                        .regularMaterial,
+                        in:
+                            RoundedRectangle(
+                                cornerRadius:
+                                    16
+                            )
+                    )
+                }
+            }
+        }
         .sheet(
             isPresented:
                 $showPlayer
@@ -126,7 +154,7 @@ struct V9ClientRootView:
         ) {
             V9ResolverSettingsView(
                 endpoint:
-                    $endpoint,
+                    $fallbackEndpoint,
                 resolverToken:
                     $resolverToken,
                 resolver:
@@ -138,7 +166,8 @@ struct V9ClientRootView:
             isPresented:
                 Binding(
                     get: {
-                        clientError != nil
+                        clientError !=
+                            nil
                     },
                     set: {
                         visible in
@@ -163,17 +192,6 @@ struct V9ClientRootView:
                 clientError ??
                 "Eroare necunoscută."
             )
-        }
-        .task {
-            if endpoint
-                .trimmingCharacters(
-                    in:
-                        .whitespacesAndNewlines
-                )
-                .isEmpty {
-                showSettings =
-                    true
-            }
         }
         .onChange(
             of:
@@ -205,66 +223,104 @@ struct V9ClientRootView:
         _ video:
             BrowseVideo
     ) {
+        guard resolvingVideoID ==
+                nil
+        else {
+            return
+        }
+
         let endpointSnapshot =
-            endpoint
+            fallbackEndpoint
 
         let tokenSnapshot =
             resolverToken
 
-        guard !endpointSnapshot
-            .trimmingCharacters(
-                in:
-                    .whitespacesAndNewlines
-            )
-            .isEmpty
-        else {
-            showSettings =
-                true
-            return
-        }
+        resolvingVideoID =
+            video.id
 
         Task {
+            defer {
+                resolvingVideoID =
+                    nil
+            }
+
             do {
                 let resolved =
-                    try await resolver
-                        .resolve(
-                            videoID:
-                                video.id,
-                            endpoint:
-                                endpointSnapshot,
-                            bearerToken:
-                                tokenSnapshot
-                        )
-
-                await MainActor.run {
-                    player.load(
-                        resolved,
-                        refreshProvider:
-                            {
-                                id in
-
-                                try await resolver
-                                    .resolve(
-                                        videoID:
-                                            id,
-                                        endpoint:
-                                            endpointSnapshot,
-                                        bearerToken:
-                                            tokenSnapshot
-                                    )
-                            }
+                    try await resolveVideo(
+                        id:
+                            video.id,
+                        fallbackEndpoint:
+                            endpointSnapshot,
+                        token:
+                            tokenSnapshot
                     )
 
-                    showPlayer =
-                        true
-                }
+                player.load(
+                    resolved,
+                    refreshProvider:
+                        {
+                            id in
+
+                            try await resolveVideo(
+                                id:
+                                    id,
+                                fallbackEndpoint:
+                                    endpointSnapshot,
+                                token:
+                                    tokenSnapshot
+                            )
+                        }
+                )
+
+                showPlayer =
+                    true
             } catch {
-                await MainActor.run {
-                    clientError =
-                        error
-                            .localizedDescription
-                }
+                clientError =
+                    error
+                        .localizedDescription
             }
+        }
+    }
+
+    private func resolveVideo(
+        id:
+            String,
+        fallbackEndpoint:
+            String,
+        token:
+            String
+    ) async throws
+        -> ResolvedVideo
+    {
+        do {
+            return try await native
+                .resolve(
+                    videoID:
+                        id
+                )
+        } catch {
+            let endpoint =
+                fallbackEndpoint
+                    .trimmingCharacters(
+                        in:
+                            .whitespacesAndNewlines
+                    )
+
+            guard !endpoint
+                .isEmpty
+            else {
+                throw error
+            }
+
+            return try await resolver
+                .resolve(
+                    videoID:
+                        id,
+                    endpoint:
+                        endpoint,
+                    bearerToken:
+                        token
+                )
         }
     }
 }
