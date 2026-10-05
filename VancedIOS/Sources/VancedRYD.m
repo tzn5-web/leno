@@ -130,12 +130,13 @@ static void VRYDFetch(NSString *videoID, void (^completion)(NSString *count)) {
     [[[NSURLSession sharedSession] dataTaskWithRequest:request
         completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         NSString *formatted = nil;
+        NSDate *backoffUntil = nil;
         NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
         if (!error && http.statusCode == 429) {
             NSTimeInterval delay = 60.0;
             NSString *retryAfter = [http.allHeaderFields[@"Retry-After"] description];
             if (retryAfter.doubleValue > 0) delay = MIN(MAX(retryAfter.doubleValue, 5.0), 3600.0);
-            gRYDBackoffUntil = [NSDate dateWithTimeIntervalSinceNow:delay];
+            backoffUntil = [NSDate dateWithTimeIntervalSinceNow:delay];
         } else if (!error && http.statusCode == 200 && data.length > 0) {
             id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
             if ([json isKindOfClass:[NSDictionary class]]) {
@@ -147,6 +148,7 @@ static void VRYDFetch(NSString *videoID, void (^completion)(NSString *count)) {
         }
         if (formatted) [VRYDCache() setObject:formatted forKey:videoID];
         dispatch_async(dispatch_get_main_queue(), ^{
+            if (backoffUntil) gRYDBackoffUntil = backoffUntil;
             NSArray *callbacks = [VRYDInflight()[videoID] copy];
             [VRYDInflight() removeObjectForKey:videoID];
             for (id callback in callbacks) {
@@ -180,6 +182,13 @@ static BOOL VRYDIsDislikeButton(id button) {
 static void VRYDUpdateButton(id button, NSString *videoID) {
     if (![[NSUserDefaults standardUserDefaults] boolForKey:kRYDEnabledKey]) return;
     if (!VRYDIsDislikeButton(button) || videoID.length == 0) return;
+
+    NSString *cached = [VRYDCache() objectForKey:videoID];
+    if (cached.length > 0) {
+        objc_setAssociatedObject(button, kRYDButtonVideoKey, videoID, OBJC_ASSOCIATION_COPY_NONATOMIC);
+        VRYDSetButtonTitle(button, cached);
+        return;
+    }
 
     NSString *last = objc_getAssociatedObject(button, kRYDButtonVideoKey);
     if ([last isEqualToString:videoID]) return;
