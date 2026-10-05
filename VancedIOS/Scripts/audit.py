@@ -48,6 +48,21 @@ LEGACY_TOKENS = [
 
 CODE_SUFFIXES = {".m", ".mm", ".xm", ".x", ".swift", ".sh", ".py"}
 
+BINARY_EVIDENCE = {
+    "speed_memory_controls": [
+        ["YTPlayerViewController"],
+        ["YTMainAppVideoPlayerOverlayViewController"],
+        ["setPlaybackRate:"],
+        ["loadWithPlayerTransition:playbackConfig:"],
+    ],
+    "quality_memory_controls": [
+        ["YTVideoQualitySwitchOriginalController", "YTVideoQualitySwitchRedesignedController"],
+        ["MLQuickMenuVideoQualitySettingFormatConstraint"],
+        ["setVideoFormatConstraint:"],
+        ["qualityLabel"],
+    ],
+}
+
 FEATURE_SOURCE_EVIDENCE = {
     "speed_memory_controls": [
         "YTMainAppVideoPlayerOverlayViewController",
@@ -232,6 +247,61 @@ def audit_ipa(audit: Audit, raw_path: str) -> None:
             audit.check("arm64" in arch, "main executable does not advertise arm64")
         elif executable.exists():
             audit.warn("file utility unavailable; architecture could not be verified")
+
+        compatibility = {}
+        if executable.exists():
+            strings_cmd = shutil.which("strings")
+            if not strings_cmd:
+                audit.error("strings utility unavailable; implemented hook compatibility cannot be verified")
+            else:
+                try:
+                    binary_text = subprocess.check_output(
+                        [strings_cmd, str(executable)],
+                        text=True,
+                        errors="ignore",
+                        stderr=subprocess.DEVNULL,
+                    )
+                except Exception as exc:
+                    binary_text = ""
+                    audit.error(f"strings probe failed: {exc}")
+
+                status = load_json(STATUS).get("features", {})
+                for feature, groups in BINARY_EVIDENCE.items():
+                    state = status.get(feature, {}).get("state", "not_implemented")
+                    if state == "not_implemented":
+                        continue
+                    group_results = []
+                    for alternatives in groups:
+                        found = [token for token in alternatives if token in binary_text]
+                        group_results.append({"alternatives": alternatives, "found": found})
+                        if not found:
+                            audit.error(
+                                f"IPA compatibility missing for {feature}: none of {alternatives}"
+                            )
+                    compatibility[feature] = group_results
+
+            otool = shutil.which("otool")
+            if otool:
+                try:
+                    load_commands = subprocess.check_output(
+                        [otool, "-l", str(executable)],
+                        text=True,
+                        errors="ignore",
+                        stderr=subprocess.DEVNULL,
+                    )
+                    cryptids = re.findall(r"\\bcryptid\\s+(\\d+)", load_commands)
+                    if cryptids:
+                        audit.info["cryptids"] = cryptids
+                        audit.check(all(value == "0" for value in cryptids),
+                                    f"input appears encrypted; cryptid values={cryptids}")
+                    else:
+                        audit.warn("otool found no cryptid field; decryption state not proven")
+                except Exception as exc:
+                    audit.warn(f"otool encryption probe failed: {exc}")
+            else:
+                audit.warn("otool unavailable; decryption state not proven on this host")
+
+        audit.info["binary_compatibility"] = compatibility
 
         audit.info["ipa"] = {
             "path": str(path),
