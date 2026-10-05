@@ -32,6 +32,7 @@ resolver_client = read("V9/VcdResolverClient.swift")
 token_store = read("V9/ResolverTokenStore.swift")
 resolver = read("Resolver/app/main.py")
 workflow = read(".github/workflows/ios-build.yml")
+architecture_doc = read("V9_ARCHITECTURE_AUDIT.md")
 
 all_v9 = "\n".join(
     p.read_text(encoding="utf-8")
@@ -208,6 +209,8 @@ for required in [
     '"hwdec"',
     '"videotoolbox-copy"',
     '"sw-fast"',
+    '"hls-bitrate"',
+    '"8000000"',
     "MPRemoteCommandCenter",
     "MPNowPlayingInfoCenter",
     "desiredPlayback",
@@ -335,6 +338,18 @@ for required in [
 require('APP_VERSION = "0.4.0-client"' in resolver, "fallback resolver version changed unexpectedly")
 require("Native client API smoke" in workflow, "fallback resolver API smoke missing")
 require("/v1/home" in workflow and "/v1/video/dQw4w9WgXcQ" in workflow, "fallback smoke incomplete")
+
+require(
+    "YoutubeVcd 0.11.1 build 8" in architecture_doc
+    and "optional resolver fallback" in architecture_doc.lower()
+    and "0.10.0 build 6" not in architecture_doc,
+    "architecture document is stale or still describes the mandatory 0.10 resolver design",
+)
+require(
+    "vcd-resolver:fallback-0.4" in workflow
+    and "vcd-resolver:v0.10" not in workflow,
+    "resolver CI image is still named as the old mandatory 0.10 architecture",
+)
 
 if errors:
     print("YOUTUBEVCD 0.11 AUTONOMOUS CLIENT AUDIT FAILED")
