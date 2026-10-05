@@ -14,8 +14,7 @@ Write-Host "  STATUS:  $($parent.Status) / $($parent.ConfigManagerErrorCode)"
 
 $all = Get-CimInstance Win32_PnPEntity
 $dsp = $all | Where-Object {
-    $_.PNPDeviceID -like 'CSAUDIO\ADSP&CTLR_VEN_8086&CTLR_DEV_3198*' -or
-    $_.PNPDeviceID -like 'P360AUDIO\ADSP_GEMINILAKE*'
+    $_.PNPDeviceID -like 'CSAUDIO\ADSP&CTLR_VEN_8086&CTLR_DEV_3198*'
 }
 
 Write-Host ''
@@ -23,7 +22,7 @@ if ($dsp) {
     Write-Host 'DSP CHILD FOUND:'
     $dsp | Format-List Name,PNPDeviceID,Status,ConfigManagerErrorCode,Service
 } else {
-    Write-Host 'DSP child not found under expected CSAUDIO/P360 identity.'
+    Write-Host 'DSP child not found under expected canonical CSAUDIO identity.'
 }
 
 Write-Host ''
