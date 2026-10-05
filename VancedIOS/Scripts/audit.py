@@ -35,6 +35,7 @@ REQUIRED_FEATURES = {
 EXPECTED_IMPLEMENTATION_FILES = [
     ROOT / "Makefile",
     ROOT / "Sources" / "VancedCore.m",
+    ROOT / "Sources" / "VancedSettings.m",
     ROOT / "Scripts" / "build.sh",
 ]
 
@@ -51,6 +52,23 @@ LEGACY_TOKENS = [
 ]
 
 CODE_SUFFIXES = {".m", ".mm", ".xm", ".x", ".swift", ".sh", ".py"}
+
+SETTINGS_BINARY_EVIDENCE = [
+    ["YTAppSettingsPresentationData"],
+    ["YTSettingsSectionItemManager"],
+    ["YTSettingsSectionItem"],
+    ["settingsCategoryOrder"],
+    ["updateSectionForCategory:withEntry:"],
+    ["switchItemWithTitle:titleDescription:accessibilityIdentifier:switchOn:switchBlock:settingItemId:"],
+]
+
+SETTINGS_SOURCE_EVIDENCE = [
+    "YTAppSettingsPresentationData",
+    "YTSettingsSectionItemManager",
+    "settingsCategoryOrder",
+    "updateSectionForCategory:withEntry:",
+    "switchItemWithTitle:titleDescription:accessibilityIdentifier:switchOn:switchBlock:settingItemId:",
+]
 
 BINARY_EVIDENCE = {
     "speed_memory_controls": [
@@ -167,6 +185,10 @@ def audit_source(audit: Audit) -> None:
         audit.error(f"required features are not yet implemented/validated: {incomplete}")
 
     core_text = (ROOT / "Sources" / "VancedCore.m").read_text(encoding="utf-8", errors="ignore") if (ROOT / "Sources" / "VancedCore.m").exists() else ""
+    settings_text = (ROOT / "Sources" / "VancedSettings.m").read_text(encoding="utf-8", errors="ignore") if (ROOT / "Sources" / "VancedSettings.m").exists() else ""
+    absent_settings = [token for token in SETTINGS_SOURCE_EVIDENCE if token not in settings_text]
+    audit.check(not absent_settings, f"source evidence missing for settings UI: {absent_settings}")
+
     for feature, tokens in FEATURE_SOURCE_EVIDENCE.items():
         state = implementation.get(feature, {}).get("state", "missing")
         if state != "not_implemented":
@@ -283,6 +305,16 @@ def audit_ipa(audit: Audit, raw_path: str) -> None:
                                 f"IPA compatibility missing for {feature}: none of {alternatives}"
                             )
                     compatibility[feature] = group_results
+
+                settings_results = []
+                for alternatives in SETTINGS_BINARY_EVIDENCE:
+                    found = [token for token in alternatives if token in binary_text]
+                    settings_results.append({"alternatives": alternatives, "found": found})
+                    if not found:
+                        audit.error(
+                            f"IPA compatibility missing for settings UI: none of {alternatives}"
+                        )
+                compatibility["settings_ui"] = settings_results
 
             otool = shutil.which("otool")
             if otool:
