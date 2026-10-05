@@ -1,0 +1,43 @@
+{
+  "name": "VancedIOS",
+  "architecture": "youtube-official-plus-injected-modular-tweaks",
+  "target": {
+    "bundle_id": "com.google.ios.youtube",
+    "minimum_ios": "14.0",
+    "arch": "arm64"
+  },
+  "dependencies": {
+    "YouMod": {
+      "repo": "https://github.com/Tonwalter888/YouMod.git",
+      "commit": "2a57a93f1ef06b79a7e6bd7a59938bfc076e2751",
+      "role": "primary patch layer: ads/background/SponsorBlock/player/UI"
+    },
+    "YouPiP": {
+      "repo": "https://github.com/PoomSmart/YouPiP.git",
+      "commit": "034477a48c8ec18736e26d054106df88c1f0deb3",
+      "role": "native Picture-in-Picture"
+    },
+    "ReturnYouTubeDislikes": {
+      "repo": "https://github.com/PoomSmart/Return-YouTube-Dislikes.git",
+      "commit": "3347d770d699653fae6597bfe3b36ee896fbc9e8",
+      "role": "dislike counter"
+    },
+    "YouTubeHeader": {
+      "repo": "https://github.com/PoomSmart/YouTubeHeader.git",
+      "commit": "8d12546da0a2a8337b040ebf90d3848c14fa6eaa"
+    },
+    "PSHeader": {
+      "repo": "https://github.com/PoomSmart/PSHeader.git",
+      "commit": "1bb7d9c7d1bc40a57f83e1e58aa53bcf4acdcbfa"
+    },
+    "Theos": {
+      "repo": "https://github.com/roothide/theos.git",
+      "commit": "88506b2c22e9e07dd4ed055f23c9e398a117a2c7"
+    },
+    "iOSSDKs": {
+      "repo": "https://github.com/Tonwalter888/iOS-SDKs.git",
+      "commit": "a4262fddfae9ce1a211f093479edb1555f68228d",
+      "sdk": "iPhoneOS26.5.sdk"
+    }
+  }
+}
