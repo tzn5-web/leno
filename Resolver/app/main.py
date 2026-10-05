@@ -124,13 +124,29 @@ async def create_relay_entry(
     return token
 
 
+def is_relayable_format(format_info: dict[str, Any]) -> bool:
+    if not format_info.get("url"):
+        return False
+
+    protocol = str(format_info.get("protocol") or "https").lower()
+    if protocol not in {"http", "https"}:
+        return False
+
+    # Fragment/manifest protocols need URL rewriting for every nested segment.
+    # Until that dedicated relay exists, never leak those upstream URLs to iOS.
+    if format_info.get("fragments"):
+        return False
+
+    return True
+
+
 def choose_formats(
     info: dict[str, Any],
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     formats = [
         f
         for f in info.get("formats", [])
-        if f.get("url")
+        if is_relayable_format(f)
     ]
 
     video_only = [
@@ -222,7 +238,7 @@ def select_refresh_format(
     formats = [
         f
         for f in info.get("formats", [])
-        if f.get("url")
+        if is_relayable_format(f)
     ]
 
     for candidate in formats:
@@ -500,6 +516,7 @@ async def relay(token: str, request: Request) -> Response:
         "etag",
         "last-modified",
         "cache-control",
+        "content-encoding",
     ]:
         value = upstream.headers.get(key)
         if value:
@@ -519,7 +536,7 @@ async def relay(token: str, request: Request) -> Response:
 
     async def iterator():
         try:
-            async for chunk in upstream.aiter_bytes():
+            async for chunk in upstream.aiter_raw():
                 yield chunk
         finally:
             await close_upstream(client, upstream)
