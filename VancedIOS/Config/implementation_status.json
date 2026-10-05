@@ -31,7 +31,8 @@
       "state": "not_implemented"
     },
     "speed_memory_controls": {
-      "state": "not_implemented"
+      "state": "implemented_unvalidated",
+      "evidence": "VancedCore dynamically hooks YTMainAppVideoPlayerOverlayViewController setPlaybackRate: and restores after YTPlayerViewController loadWithPlayerTransition:playbackConfig:"
     },
     "ui_shorts_controls": {
       "state": "not_implemented"
