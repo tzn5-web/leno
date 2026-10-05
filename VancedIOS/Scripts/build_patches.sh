@@ -72,6 +72,7 @@ clone_at PSHeader "$THEOS/include/PSHeader"
 
 echo "==> Clone pinned patch modules"
 clone_at YouMod "$WORK/YouMod"
+clone_at YTVideoOverlay "$WORK/YTVideoOverlay"
 clone_at YouPiP "$WORK/YouPiP"
 clone_at ReturnYouTubeDislikes "$WORK/Return-YouTube-Dislikes"
 
