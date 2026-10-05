@@ -7,6 +7,8 @@ enum ResolverClientError:
     case loopbackEndpointOnDevice
     case insecurePublicHTTP
     case insecureTokenTransport
+    case invalidRelayURL
+    case insecureRelayTransport
     case invalidVideoID
     case badResponse(Int)
     case server(String)
@@ -24,6 +26,12 @@ enum ResolverClientError:
 
         case .insecureTokenTransport:
             return "Tokenul resolverului nu este trimis prin HTTP necriptat. Folosește HTTPS sau golește tokenul pentru test LAN."
+
+        case .invalidRelayURL:
+            return "Resolverul a returnat un URL media invalid."
+
+        case .insecureRelayTransport:
+            return "Resolverul a returnat media printr-un transport nesigur. HTTP este acceptat doar în rețeaua locală; un endpoint HTTPS trebuie să livreze relay HTTPS."
 
         case .invalidVideoID:
             return "Video ID trebuie să aibă exact 11 caractere valide."
@@ -123,11 +131,20 @@ actor VcdResolverClient {
                     bearerToken
             )
 
-        return try decoder.decode(
-            ResolvedVideo.self,
-            from:
-                data
+        let resolved =
+            try decoder.decode(
+                ResolvedVideo.self,
+                from:
+                    data
+            )
+
+        try validateResolvedVideo(
+            resolved,
+            endpointBase:
+                base
         )
+
+        return resolved
     }
 
     private func baseURL(
@@ -177,15 +194,28 @@ actor VcdResolverClient {
                 .insecurePublicHTTP
         }
 
-        components.path =
+        guard components.user == nil,
+              components.password == nil,
+              components.query == nil,
+              components.fragment == nil
+        else {
+            throw ResolverClientError
+                .invalidEndpoint
+        }
+
+        while components.path.count > 1,
+              components.path.hasSuffix(
+                "/"
+              ) {
             components.path
-                .trimmingCharacters(
-                    in:
-                        CharacterSet(
-                            charactersIn:
-                                "/"
-                        )
-                )
+                .removeLast()
+        }
+
+        if components.path ==
+            "/" {
+            components.path =
+                ""
+        }
 
         guard let url =
                 components.url else {
@@ -194,6 +224,62 @@ actor VcdResolverClient {
         }
 
         return url
+    }
+
+    private func validateResolvedVideo(
+        _ resolved:
+            ResolvedVideo,
+        endpointBase:
+            URL
+    ) throws {
+        var streams:
+            [ResolvedStream] = [
+                resolved.video
+            ]
+
+        if let audio =
+                resolved.audio {
+            streams.append(
+                audio
+            )
+        }
+
+        for stream in streams {
+            let url =
+                stream.relayURL
+
+            guard
+                let scheme =
+                    url.scheme?
+                        .lowercased(),
+                scheme == "https" ||
+                scheme == "http",
+                let host =
+                    url.host,
+                !host.isEmpty,
+                url.user == nil,
+                url.password == nil
+            else {
+                throw ResolverClientError
+                    .invalidRelayURL
+            }
+
+            if scheme == "http",
+               !isLocalNetworkHost(
+                    host
+               ) {
+                throw ResolverClientError
+                    .insecureRelayTransport
+            }
+
+            if endpointBase.scheme?
+                    .lowercased() ==
+                    "https",
+               scheme != "https" {
+                throw ResolverClientError
+                    .insecureRelayTransport
+            }
+        }
     }
 
     private func request(
