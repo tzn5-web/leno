@@ -35,10 +35,10 @@ all_v9 = "\n".join(
 )
 
 # Build identity
-require('MARKETING_VERSION: "0.9.2"' in project, "V9 version must be 0.9.2")
-require('CURRENT_PROJECT_VERSION: "4"' in project, "V9 build must be 4")
-require('test "$VERSION" = "0.9.2"' in workflow, "CI version audit is stale")
-require('test "$BUILD" = "4"' in workflow, "CI build audit is stale")
+require('MARKETING_VERSION: "0.9.3"' in project, "V9 version must be 0.9.3")
+require('CURRENT_PROJECT_VERSION: "5"' in project, "V9 build must be 5")
+require('test "$VERSION" = "0.9.3"' in workflow, "CI version audit is stale")
+require('test "$BUILD" = "5"' in workflow, "CI build audit is stale")
 
 # Player architecture: V9 must remain MPV-only.
 require("path: V9" in project, "V9 source root missing")
@@ -76,6 +76,7 @@ for required in [
     '"libmpv"',
     '"hwdec"',
     '"videotoolbox-copy"',
+    '"sw-fast"',
     "V9MPVRenderCore",
     "renderCoreReference",
     "MPRemoteCommandCenter",
@@ -117,6 +118,8 @@ for required in [
     "V9PixelBufferBox",
     "forceOpaqueAlpha",
     "frameGeneration",
+    "presentationTime =",
+    "self.service?",
 ]:
     require(required in render_view, f"dedicated render-queue invariant missing: {required}")
 
@@ -186,12 +189,25 @@ require(
     "successful refreshed loads do not reset the future recovery budget",
 )
 
-# SwiftUI surface recreation must not detach the persistent renderer.
-require(
-    "Always bind the new surface" in player
-    and "renderView.attach(" in player,
-    "recreated SwiftUI player surfaces are not rebound to the persistent mpv core",
-)
+# SwiftUI navigation must retain one render surface/layer so PiP does not
+# collapse when an ephemeral host view is recreated.
+player_view = read("V9/V9MPVPlayerView.swift")
+for required in [
+    "persistentRenderSurface",
+    "renderSurfaceHostToken",
+    "setRenderSurfaceHosted",
+    "UUID?",
+]:
+    require(required in player, f"persistent render-surface invariant missing: {required}")
+
+for required in [
+    "V9MPVHostView",
+    "persistentRenderSurface()",
+    "hostToken",
+    "dismantleUIView",
+    "removeFromSuperview",
+]:
+    require(required in player_view, f"persistent SwiftUI host invariant missing: {required}")
 
 # PiP must use the same AVSampleBufferDisplayLayer as foreground rendering.
 for required in [
@@ -266,6 +282,16 @@ require(
     "validateResolvedVideo" in client,
     "client does not validate resolver-provided relay URLs before mpv uses them",
 )
+
+require(
+    "ResolverNoRedirectDelegate" in client
+    and "willPerformHTTPRedirection" in client
+    and "completionHandler(" in client
+    and "sameOrigin(" in client
+    and "relayOriginMismatch" in client
+    and '"/v1/relay/"' in client,
+    "client does not pin API/relay traffic to one non-redirecting resolver origin",
+)
 require(
     "refreshProvider:" in view
     and "bearerToken:" in view,
@@ -285,6 +311,8 @@ for required in [
     "VCD_COOKIES_FILE",
     "VCD_MAX_RELAY_ENTRIES",
     "VCD_MAX_CONCURRENT_EXTRACTS",
+    "VCD_MAX_VIDEO_HEIGHT",
+    "VCD_MAX_VIDEO_FPS",
     "VCD_UPSTREAM_READ_TIMEOUT",
     "secrets.compare_digest",
     "YTDLP_JS_RUNTIME",
@@ -302,6 +330,7 @@ for required in [
     "resolved_public_base",
     "include_conditionals=False",
     '"cache-control"] = "private, no-store"',
+    '"Accept-Encoding"] = "identity"',
     "aiter_raw",
 ]:
     require(required in resolver, f"resolver invariant missing: {required}")
@@ -324,6 +353,27 @@ require(
     "extraction_semaphore" in resolver
     and "MAX_CONCURRENT_EXTRACTS" in resolver,
     "yt-dlp extraction concurrency is not bounded",
+)
+
+require(
+    "asyncio.CancelledError" in resolver
+    and "proc.kill()" in resolver,
+    "cancelled resolver requests can leak yt-dlp subprocesses",
+)
+require(
+    'MAX_VIDEO_HEIGHT = max(360' in resolver
+    and 'MAX_VIDEO_FPS = max(24.0' in resolver
+    and "constrain_video" in resolver,
+    "resolver does not bound preferred source resolution/frame-rate",
+)
+require(
+    'public VCD_PUBLIC_BASE_URL requires VCD_API_TOKEN' in resolver
+    and "base = resolved_public_base(request)" in resolver,
+    "public deployment is not authenticated/validated before extraction",
+)
+require(
+    'if is_local_network_host(host):' in resolver,
+    "resolver may relay private/loopback upstream media URLs",
 )
 require(
     'detail="yt-dlp extraction failed"' in resolver,
@@ -380,12 +430,15 @@ if errors:
 
 print("V9.2 HARDENED AUDIT PASSED")
 print(" - no WebKit/AVPlayer/OpenGL ES playback path in V9 target")
-print(" - libmpv render API is serialized off MainActor and feeds a shared AVSampleBufferDisplayLayer")
+print(" - libmpv render API is serialized off MainActor and feeds a persistent AVSampleBufferDisplayLayer")
+print(" - SwiftUI host recreation cannot tear down the active PiP render surface")
 print(" - PiP can keep rendering in background without app-owned GPU commands")
 print(" - audio interruption policy prevents unauthorized auto-resume")
 print(" - stream refresh retries use bounded backoff and cancel on media switch")
 print(" - recreated SwiftUI surfaces rebind to the persistent mpv core")
 print(" - resolver token is stored in Keychain and never sent over HTTP")
 print(" - resolver refresh is serialized per stream with bounded token storage")
-print(" - upstream relay reads have a finite timeout")
+print(" - upstream relay reads have a finite timeout and identity byte encoding")
+print(" - resolver source selection is capped at 1080p/30fps by default")
+print(" - public resolver deployment requires HTTPS/base URL/auth and same-origin relay")
 print(" - Deno 2.9.7 + yt-dlp 2026.08.19 + EJS 0.8.0 are pinned")
