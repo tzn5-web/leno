@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "product": "Vanced iOS",
+  "base": "official decrypted YouTube iOS app",
+  "required": [
+    {
+      "id": "official_youtube_base",
+      "status": "required"
+    },
+    {
+      "id": "ad_block_video",
+      "status": "required"
+    },
+    {
+      "id": "ad_block_feed",
+      "status": "required"
+    },
+    {
+      "id": "background_playback",
+      "status": "required"
+    },
+    {
+      "id": "pause_state_preservation",
+      "status": "required"
+    },
+    {
+      "id": "picture_in_picture",
+      "status": "required"
+    },
+    {
+      "id": "sponsorblock",
+      "status": "required"
+    },
+    {
+      "id": "return_youtube_dislike",
+      "status": "required"
+    },
+    {
+      "id": "quality_memory_controls",
+      "status": "required"
+    },
+    {
+      "id": "speed_memory_controls",
+      "status": "required"
+    },
+    {
+      "id": "ui_shorts_controls",
+      "status": "required"
+    },
+    {
+      "id": "navigation_intact",
+      "status": "required"
+    }
+  ],
+  "forbidden_architectures": [
+    "WKWebView mobile YouTube client",
+    "AVPlayer handoff replacing YouTube playback",
+    "MPV replacement player",
+    "remote stream resolver as primary player"
+  ],
+  "runtime_device_gates": [
+    "foreground video -> Home -> background audio continues",
+    "lock while playing -> audio continues",
+    "lock screen Pause -> remains paused for at least 30 seconds",
+    "lock screen Play -> resumes once without duplicate command",
+    "unlock -> playback state and position preserved",
+    "enter PiP -> navigate Home/Search/Subscriptions while PiP continues",
+    "return from PiP -> player state and position preserved",
+    "video with pre-roll/mid-roll -> no ad playback",
+    "feed/search -> no promoted ad cards",
+    "SponsorBlock segment -> expected category skip behavior",
+    "RYD -> dislike count appears without blocking normal player UI"
+  ]
+}
