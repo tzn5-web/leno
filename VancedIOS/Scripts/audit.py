@@ -38,6 +38,7 @@ EXPECTED_IMPLEMENTATION_FILES = [
     ROOT / "Sources" / "VancedSettings.m",
     ROOT / "Sources" / "VancedSponsorBlock.m",
     ROOT / "Sources" / "VancedRYD.m",
+    ROOT / "Sources" / "VancedShortsUI.m",
     ROOT / "Scripts" / "build.sh",
 ]
 
@@ -88,6 +89,9 @@ BINARY_EVIDENCE = {
     "ui_shorts_controls": [
         ["YTIElementRenderer"],
         ["elementData"],
+        ["YTPivotBarView"],
+        ["setRenderer:"],
+        ["pivotIdentifier"],
     ],
     "sponsorblock": [
         ["YTPlayerViewController"],
@@ -228,6 +232,11 @@ def audit_source(audit: Audit) -> None:
     settings_text = (ROOT / "Sources" / "VancedSettings.m").read_text(encoding="utf-8", errors="ignore") if (ROOT / "Sources" / "VancedSettings.m").exists() else ""
     absent_settings = [token for token in SETTINGS_SOURCE_EVIDENCE if token not in settings_text]
     audit.check(not absent_settings, f"source evidence missing for settings UI: {absent_settings}")
+
+    shorts_ui_text = (ROOT / "Sources" / "VancedShortsUI.m").read_text(encoding="utf-8", errors="ignore") if (ROOT / "Sources" / "VancedShortsUI.m").exists() else ""
+    shorts_ui_tokens = ["YTPivotBarView", "setRenderer:", "FEshorts", "VancedHideShortsTab"]
+    absent_shorts_ui = [token for token in shorts_ui_tokens if token not in shorts_ui_text]
+    audit.check(not absent_shorts_ui, f"source evidence missing for Shorts tab UI: {absent_shorts_ui}")
 
     for feature, tokens in FEATURE_SOURCE_EVIDENCE.items():
         state = implementation.get(feature, {}).get("state", "missing")
