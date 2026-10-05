@@ -47,7 +47,9 @@
     "navigation_intact": {
       "state": "design_guard_only",
       "evidence": "legacy architecture scanner enabled"
-    },
+    }
+  },
+  "runtime_gates": {
     "sideload_login_compatibility": {
       "state": "not_implemented",
       "evidence": "Google SSO/keychain/app-group compatibility after third-party re-signing is not proven by the current VancedCore."
@@ -55,6 +57,10 @@
     "notification_preservation": {
       "state": "design_guard_only",
       "evidence": "All five original app extensions and Info.plist are preserved byte-for-byte, but actual push delivery after re-signing depends on provisioning/APS entitlements."
+    },
+    "repository_ipa_packaging": {
+      "state": "unvalidated_dependency_gap",
+      "evidence": "The Makefile PACKAGE_IPA path sets MODULES=jailed, but dependencies.lock.json does not install the external theos-jailed module. The audited output IPA used the separate conservative Mach-O packaging path."
     }
   }
 }
