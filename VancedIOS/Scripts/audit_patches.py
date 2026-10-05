@@ -31,6 +31,10 @@ sponsor = read("YouMod/Files/SponsorBlock.x")
 sideload = read("YouMod/Files/Sideloading.x")
 pip_header = read("YouPiP/Header.h")
 pip_tweak = read("YouPiP/Tweak.x")
+overlay_makefile = read("YTVideoOverlay/Makefile")
+overlay_tweak = read("YTVideoOverlay/Tweak.x")
+uhd_makefile = read("YTUHD/Makefile")
+uhd_tweak = read("YTUHD/Tweak.xm")
 ryd_makefile = read("Return-YouTube-Dislikes/Makefile")
 
 require(
@@ -84,6 +88,25 @@ require(
     "YouPiP layer",
 )
 require(
+    overlay_makefile + overlay_tweak,
+    [
+        "YTVideoOverlay",
+        "TWEAK_NAME",
+    ],
+    "YTVideoOverlay layer",
+)
+require(
+    uhd_makefile + uhd_tweak,
+    [
+        "TWEAK_NAME = YTUHD",
+        "MLInnerTubePlayerConfig",
+        "MLABRPolicy",
+        "maxArea",
+        "maxFps",
+    ],
+    "YTUHD quality layer",
+)
+require(
     ryd_makefile,
     ["YouTubeDislikesReturn"],
     "Return YouTube Dislikes layer",
@@ -101,4 +124,6 @@ print(" - background playback hooks present")
 print(" - SponsorBlock runtime hooks present")
 print(" - sideload Google/keychain compatibility hooks present")
 print(" - native PiP patch present")
+print(" - shared YouTube player overlay layer present")
+print(" - 2K/4K YTUHD quality layer present")
 print(" - dislike module present")
