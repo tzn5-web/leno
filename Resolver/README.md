@@ -1,4 +1,4 @@
-# VcdResolver V9.2
+# VcdResolver V9.2 / resolver 0.3.0
 
 Resolver separat pentru YoutubeVcd V9.2. Extracția YouTube rămâne în afara IPA-ului, iar iPhone-ul primește URL-uri de relay controlate de resolver.
 
@@ -7,10 +7,12 @@ Resolver separat pentru YoutubeVcd V9.2. Extracția YouTube rămâne în afara I
 - yt-dlp 2026.08.19 + yt-dlp-ejs 0.8.0.
 - Deno 2.9.7 ca runtime JavaScript.
 - Python 3.12 în container.
-- Relay HTTP cu GET/HEAD, Range și timeout finit.
+- Relay HTTP cu GET/HEAD, Range, timeout finit și răspunsuri `private, no-store`.
 - TTL glisant pentru tokenurile folosite activ.
 - Refresh serializat per stream la upstream 403/404/410.
 - Limită implicită de 1024 relay-uri active.
+- Refresh serializat per stream fără stampede de procese yt-dlp.
+- Pentru deployment public, `VCD_PUBLIC_BASE_URL` este obligatoriu; nu construim capability URLs dintr-un Host header public nevalidat.
 - Selecție conservatoare H.264/AAC când există.
 - Cookie file opțional pentru conținut care necesită sesiune.
 - Token opțional pentru endpoint-ul de resolve.
@@ -38,10 +40,11 @@ Nu folosi `127.0.0.1` sau `localhost` pe iPhone; acestea indică telefonul însu
 
 ## VPS / Internet
 
-Pentru un resolver public folosește HTTPS. Clientul V9.2 refuză:
+Pentru un resolver public folosește HTTPS și setează explicit `VCD_PUBLIC_BASE_URL`. Clientul V9.2 validează și URL-urile relay primite de la server și refuză:
 
 - HTTP public în afara rețelei locale.
 - trimiterea bearer token-ului prin HTTP necriptat.
+- relay HTTP public sau downgrade de la endpoint HTTPS la relay HTTP.
 
 Exemplu container:
 
