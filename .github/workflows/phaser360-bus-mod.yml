@@ -69,6 +69,47 @@ jobs:
           Copy-Item './Phaser360/bus-mod/README.md' $stage -Force
           Copy-Item './Phaser360/bus-mod/PATCH_APPLIED.diff' $stage -Force
 
+      - name: Static audit staged package
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Join-Path $env:GITHUB_WORKSPACE 'P360_BUS_PACKAGE'
+
+          foreach ($name in @(
+            'INSTALL_P360_BUS_MOD.ps1',
+            'ROLLBACK_P360_BUS_MOD.ps1',
+            'VERIFY_P360_BUS_MOD.ps1'
+          )) {
+            $path = Join-Path $stage $name
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $path, [ref]$tokens, [ref]$errors)
+            if ($errors.Count -gt 0) {
+              $errors | Format-List | Out-String | Write-Host
+              throw "PowerShell parser errors in $name"
+            }
+            Write-Host "PS5.1 PARSE OK: $name"
+          }
+
+          $inf = Get-Content (Join-Path $stage 'sklhdaudbus.inf') -Raw
+          if ($inf -notmatch 'PCI\\VEN_8086&DEV_3198&CC_0401') {
+            throw 'Gemini Lake 3198 INF target missing.'
+          }
+
+          $diff = Get-Content (Join-Path $stage 'PATCH_APPLIED.diff') -Raw
+          if ($diff -notmatch '\[P360\] IRQ translated:') {
+            throw 'IRQ resource diagnostics patch missing.'
+          }
+          if ($diff -match 'P360AUDIO\\ADSP_GEMINILAKE') {
+            throw 'Obsolete custom DSP compatible ID reappeared.'
+          }
+          if ($diff -match 'diff --git a/sklhdaudbus/buspdo.cpp') {
+            throw 'buspdo.cpp must remain upstream-clean in the minimal bus patch.'
+          }
+
+          Write-Host 'STATIC_GATE=PASS'
+
       - name: Test-sign SYS then generate and sign catalog
         shell: pwsh
         run: |
