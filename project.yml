@@ -28,7 +28,7 @@ targets:
     info:
       path: Leno/Info.plist
       properties:
-        CFBundleDisplayName: YoutubeVcd V9
+        CFBundleDisplayName: YoutubeVcd
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
@@ -45,8 +45,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.tzn5web.leno
         PRODUCT_NAME: YoutubeVcd
-        MARKETING_VERSION: "0.9.3"
-        CURRENT_PROJECT_VERSION: "5"
+        MARKETING_VERSION: "0.10.0"
+        CURRENT_PROJECT_VERSION: "6"
         TARGETED_DEVICE_FAMILY: "1"
         SUPPORTS_MACCATALYST: NO
         GENERATE_INFOPLIST_FILE: NO
