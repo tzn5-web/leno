@@ -100,7 +100,8 @@ struct V9ClientRootView:
                 0
         ) {
             if player
-                .hasLoadedMedia {
+                .hasLoadedMedia &&
+               !showPlayer {
                 V9MiniPlayerView(
                     player:
                         player,
