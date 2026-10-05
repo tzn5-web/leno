@@ -90,7 +90,8 @@ static NSArray *VSettingsCategoryOrder(id self, SEL _cmd) {
 static id VSettingsDelegate(id manager) {
     @try {
         return [manager valueForKey:@"_settingsViewControllerDelegate"];
-    } @catch (__unused NSException *exception) {
+    } @catch (NSException *exception) {
+        (void)exception;
         return nil;
     }
 }
