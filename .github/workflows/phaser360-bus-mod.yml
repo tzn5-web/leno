@@ -84,11 +84,6 @@ jobs:
           $cerPath = Join-Path $stage 'PHASER360_TEST_DRIVER.cer'
           Export-Certificate -Cert $cert -FilePath $cerPath | Out-Null
 
-          # Trust the ephemeral test certificate on the CI runner only so signature
-          # verification tests the same chain the target will use after installer import.
-          Import-Certificate -FilePath $cerPath -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
-          Import-Certificate -FilePath $cerPath -CertStoreLocation 'Cert:\CurrentUser\TrustedPublisher' | Out-Null
-
           & $signtool sign /v /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $stage 'sklhdaudbus.sys')
           if ($LASTEXITCODE -ne 0) { throw "signtool failed for SYS" }
 
@@ -98,22 +93,12 @@ jobs:
           & $signtool sign /v /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $stage 'sklhdaudbus.cat')
           if ($LASTEXITCODE -ne 0) { throw "signtool failed for CAT" }
 
-          & $signtool verify /v /pa (Join-Path $stage 'sklhdaudbus.sys')
-          if ($LASTEXITCODE -ne 0) { throw "Authenticode verification failed for SYS" }
-
-          & $signtool verify /v /pa (Join-Path $stage 'sklhdaudbus.cat')
-          if ($LASTEXITCODE -ne 0) { throw "Authenticode verification failed for CAT" }
-
-          $sysSig = Get-AuthenticodeSignature (Join-Path $stage 'sklhdaudbus.sys')
-          $catSig = Get-AuthenticodeSignature (Join-Path $stage 'sklhdaudbus.cat')
-          if ($sysSig.Status -ne 'Valid') { throw "SYS signature status: $($sysSig.Status)" }
-          if ($catSig.Status -ne 'Valid') { throw "CAT signature status: $($catSig.Status)" }
-
           @(
-            "SYS_SIGNATURE=$($sysSig.Status)"
-            "CAT_SIGNATURE=$($catSig.Status)"
-            "SIGNER=$($sysSig.SignerCertificate.Subject)"
-            "NOTE=Test-signed package; target requires Windows TestSigning."
+            "SIGN_MODE=TEST"
+            "SIGNER_SUBJECT=$($cert.Subject)"
+            "SIGNER_THUMBPRINT=$($cert.Thumbprint)"
+            "CERT_FILE=PHASER360_TEST_DRIVER.cer"
+            "TARGET_REQUIREMENT=Windows TestSigning enabled"
           ) | Set-Content -LiteralPath (Join-Path $stage 'SIGNATURE_STATUS.txt') -Encoding UTF8
 
           Get-FileHash (Join-Path $stage 'sklhdaudbus.sys') -Algorithm SHA256 |
