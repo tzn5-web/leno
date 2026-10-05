@@ -822,6 +822,12 @@ final class V9PlayerService:
                     : seconds
             )
 
+        currentTime =
+            target
+
+        updateNowPlaying()
+        updatePiPPlaybackState()
+
         pipBridge?
             .prepareForSeek()
 
