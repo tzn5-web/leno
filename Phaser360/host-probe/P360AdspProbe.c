@@ -51,7 +51,7 @@ typedef struct _P360_PROBE_STATUS {
     USHORT InterfaceVersion;
     ULONG InterfaceSize;
     ULONGLONG Reserved;
-} P360_PROBE_STATUS;
+} P360_PROBE_STATUS, *PP360_PROBE_STATUS;
 
 typedef struct _P360_DEVICE_CONTEXT {
     P360_ADSP_BUS_INTERFACE Bus;
