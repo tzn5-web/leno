@@ -459,8 +459,7 @@ async def relay(token: str, request: Request) -> Response:
     if entry is None:
         raise HTTPException(status_code=404, detail="relay token expired or unknown")
 
-    generation =
-        entry.generation
+    generation = entry.generation
 
     client, upstream = await send_upstream(entry, request)
 
