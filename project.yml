@@ -45,8 +45,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.tzn5web.leno
         PRODUCT_NAME: YoutubeVcd
-        MARKETING_VERSION: "0.9.2"
-        CURRENT_PROJECT_VERSION: "4"
+        MARKETING_VERSION: "0.9.3"
+        CURRENT_PROJECT_VERSION: "5"
         TARGETED_DEVICE_FAMILY: "1"
         SUPPORTS_MACCATALYST: NO
         GENERATE_INFOPLIST_FILE: NO
