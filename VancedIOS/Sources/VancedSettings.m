@@ -14,6 +14,7 @@ static NSString * const kRYDEnabledKey = @"VancedReturnYouTubeDislikeEnabled";
 static NSString * const kHideShortsTabKey = @"VancedHideShortsTab";
 
 static IMP gOriginalSettingsCategoryOrder = NULL;
+static IMP gOriginalGroupedSettingsCategories = NULL;
 static IMP gOriginalUpdateSection = NULL;
 
 static BOOL VSettingsHookInstanceMethod(const char *className,
@@ -91,6 +92,28 @@ static NSArray *VSettingsCategoryOrder(id self, SEL _cmd) {
     return order;
 }
 
+static NSArray *VGroupedSettingsCategories(id self, SEL _cmd) {
+    NSArray *original = gOriginalGroupedSettingsCategories
+        ? ((id (*)(id, SEL))gOriginalGroupedSettingsCategories)(self, _cmd)
+        : @[];
+    SEL typeSelector = sel_registerName("type");
+    if (![self respondsToSelector:typeSelector]) return original;
+    NSUInteger groupType = ((NSUInteger (*)(id, SEL))objc_msgSend)(self, typeSelector);
+    if (groupType != 1) return original;
+
+    Class groupClass = objc_getClass("YTSettingsGroupData");
+    if (groupClass && class_getClassMethod(groupClass, sel_registerName("tweaks"))) {
+        return original;
+    }
+
+    NSMutableArray *order = [original mutableCopy] ?: [NSMutableArray array];
+    NSNumber *category = @(kVancedSettingsCategory);
+    if (![order containsObject:category]) {
+        [order insertObject:category atIndex:0];
+    }
+    return order;
+}
+
 static id VSettingsDelegate(id manager) {
     @try {
         return [manager valueForKey:@"_settingsViewControllerDelegate"];
@@ -158,6 +181,10 @@ static void VInstallSettingsHooks(void) {
                              "settingsCategoryOrder",
                              (IMP)VSettingsCategoryOrder,
                              &gOriginalSettingsCategoryOrder);
+    VSettingsHookInstanceMethod("YTSettingsGroupData",
+                                "orderedCategories",
+                                (IMP)VGroupedSettingsCategories,
+                                &gOriginalGroupedSettingsCategories);
     VSettingsHookInstanceMethod("YTSettingsSectionItemManager",
                                 "updateSectionForCategory:withEntry:",
                                 (IMP)VUpdateSectionForCategory,
