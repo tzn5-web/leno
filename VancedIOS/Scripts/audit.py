@@ -137,7 +137,7 @@ def audit_source(audit: Audit) -> None:
     for path in ROOT.rglob("*"):
         if not path.is_file():
             continue
-        if path.name == "README.md" or path == MATRIX:
+        if path.name == "README.md" or path == MATRIX or path == Path(__file__).resolve():
             continue
         if path.suffix not in CODE_SUFFIXES and path.name != "Makefile":
             continue
