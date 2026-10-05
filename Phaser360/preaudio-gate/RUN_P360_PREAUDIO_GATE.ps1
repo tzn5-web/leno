@@ -339,8 +339,26 @@ try {
   }
 
   # Stage and temporarily force-bind the read-only probe.
-  & pnputil.exe /add-driver $inf | Tee-Object -FilePath (Join-Path $script:Out 'HDA_STAGE_PROBE.txt')
-  if($LASTEXITCODE){throw "G4_STAGE_FAIL rc=$LASTEXITCODE"}
+  $stageOutput=@(& pnputil.exe /add-driver $inf 2>&1)
+  $stageRc=$LASTEXITCODE
+  $stageOutput | Tee-Object -FilePath (Join-Path $script:Out 'HDA_STAGE_PROBE.txt') | ForEach-Object {Write-Host $_}
+  if($stageRc){throw "G4_STAGE_FAIL rc=$stageRc"}
+
+  # Capture the published package name directly from PnPUtil. Win32_PnPSignedDriver
+  # can temporarily report stale metadata immediately after a forced live rebind.
+  $publishedProbeInf=$null
+  foreach($line in $stageOutput){
+    if([string]$line -match '(?i)Published Name:\s*(oem\d+\.inf)'){
+      $publishedProbeInf=$matches[1]
+      break
+    }
+  }
+  if($publishedProbeInf){
+    $script:ProbeInfName=$publishedProbeInf
+    KV 'HDA_PROBE_PUBLISHED_INF' $script:ProbeInfName
+  } else {
+    KV 'HDA_PROBE_PUBLISHED_INF' 'UNKNOWN_FROM_STAGE_OUTPUT'
+  }
 
   [bool]$probeReboot=$false
   $script:ProbeBindAttempted=$true
@@ -352,12 +370,18 @@ try {
   Start-Sleep -Seconds 3
   $hda=Get-CimInstance Win32_PnPEntity | Where-Object {$_.PNPDeviceID -eq $script:HdaChildId} | Select-Object -First 1
   $bound=FindSignedDriver $script:HdaChildId
-  $script:ProbeInfName=[string]$bound.InfName
+  $wmiBoundInf=[string]$bound.InfName
+  $wmiBoundVersion=[string]$bound.DriverVersion
+
+  # Keep the PnPUtil-published probe INF as authoritative for cleanup.
+  # Record WMI values separately because they may lag behind the live bind.
+  if(-not $script:ProbeInfName){$script:ProbeInfName=$wmiBoundInf}
 
   KV 'HDA_PROBE_INF' $script:ProbeInfName
+  KV 'HDA_PROBE_WMI_INF' $wmiBoundInf
   KV 'HDA_PROBE_SERVICE' $hda.Service
   KV 'HDA_PROBE_CODE' $hda.ConfigManagerErrorCode
-  KV 'HDA_PROBE_VERSION' $bound.DriverVersion
+  KV 'HDA_PROBE_WMI_VERSION' $wmiBoundVersion
 
   if($hda.Service -ne 'P360HdaReadProbe' -or $hda.ConfigManagerErrorCode -ne 0){
     throw "G4_HDA_PROBE_START_FAIL: service=$($hda.Service) code=$($hda.ConfigManagerErrorCode)"
@@ -380,7 +404,7 @@ try {
   $totalDelta=[int64]0
   $validReads=0
   $vendorMatches=0
-  [uint32]$vendorExpected=0x8086280D
+  [uint32]$vendorExpected=[Convert]::ToUInt32('8086280D',16)
 
   for($i=1;$i -le 3;$i++){
     $before=Read-DspProbe
