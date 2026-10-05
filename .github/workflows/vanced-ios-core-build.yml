@@ -1,0 +1,43 @@
+name: Vanced iOS Core Build
+
+on:
+  push:
+    branches: [vanced-ios]
+    paths:
+      - 'VancedIOS/**'
+      - '.github/workflows/vanced-ios-core-build.yml'
+  pull_request:
+    paths:
+      - 'VancedIOS/**'
+      - '.github/workflows/vanced-ios-core-build.yml'
+  workflow_dispatch:
+
+jobs:
+  core-build:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          clang --version
+          python3 --version
+
+      - name: Python syntax check
+        run: python3 -m py_compile VancedIOS/Scripts/audit.py
+
+      - name: Build core scaffold
+        run: bash VancedIOS/Scripts/build.sh
+
+      - name: Upload core evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vanced-ios-core-evidence
+          path: |
+            VancedIOS/reports/CORE_BUILD.json
+            VancedIOS/.theos/obj/**/VancedCore.dylib
+          if-no-files-found: warn
