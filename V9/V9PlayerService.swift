@@ -136,8 +136,15 @@ final class V9PlayerService:
     private var refreshAttempts =
         0
 
+    private var lastSuccessfulLoadAt:
+        Date?
+
     private let maximumRefreshAttempts =
         3
+
+    private let stablePlaybackResetInterval:
+        TimeInterval =
+        15
 
     private var pendingSeekAfterLoad:
         Double?
@@ -502,6 +509,9 @@ final class V9PlayerService:
 
         refreshAttempts =
             0
+
+        lastSuccessfulLoadAt =
+            nil
 
         pendingSeekAfterLoad =
             nil
@@ -1401,10 +1411,12 @@ final class V9PlayerService:
                 hasLoadedMedia =
                     true
 
-                // A completed load proves the refreshed source is healthy.
-                // Future expiry/network incidents get a fresh retry budget.
-                refreshAttempts =
-                    0
+                // FILE_LOADED alone does not prove that the source is stable:
+                // some bad/expired URLs can open and fail a moment later.
+                // Keep the retry budget until the stream has actually played
+                // long enough to be considered healthy.
+                lastSuccessfulLoadAt =
+                    Date()
 
                 if let pendingSeekAfterLoad {
                     self.pendingSeekAfterLoad =
@@ -1547,6 +1559,19 @@ final class V9PlayerService:
                 0,
                 currentTime
             )
+
+        if let lastSuccessfulLoadAt,
+           Date()
+            .timeIntervalSince(
+                lastSuccessfulLoadAt
+            ) >=
+            stablePlaybackResetInterval {
+            refreshAttempts =
+                0
+        }
+
+        lastSuccessfulLoadAt =
+            nil
 
         hasLoadedMedia =
             false
