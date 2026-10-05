@@ -793,6 +793,18 @@ final class V9MPVRenderView:
             return
         }
 
+        let renderer =
+            sampleBufferLayer
+                .sampleBufferRenderer
+
+        if renderer.status ==
+            .failed {
+            renderer.flush()
+
+            lastPresentationTime =
+                .invalid
+        }
+
         var effectivePTS =
             CMTime(
                 seconds:
@@ -865,29 +877,6 @@ final class V9MPVRenderView:
               let sampleBuffer
         else {
             return
-        }
-
-        let renderer =
-            sampleBufferLayer
-                .sampleBufferRenderer
-
-        if renderer.status ==
-            .failed {
-            renderer.flush()
-
-            lastPresentationTime =
-                .invalid
-
-            effectivePTS =
-                CMTime(
-                    seconds:
-                        max(
-                            0,
-                            presentationTime
-                        ),
-                    preferredTimescale:
-                        600
-                )
         }
 
         renderer.enqueue(
