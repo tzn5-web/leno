@@ -70,7 +70,7 @@ static id VSwitchItem(NSString *title, NSString *description, NSString *key) {
         return YES;
     };
 
-    return ((id (*)(id, SEL, id, id, id, BOOL, id, NSInteger))objc_msgSend)(
+    return ((id (*)(id, SEL, id, id, id, BOOL, id, int))objc_msgSend)(
         itemClass, selector, title, description, kVancedSettingsAccessibilityID, current, block, 0);
 }
 
