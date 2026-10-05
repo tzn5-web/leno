@@ -32,7 +32,8 @@ class AuditSelfTests(unittest.TestCase):
         MODULE.audit_source(audit)
         result = audit.result()
         self.assertEqual(result['status'], 'NEEDS_REVIEW')
-        joined = '\n'.join(result['errors'])
+        self.assertEqual(result['errors'], [])
+        joined = '\n'.join(result['incomplete'])
         self.assertIn('not yet implemented/validated', joined)
 
     def test_legacy_client_is_outside_workspace(self):
