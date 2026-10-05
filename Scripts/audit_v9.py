@@ -86,6 +86,12 @@ for required in [
 
 require("YouTube video ID" not in all_v9, "manual video-ID input leaked back into normal UI")
 require('"V9 Media Lab"' not in all_v9, "Media Lab branding leaked back into app UI")
+require(
+    "clientError" in root_view
+    and "showPlayer =" in root_view
+    and "reportExternalFailure" not in root_view,
+    "failed video resolve can still replace/kill the current playback UX",
+)
 
 # Browse data contract and client calls.
 for required in [
@@ -103,6 +109,8 @@ for required in [
     "func home(",
     "func search(",
     "func channel(",
+    "validateBrowseResponse",
+    "expectedThumbnailPath",
     '"home"',
     '"search"',
     '"channel"',
@@ -239,6 +247,8 @@ for required in [
 # Resolver must now support browsing plus playback.
 for required in [
     'APP_VERSION = "0.4.0-client"',
+    "if is_live:",
+    "return None",
     "VIDEO_ID_RE",
     "CHANNEL_ID_RE",
     "SEARCH_QUERY_RE",
