@@ -161,7 +161,9 @@ static BOOL VRYDIsDislikeButton(id button) {
         ? [button accessibilityIdentifier]
         : nil;
     if (![identifier isKindOfClass:[NSString class]]) return NO;
-    return [identifier.lowercaseString containsString:@"dislike"];
+    NSString *lower = identifier.lowercaseString;
+    return [lower isEqualToString:@"id.video.dislike.button"] ||
+           [lower hasPrefix:@"id.video.dislike."];
 }
 
 static void VRYDUpdateButton(id button, NSString *videoID) {
