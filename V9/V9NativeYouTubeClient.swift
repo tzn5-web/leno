@@ -41,6 +41,9 @@ final class V9NativeYouTubeClient:
     private var homeState:
         HomeScreenResponse?
 
+    private var discoveryState:
+        SearchResponse?
+
     private var searchState:
         SearchResponse?
 
@@ -103,7 +106,10 @@ final class V9NativeYouTubeClient:
         else {
             // Anonymous Home can be empty. Keep the application autonomous
             // and provide a normal YouTube search-based discovery feed.
-            return try await discoveryFallback()
+            return try await discoveryFallback(
+                reset:
+                    reset
+            )
         }
 
         return BrowsePage(
@@ -1009,21 +1015,51 @@ final class V9NativeYouTubeClient:
             headers
     }
 
-    private func discoveryFallback()
-        async throws
+    private func discoveryFallback(
+        reset:
+            Bool
+    ) async throws
         -> BrowsePage
     {
-        let response =
-            try await SearchResponse
-                .sendThrowingRequest(
-                    youtubeModel:
-                        youtube,
-                    data:
-                        [
-                            .query:
-                                "popular"
-                        ]
-                )
+        if reset ||
+           discoveryState ==
+            nil {
+            discoveryState =
+                try await SearchResponse
+                    .sendThrowingRequest(
+                        youtubeModel:
+                            youtube,
+                        data:
+                            [
+                                .query:
+                                    "popular"
+                            ]
+                    )
+        } else if var current =
+                    discoveryState,
+                  current.continuationToken !=
+                    nil {
+            let continuation =
+                try await current
+                    .fetchContinuationThrowing(
+                        youtubeModel:
+                            youtube
+                    )
+
+            current.mergeContinuation(
+                continuation
+            )
+
+            discoveryState =
+                current
+        }
+
+        guard let response =
+                discoveryState
+        else {
+            throw NativeError
+                .noHomeResults
+        }
 
         return BrowsePage(
             title:
@@ -1047,7 +1083,9 @@ final class V9NativeYouTubeClient:
                         )
                     },
             hasMore:
-                false
+                response
+                    .continuationToken !=
+                nil
         )
     }
 
