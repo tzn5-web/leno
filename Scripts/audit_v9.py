@@ -268,6 +268,14 @@ for required in [
     "frameGeneration",
 ]:
     require(required in render_view, f"render view invariant missing: {required}")
+require(
+    "prefersPiPQualityRender" in player
+    and "minimumLongEdge" in render_view
+    and "640.0" in render_view
+    and "minimumShortEdge" in render_view
+    and "360.0" in render_view,
+    "PiP started from the mini-player can regress to mini-player buffer resolution",
+)
 
 # PiP/background/remote control state machine.
 for required in [
