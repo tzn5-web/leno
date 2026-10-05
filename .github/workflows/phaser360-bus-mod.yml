@@ -1,0 +1,99 @@
+name: Build Phaser360 Gemini Lake bus mod
+
+on:
+  push:
+    branches:
+      - phaser360-audio-bus-mod
+    paths:
+      - 'Phaser360/bus-mod/**'
+      - '.github/workflows/phaser360-bus-mod.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout project branch
+        uses: actions/checkout@v4
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Install Windows SDK and WDK 26100
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          winget install --id Microsoft.WindowsSDK.10.0.26100 --exact --silent --accept-package-agreements --accept-source-agreements
+          winget install --id Microsoft.WindowsWDK.10.0.26100 --exact --silent --accept-package-agreements --accept-source-agreements
+
+      - name: Clone pinned CoolStar bus and apply Phaser360 patch
+        shell: pwsh
+        run: |
+          ./Phaser360/bus-mod/scripts/APPLY_PATCH.ps1
+
+      - name: Build x64 Release driver
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $proj = Join-Path $env:GITHUB_WORKSPACE '_upstream\sklhdaudbus\sklhdaudbus\sklhdaudbus.vcxproj'
+          msbuild $proj /m /t:Build /p:Configuration=Release /p:Platform=x64 /p:WindowsTargetPlatformVersion=10.0.26100.0 /p:SignMode=Off
+          if ($LASTEXITCODE -ne 0) { throw "MSBuild failed: $LASTEXITCODE" }
+
+      - name: Stage INF and SYS
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $src = Join-Path $env:GITHUB_WORKSPACE '_upstream\sklhdaudbus'
+          $stage = Join-Path $env:GITHUB_WORKSPACE 'P360_BUS_PACKAGE'
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+
+          $sys = Get-ChildItem $src -Recurse -Filter sklhdaudbus.sys -File |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $sys) { throw 'sklhdaudbus.sys not found after build' }
+
+          Copy-Item $sys.FullName (Join-Path $stage 'sklhdaudbus.sys') -Force
+          Copy-Item (Join-Path $src 'sklhdaudbus\sklhdaudbus.inf') (Join-Path $stage 'sklhdaudbus.inf') -Force
+          Copy-Item './Phaser360/bus-mod/scripts/INSTALL_P360_BUS_MOD.ps1' $stage -Force
+          Copy-Item './Phaser360/bus-mod/scripts/ROLLBACK_P360_BUS_MOD.ps1' $stage -Force
+          Copy-Item './Phaser360/bus-mod/scripts/VERIFY_P360_BUS_MOD.ps1' $stage -Force
+          Copy-Item './Phaser360/bus-mod/README.md' $stage -Force
+
+      - name: Create catalog and test-sign package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Join-Path $env:GITHUB_WORKSPACE 'P360_BUS_PACKAGE'
+
+          $inf2cat = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter Inf2Cat.exe -File |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter signtool.exe -File |
+            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+            Sort-Object FullName -Descending | Select-Object -First 1
+
+          if (-not $inf2cat) { throw 'Inf2Cat.exe not found' }
+          if (-not $signtool) { throw 'signtool.exe not found' }
+
+          & $inf2cat.FullName /driver:$stage /os:10_X64
+          if ($LASTEXITCODE -ne 0) { throw "Inf2Cat failed: $LASTEXITCODE" }
+
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=PHASER360 Test Driver' -CertStoreLocation 'Cert:\CurrentUser\My' -KeyExportPolicy Exportable -NotAfter (Get-Date).AddYears(2)
+          Export-Certificate -Cert $cert -FilePath (Join-Path $stage 'PHASER360_TEST_DRIVER.cer') | Out-Null
+
+          foreach ($file in @('sklhdaudbus.sys','sklhdaudbus.cat')) {
+            & $signtool.FullName sign /v /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $stage $file)
+            if ($LASTEXITCODE -ne 0) { throw "signtool failed for $file" }
+          }
+
+          Get-FileHash (Join-Path $stage 'sklhdaudbus.sys') -Algorithm SHA256 |
+            Format-List | Out-File (Join-Path $stage 'SHA256.txt')
+          Get-FileHash (Join-Path $stage 'sklhdaudbus.cat') -Algorithm SHA256 |
+            Format-List | Out-File (Join-Path $stage 'SHA256.txt') -Append
+
+      - name: Upload driver package
+        uses: actions/upload-artifact@v4
+        with:
+          name: P360_GEMINILAKE_BUS_MOD_TESTSIGNED
+          path: P360_BUS_PACKAGE
+          if-no-files-found: error
