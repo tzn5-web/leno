@@ -8,17 +8,18 @@ THEOS="$TOOLCHAIN/theos"
 
 mkdir -p "$TOOLCHAIN"
 
-readarray -t fields < <(python3 - "$LOCK" <<'PY'
+REPO="$(python3 - "$LOCK" <<'PY'
 import json, sys
 with open(sys.argv[1], 'r', encoding='utf-8') as f:
-    d=json.load(f)['theos']
-print(d['repo'])
-print(d['ref'])
+    print(json.load(f)['theos']['repo'])
 PY
-)
-
-REPO="${fields[0]}"
-REF="${fields[1]}"
+)"
+REF="$(python3 - "$LOCK" <<'PY'
+import json, sys
+with open(sys.argv[1], 'r', encoding='utf-8') as f:
+    print(json.load(f)['theos']['ref'])
+PY
+)"
 
 if [[ ! -d "$THEOS/.git" ]]; then
   rm -rf "$THEOS"
