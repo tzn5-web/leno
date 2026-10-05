@@ -309,6 +309,13 @@ final class V9PlayerService:
                 "profile",
                 "sw-fast"
             ),
+            // mpv defaults HLS to the maximum advertised variant. Keep the
+            // player near the same 1080p-class cost envelope as direct
+            // format selection instead of decoding 4K/60 only to downscale it.
+            setOptionString(
+                "hls-bitrate",
+                "8000000"
+            ),
             setOptionString(
                 "keep-open",
                 "yes"
