@@ -39,50 +39,13 @@ $vcx = Join-Path $Upstream "sklhdaudbus\sklhdaudbus.vcxproj"
 
 Replace-Once $inf '%SklHDAudBus.DeviceDesc%=SklHDAudBus_Device, PCI\VEN_8086&DEV_3198&CC_0401 ;Intel Gemini Lake' '%P360SklHDAudBus.DeviceDesc%=SklHDAudBus_Device, PCI\VEN_8086&DEV_3198&CC_0401 ;Google Phaser360 / Intel Gemini Lake' "Phaser360 Gemini Lake model"
 
-Replace-Once $inf 'HKR,Settings,"ConnectInterrupt",0x00010001,0' 'HKR,Settings,"ConnectInterrupt",0x00010001,1
-HKR,Settings,"Phaser360Mode",0x00010001,1' "Enable interrupt intent + Phaser360 marker"
+Replace-Once $inf 'HKR,Settings,"ConnectInterrupt",0x00010001,0' 'HKR,Settings,"ConnectInterrupt",0x00010001,0
+HKR,Settings,"Phaser360Mode",0x00010001,1' "Add Phaser360 marker without changing upstream interrupt setting"
 
 Replace-Once $inf 'SklHDAudBus.DeviceDesc = "CoolStar HD Audio"
 SklHDAudBus.SVCDESC    = "CoolStar HD Audio Service"' 'SklHDAudBus.DeviceDesc = "CoolStar HD Audio"
 P360SklHDAudBus.DeviceDesc = "PHASER360 Gemini Lake HD Audio Bus"
 SklHDAudBus.SVCDESC    = "CoolStar HD Audio Service"' "Phaser360 friendly name"
-
-$pdoAnchor = @'
-        status = WdfPdoInitAddCompatibleID(DeviceInit, &compatId);
-        if (!NT_SUCCESS(status)) {
-            return status;
-        }
-    }
-    else {
-'@
-
-$pdoReplacement = @'
-        status = WdfPdoInitAddCompatibleID(DeviceInit, &compatId);
-        if (!NT_SUCCESS(status)) {
-            return status;
-        }
-
-        /*
-         * PHASER360 / Gemini Lake bridge identity.
-         * Keep canonical CSAUDIO\ADSP for production SOF and add a
-         * project-specific compatible ID for the custom host.
-         */
-        if (Desc->CodecIds.CtlrVenId == 0x8086 &&
-            Desc->CodecIds.CtlrDevId == 0x3198) {
-            status = RtlUnicodeStringPrintf(&compatId, L"P360AUDIO\\ADSP_GEMINILAKE");
-            if (!NT_SUCCESS(status)) {
-                return status;
-            }
-
-            status = WdfPdoInitAddCompatibleID(DeviceInit, &compatId);
-            if (!NT_SUCCESS(status)) {
-                return status;
-            }
-        }
-    }
-    else {
-'@
-Replace-Once $pdo $pdoAnchor $pdoReplacement "Phaser360 DSP compatible ID"
 
 Replace-Once $fdo '    UNREFERENCED_PARAMETER(ResourcesRaw);
 
@@ -154,12 +117,12 @@ Write-Host "PATCHED: driver package version 1.1.0.360"
 
 Run-Git -C $Upstream diff --check
 
-$diff = & git -C $Upstream diff -- sklhdaudbus/sklhdaudbus.inf sklhdaudbus/buspdo.cpp sklhdaudbus/fdo.cpp sklhdaudbus/sklhdaudbus.vcxproj
+$diff = & git -C $Upstream diff -- sklhdaudbus/sklhdaudbus.inf sklhdaudbus/fdo.cpp sklhdaudbus/sklhdaudbus.vcxproj
 if ($LASTEXITCODE -ne 0) { throw "git diff failed" }
 $diff | Set-Content -LiteralPath (Join-Path $Root "PATCH_APPLIED.diff") -Encoding utf8NoBOM
 
-$combined = (Get-Content $pdo -Raw) + (Get-Content $fdo -Raw) + (Get-Content $inf -Raw) + (Get-Content $vcx -Raw)
-$mustContain = @('P360AUDIO\\ADSP_GEMINILAKE','[P360] IRQ translated:','PCI\VEN_8086&DEV_3198&CC_0401','<TimeStamp>1.1.0.360</TimeStamp>')
+$combined = (Get-Content $fdo -Raw) + (Get-Content $inf -Raw) + (Get-Content $vcx -Raw)
+$mustContain = @('[P360] IRQ translated:','PCI\VEN_8086&DEV_3198&CC_0401','<TimeStamp>1.1.0.360</TimeStamp>')
 foreach ($needle in $mustContain) {
     if (-not $combined.Contains($needle)) { throw "Post-patch assertion failed: $needle" }
 }
