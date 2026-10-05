@@ -819,7 +819,7 @@ final class V9PlayerService:
             return "%\(value.utf8.count)%\(value)"
         }
 
-        return "edl://!new_stream;!no_clip;!no_chapters;\(escape(video));!new_stream;\(escape(audio))"
+        return "edl://!new_stream;!no_clip;!no_chapters;\(escape(video));!new_stream;!no_clip;!no_chapters;\(escape(audio))"
     }
 
     private func configureAudioSession() {
