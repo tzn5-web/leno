@@ -35,5 +35,9 @@
     <ClCompile Include="P360AdspProbe.c" />
     <Inf Include="P360AdspProbe.inf" />
   </ItemGroup>
+  <ItemGroup>
+    <FilesToPackage Include="$(TargetPath)" />
+    <FilesToPackage Include="@(Inf->'%(CopyOutput)')" Condition="'@(Inf)'!=''" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
