@@ -1,5 +1,31 @@
 import Foundation
 
+private final class ResolverNoRedirectDelegate:
+    NSObject,
+    URLSessionTaskDelegate,
+    @unchecked Sendable
+{
+    func urlSession(
+        _ session:
+            URLSession,
+        task:
+            URLSessionTask,
+        willPerformHTTPRedirection
+            response:
+                HTTPURLResponse,
+        newRequest request:
+            URLRequest,
+        completionHandler:
+            @escaping (
+                URLRequest?
+            ) -> Void
+    ) {
+        completionHandler(
+            nil
+        )
+    }
+}
+
 enum ResolverClientError:
     LocalizedError
 {
@@ -9,6 +35,7 @@ enum ResolverClientError:
     case insecureTokenTransport
     case invalidRelayURL
     case insecureRelayTransport
+    case relayOriginMismatch
     case invalidVideoID
     case badResponse(Int)
     case server(String)
@@ -33,6 +60,9 @@ enum ResolverClientError:
         case .insecureRelayTransport:
             return "Resolverul a returnat media printr-un transport nesigur. HTTP este acceptat doar în rețeaua locală; un endpoint HTTPS trebuie să livreze relay HTTPS."
 
+        case .relayOriginMismatch:
+            return "Resolverul a returnat media de pe altă origine. V9 acceptă doar relay controlat de același resolver."
+
         case .invalidVideoID:
             return "Video ID trebuie să aibă exact 11 caractere valide."
 
@@ -49,9 +79,43 @@ actor VcdResolverClient {
     private let decoder:
         JSONDecoder
 
+    private let redirectDelegate:
+        ResolverNoRedirectDelegate
+
+    private let session:
+        URLSession
+
     init() {
         decoder =
             JSONDecoder()
+
+        let redirectDelegate =
+            ResolverNoRedirectDelegate()
+
+        self.redirectDelegate =
+            redirectDelegate
+
+        let configuration =
+            URLSessionConfiguration
+                .ephemeral
+
+        configuration
+            .waitsForConnectivity =
+            false
+
+        configuration
+            .requestCachePolicy =
+            .reloadIgnoringLocalCacheData
+
+        session =
+            URLSession(
+                configuration:
+                    configuration,
+                delegate:
+                    redirectDelegate,
+                delegateQueue:
+                    nil
+            )
     }
 
     func health(
@@ -279,6 +343,20 @@ actor VcdResolverClient {
                 throw ResolverClientError
                     .insecureRelayTransport
             }
+
+            guard sameOrigin(
+                url,
+                endpointBase
+            ),
+            url.query == nil,
+            url.fragment == nil,
+            url.path.contains(
+                "/v1/relay/"
+            )
+            else {
+                throw ResolverClientError
+                    .relayOriginMismatch
+            }
         }
     }
 
@@ -328,7 +406,7 @@ actor VcdResolverClient {
             data,
             response
         ) =
-            try await URLSession.shared
+            try await session
                 .data(
                     for:
                         request
@@ -368,6 +446,62 @@ actor VcdResolverClient {
         }
 
         return data
+    }
+
+    private func sameOrigin(
+        _ lhs:
+            URL,
+        _ rhs:
+            URL
+    ) -> Bool {
+        guard
+            let lhsScheme =
+                lhs.scheme?
+                    .lowercased(),
+            let rhsScheme =
+                rhs.scheme?
+                    .lowercased(),
+            let lhsHost =
+                lhs.host?
+                    .lowercased(),
+            let rhsHost =
+                rhs.host?
+                    .lowercased()
+        else {
+            return false
+        }
+
+        func effectivePort(
+            _ url:
+                URL,
+            scheme:
+                String
+        ) -> Int {
+            if let port =
+                    url.port {
+                return port
+            }
+
+            return scheme ==
+                "https"
+                    ? 443
+                    : 80
+        }
+
+        return lhsScheme ==
+                rhsScheme &&
+               lhsHost ==
+                rhsHost &&
+               effectivePort(
+                    lhs,
+                    scheme:
+                        lhsScheme
+               ) ==
+               effectivePort(
+                    rhs,
+                    scheme:
+                        rhsScheme
+               )
     }
 
     private func isLocalNetworkHost(
