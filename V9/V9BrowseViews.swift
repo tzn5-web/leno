@@ -1,16 +1,12 @@
 import SwiftUI
 
+@MainActor
 struct V9HomeFeedView:
     View
 {
-    let resolver:
-        VcdResolverClient
-
-    let endpoint:
-        String
-
-    let resolverToken:
-        String
+    @ObservedObject
+    var native:
+        V9NativeYouTubeClient
 
     let play:
         (BrowseVideo) -> Void
@@ -24,31 +20,24 @@ struct V9HomeFeedView:
         false
 
     @State
+    private var loadingMore =
+        false
+
+    @State
+    private var hasMore =
+        false
+
+    @State
     private var errorText:
         String?
 
     var body: some View {
         NavigationStack {
             Group {
-                if endpoint
-                    .trimmingCharacters(
-                        in:
-                            .whitespacesAndNewlines
-                    )
-                    .isEmpty {
-                    ContentUnavailableView(
-                        "Configurează resolverul",
-                        systemImage:
-                            "network.slash",
-                        description:
-                            Text(
-                                "Deschide Setări și introdu adresa VcdResolver."
-                            )
-                    )
-                } else if loading &&
-                          items.isEmpty {
+                if loading &&
+                   items.isEmpty {
                     ProgressView(
-                        "Încarc videoclipurile…"
+                        "Încarc YouTube…"
                     )
                 } else if let errorText,
                           items.isEmpty {
@@ -65,17 +54,22 @@ struct V9HomeFeedView:
                     V9VideoFeed(
                         items:
                             items,
-                        resolver:
-                            resolver,
-                        endpoint:
-                            endpoint,
-                        resolverToken:
-                            resolverToken,
+                        native:
+                            native,
                         play:
-                            play
+                            play,
+                        hasMore:
+                            hasMore,
+                        loadingMore:
+                            loadingMore,
+                        loadMore:
+                            loadMore
                     )
                     .refreshable {
-                        await load()
+                        await load(
+                            reset:
+                                true
+                        )
                     }
                 }
             }
@@ -89,7 +83,10 @@ struct V9HomeFeedView:
                 ) {
                     Button {
                         Task {
-                            await load()
+                            await load(
+                                reset:
+                                    true
+                            )
                         }
                     } label: {
                         Image(
@@ -102,26 +99,22 @@ struct V9HomeFeedView:
                     )
                 }
             }
-            .task(
-                id:
-                    endpoint
-            ) {
-                await load()
+            .task {
+                if items.isEmpty {
+                    await load(
+                        reset:
+                            true
+                    )
+                }
             }
         }
     }
 
-    @MainActor
-    private func load()
-        async
-    {
-        guard !loading,
-              !endpoint
-                .trimmingCharacters(
-                    in:
-                        .whitespacesAndNewlines
-                )
-                .isEmpty
+    private func load(
+        reset:
+            Bool
+    ) async {
+        guard !loading
         else {
             return
         }
@@ -138,40 +131,75 @@ struct V9HomeFeedView:
         }
 
         do {
-            let result =
-                try await resolver
+            let page =
+                try await native
                     .home(
-                        endpoint:
-                            endpoint,
-                        bearerToken:
-                            resolverToken
+                        reset:
+                            reset
                     )
 
             items =
-                result.items
+                page.items
+
+            hasMore =
+                page.hasMore
 
             if items.isEmpty {
                 errorText =
-                    "Resolverul nu a întors videoclipuri."
+                    "YouTube nu a întors videoclipuri."
             }
         } catch {
             errorText =
                 error.localizedDescription
         }
     }
+
+    private func loadMore()
+        async
+    {
+        guard hasMore,
+              !loadingMore,
+              !loading
+        else {
+            return
+        }
+
+        loadingMore =
+            true
+
+        defer {
+            loadingMore =
+                false
+        }
+
+        do {
+            let page =
+                try await native
+                    .home(
+                        reset:
+                            false
+                    )
+
+            items =
+                page.items
+
+            hasMore =
+                page.hasMore
+        } catch {
+            // Keep the already-loaded feed visible if a continuation fails.
+            hasMore =
+                true
+        }
+    }
 }
 
+@MainActor
 struct V9SearchView:
     View
 {
-    let resolver:
-        VcdResolverClient
-
-    let endpoint:
-        String
-
-    let resolverToken:
-        String
+    @ObservedObject
+    var native:
+        V9NativeYouTubeClient
 
     let play:
         (BrowseVideo) -> Void
@@ -186,6 +214,14 @@ struct V9SearchView:
 
     @State
     private var loading =
+        false
+
+    @State
+    private var loadingMore =
+        false
+
+    @State
+    private var hasMore =
         false
 
     @State
@@ -231,14 +267,16 @@ struct V9SearchView:
                     V9VideoFeed(
                         items:
                             items,
-                        resolver:
-                            resolver,
-                        endpoint:
-                            endpoint,
-                        resolverToken:
-                            resolverToken,
+                        native:
+                            native,
                         play:
-                            play
+                            play,
+                        hasMore:
+                            hasMore,
+                        loadingMore:
+                            loadingMore,
+                        loadMore:
+                            loadMore
                     )
                 }
             }
@@ -261,16 +299,19 @@ struct V9SearchView:
                     .search
             ) {
                 Task {
-                    await search()
+                    await search(
+                        reset:
+                            true
+                    )
                 }
             }
         }
     }
 
-    @MainActor
-    private func search()
-        async
-    {
+    private func search(
+        reset:
+            Bool
+    ) async {
         let trimmed =
             query.trimmingCharacters(
                 in:
@@ -278,13 +319,8 @@ struct V9SearchView:
             )
 
         guard !loading,
-              trimmed.count >= 2,
-              !endpoint
-                .trimmingCharacters(
-                    in:
-                        .whitespacesAndNewlines
-                )
-                .isEmpty
+              trimmed.count >=
+                2
         else {
             return
         }
@@ -301,19 +337,20 @@ struct V9SearchView:
         }
 
         do {
-            let result =
-                try await resolver
+            let page =
+                try await native
                     .search(
                         query:
                             trimmed,
-                        endpoint:
-                            endpoint,
-                        bearerToken:
-                            resolverToken
+                        reset:
+                            reset
                     )
 
             items =
-                result.items
+                page.items
+
+            hasMore =
+                page.hasMore
 
             if items.isEmpty {
                 errorText =
@@ -324,25 +361,81 @@ struct V9SearchView:
                 error.localizedDescription
         }
     }
+
+    private func loadMore()
+        async
+    {
+        guard hasMore,
+              !loadingMore,
+              !loading
+        else {
+            return
+        }
+
+        let trimmed =
+            query.trimmingCharacters(
+                in:
+                    .whitespacesAndNewlines
+            )
+
+        guard trimmed.count >=
+                2
+        else {
+            return
+        }
+
+        loadingMore =
+            true
+
+        defer {
+            loadingMore =
+                false
+        }
+
+        do {
+            let page =
+                try await native
+                    .search(
+                        query:
+                            trimmed,
+                        reset:
+                            false
+                    )
+
+            items =
+                page.items
+
+            hasMore =
+                page.hasMore
+        } catch {
+            hasMore =
+                true
+        }
+    }
 }
 
+@MainActor
 struct V9VideoFeed:
     View
 {
     let items:
         [BrowseVideo]
 
-    let resolver:
-        VcdResolverClient
-
-    let endpoint:
-        String
-
-    let resolverToken:
-        String
+    @ObservedObject
+    var native:
+        V9NativeYouTubeClient
 
     let play:
         (BrowseVideo) -> Void
+
+    let hasMore:
+        Bool
+
+    let loadingMore:
+        Bool
+
+    let loadMore:
+        () async -> Void
 
     var body: some View {
         ScrollView {
@@ -358,15 +451,28 @@ struct V9VideoFeed:
                     V9VideoCard(
                         video:
                             video,
-                        resolver:
-                            resolver,
-                        endpoint:
-                            endpoint,
-                        resolverToken:
-                            resolverToken,
+                        native:
+                            native,
                         play:
                             play
                     )
+                }
+
+                if hasMore {
+                    ProgressView()
+                        .padding(
+                            24
+                        )
+                        .onAppear {
+                            guard !loadingMore
+                            else {
+                                return
+                            }
+
+                            Task {
+                                await loadMore()
+                            }
+                        }
                 }
             }
             .padding(
@@ -377,20 +483,16 @@ struct V9VideoFeed:
     }
 }
 
+@MainActor
 struct V9VideoCard:
     View
 {
     let video:
         BrowseVideo
 
-    let resolver:
-        VcdResolverClient
-
-    let endpoint:
-        String
-
-    let resolverToken:
-        String
+    @ObservedObject
+    var native:
+        V9NativeYouTubeClient
 
     let play:
         (BrowseVideo) -> Void
@@ -487,7 +589,8 @@ struct V9VideoCard:
                         )
                     } else if let duration =
                                 video.duration,
-                              duration > 0 {
+                              duration >
+                                0 {
                         Text(
                             V9VideoFormatting
                                 .duration(
@@ -568,19 +671,16 @@ struct V9VideoCard:
                 ) {
                     if let channelID =
                             video.channelID,
-                       !video.channel.isEmpty {
+                       !video.channel
+                        .isEmpty {
                         NavigationLink {
                             V9ChannelView(
                                 channelID:
                                     channelID,
                                 initialTitle:
                                     video.channel,
-                                resolver:
-                                    resolver,
-                                endpoint:
-                                    endpoint,
-                                resolverToken:
-                                    resolverToken,
+                                native:
+                                    native,
                                 play:
                                     play
                             )
@@ -597,8 +697,19 @@ struct V9VideoCard:
                         )
                     }
 
-                    if let views =
-                            video.viewCount {
+                    if let viewsText =
+                            video.viewCountText,
+                       !viewsText
+                        .isEmpty {
+                        Text(
+                            "•"
+                        )
+
+                        Text(
+                            viewsText
+                        )
+                    } else if let views =
+                                video.viewCount {
                         Text(
                             "•"
                         )
@@ -625,6 +736,7 @@ struct V9VideoCard:
     }
 }
 
+@MainActor
 struct V9ChannelView:
     View
 {
@@ -634,14 +746,9 @@ struct V9ChannelView:
     let initialTitle:
         String
 
-    let resolver:
-        VcdResolverClient
-
-    let endpoint:
-        String
-
-    let resolverToken:
-        String
+    @ObservedObject
+    var native:
+        V9NativeYouTubeClient
 
     let play:
         (BrowseVideo) -> Void
@@ -659,6 +766,14 @@ struct V9ChannelView:
         false
 
     @State
+    private var loadingMore =
+        false
+
+    @State
+    private var hasMore =
+        false
+
+    @State
     private var errorText:
         String?
 
@@ -667,12 +782,8 @@ struct V9ChannelView:
             String,
         initialTitle:
             String,
-        resolver:
-            VcdResolverClient,
-        endpoint:
-            String,
-        resolverToken:
-            String,
+        native:
+            V9NativeYouTubeClient,
         play:
             @escaping (BrowseVideo) -> Void
     ) {
@@ -682,14 +793,8 @@ struct V9ChannelView:
         self.initialTitle =
             initialTitle
 
-        self.resolver =
-            resolver
-
-        self.endpoint =
-            endpoint
-
-        self.resolverToken =
-            resolverToken
+        self.native =
+            native
 
         self.play =
             play
@@ -723,14 +828,16 @@ struct V9ChannelView:
                 V9VideoFeed(
                     items:
                         items,
-                    resolver:
-                        resolver,
-                    endpoint:
-                        endpoint,
-                    resolverToken:
-                        resolverToken,
+                    native:
+                        native,
                     play:
-                        play
+                        play,
+                    hasMore:
+                        hasMore,
+                    loadingMore:
+                        loadingMore,
+                    loadMore:
+                        loadMore
                 )
             }
         }
@@ -741,14 +848,19 @@ struct V9ChannelView:
             .inline
         )
         .task {
-            await load()
+            if items.isEmpty {
+                await load(
+                    reset:
+                        true
+                )
+            }
         }
     }
 
-    @MainActor
-    private func load()
-        async
-    {
+    private func load(
+        reset:
+            Bool
+    ) async {
         guard !loading
         else {
             return
@@ -766,25 +878,68 @@ struct V9ChannelView:
         }
 
         do {
-            let result =
-                try await resolver
+            let page =
+                try await native
                     .channel(
                         channelID:
                             channelID,
-                        endpoint:
-                            endpoint,
-                        bearerToken:
-                            resolverToken
+                        reset:
+                            reset
                     )
 
             title =
-                result.title
+                page.title
 
             items =
-                result.items
+                page.items
+
+            hasMore =
+                page.hasMore
         } catch {
             errorText =
                 error.localizedDescription
+        }
+    }
+
+    private func loadMore()
+        async
+    {
+        guard hasMore,
+              !loadingMore,
+              !loading
+        else {
+            return
+        }
+
+        loadingMore =
+            true
+
+        defer {
+            loadingMore =
+                false
+        }
+
+        do {
+            let page =
+                try await native
+                    .channel(
+                        channelID:
+                            channelID,
+                        reset:
+                            false
+                    )
+
+            title =
+                page.title
+
+            items =
+                page.items
+
+            hasMore =
+                page.hasMore
+        } catch {
+            hasMore =
+                true
         }
     }
 }
@@ -818,7 +973,8 @@ enum V9VideoFormatting
             total %
             60
 
-        if hours > 0 {
+        if hours >
+            0 {
             return String(
                 format:
                     "%d:%02d:%02d",
