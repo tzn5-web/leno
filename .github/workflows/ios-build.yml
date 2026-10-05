@@ -208,6 +208,9 @@ jobs:
           assert health["version"] == "0.2.0-lab"
           assert health["js_runtime"] == "deno"
           assert int(health["relay_ttl"]) >= 3600
+          assert int(health["max_relay_entries"]) >= 32
+          assert health["cookies_configured"] is False
+          assert health["public_base_configured"] is False
           print("resolver health:", health)
           PY
 
@@ -219,10 +222,24 @@ jobs:
 
           docker exec vcd-resolver-v92 python - <<'PY'
           import yt_dlp_ejs
-          from app.main import VIDEO_ID_RE, choose_formats
+          from app.main import VIDEO_ID_RE, choose_formats, is_relayable_format
 
           assert VIDEO_ID_RE.fullmatch("dQw4w9WgXcQ")
           assert not VIDEO_ID_RE.fullmatch("../bad-video")
+
+          assert is_relayable_format({
+              "url": "https://example.invalid/video",
+              "protocol": "https",
+          })
+          assert not is_relayable_format({
+              "url": "https://example.invalid/live.m3u8",
+              "protocol": "m3u8_native",
+          })
+          assert not is_relayable_format({
+              "url": "https://example.invalid/dash",
+              "protocol": "https",
+              "fragments": [{"url": "segment-1"}],
+          })
 
           info = {
               "formats": [
