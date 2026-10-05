@@ -8,6 +8,7 @@ static const NSUInteger kVancedSettingsCategory = 987654;
 static NSString * const kVancedSettingsAccessibilityID = @"VancedIOSSettingsItem";
 static NSString * const kRememberSpeedKey = @"VancedRememberPlaybackSpeed";
 static NSString * const kRememberQualityKey = @"VancedRememberVideoQuality";
+static NSString * const kHideShortsKey = @"VancedHideShortsInFeeds";
 
 static IMP gOriginalSettingsCategoryOrder = NULL;
 static IMP gOriginalUpdateSection = NULL;
@@ -107,8 +108,12 @@ static void VRenderVancedSettings(id manager) {
     id quality = VSwitchItem(@"Remember video quality",
                              @"Use the last selected quality when an equivalent format is available.",
                              kRememberQualityKey);
+    id hideShorts = VSwitchItem(@"Hide Shorts in feeds",
+                                @"Hide Shorts shelves and Shorts cells outside watch history.",
+                                kHideShortsKey);
     if (speed) [items addObject:speed];
     if (quality) [items addObject:quality];
+    if (hideShorts) [items addObject:hideShorts];
     if (items.count == 0) return;
 
     SEL newSelector = sel_registerName("setSectionItems:forCategory:title:icon:titleDescription:headerHidden:");
