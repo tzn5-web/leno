@@ -12,6 +12,10 @@ on:
       - '.github/workflows/vanced-ios-audit.yml'
   workflow_dispatch:
 
+concurrency:
+  group: vanced-ios-audit-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   audit:
     runs-on: ubuntu-latest
