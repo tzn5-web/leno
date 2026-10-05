@@ -74,6 +74,7 @@ echo "==> Clone pinned patch modules"
 clone_at YouMod "$WORK/YouMod"
 clone_at YTVideoOverlay "$WORK/YTVideoOverlay"
 clone_at YouPiP "$WORK/YouPiP"
+clone_at YTUHD "$WORK/YTUHD"
 clone_at ReturnYouTubeDislikes "$WORK/Return-YouTube-Dislikes"
 
 echo "==> Audit pinned patch contracts"
@@ -96,7 +97,9 @@ build_deb() {
 }
 
 build_deb "$WORK/YouMod" "youmod.deb"
+build_deb "$WORK/YTVideoOverlay" "ytvideooverlay.deb"
 build_deb "$WORK/YouPiP" "youpip.deb"
+build_deb "$WORK/YTUHD" "ytuhd.deb"
 build_deb "$WORK/Return-YouTube-Dislikes" "return-youtube-dislikes.deb"
 build_deb "$ROOT/VancedIOS/Core" "vancedios-core.deb"
 
