@@ -1,0 +1,10 @@
+.toolchain/
+.theos/
+ThirdParty/
+packages/
+work/
+reports/
+*.ipa
+*.app
+*.dylib
+.DS_Store
