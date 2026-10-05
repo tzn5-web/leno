@@ -1,0 +1,229 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import plistlib
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import zipfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+LOCK = ROOT / "Config" / "dependencies.lock.json"
+MATRIX = ROOT / "Config" / "feature_matrix.json"
+
+REQUIRED_FEATURES = {
+    "official_youtube_base",
+    "ad_block_video",
+    "ad_block_feed",
+    "background_playback",
+    "pause_state_preservation",
+    "picture_in_picture",
+    "sponsorblock",
+    "return_youtube_dislike",
+    "quality_memory_controls",
+    "speed_memory_controls",
+    "ui_shorts_controls",
+    "navigation_intact",
+}
+
+EXPECTED_IMPLEMENTATION_FILES = [
+    ROOT / "Makefile",
+    ROOT / "Sources" / "VancedCore.m",
+    ROOT / "Scripts" / "build.sh",
+]
+
+LEGACY_TOKENS = [
+    "WKWebView",
+    "m.youtube.com",
+    "BackgroundAudioHandoff",
+    "PlaybackBridgeScript",
+    "NativePlaybackController",
+]
+
+CODE_SUFFIXES = {".m", ".mm", ".xm", ".x", ".swift", ".sh", ".py"}
+
+
+class Audit:
+    def __init__(self):
+        self.errors: list[str] = []
+        self.warnings: list[str] = []
+        self.info: dict[str, object] = {}
+
+    def error(self, message: str) -> None:
+        self.errors.append(message)
+
+    def warn(self, message: str) -> None:
+        self.warnings.append(message)
+
+    def check(self, condition: bool, message: str) -> None:
+        if not condition:
+            self.error(message)
+
+    def result(self) -> dict[str, object]:
+        return {
+            "status": "PASS" if not self.errors else "NEEDS_REVIEW",
+            "errors": self.errors,
+            "warnings": self.warnings,
+            "info": self.info,
+        }
+
+
+def load_json(path: Path):
+    with path.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def is_sha40(value: str) -> bool:
+    return bool(re.fullmatch(r"[0-9a-f]{40}", value or ""))
+
+
+def audit_source(audit: Audit) -> None:
+    audit.check(LOCK.exists(), "missing dependency lock")
+    audit.check(MATRIX.exists(), "missing feature matrix")
+    if audit.errors:
+        return
+
+    lock = load_json(LOCK)
+    matrix = load_json(MATRIX)
+
+    audit.check(lock.get("schema") == 1, "dependency lock schema must be 1")
+    audit.check(matrix.get("schema") == 1, "feature matrix schema must be 1")
+
+    refs = [lock.get("theos", {}).get("ref", "")]
+    refs.extend(item.get("ref", "") for item in lock.get("headers", []))
+    refs.extend(item.get("ref", "") for item in lock.get("modules", []))
+    for ref in refs:
+        audit.check(is_sha40(ref), f"dependency is not pinned to an exact 40-character commit: {ref!r}")
+
+    names = []
+    names.extend(item.get("name", "") for item in lock.get("headers", []))
+    names.extend(item.get("name", "") for item in lock.get("modules", []))
+    audit.check(len(names) == len(set(names)), "dependency names are not unique")
+
+    feature_ids = {item.get("id") for item in matrix.get("required", [])}
+    missing = sorted(REQUIRED_FEATURES - feature_ids)
+    extra = sorted(feature_ids - REQUIRED_FEATURES)
+    audit.check(not missing and not extra, f"feature matrix mismatch missing={missing} extra={extra}")
+
+    missing_impl = [str(path.relative_to(ROOT)) for path in EXPECTED_IMPLEMENTATION_FILES if not path.exists()]
+    if missing_impl:
+        audit.error(f"implementation stage incomplete; missing files: {missing_impl}")
+
+    scanned = []
+    for path in ROOT.rglob("*"):
+        if not path.is_file():
+            continue
+        if path.name == "README.md" or path == MATRIX:
+            continue
+        if path.suffix not in CODE_SUFFIXES and path.name != "Makefile":
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        scanned.append(str(path.relative_to(ROOT)))
+        for token in LEGACY_TOKENS:
+            if token in text:
+                audit.error(f"legacy architecture token {token!r} leaked into {path.relative_to(ROOT)}")
+
+    audit.info["scanned_code_files"] = scanned
+    audit.info["locked_dependencies"] = 1 + len(lock.get("headers", [])) + len(lock.get("modules", []))
+    audit.info["required_features"] = sorted(feature_ids)
+    audit.info["runtime_device_gates"] = matrix.get("runtime_device_gates", [])
+
+
+def locate_app(path: Path):
+    if path.is_dir() and path.suffix == ".app":
+        return path, None
+    if not path.is_file():
+        raise ValueError(f"not an IPA/app path: {path}")
+    temp = tempfile.TemporaryDirectory(prefix="vanced-ios-audit-")
+    try:
+        with zipfile.ZipFile(path) as archive:
+            archive.extractall(temp.name)
+    except Exception:
+        temp.cleanup()
+        raise
+    apps = list((Path(temp.name) / "Payload").glob("*.app"))
+    if len(apps) != 1:
+        temp.cleanup()
+        raise ValueError(f"expected exactly one .app under Payload, found {len(apps)}")
+    return apps[0], temp
+
+
+def audit_ipa(audit: Audit, raw_path: str) -> None:
+    path = Path(raw_path).expanduser().resolve()
+    try:
+        app, temp = locate_app(path)
+    except Exception as exc:
+        audit.error(str(exc))
+        return
+
+    try:
+        plist_path = app / "Info.plist"
+        audit.check(plist_path.exists(), "Info.plist missing from app")
+        if not plist_path.exists():
+            return
+
+        with plist_path.open("rb") as handle:
+            info = plistlib.load(handle)
+
+        bundle_id = str(info.get("CFBundleIdentifier", ""))
+        version = str(info.get("CFBundleShortVersionString", ""))
+        build = str(info.get("CFBundleVersion", ""))
+        executable_name = str(info.get("CFBundleExecutable", "YouTube"))
+        executable = app / executable_name
+
+        audit.check(bundle_id == "com.google.ios.youtube", f"unexpected input bundle id: {bundle_id}")
+        audit.check(bool(version), "CFBundleShortVersionString is missing")
+        audit.check(executable.exists(), f"main executable missing: {executable_name}")
+
+        arch = None
+        file_cmd = shutil.which("file")
+        if executable.exists() and file_cmd:
+            arch = subprocess.check_output([file_cmd, str(executable)], text=True, errors="ignore").strip()
+            audit.check("arm64" in arch, "main executable does not advertise arm64")
+        elif executable.exists():
+            audit.warn("file utility unavailable; architecture could not be verified")
+
+        audit.info["ipa"] = {
+            "path": str(path),
+            "bundle_id": bundle_id,
+            "version": version,
+            "build": build,
+            "executable": executable_name,
+            "architecture_probe": arch,
+            "background_modes": info.get("UIBackgroundModes", []),
+        }
+    finally:
+        if temp is not None:
+            temp.cleanup()
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Vanced iOS stage audit")
+    parser.add_argument("--ipa", help="optional decrypted YouTube .ipa or .app to inspect")
+    parser.add_argument("--json-out", help="optional path for a JSON report")
+    args = parser.parse_args()
+
+    audit = Audit()
+    audit_source(audit)
+    if args.ipa:
+        audit_ipa(audit, args.ipa)
+
+    result = audit.result()
+    rendered = json.dumps(result, indent=2, sort_keys=True)
+    print(rendered)
+
+    if args.json_out:
+        out = Path(args.json_out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(rendered + "\n", encoding="utf-8")
+
+    return 0 if not audit.errors else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
