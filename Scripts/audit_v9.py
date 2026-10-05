@@ -28,6 +28,8 @@ resolver = read("Resolver/app/main.py")
 dockerfile = read("Resolver/Dockerfile")
 requirements = read("Resolver/requirements.txt")
 workflow = read(".github/workflows/ios-build.yml")
+readme = read("Resolver/README.md")
+architecture_audit = read("V9_ARCHITECTURE_AUDIT.md")
 
 all_v9 = "\n".join(
     p.read_text(encoding="utf-8")
@@ -39,6 +41,10 @@ require('MARKETING_VERSION: "0.9.3"' in project, "V9 version must be 0.9.3")
 require('CURRENT_PROJECT_VERSION: "5"' in project, "V9 build must be 5")
 require('test "$VERSION" = "0.9.3"' in workflow, "CI version audit is stale")
 require('test "$BUILD" = "5"' in workflow, "CI build audit is stale")
+
+require("V9.3" in readme, "resolver README release identity is stale")
+require("- Version: 0.9.3" in architecture_audit, "architecture audit version is stale")
+require("- Build: 5" in architecture_audit, "architecture audit build is stale")
 
 # Player architecture: V9 must remain MPV-only.
 require("path: V9" in project, "V9 source root missing")
@@ -83,6 +89,8 @@ for required in [
     "MPNowPlayingInfoCenter",
     "desiredPlayback",
     "func handleScenePhase",
+    '"sw-fast"',
+    "deactivateAudioSession",
 ]:
     require(required in player, f"native MPV player invariant missing: {required}")
 
@@ -179,8 +187,20 @@ for required in [
 require(
     '"loadfile"' in player
     and "edl://!new_stream;!no_clip;!no_chapters;" in player
+    and "!new_stream;!no_clip;!no_chapters;" in player
     and '"audio-add"' not in player,
     "separate video/audio MPV EDL load path missing or legacy audio-add race returned",
+)
+
+require(
+    player.count("!new_stream;!no_clip;!no_chapters;") >= 2,
+    "both separate EDL streams must carry mpv ytdl no_clip/no_chapters headers",
+)
+
+require(
+    "guard hasLoadedMedia" in player
+    and "deactivateAudioSession()" in player,
+    "remote seek/audio session stop hardening is missing",
 )
 
 require(
@@ -206,6 +226,8 @@ for required in [
     "hostToken",
     "dismantleUIView",
     "removeFromSuperview",
+    "context",
+    ".coordinator",
 ]:
     require(required in player_view, f"persistent SwiftUI host invariant missing: {required}")
 
@@ -292,6 +314,14 @@ require(
     and '"/v1/relay/"' in client,
     "client does not pin API/relay traffic to one non-redirecting resolver origin",
 )
+
+require(
+    "import Darwin" in client
+    and "inet_pton(" in client
+    and "AF_INET6" in client
+    and "isIPv4Mapped" in client,
+    "client LAN policy still relies on unsafe IPv6 string heuristics",
+)
 require(
     "refreshProvider:" in view
     and "bearerToken:" in view,
@@ -326,6 +356,7 @@ for required in [
     "enforce_relay_capacity",
     "UPSTREAM_READ_TIMEOUT",
     "is_relayable_format",
+    "validated_upstream_url",
     "is_local_network_host",
     "resolved_public_base",
     "include_conditionals=False",
@@ -338,6 +369,23 @@ for required in [
 require(
     "read=None" not in resolver,
     "upstream media read timeout is still unbounded",
+)
+
+require(
+    "follow_redirects=False" in resolver
+    and "urljoin(" in resolver
+    and "too many upstream media redirects" in resolver
+    and 'key.lower() == "cookie"' in resolver,
+    "upstream redirects are not manually bounded/validated or can leak cookies",
+)
+require(
+    'headers["Accept-Encoding"] = "identity"' in resolver,
+    "relay no longer forces identity encoding for byte-range correctness",
+)
+require(
+    "peer_host = request.client.host" in resolver
+    and "is_local_network_host(peer_host)" in resolver,
+    "LAN deployment trusts the Host header without validating the actual peer",
 )
 require(
     "aiter_bytes" not in resolver,
@@ -370,6 +418,15 @@ require(
     'public VCD_PUBLIC_BASE_URL requires VCD_API_TOKEN' in resolver
     and "base = resolved_public_base(request)" in resolver,
     "public deployment is not authenticated/validated before extraction",
+)
+
+require(
+    "VCD_MAX_VIDEO_HEIGHT" in resolver
+    and "VCD_MAX_VIDEO_FPS" in resolver
+    and "constrain_video" in resolver
+    and '"max_video_height"' in resolver
+    and '"max_video_fps"' in resolver,
+    "resolver source-cost limits are missing from selection/health",
 )
 require(
     'if is_local_network_host(host):' in resolver,
@@ -423,12 +480,12 @@ require(
 )
 
 if errors:
-    print("V9.2 HARDENED AUDIT FAILED")
+    print("V9.3 HARDENED AUDIT FAILED")
     for error in errors:
         print(f" - {error}")
     sys.exit(1)
 
-print("V9.2 HARDENED AUDIT PASSED")
+print("V9.3 HARDENED AUDIT PASSED")
 print(" - no WebKit/AVPlayer/OpenGL ES playback path in V9 target")
 print(" - libmpv render API is serialized off MainActor and feeds a persistent AVSampleBufferDisplayLayer")
 print(" - SwiftUI host recreation cannot tear down the active PiP render surface")
