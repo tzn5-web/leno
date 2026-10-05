@@ -56,6 +56,14 @@ FEATURE_SOURCE_EVIDENCE = {
         "loadWithPlayerTransition:playbackConfig:",
         "VancedLastPlaybackRate",
     ],
+    "quality_memory_controls": [
+        "YTVideoQualitySwitchOriginalController",
+        "YTVideoQualitySwitchRedesignedController",
+        "singleVideo:didSelectVideoFormat:",
+        "MLQuickMenuVideoQualitySettingFormatConstraint",
+        "setVideoFormatConstraint:",
+        "VancedLastVideoQualityLabel",
+    ],
 }
 
 
