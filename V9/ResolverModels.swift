@@ -66,6 +66,7 @@ struct BrowseVideo:
     let channelID: String?
     let duration: Double?
     let viewCount: Int?
+    let viewCountText: String?
     let thumbnailURL: URL
     let isLive: Bool
 }
@@ -136,4 +137,14 @@ struct BrowseResponse:
                     .items
             )
     }
+}
+
+
+struct BrowsePage:
+    Equatable
+{
+    let title: String
+    let channelID: String?
+    let items: [BrowseVideo]
+    let hasMore: Bool
 }
