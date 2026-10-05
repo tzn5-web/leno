@@ -409,6 +409,17 @@ def browse_video_entry(
     if not CHANNEL_ID_RE.fullmatch(channel_id):
         channel_id = ""
 
+    is_live = bool(
+        raw.get("is_live")
+        or str(raw.get("live_status") or "").lower()
+        in {"is_live", "is_upcoming"}
+    )
+
+    # The current relay intentionally supports direct HTTP(S) media only.
+    # Do not advertise a card that the client cannot actually play.
+    if is_live:
+        return None
+
     duration_raw = raw.get("duration")
     try:
         duration = (
@@ -437,11 +448,7 @@ def browse_video_entry(
         "duration": duration,
         "viewCount": view_count,
         "thumbnailURL": f"{base}/v1/thumb/{video_id}",
-        "isLive": bool(
-            raw.get("is_live")
-            or str(raw.get("live_status") or "").lower()
-            in {"is_live", "is_upcoming"}
-        ),
+        "isLive": False,
     }
 
 
@@ -807,7 +814,7 @@ async def home(request: Request) -> dict[str, Any]:
 
     if not items:
         items = await extract_browse(
-            "ytsearch24:popular videos",
+            f"ytsearch{BROWSE_LIMIT}:popular videos",
             base=base,
         )
 
