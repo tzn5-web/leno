@@ -44,6 +44,10 @@ LEGACY_TOKENS = [
     "BackgroundAudioHandoff",
     "PlaybackBridgeScript",
     "NativePlaybackController",
+    "MPRemoteCommandCenter",
+    "applicationWillResignActive",
+    "applicationDidEnterBackground",
+    "AVPlayer",
 ]
 
 CODE_SUFFIXES = {".m", ".mm", ".xm", ".x", ".swift", ".sh", ".py"}
