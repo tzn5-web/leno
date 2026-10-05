@@ -83,6 +83,10 @@ BINARY_EVIDENCE = {
         ["setVideoFormatConstraint:"],
         ["qualityLabel"],
     ],
+    "ui_shorts_controls": [
+        ["YTIElementRenderer"],
+        ["elementData"],
+    ],
 }
 
 FEATURE_SOURCE_EVIDENCE = {
@@ -100,6 +104,11 @@ FEATURE_SOURCE_EVIDENCE = {
         "MLQuickMenuVideoQualitySettingFormatConstraint",
         "setVideoFormatConstraint:",
         "VancedLastVideoQualityLabel",
+    ],
+    "ui_shorts_controls": [
+        "YTIElementRenderer",
+        "elementData",
+        "VancedHideShortsInFeeds",
     ],
 }
 
