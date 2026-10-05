@@ -67,6 +67,13 @@ for required in [
     "AudioOnlyFormat",
     "streamingURL",
     "V9NativeYouTubeClient",
+    "TVHTML5_SIMPLY_EMBEDDED_PLAYER",
+    "installTVHTML5Overrides",
+    "ensureVisitorData",
+    "tvHtml",
+    "progressiveFormats",
+    "adaptiveFormats",
+    "discoveryState",
 ]:
     require(required in native, f"native YouTube invariant missing: {required}")
 
@@ -76,6 +83,12 @@ require("@StateObject" in root and "V9NativeYouTubeClient()" in root, "native cl
 require(
     "try await native" in root and ".resolve(" in root,
     "playback does not resolve natively first",
+)
+require(
+    "resolveRefresh" in root
+    and "try await resolver" in root
+    and "return try await native" in root,
+    "playback recovery does not use optional resolver as an independent fallback",
 )
 require(
     "fallbackEndpoint" in root and "guard !endpoint" in root,
@@ -217,6 +230,24 @@ require(
     and "info.streamingURL" in native
     and '"m3u8"' in native,
     "native live HLS path missing",
+)
+require(
+    "TVHTML5_SIMPLY_EMBEDDED_PLAYER" in native
+    and "customHeaders" in native
+    and ".videoInfos" in native,
+    "PoT-resistant TVHTML5 native fallback is missing",
+)
+require(
+    "adaptiveFormats:" in native
+    and "progressiveFormats:" in native
+    and '"embedded"' in native,
+    "native resolver can mix muxed/progressive video with a second audio stream",
+)
+require(
+    "discoveryState" in native
+    and "discoveryFallback(" in native
+    and "continuationToken" in native,
+    "anonymous Home fallback is not paginated",
 )
 
 # Native VOD format policy.
