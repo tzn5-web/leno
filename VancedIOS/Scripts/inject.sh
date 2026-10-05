@@ -16,7 +16,7 @@ DIST="${VANCEDIOS_DIST:-$ROOT/dist/vanced-ios}"
 
 python3 "$ROOT/VancedIOS/Scripts/audit.py"
 
-for f in youmod.deb youpip.deb return-youtube-dislikes.deb vancedios-core.deb; do
+for f in youmod.deb ytvideooverlay.deb youpip.deb ytuhd.deb return-youtube-dislikes.deb vancedios-core.deb; do
   test -f "$DIST/$f" || {
     echo "Missing $DIST/$f. Run build_patches.sh first." >&2
     exit 1
@@ -45,7 +45,9 @@ command -v cyan >/dev/null || {
 
 cyan -i "$BASE_IPA" -o "$OUTPUT" -uwef \
   "$DIST/youmod.deb" \
+  "$DIST/ytvideooverlay.deb" \
   "$DIST/youpip.deb" \
+  "$DIST/ytuhd.deb" \
   "$DIST/return-youtube-dislikes.deb" \
   "$DIST/vancedios-core.deb" \
   -b "$BUNDLE_ID" \
@@ -63,7 +65,9 @@ with zipfile.ZipFile(p) as z:
     names = [n.lower() for n in z.namelist()]
     groups = {
         "YouMod": ("youmod",),
+        "YTVideoOverlay": ("ytvideooverlay",),
         "YouPiP": ("youpip",),
+        "YTUHD": ("ytuhd",),
         "ReturnYouTubeDislikes": ("youtubedislikes", "return-youtube-dislikes", "ryd"),
         "VancedIOSCore": ("vancedioscore",),
     }
