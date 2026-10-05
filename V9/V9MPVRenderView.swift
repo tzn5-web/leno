@@ -303,6 +303,34 @@ final class V9MPVRenderView:
             return
         }
 
+        // libmpv's guaranteed "bgr0" software format leaves the fourth
+        // byte undefined/zero. AVSampleBufferDisplayLayer receives BGRA,
+        // so force the alpha channel opaque before enqueuing the frame.
+        let bytes =
+            baseAddress
+                .assumingMemoryBound(
+                    to:
+                        UInt8.self
+                )
+
+        for row in 0..<size.height {
+            let rowStart =
+                bytes.advanced(
+                    by:
+                        row *
+                        stride
+                )
+
+            for column in 0..<size.width {
+                rowStart[
+                    column *
+                    4 +
+                    3
+                ] =
+                    255
+            }
+        }
+
         enqueue(
             pixelBuffer,
             presentationTime:
@@ -321,10 +349,8 @@ final class V9MPVRenderView:
         let scale =
             max(
                 1,
-                window?
-                    .screen
-                    .scale ??
-                UIScreen.main.scale
+                traitCollection
+                    .displayScale
             )
 
         var width =
