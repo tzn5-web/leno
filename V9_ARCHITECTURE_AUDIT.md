@@ -1,21 +1,21 @@
-# YoutubeVcd V9.2 — as-built architecture audit
+# YoutubeVcd V9.3 — as-built architecture audit
 
-This document describes the code that actually ships in the V9.2 Media Lab.
+This document describes the code that actually ships in the V9.3 Media Lab.
 It deliberately separates implemented behavior from future full-client work.
 
 ## Release identity
 
 - App: YoutubeVcd V9
-- Version: 0.9.2
-- Build: 4
+- Version: 0.9.3
+- Build: 5
 - iOS deployment target: 17.0
 - Playback engine: libmpv through MPVKit 1.0.1 non-GPL product
 - Resolver: VcdResolver 0.3.0-lab
 - Resolver extraction stack: yt-dlp 2026.08.19 + yt-dlp-ejs 0.8.0 + Deno 2.9.7
 
-## What V9.2 is
+## What V9.3 is
 
-V9.2 is a native media-foundation laboratory. It proves the playback,
+V9.3 is a native media-foundation laboratory. It proves the playback,
 background, remote-control, resolver and PiP architecture before a complete
 YouTube-style browsing UI is built.
 
@@ -36,7 +36,7 @@ screens. Those are later client work and must not be described as implemented.
 
 ## Playback architecture
 
-V9.2 contains no WKWebView or YouTube web player in the V9 target and no
+V9.3 contains no WKWebView or YouTube web player in the V9 target and no
 AVPlayer playback engine.
 
 One persistent `mpv_handle` owns playback. Separate YouTube video/audio URLs
@@ -47,14 +47,15 @@ Relevant modules:
 
 - `V9PlayerService` — persistent mpv core, playback intent, audio session,
   lock-screen controls, stream recovery and lifecycle.
-- `V9MPVRenderView` — libmpv software rendering into pooled CVPixelBuffers.
-- `V9MPVPiPBridge` — native PiP using the same AVSampleBufferDisplayLayer.
+- `V9MPVRenderCore` — serialized libmpv render-context access outside MainActor.
+- `V9MPVRenderView` — dedicated serial render queue, pooled CVPixelBuffers and the persistent AVSampleBufferDisplayLayer.
+- `V9MPVPiPBridge` — native PiP using that same persistent AVSampleBufferDisplayLayer.
 - `VcdResolverClient` — resolver health/resolve client and transport checks.
 - `ResolverTokenStore` — bearer token storage in iOS Keychain.
 
 ## Renderer: software by design
 
-OpenGL ES was removed from V9.2.
+OpenGL ES was removed from V9.3.
 
 libmpv uses `MPV_RENDER_API_TYPE_SW` with:
 
@@ -70,8 +71,11 @@ The visible player and PiP use one AVSampleBufferDisplayLayer. There is no
 second playback engine and no foreground/background engine handoff.
 
 Rendering is bounded to roughly a 1280x720 pixel budget and at most 30 visual
-frames per second. This is a correctness-first path; physical-device CPU,
-thermal and battery performance still require measurement.
+frames per second. libmpv render calls run on a dedicated serial queue rather
+than MainActor, and the mpv `sw-fast` profile is enabled for the software
+output path. The resolver also prefers no more than 1080p/30fps input by
+default so the phone does not decode 4K/8K only to downscale it. Physical-device
+CPU, thermal and battery performance still require measurement.
 
 ## Background behavior
 
@@ -86,7 +90,7 @@ When the app goes to background without PiP:
   and stall audio;
 - the audio clock and transport remain owned by the same MPV instance.
 
-For automatic PiP transitions, V9.2 keeps software frames flowing briefly
+For automatic PiP transitions, V9.3 keeps software frames flowing briefly
 while iOS transitions the app to background. If PiP does not become active,
 visual rendering is stopped after the bounded grace window.
 
@@ -150,14 +154,16 @@ PiP is only enabled in the UI after iOS reports it possible.
 
 ## SwiftUI lifetime
 
-The mpv core lives in `@StateObject V9PlayerService`, not in the UIView.
+The mpv core and the single `V9MPVRenderView` live persistently under
+`@StateObject V9PlayerService`. SwiftUI creates only an ephemeral host view.
 
-If SwiftUI recreates the V9MPVRenderView, the new view is explicitly rebound
-to the already-existing persistent mpv/render context and the PiP bridge is
-reconfigured around the new sample-buffer layer.
+When navigation recreates the SwiftUI host, the same render view and the same
+AVSampleBufferDisplayLayer are reparented into the new host. A UUID host token
+prevents a stale `dismantleUIView` callback from pausing a newer host. This
+keeps the PiP content source stable while the visible UI changes.
 
-This is compile-verified, but repeated destroy/recreate behavior still needs a
-physical-device gate.
+This is compile-verified, but repeated navigation/reparenting while PiP is
+active still needs a physical-device gate.
 
 ## Stream recovery
 
@@ -181,7 +187,7 @@ Two recovery layers exist:
 
 A successful `MPV_EVENT_FILE_LOADED` resets the future retry budget.
 
-V9.2 currently preserves video ID, time and play/pause intent. A future
+V9.3 currently preserves video ID, time and play/pause intent. A future
 full-client quality/audio-language/rate preference layer is not implemented.
 
 ## Resolver security and reliability
@@ -203,8 +209,15 @@ VcdResolver 0.3.0-lab:
 - marks relay responses `private, no-store`;
 - sanitizes yt-dlp failures returned to API clients;
 - supports optional cookies;
-- supports optional resolve authentication;
-- requires an explicit trusted `VCD_PUBLIC_BASE_URL` for non-LAN deployment.
+- supports optional resolve authentication on LAN;
+- requires HTTPS, an explicit trusted `VCD_PUBLIC_BASE_URL`, and
+  `VCD_API_TOKEN` for public deployment;
+- validates the actual yt-dlp upstream URL and rejects loopback/private
+  upstream targets;
+- bounds preferred source media to 1080p/30fps by default;
+- requests upstream media with `Accept-Encoding: identity` so Range and
+  Content-Length describe original media bytes;
+- terminates yt-dlp if a resolver request is cancelled.
 
 The iOS client additionally:
 
@@ -212,19 +225,23 @@ The iOS client additionally:
 - permits plaintext HTTP only to a local/private host;
 - never sends a resolver bearer token over HTTP;
 - validates every returned relay URL before handing it to MPV;
-- rejects HTTPS-to-HTTP relay downgrade.
+- rejects HTTPS-to-HTTP relay downgrade;
+- requires relay URLs to stay on the resolver's same scheme/host/port and
+  `/v1/relay/` path;
+- uses an ephemeral URLSession and refuses resolver API redirects so bearer
+  credentials cannot be redirected to another origin.
 
 The bearer token is stored in Keychain, not UserDefaults.
 
 ## Direct-stream boundary
 
-V9.2 intentionally relays only directly addressable HTTP/HTTPS media formats.
+V9.3 intentionally relays only directly addressable HTTP/HTTPS media formats.
 
 HLS/m3u8 and fragment-list formats are rejected because a correct HLS/DASH
 proxy must rewrite every nested segment/key/map URL. Passing a manifest through
 unchanged would leak upstream URLs and make expiry/header refresh unreliable.
 
-Therefore some live streams are **not supported in V9.2**. This is a known
+Therefore some live streams are **not supported in V9.3**. This is a known
 boundary, not a claimed working feature.
 
 ## Content requiring authentication
@@ -243,12 +260,12 @@ The V9 target never embeds the YouTube web player. For successfully resolved
 direct media, playback therefore does not include the embedded YouTube player
 ad UI.
 
-V9.2 does not implement SponsorBlock or automatic removal of creator-inserted
+V9.3 does not implement SponsorBlock or automatic removal of creator-inserted
 sponsor segments.
 
 ## CI gates
 
-Every V9.2 PR build runs:
+Every V9.3 PR build runs:
 
 1. structural architecture audit;
 2. Python syntax validation;
@@ -280,12 +297,13 @@ Before calling the media foundation device-proven, test on a real iPhone:
 9. headphones disconnect safety pause;
 10. repeated PiP enter/exit;
 11. PiP + lock/unlock;
-12. repeated player-view destroy/recreate while the MPV service survives;
+12. repeated SwiftUI host removal/recreation while the persistent render
+    surface and MPV service survive;
 13. CPU, thermal and battery observation during software-render PiP.
 
 ## Not release-complete yet
 
-The following are intentionally outside the V9.2 Media Lab and must not be
+The following are intentionally outside the V9.3 Media Lab and must not be
 reported as finished:
 
 - Home feed;
