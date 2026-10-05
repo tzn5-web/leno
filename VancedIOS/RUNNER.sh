@@ -5,6 +5,9 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 REPORTS="$ROOT/reports"
 INPUT="${1:-}"
 mkdir -p "$REPORTS"
+rm -f "$REPORTS/STAGE_AUDIT.json" "$REPORTS/CORE_BUILD.json" \
+      "$REPORTS/PREBUILD_IPA_AUDIT.json" "$REPORTS/POSTBUILD_IPA_AUDIT.json" \
+      "$REPORTS/PACKAGE_BUILD.json" "$REPORTS/FINAL_REPORT.json"
 
 stage_rc=0
 build_rc=0
