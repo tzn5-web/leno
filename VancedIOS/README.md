@@ -1,62 +1,120 @@
 # VancedIOS
 
-VancedIOS is the iOS analogue of the Vanced/ReVanced architecture.
+VancedIOS is an iOS Vanced/ReVanced-style patch layer for the official YouTube
+application. It is **not a standalone YouTube clone** and does not use the old
+WKWebView, AVPlayer handoff, MPV client, Resolver, or V9 playback architecture.
 
-It is **not a standalone YouTube clone**. The product is a modular patch layer
-that is injected into a user-supplied, decrypted YouTube for iOS application.
-The official YouTube UI, account model, Home/Search/Subscriptions/Comments and
-Google services remain the host application. VancedIOS adds behavior through
-independent tweak modules.
+The user supplies a decrypted YouTube IPA. VancedIOS builds immutable, pinned
+tweak modules, injects them into that host, and validates the input and output
+before an IPA is accepted.
+
+## Supported host contract
+
+The current compatibility baseline is intentionally strict:
+
+- official input bundle: `com.google.ios.youtube`;
+- tested YouTube version: **21.18.4**;
+- device architecture: **arm64**;
+- minimum VancedIOS target: **iOS 15.0**;
+- input Mach-O must be decrypted (`cryptid == 0`);
+- the host must expose background audio capability;
+- the repository never downloads or commits a YouTube IPA.
+
+A different YouTube version is treated as unsupported until its hooks are
+re-audited and the manifest is deliberately moved to that version.
 
 ## Architecture
 
-1. **Host** — the user supplies a decrypted YouTube.ipa/YouTube.app.
-2. **Patch substrate** — pinned YouMod provides ad filtering, background
-   playback, SponsorBlock, player/UI hooks and settings.
-3. **PiP integration** — pinned YouPiP enables native Picture in Picture.
-4. **Dislike integration** — pinned Return-YouTube-Dislikes.
-5. **VancedIOSCore** — our small integration layer registers Vanced-style
-   defaults, validates that the required tweak layers are loaded, and carries
-   compatibility/diagnostic metadata.
-6. **Injector** — cyan/pyzule injects the generated deb/dylib payloads into the
-   user-provided IPA. The repository never downloads or redistributes YouTube.
-7. **Audit** — verifies dependency pins, build identity and that no proprietary
-   YouTube binary is committed to the repository.
+1. **Host** — user-supplied decrypted YouTube IPA.
+2. **YouMod** — ad filtering, background playback, SponsorBlock, persistent
+   quality/speed controls, player and Shorts/UI behavior.
+3. **YTVideoOverlay** — shared player overlay substrate.
+4. **YouPiP** — native Picture in Picture integration.
+5. **YTUHD** — quality/codec extension for sideloaded YouTube.
+6. **Return YouTube Dislikes** — dislike counter integration.
+7. **VancedIOSCore** — a deliberately small integration/defaults/diagnostic
+   layer. It does not install a second lock-screen command center, audio
+   session, or application-background playback engine.
+8. **Cyan / pyzule-rw** — jailed IPA injection/repackaging.
+9. **Stage runner** — static contract audit, source-hook audit, deterministic
+   build, package/Mach-O audit, and optional host/injection audit.
 
-## Default behavior
+All external source repositories are pinned to exact 40-character commits in
+`manifest.json`.
 
-VancedIOSCore registers the following defaults without permanently overriding
-user choices:
+## Required behavior
 
-- background playback enabled;
-- SponsorBlock enabled;
-- SponsorBlock button/notifications/markers enabled;
-- native PiP enabled;
-- YouMod owns the ad-blocking hooks (player ads, ad slots, ads coordinator,
-  feed ad renderers and promo surfaces);
-- original YouTube UI/account/feed/navigation remain intact.
+The architecture preserves the original YouTube navigation, account, Home,
+Search, Subscriptions, comments and player pipeline while adding:
 
-Users can still change settings in YouTube/YouMod after first launch.
+- ad filtering;
+- background playback;
+- native PiP;
+- SponsorBlock;
+- Return YouTube Dislike;
+- persistent quality and playback-speed settings;
+- player/Shorts conveniences exposed by the pinned patch layer.
 
-## Build products
+The official YouTube media session remains authoritative. This is deliberate:
+the previous custom-player approaches created competing playback authorities
+and caused pause/resume, lock/unlock and PiP regressions.
 
-The normal CI build produces tweak packages only:
+## Autonomous audit runner
 
-- `vancedios-core.deb`
-- `youmod.deb`
-- `youpip.deb`
-- `ryd.deb`
+Hostless build/audit:
 
-The manual IPA workflow requires the user to provide a direct URL to their own
-decrypted YouTube IPA. That file is downloaded only for the job, injected,
-validated, packaged as an artifact, then removed by the ephemeral runner.
+```bash
+python3 VancedIOS/Scripts/stage_runner.py \
+  --build \
+  --report-dir artifacts/vanced-ios-stage-audit
+```
 
-## Why this replaces the old native client
+Validate a user-supplied host without injection:
 
-The previous Swift/MPV client attempted to recreate YouTube. That loses too
-many official surfaces and continuously chases YouTube extraction changes.
+```bash
+python3 VancedIOS/Scripts/stage_runner.py \
+  --ipa /path/to/decrypted-YouTube.ipa
+```
 
-This architecture patches the actual YouTube iOS application. It therefore
-inherits the official Home, Search, subscriptions, channels, comments,
-account/login UI and player pipeline, while our modules modify behavior around
-them—the closest iOS equivalent to Vanced/ReVanced.
+Full injection plus postflight validation:
+
+```bash
+python3 VancedIOS/Scripts/stage_runner.py \
+  --ipa /path/to/decrypted-YouTube.ipa \
+  --inject \
+  --output /path/to/VancedIOS.ipa \
+  --bundle-id com.google.ios.youtube \
+  --display-name YouTube
+```
+
+The runner emits `report.json`, `report.md`, command logs and package
+SHA-256 values. Hard failures make the runner exit non-zero. A hostless run can
+only finish as `PASS_HOSTLESS`; only a real supplied IPA can reach
+`PASS_HOST_VALIDATED` or `PASS_FULL`.
+
+## Validation gates
+
+The runner and scripts check, among other things:
+
+- Python and shell syntax;
+- official host bundle/version/architecture/background contract;
+- decrypted Mach-O state;
+- exact dependency revisions, including Theos, SDK and headers;
+- presence of upstream ad/background/SponsorBlock/PiP/quality/speed hooks;
+- no competing media/lifecycle authority in VancedIOSCore;
+- deterministic rootless package production;
+- exact six-package output and arm64 dylibs;
+- injected dylib presence and `LC_LOAD_DYLIB` references;
+- GitHub Actions least privilege and immutable action revisions;
+- absence of proprietary YouTube IPA/app binaries in the repository.
+
+## GitHub Actions
+
+- `VancedIOS Stage Audit` runs the full hostless audit/build on the stage
+  branch and pull requests into `vanced-ios-patcher`.
+- `VancedIOS Patch Build` builds release patch artifacts through the same
+  runner.
+- `VancedIOS Inject User IPA` accepts a user-provided decrypted host URL,
+  builds the pinned patch set, injects it, runs strict postflight validation,
+  uploads the validated unsigned IPA artifact, then removes host/generated IPA
+  files from the ephemeral runner.
