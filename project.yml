@@ -8,6 +8,9 @@ packages:
   MPVKit:
     url: https://github.com/yattee/MPVKit.git
     exactVersion: 1.0.1
+  YouTubeKit:
+    url: https://github.com/b5i/YouTubeKit.git
+    revision: 236264622aee6f60b6dd7731a629cc4be3f34bc1
 
 settings:
   base:
@@ -25,6 +28,8 @@ targets:
     dependencies:
       - package: MPVKit
         product: MPVKit
+      - package: YouTubeKit
+        product: YouTubeKit
     info:
       path: Leno/Info.plist
       properties:
@@ -34,7 +39,7 @@ targets:
         UILaunchScreen: {}
         UIBackgroundModes:
           - audio
-        NSLocalNetworkUsageDescription: "YoutubeVcd V9 folosește VcdResolver din rețeaua locală pentru redare media."
+        NSLocalNetworkUsageDescription: "YoutubeVcd poate folosi opțional un VcdResolver din rețeaua locală ca fallback."
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         UISupportedInterfaceOrientations:
@@ -45,8 +50,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.tzn5web.leno
         PRODUCT_NAME: YoutubeVcd
-        MARKETING_VERSION: "0.10.0"
-        CURRENT_PROJECT_VERSION: "6"
+        MARKETING_VERSION: "0.11.0"
+        CURRENT_PROJECT_VERSION: "7"
         TARGETED_DEVICE_FAMILY: "1"
         SUPPORTS_MACCATALYST: NO
         GENERATE_INFOPLIST_FILE: NO
