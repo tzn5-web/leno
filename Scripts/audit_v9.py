@@ -106,7 +106,7 @@ require(
     "secondary native fallback is not the real watch-page/player.js decipher path",
 )
 require(
-    "fetchStreamingInfosWithDownloadFormatsThrowing" not in playback_worker,
+    ".fetchStreamingInfosWithDownloadFormatsThrowing(" not in playback_worker,
     "stale iOS Innertube fallback returned; it can require GVS PO tokens",
 )
 require(
