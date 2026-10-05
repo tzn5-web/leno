@@ -96,8 +96,8 @@ require(
     "obsolete TVHTML5_SIMPLY_EMBEDDED_PLAYER path returned",
 )
 require(
-    ".videoInfos\n" not in playback_worker
-    and "customHeaders[\n                .videoInfos\n" not in playback_worker,
+    "customHeaders[\n                .videoInfos\n" not in playback_worker
+    and "VideoInfosResponse\n                    .sendThrowingRequest" not in playback_worker,
     "TV Innertube JSON was wired back to the HTML .videoInfos decoder",
 )
 require(
