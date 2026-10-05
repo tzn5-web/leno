@@ -1,0 +1,122 @@
+name: Build Phaser360 Pre-Audio Gate
+
+on:
+  push:
+    branches:
+      - phaser360-audio-bus-mod
+    paths:
+      - 'Phaser360/preaudio-gate/**'
+      - '.github/workflows/phaser360-preaudio-gate.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: microsoft/setup-msbuild@v2
+        with:
+          msbuild-architecture: x64
+
+      - name: Build HDA read-only probe
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          msbuild 'Phaser360/preaudio-gate/P360HdaReadProbe.vcxproj' /m /t:Build /p:Configuration=Release /p:Platform=x64 /p:WindowsTargetPlatformVersion=10.0.26100.0 /p:SignMode=Off
+          if($LASTEXITCODE){throw "MSBuild failed: $LASTEXITCODE"}
+
+      - name: Stage package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $stage='P360_PREAUDIO_GATE_PACKAGE'
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          $built='Phaser360/preaudio-gate/x64/Release'
+          foreach($name in @('P360HdaReadProbe.sys','P360HdaReadProbe.inf')){
+            $src=Join-Path $built $name
+            if(!(Test-Path $src)){throw "Missing $src"}
+            Copy-Item $src $stage
+          }
+          foreach($name in @('RUN_P360_PREAUDIO_GATE.ps1','START_PREAUDIO_GATE.cmd','README.md')){
+            Copy-Item (Join-Path 'Phaser360/preaudio-gate' $name) $stage
+          }
+
+      - name: Static safety gate
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $tokens=$null; $errors=$null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            'P360_PREAUDIO_GATE_PACKAGE/RUN_P360_PREAUDIO_GATE.ps1',
+            [ref]$tokens,[ref]$errors)
+          if($errors.Count){
+            $errors | Format-List | Out-String | Write-Host
+            throw 'PowerShell 5.1 parser errors'
+          }
+          Write-Host 'PS5.1_PARSE=PASS'
+
+          $src=Get-Content 'Phaser360/preaudio-gate/P360HdaReadProbe.c' -Raw
+          foreach($forbidden in @(
+            'AllocateRenderDmaEngine\s*\(',
+            'AllocateCaptureDmaEngine\s*\(',
+            'SetDmaEngineState\s*\(',
+            'MmMapIoSpace\s*\(',
+            'WRITE_REGISTER_',
+            'PrepareDSP\s*\(',
+            'TriggerDSP\s*\('
+          )){
+            if($src -match $forbidden){throw "Forbidden active/audio operation: $forbidden"}
+          }
+          foreach($required in @(
+            'TransferCodecVerbs',
+            'VerbId=0xF00',
+            'Data=0x00',
+            'GUID_HDAUDIO_BUS_INTERFACE'
+          )){
+            if($src -notmatch [regex]::Escape($required)){throw "Required read-only proof element missing: $required"}
+          }
+
+          $runner=Get-Content 'P360_PREAUDIO_GATE_PACKAGE/RUN_P360_PREAUDIO_GATE.ps1' -Raw
+          if($runner -notmatch 'AUDIO_PLAYBACK=NO'){throw 'No-audio final marker missing'}
+          if($runner -notmatch 'ACTIVE_IRQ_PROVED'){throw 'IRQ proof verdict missing'}
+          Write-Host 'STATIC_GATE=PASS_READ_ONLY_HDA_ACTIVE_IRQ'
+
+      - name: Test-sign HDA probe
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $stage=(Resolve-Path 'P360_PREAUDIO_GATE_PACKAGE').Path
+          $kit='C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0'
+          $sign=Join-Path $kit 'x64\signtool.exe'
+          $inf2cat=Join-Path $kit 'x86\Inf2Cat.exe'
+          if(!(Test-Path $sign) -or !(Test-Path $inf2cat)){throw 'WDK signing tools missing'}
+
+          $cert=New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=PHASER360 PreAudio Gate Test' -CertStoreLocation 'Cert:\CurrentUser\My' -KeyExportPolicy Exportable -NotAfter (Get-Date).AddYears(2)
+          Export-Certificate -Cert $cert -FilePath (Join-Path $stage 'P360_PREAUDIO_TEST.cer') | Out-Null
+
+          & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $stage 'P360HdaReadProbe.sys')
+          if($LASTEXITCODE){throw 'SYS signing failed'}
+
+          & $inf2cat /driver:$stage /os:10_X64
+          if($LASTEXITCODE){throw "Inf2Cat failed: $LASTEXITCODE"}
+
+          & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $stage 'P360HdaReadProbe.cat')
+          if($LASTEXITCODE){throw 'CAT signing failed'}
+
+          @(
+            "SIGN_MODE=TEST"
+            "SIGNER=$($cert.Subject)"
+            "THUMBPRINT=$($cert.Thumbprint)"
+          ) | Set-Content (Join-Path $stage 'SIGNATURE_STATUS.txt') -Encoding UTF8
+
+          Get-FileHash (Join-Path $stage 'P360HdaReadProbe.sys') -Algorithm SHA256 | Format-List | Out-File (Join-Path $stage 'HASHES.txt')
+          Get-FileHash (Join-Path $stage 'P360HdaReadProbe.cat') -Algorithm SHA256 | Format-List | Out-File (Join-Path $stage 'HASHES.txt') -Append
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: P360_PREAUDIO_GATE_ACTIVE_IRQ
+          path: P360_PREAUDIO_GATE_PACKAGE
+          if-no-files-found: error
