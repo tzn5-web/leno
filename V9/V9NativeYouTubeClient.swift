@@ -2,7 +2,8 @@ import Foundation
 import YouTubeKit
 
 @MainActor
-final class V9NativeYouTubeClient
+final class V9NativeYouTubeClient:
+    ObservableObject
 {
     enum NativeError:
         LocalizedError
