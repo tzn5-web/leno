@@ -28,7 +28,8 @@
       "state": "not_implemented"
     },
     "quality_memory_controls": {
-      "state": "not_implemented"
+      "state": "implemented_unvalidated",
+      "evidence": "VancedCore stores qualityLabel from original/redesigned quality controllers and reapplies MLQuickMenuVideoQualitySettingFormatConstraint after player load"
     },
     "speed_memory_controls": {
       "state": "implemented_unvalidated",
