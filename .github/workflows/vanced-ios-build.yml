@@ -30,6 +30,7 @@ jobs:
 
       - name: Build pinned patch layers
         run: |
+          set -euo pipefail
           chmod +x VancedIOS/Scripts/build_patches.sh
           VancedIOS/Scripts/build_patches.sh | tee vanced-ios-build.log
 
