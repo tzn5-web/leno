@@ -121,7 +121,7 @@ final class V9PlayerService:
         0
 
     private let maximumRefreshAttempts =
-        2
+        3
 
     private var pendingSeekAfterLoad:
         Double?
@@ -374,16 +374,9 @@ final class V9PlayerService:
         }
     }
 
-    func createRenderContext(
-        getProcAddress:
-            @escaping
-            @convention(c)
-            (
-                UnsafeMutableRawPointer?,
-                UnsafePointer<CChar>?
-            ) ->
-                UnsafeMutableRawPointer?
-    ) -> Bool {
+    func createRenderContext()
+        -> Bool
+    {
         if renderContext != nil {
             return true
         }
@@ -396,63 +389,42 @@ final class V9PlayerService:
             UnsafeMutableRawPointer(
                 mutating:
                     (
-                        MPV_RENDER_API_TYPE_OPENGL
+                        MPV_RENDER_API_TYPE_SW
                             as NSString
                     )
                     .utf8String
             )
 
-        var glParameters =
-            mpv_opengl_init_params(
-                get_proc_address:
-                    getProcAddress,
-                get_proc_address_ctx:
-                    nil
-            )
-
         var context:
             OpaquePointer?
 
+        var parameters:
+            [mpv_render_param] = [
+                mpv_render_param(
+                    type:
+                        MPV_RENDER_PARAM_API_TYPE,
+                    data:
+                        apiType
+                ),
+                mpv_render_param(
+                    type:
+                        MPV_RENDER_PARAM_INVALID,
+                    data:
+                        nil
+                )
+            ]
+
         let result =
-            withUnsafeMutablePointer(
-                to:
-                    &glParameters
-            ) {
-                glPointer in
+            parameters
+                .withUnsafeMutableBufferPointer {
+                    buffer in
 
-                var parameters:
-                    [mpv_render_param] = [
-                        mpv_render_param(
-                            type:
-                                MPV_RENDER_PARAM_API_TYPE,
-                            data:
-                                apiType
-                        ),
-                        mpv_render_param(
-                            type:
-                                MPV_RENDER_PARAM_OPENGL_INIT_PARAMS,
-                            data:
-                                glPointer
-                        ),
-                        mpv_render_param(
-                            type:
-                                MPV_RENDER_PARAM_INVALID,
-                            data:
-                                nil
-                        )
-                    ]
-
-                return parameters
-                    .withUnsafeMutableBufferPointer {
-                        buffer in
-
-                        mpv_render_context_create(
-                            &context,
-                            mpv,
-                            buffer.baseAddress
-                        )
-                    }
-            }
+                    mpv_render_context_create(
+                        &context,
+                        mpv,
+                        buffer.baseAddress
+                    )
+                }
 
         guard result >= 0,
               let context
@@ -519,82 +491,141 @@ final class V9PlayerService:
         ) != 0
     }
 
-    func render(
-        framebuffer:
-            Int32,
+    func renderSoftware(
         width:
             Int32,
         height:
-            Int32
-    ) {
+            Int32,
+        stride:
+            Int,
+        pixels:
+            UnsafeMutableRawPointer
+    ) -> Bool {
         guard let renderContext,
               width > 0,
-              height > 0
+              height > 0,
+              stride > 0
+        else {
+            return false
+        }
+
+        var size:
+            [Int32] = [
+                width,
+                height
+            ]
+
+        var strideValue =
+            stride
+
+        let format =
+            UnsafeMutableRawPointer(
+                mutating:
+                    (
+                        "bgr0"
+                            as NSString
+                    )
+                    .utf8String
+            )
+
+        var parameters:
+            [mpv_render_param] = []
+
+        let result =
+            size
+                .withUnsafeMutableBufferPointer {
+                    sizeBuffer in
+
+                    withUnsafeMutablePointer(
+                        to:
+                            &strideValue
+                    ) {
+                        stridePointer in
+
+                        parameters = [
+                            mpv_render_param(
+                                type:
+                                    MPV_RENDER_PARAM_SW_SIZE,
+                                data:
+                                    sizeBuffer
+                                        .baseAddress
+                            ),
+                            mpv_render_param(
+                                type:
+                                    MPV_RENDER_PARAM_SW_FORMAT,
+                                data:
+                                    format
+                            ),
+                            mpv_render_param(
+                                type:
+                                    MPV_RENDER_PARAM_SW_STRIDE,
+                                data:
+                                    stridePointer
+                            ),
+                            mpv_render_param(
+                                type:
+                                    MPV_RENDER_PARAM_SW_POINTER,
+                                data:
+                                    pixels
+                            ),
+                            mpv_render_param(
+                                type:
+                                    MPV_RENDER_PARAM_INVALID,
+                                data:
+                                    nil
+                            )
+                        ]
+
+                        return parameters
+                            .withUnsafeMutableBufferPointer {
+                                buffer in
+
+                                mpv_render_context_render(
+                                    renderContext,
+                                    buffer.baseAddress
+                                )
+                            }
+                    }
+                }
+
+        return result >= 0
+    }
+
+    func skipRenderFrame() {
+        guard let renderContext
         else {
             return
         }
 
-        var target =
-            mpv_opengl_fbo(
-                fbo:
-                    framebuffer,
-                w:
-                    width,
-                h:
-                    height,
-                internal_format:
-                    0x8058
-            )
-
-        var flipY:
+        var skip:
             Int32 = 1
 
-        withUnsafeMutablePointer(
-            to:
-                &target
-        ) {
-            targetPointer in
+        var parameters:
+            [mpv_render_param] = [
+                mpv_render_param(
+                    type:
+                        MPV_RENDER_PARAM_SKIP_RENDERING,
+                    data:
+                        &skip
+                ),
+                mpv_render_param(
+                    type:
+                        MPV_RENDER_PARAM_INVALID,
+                    data:
+                        nil
+                )
+            ]
 
-            withUnsafeMutablePointer(
-                to:
-                    &flipY
-            ) {
-                flipPointer in
+        _ =
+            parameters
+                .withUnsafeMutableBufferPointer {
+                    buffer in
 
-                var parameters:
-                    [mpv_render_param] = [
-                        mpv_render_param(
-                            type:
-                                MPV_RENDER_PARAM_OPENGL_FBO,
-                            data:
-                                targetPointer
-                        ),
-                        mpv_render_param(
-                            type:
-                                MPV_RENDER_PARAM_FLIP_Y,
-                            data:
-                                flipPointer
-                        ),
-                        mpv_render_param(
-                            type:
-                                MPV_RENDER_PARAM_INVALID,
-                            data:
-                                nil
-                        )
-                    ]
-
-                _ =
-                    parameters
-                        .withUnsafeMutableBufferPointer {
-                            buffer in
-
-                            mpv_render_context_render(
-                                renderContext,
-                                buffer.baseAddress
-                            )
-                        }
-            }
-        }
+                    mpv_render_context_render(
+                        renderContext,
+                        buffer.baseAddress
+                    )
+                }
     }
 
     func load(
@@ -603,10 +634,14 @@ final class V9PlayerService:
         refreshProvider:
             RefreshProvider? = nil
     ) {
-        if let refreshProvider {
-            self.refreshProvider =
-                refreshProvider
-        }
+        refreshTask?
+            .cancel()
+
+        refreshTask =
+            nil
+
+        self.refreshProvider =
+            refreshProvider
 
         currentVideoID =
             media.videoID
@@ -793,16 +828,6 @@ final class V9PlayerService:
 
         pipBridge?
             .requestToggle()
-    }
-
-    func updatePiPLayerFrame(
-        _ bounds:
-            CGRect
-    ) {
-        pipBridge?
-            .updateLayerFrame(
-                bounds
-            )
     }
 
     func handleScenePhase(
@@ -1045,6 +1070,18 @@ final class V9PlayerService:
                 setPause(
                     false
                 )
+            } else if desiredPlayback {
+                // The system explicitly did not grant automatic resume.
+                // Treat this as a stopped intent so scene activation cannot
+                // restart playback behind the user's back.
+                desiredPlayback =
+                    false
+
+                if hasLoadedMedia {
+                    setPause(
+                        true
+                    )
+                }
             }
 
         @unknown default:
@@ -1539,18 +1576,6 @@ final class V9PlayerService:
             return
         }
 
-        guard refreshAttempts <
-                maximumRefreshAttempts
-        else {
-            fail(
-                "Streamul nu a putut fi refăcut după \(maximumRefreshAttempts) încercări. \(detail)"
-            )
-            return
-        }
-
-        refreshAttempts +=
-            1
-
         let resumeAt =
             max(
                 0,
@@ -1574,40 +1599,77 @@ final class V9PlayerService:
                     return
                 }
 
-                do {
-                    let refreshed =
-                        try await refreshProvider(
-                            currentVideoID
+                var lastError:
+                    Error?
+
+                while self.refreshAttempts <
+                        self.maximumRefreshAttempts {
+                    self.refreshAttempts +=
+                        1
+
+                    let attempt =
+                        self.refreshAttempts
+
+                    if attempt > 1 {
+                        let delayNanoseconds:
+                            UInt64
+
+                        switch attempt {
+                        case 2:
+                            delayNanoseconds =
+                                800_000_000
+
+                        default:
+                            delayNanoseconds =
+                                2_000_000_000
+                        }
+
+                        try? await Task.sleep(
+                            nanoseconds:
+                                delayNanoseconds
+                        )
+                    }
+
+                    guard !Task
+                        .isCancelled
+                    else {
+                        return
+                    }
+
+                    do {
+                        let refreshed =
+                            try await refreshProvider(
+                                currentVideoID
+                            )
+
+                        guard !Task
+                            .isCancelled
+                        else {
+                            return
+                        }
+
+                        self.refreshTask =
+                            nil
+
+                        self.beginLoad(
+                            refreshed,
+                            resumeAt:
+                                resumeAt
                         )
 
-                    guard !Task
-                        .isCancelled
-                    else {
                         return
+                    } catch {
+                        lastError =
+                            error
                     }
-
-                    self.refreshTask =
-                        nil
-
-                    self.beginLoad(
-                        refreshed,
-                        resumeAt:
-                            resumeAt
-                    )
-                } catch {
-                    guard !Task
-                        .isCancelled
-                    else {
-                        return
-                    }
-
-                    self.refreshTask =
-                        nil
-
-                    self.fail(
-                        "Reîmprospătarea streamului a eșuat: \(error.localizedDescription)"
-                    )
                 }
+
+                self.refreshTask =
+                    nil
+
+                self.fail(
+                    "Reîmprospătarea streamului a eșuat după \(self.maximumRefreshAttempts) încercări: \(lastError?.localizedDescription ?? detail)"
+                )
             }
     }
 
@@ -1784,18 +1846,6 @@ final class V9PlayerService:
             }
         }
 
-        renderView.onFrame = {
-            [weak pipBridge] pixelBuffer,
-            presentationTime in
-
-            pipBridge?
-                .enqueueFrame(
-                    pixelBuffer,
-                    presentationTime:
-                        presentationTime
-                )
-        }
-
         updatePiPPlaybackState()
     }
 
@@ -1866,6 +1916,15 @@ final class V9PlayerService:
         _ message:
             String
     ) {
+        refreshTask?
+            .cancel()
+
+        refreshTask =
+            nil
+
+        desiredPlayback =
+            false
+
         state =
             .failed(
                 message
