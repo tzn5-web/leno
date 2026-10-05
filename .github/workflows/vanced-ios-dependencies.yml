@@ -1,0 +1,47 @@
+name: Vanced iOS Dependency Audit
+
+on:
+  push:
+    branches: [vanced-ios]
+    paths:
+      - 'VancedIOS/Config/dependencies.lock.json'
+      - 'VancedIOS/Scripts/bootstrap_theos.sh'
+      - 'VancedIOS/Scripts/fetch_dependencies.sh'
+      - 'VancedIOS/Scripts/dependency_audit.py'
+      - '.github/workflows/vanced-ios-dependencies.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: vanced-ios-dependencies-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Syntax checks
+        run: |
+          python3 -m py_compile VancedIOS/Scripts/dependency_audit.py
+          bash -n VancedIOS/Scripts/bootstrap_theos.sh
+          bash -n VancedIOS/Scripts/fetch_dependencies.sh
+
+      - name: Bootstrap pinned Theos
+        run: bash VancedIOS/Scripts/bootstrap_theos.sh
+
+      - name: Fetch exact dependency commits
+        run: bash VancedIOS/Scripts/fetch_dependencies.sh
+
+      - name: Audit dependency checkouts
+        run: python3 VancedIOS/Scripts/dependency_audit.py
+
+      - name: Upload dependency evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vanced-ios-dependency-audit
+          path: VancedIOS/reports/DEPENDENCY_AUDIT.json
+          if-no-files-found: warn
