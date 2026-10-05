@@ -89,8 +89,11 @@ final class V9PlayerService:
     private var mpv:
         OpaquePointer?
 
-    private var renderContext:
-        OpaquePointer?
+    private let renderCore =
+        V9MPVRenderCore()
+
+    private var hasRenderContext =
+        false
 
     private weak var renderView:
         V9MPVRenderView?
@@ -171,17 +174,8 @@ final class V9PlayerService:
                 )
             }
 
-            if let renderContext {
-                mpv_render_context_set_update_callback(
-                    renderContext,
-                    nil,
-                    nil
-                )
-
-                mpv_render_context_free(
-                    renderContext
-                )
-            }
+            renderCore
+                .shutdown()
 
             if let mpv {
                 mpv_set_wakeup_callback(
@@ -384,262 +378,37 @@ final class V9PlayerService:
     func createRenderContext()
         -> Bool
     {
-        if renderContext != nil {
-            return true
-        }
-
-        guard let mpv else {
-            return false
-        }
-
-        let apiType =
-            UnsafeMutableRawPointer(
-                mutating:
-                    (
-                        MPV_RENDER_API_TYPE_SW
-                            as NSString
-                    )
-                    .utf8String
-            )
-
-        var context:
-            OpaquePointer?
-
-        var parameters:
-            [mpv_render_param] = [
-                mpv_render_param(
-                    type:
-                        MPV_RENDER_PARAM_API_TYPE,
-                    data:
-                        apiType
-                ),
-                mpv_render_param(
-                    type:
-                        MPV_RENDER_PARAM_INVALID,
-                    data:
-                        nil
-                )
-            ]
-
-        let result =
-            parameters
-                .withUnsafeMutableBufferPointer {
-                    buffer in
-
-                    mpv_render_context_create(
-                        &context,
-                        mpv,
-                        buffer.baseAddress
-                    )
-                }
-
-        guard result >= 0,
-              let context
+        guard let mpv
         else {
             return false
         }
 
-        renderContext =
-            context
+        let created =
+            renderCore.create(
+                mpv:
+                    mpv
+            ) {
+                [weak self] in
 
-        mpv_render_context_set_update_callback(
-            context,
-            { raw in
-                guard let raw else {
-                    return
-                }
+                DispatchQueue
+                    .main
+                    .async {
+                        self?
+                            .renderView?
+                            .requestRender()
+                    }
+            }
 
-                let service =
-                    Unmanaged<
-                        V9PlayerService
-                    >
-                    .fromOpaque(
-                        raw
-                    )
-                    .takeUnretainedValue()
+        hasRenderContext =
+            created
 
-                Task {
-                    @MainActor in
-
-                    service
-                        .renderView?
-                        .requestRender()
-                }
-            },
-            Unmanaged
-                .passUnretained(
-                    self
-                )
-                .toOpaque()
-        )
-
-        return true
+        return created
     }
 
-    func consumeRenderUpdate()
-        -> Bool
+    func renderCoreReference()
+        -> V9MPVRenderCore
     {
-        guard let renderContext
-        else {
-            return false
-        }
-
-        let flags =
-            mpv_render_context_update(
-                renderContext
-            )
-
-        return (
-            flags &
-            UInt64(
-                MPV_RENDER_UPDATE_FRAME
-                    .rawValue
-            )
-        ) != 0
-    }
-
-    func renderSoftware(
-        width:
-            Int32,
-        height:
-            Int32,
-        stride:
-            Int,
-        pixels:
-            UnsafeMutableRawPointer
-    ) -> Bool {
-        guard let renderContext,
-              width > 0,
-              height > 0,
-              stride > 0
-        else {
-            return false
-        }
-
-        var size:
-            [Int32] = [
-                width,
-                height
-            ]
-
-        var strideValue =
-            stride
-
-        let format =
-            UnsafeMutableRawPointer(
-                mutating:
-                    (
-                        "bgr0"
-                            as NSString
-                    )
-                    .utf8String
-            )
-
-        var parameters:
-            [mpv_render_param] = []
-
-        let result =
-            size
-                .withUnsafeMutableBufferPointer {
-                    sizeBuffer in
-
-                    withUnsafeMutablePointer(
-                        to:
-                            &strideValue
-                    ) {
-                        stridePointer in
-
-                        parameters = [
-                            mpv_render_param(
-                                type:
-                                    MPV_RENDER_PARAM_SW_SIZE,
-                                data:
-                                    sizeBuffer
-                                        .baseAddress
-                            ),
-                            mpv_render_param(
-                                type:
-                                    MPV_RENDER_PARAM_SW_FORMAT,
-                                data:
-                                    format
-                            ),
-                            mpv_render_param(
-                                type:
-                                    MPV_RENDER_PARAM_SW_STRIDE,
-                                data:
-                                    stridePointer
-                            ),
-                            mpv_render_param(
-                                type:
-                                    MPV_RENDER_PARAM_SW_POINTER,
-                                data:
-                                    pixels
-                            ),
-                            mpv_render_param(
-                                type:
-                                    MPV_RENDER_PARAM_INVALID,
-                                data:
-                                    nil
-                            )
-                        ]
-
-                        return parameters
-                            .withUnsafeMutableBufferPointer {
-                                buffer in
-
-                                mpv_render_context_render(
-                                    renderContext,
-                                    buffer.baseAddress
-                                )
-                            }
-                    }
-                }
-
-        return result >= 0
-    }
-
-    func skipRenderFrame() {
-        guard let renderContext
-        else {
-            return
-        }
-
-        var skip:
-            Int32 = 1
-
-        withUnsafeMutablePointer(
-            to:
-                &skip
-        ) {
-            skipPointer in
-
-            var parameters:
-                [mpv_render_param] = [
-                    mpv_render_param(
-                        type:
-                            MPV_RENDER_PARAM_SKIP_RENDERING,
-                        data:
-                            skipPointer
-                    ),
-                    mpv_render_param(
-                        type:
-                            MPV_RENDER_PARAM_INVALID,
-                        data:
-                            nil
-                    )
-                ]
-
-            _ =
-                parameters
-                    .withUnsafeMutableBufferPointer {
-                        buffer in
-
-                        mpv_render_context_render(
-                            renderContext,
-                            buffer.baseAddress
-                        )
-                    }
-        }
+        renderCore
     }
 
     func load(
@@ -688,7 +457,7 @@ final class V9PlayerService:
             resumeAt
 
         guard mpv != nil,
-              renderContext != nil
+              hasRenderContext
         else {
             pendingMedia =
                 media
