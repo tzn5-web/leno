@@ -30,6 +30,13 @@ final class V9NativeYouTubeClient:
     private let playbackWorker =
         V9NativePlaybackWorker()
 
+    private let webClientVersion =
+        "2.20260708.00.00"
+
+    init() {
+        installCurrentWebClientVersion()
+    }
+
     private var homeState:
         HomeScreenResponse?
 
@@ -350,6 +357,70 @@ final class V9NativeYouTubeClient:
                 videoID:
                     videoID
             )
+    }
+
+    private func installCurrentWebClientVersion() {
+        let legacyVersion =
+            "2.20260213.01.00"
+
+        let headerTypes:
+            [HeaderTypes] = [
+                .home,
+                .search,
+                .channelHeaders,
+                .homeVideosContinuationHeader,
+                .searchContinuationHeaders,
+                .channelContinuationHeaders
+            ]
+
+        for type in
+            headerTypes {
+            var headers =
+                youtube.getHeaders(
+                    forType:
+                        type
+                )
+
+            headers.headers =
+                headers.headers.map {
+                    header in
+
+                    guard header.name
+                        .caseInsensitiveCompare(
+                            "X-Youtube-Client-Version"
+                        ) ==
+                        .orderedSame
+                    else {
+                        return header
+                    }
+
+                    return HeadersList
+                        .Header(
+                            name:
+                                header.name,
+                            content:
+                                webClientVersion
+                        )
+                }
+
+            headers.httpBody =
+                headers.httpBody?
+                    .map {
+                        $0.replacingOccurrences(
+                            of:
+                                legacyVersion,
+                            with:
+                                webClientVersion
+                        )
+                    }
+
+            youtube.replaceHeaders(
+                withHeaders:
+                    headers,
+                headersType:
+                    type
+            )
+        }
     }
 
     private func discoveryFallback(
