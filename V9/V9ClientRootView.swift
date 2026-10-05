@@ -261,7 +261,7 @@ struct V9ClientRootView:
                         {
                             id in
 
-                            try await resolveVideo(
+                            try await resolveRefresh(
                                 id:
                                     id,
                                 fallbackEndpoint:
@@ -323,4 +323,49 @@ struct V9ClientRootView:
                 )
         }
     }
+    private func resolveRefresh(
+        id:
+            String,
+        fallbackEndpoint:
+            String,
+        token:
+            String
+    ) async throws
+        -> ResolvedVideo
+    {
+        let endpoint =
+            fallbackEndpoint
+                .trimmingCharacters(
+                    in:
+                        .whitespacesAndNewlines
+                )
+
+        // A refresh is requested only after the currently loaded media has
+        // already failed. If an optional resolver exists, try its independent
+        // extraction path first instead of repeatedly returning the same
+        // native CDN route.
+        if !endpoint.isEmpty {
+            do {
+                return try await resolver
+                    .resolve(
+                        videoID:
+                            id,
+                        endpoint:
+                            endpoint,
+                        bearerToken:
+                            token
+                    )
+            } catch {
+                // Keep the app autonomous even if the optional backend is
+                // unavailable.
+            }
+        }
+
+        return try await native
+            .resolve(
+                videoID:
+                    id
+            )
+    }
+
 }
