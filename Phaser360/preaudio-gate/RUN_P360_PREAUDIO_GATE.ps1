@@ -102,7 +102,10 @@ function Read-Hda([bool]$trigger){
 function Get-HardwareId([string]$instanceId){
   try {
     $ids=@((Get-PnpDeviceProperty -InstanceId $instanceId -KeyName 'DEVPKEY_Device_HardwareIds' -ErrorAction Stop).Data)
-    $id=$ids | Where-Object {$_ -like 'HDAUDIO\FUNC_01&VEN_8086&DEV_280D*'} | Select-Object -First 1
+    $id=$ids | Where-Object {$_ -ieq 'HDAUDIO\FUNC_01&VEN_8086&DEV_280D'} | Select-Object -First 1
+    if(-not $id){
+      $id=$ids | Where-Object {$_ -like 'HDAUDIO\FUNC_01&VEN_8086&DEV_280D*'} | Select-Object -First 1
+    }
     if($id){return [string]$id}
   } catch {}
   return 'HDAUDIO\FUNC_01&VEN_8086&DEV_280D'
