@@ -1,0 +1,72 @@
+name: Build Phaser360 ADSP interface probe
+on:
+  push:
+    branches:
+      - phaser360-audio-bus-mod
+    paths:
+      - 'Phaser360/host-probe/**'
+      - '.github/workflows/phaser360-host-probe.yml'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+        with:
+          msbuild-architecture: x64
+      - name: Build diagnostic function driver
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          msbuild 'Phaser360/host-probe/P360AdspProbe.vcxproj' /m /t:Build /p:Configuration=Release /p:Platform=x64 /p:WindowsTargetPlatformVersion=10.0.26100.0 /p:SignMode=Off
+          if ($LASTEXITCODE -ne 0) { throw "MSBuild failed: $LASTEXITCODE" }
+      - name: Stage package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $dir='Phaser360/host-probe/x64/Release'
+          $stage='P360_ADSP_PROBE_PACKAGE'
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+          foreach($ext in @('sys','inf')){
+            $path=Join-Path $dir "P360AdspProbe.$ext"
+            if(!(Test-Path $path)){throw "Missing build output $path"}
+            Copy-Item $path $stage
+          }
+          Copy-Item 'Phaser360/host-probe/QUERY_PROBE.ps1' $stage
+          Copy-Item 'Phaser360/host-probe/README.md' $stage
+      - name: Audit script and target
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $t=$null; $e=$null
+          [void][System.Management.Automation.Language.Parser]::ParseFile('P360_ADSP_PROBE_PACKAGE/QUERY_PROBE.ps1',[ref]$t,[ref]$e)
+          if($e.Count){$e | Out-String | Write-Host; throw 'PowerShell 5.1 parser errors'}
+          $inf=Get-Content 'P360_ADSP_PROBE_PACKAGE/P360AdspProbe.inf' -Raw
+          if($inf -notmatch 'CSAUDIO\\ADSP&CTLR_VEN_8086&CTLR_DEV_3198') {throw 'Bad hardware ID'}
+          Write-Host 'STATIC_GATE=PASS'
+      - name: Test-sign SYS and CAT
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $stage=(Resolve-Path 'P360_ADSP_PROBE_PACKAGE').Path
+          $kit='C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0'
+          $sign=Join-Path $kit 'x64\signtool.exe'
+          $cat=Join-Path $kit 'x86\Inf2Cat.exe'
+          if(!(Test-Path $sign) -or !(Test-Path $cat)){throw 'Signing tools missing'}
+          $cert=New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=PHASER360 ADSP Probe Test' -CertStoreLocation 'Cert:\CurrentUser\My' -KeyExportPolicy Exportable -NotAfter (Get-Date).AddYears(2)
+          Export-Certificate -Cert $cert -FilePath (Join-Path $stage 'P360_ADSP_PROBE_TEST.cer') | Out-Null
+          & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $stage 'P360AdspProbe.sys')
+          if($LASTEXITCODE){throw 'SYS sign failed'}
+          & $cat /driver:$stage /os:10_X64
+          if($LASTEXITCODE){throw "Inf2Cat failed: $LASTEXITCODE"}
+          & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $stage 'P360AdspProbe.cat')
+          if($LASTEXITCODE){throw 'CAT sign failed'}
+          Get-FileHash (Join-Path $stage 'P360AdspProbe.sys') -Algorithm SHA256 | Format-List | Out-File (Join-Path $stage 'HASHES.txt')
+          Get-FileHash (Join-Path $stage 'P360AdspProbe.cat') -Algorithm SHA256 | Format-List | Out-File (Join-Path $stage 'HASHES.txt') -Append
+      - uses: actions/upload-artifact@v4
+        with:
+          name: P360_ADSP_INTERFACE_PROBE_TESTSIGNED
+          path: P360_ADSP_PROBE_PACKAGE
+          if-no-files-found: error
