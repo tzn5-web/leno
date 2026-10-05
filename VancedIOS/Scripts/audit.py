@@ -169,6 +169,7 @@ FEATURE_SOURCE_EVIDENCE = {
 class Audit:
     def __init__(self):
         self.errors: list[str] = []
+        self.incomplete: list[str] = []
         self.warnings: list[str] = []
         self.info: dict[str, object] = {}
 
@@ -183,9 +184,16 @@ class Audit:
             self.error(message)
 
     def result(self) -> dict[str, object]:
+        if self.errors:
+            status = "FAIL"
+        elif self.incomplete:
+            status = "NEEDS_REVIEW"
+        else:
+            status = "PASS"
         return {
-            "status": "PASS" if not self.errors else "NEEDS_REVIEW",
+            "status": status,
             "errors": self.errors,
+            "incomplete": self.incomplete,
             "warnings": self.warnings,
             "info": self.info,
         }
@@ -244,7 +252,7 @@ def audit_source(audit: Audit) -> None:
         if implementation.get(feature, {}).get("state") not in accepted_states
     }
     if incomplete:
-        audit.error(f"required features are not yet implemented/validated: {incomplete}")
+        audit.incomplete.append(f"required features are not yet implemented/validated: {incomplete}")
 
     compiled_source_text = ""
     for relative in COMPILED_SOURCE_FILES:
@@ -484,6 +492,8 @@ def main() -> int:
     parser.add_argument("--built-ipa", help="optional packaged IPA to verify after injection")
     parser.add_argument("--ipa-only", action="store_true",
                         help="inspect only IPA compatibility; skip full product stage gate")
+    parser.add_argument("--structural-only", action="store_true",
+                        help="return success when structural/source checks pass even if product completeness is still NEEDS_REVIEW")
     parser.add_argument("--json-out", help="optional path for a JSON report")
     args = parser.parse_args()
 
@@ -506,7 +516,11 @@ def main() -> int:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(rendered + "\n", encoding="utf-8")
 
-    return 0 if not audit.errors else 1
+    if audit.errors:
+        return 1
+    if audit.incomplete and not args.structural_only:
+        return 2
+    return 0
 
 
 if __name__ == "__main__":
