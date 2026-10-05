@@ -33,6 +33,8 @@ EXPECTED_LOCAL_REPOS = {
     "ReturnYouTubeDislikes": "Return-YouTube-Dislikes",
     "Theos": "theos",
     "iOSSDKs": "iOS-SDKs",
+    "YouTubeHeader": "theos/include/YouTubeHeader",
+    "PSHeader": "theos/include/PSHeader",
 }
 
 
