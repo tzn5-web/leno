@@ -1,10 +1,10 @@
 {
   "schema": 1,
-  "stage": "ipa_packaging_ready_unvalidated",
+  "stage": "static_ipa_audited_device_and_resign_pending",
   "features": {
     "official_youtube_base": {
       "state": "validated_static",
-      "evidence": "YouTube 20.21.6 input verified as com.google.ios.youtube, arm64, cryptid=0; all required runtime selector groups for the implemented modules are present. See Compatibility/YouTube-20.21.6.json."
+      "evidence": "YouTube 20.21.6 verified as com.google.ios.youtube, arm64, cryptid=0; required runtime selector groups are present and the conservative unsigned IPA diff passed byte-level preservation audit."
     },
     "ad_block_video": {
       "state": "blocked_policy",
@@ -47,6 +47,14 @@
     "navigation_intact": {
       "state": "design_guard_only",
       "evidence": "legacy architecture scanner enabled"
+    },
+    "sideload_login_compatibility": {
+      "state": "not_implemented",
+      "evidence": "Google SSO/keychain/app-group compatibility after third-party re-signing is not proven by the current VancedCore."
+    },
+    "notification_preservation": {
+      "state": "design_guard_only",
+      "evidence": "All five original app extensions and Info.plist are preserved byte-for-byte, but actual push delivery after re-signing depends on provisioning/APS entitlements."
     }
   }
 }
