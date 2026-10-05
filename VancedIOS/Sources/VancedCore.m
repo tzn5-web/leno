@@ -42,7 +42,14 @@ static BOOL VHookInstanceMethod(const char *className,
         VLog(@"selector unavailable: %s %s", className, selectorName);
         return NO;
     }
-    *original = method_setImplementation(method, replacement);
+    IMP previous = method_getImplementation(method);
+    const char *types = method_getTypeEncoding(method);
+    if (class_addMethod(cls, selector, replacement, types)) {
+        *original = previous;
+    } else {
+        Method ownMethod = class_getInstanceMethod(cls, selector);
+        *original = method_setImplementation(ownMethod, replacement);
+    }
     VLog(@"hooked %s %s", className, selectorName);
     return YES;
 }
