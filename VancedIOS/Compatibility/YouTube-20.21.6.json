@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "youtube_version": "20.21.6",
+  "bundle_id": "com.google.ios.youtube",
+  "minimum_ios": "15.0",
+  "input_ipa_sha256": "4fd09ba9825994720f33282a571f2faf4b673b15a7c065039b1bc6507dc7a9b2",
+  "cryptid": 0,
+  "architecture": "arm64",
+  "background_modes": [
+    "remote-notification",
+    "audio",
+    "fetch",
+    "processing"
+  ],
+  "selector_compatibility": {
+    "speed_memory_controls": "PASS",
+    "quality_memory_controls": "PASS",
+    "shorts_controls": "PASS",
+    "sponsorblock": "PASS",
+    "return_youtube_dislike": "PASS",
+    "settings_ui": "PASS"
+  },
+  "vanced_core_build_sha": "92bf61fad1ccbde0d643f6d45afbce51cb27f6e0",
+  "vanced_core_sha256": "0d3bc19e82572dc5c8e2add2ce07d9a3686157d4d94d41d34a9687f9a90fc47d",
+  "packaged_output_sha256": "9d1526a49a2dd2b467dd2e1bab133880ea6e68896a36084c6a980551fe4c1058",
+  "packaged_identity_changed": false,
+  "injected_load_command": "@executable_path/Frameworks/VancedCore.dylib",
+  "validation": "static_packaging_pass_device_pending",
+  "notes": [
+    "The proprietary YouTube IPA is not stored in this repository.",
+    "The packaged IPA must be re-signed before installation.",
+    "No Premium entitlement, ad-service bypass, or background entitlement bypass is included."
+  ]
+}
