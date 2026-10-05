@@ -92,9 +92,10 @@ require(
     "Home/Search/Channel still depend on external resolver",
 )
 require(
-    "native.home" in browse
-    and "native.search" in browse
-    and "native.channel" in browse,
+    ".home(" in browse
+    and ".search(" in browse
+    and ".channel(" in browse
+    and "V9NativeYouTubeClient" in browse,
     "browse views are not wired to native client",
 )
 require(
