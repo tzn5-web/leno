@@ -32,6 +32,14 @@ REQUIRED_FEATURES = {
     "navigation_intact",
 }
 
+COMPILED_SOURCE_FILES = [
+    "Sources/VancedCore.m",
+    "Sources/VancedSettings.m",
+    "Sources/VancedSponsorBlock.m",
+    "Sources/VancedRYD.m",
+    "Sources/VancedShortsUI.m",
+]
+
 EXPECTED_IMPLEMENTATION_FILES = [
     ROOT / "Makefile",
     ROOT / "Sources" / "VancedCore.m",
@@ -247,6 +255,26 @@ def audit_source(audit: Audit) -> None:
     missing_impl = [str(path.relative_to(ROOT)) for path in EXPECTED_IMPLEMENTATION_FILES if not path.exists()]
     if missing_impl:
         audit.error(f"implementation stage incomplete; missing files: {missing_impl}")
+
+    makefile_text = (ROOT / "Makefile").read_text(encoding="utf-8", errors="ignore") if (ROOT / "Makefile").exists() else ""
+    missing_compiled_sources = [source for source in COMPILED_SOURCE_FILES if source not in makefile_text]
+    audit.check(not missing_compiled_sources,
+                f"implementation source exists but is not compiled by Makefile: {missing_compiled_sources}")
+
+    sponsor_path = ROOT / "Sources" / "VancedSponsorBlock.m"
+    sponsor_text = sponsor_path.read_text(encoding="utf-8", errors="ignore") if sponsor_path.exists() else ""
+    audit.check("VSBSHA256Prefix" in sponsor_text and "substringToIndex" in sponsor_text,
+                "SponsorBlock privacy gate missing SHA-256 prefix construction")
+    audit.check('queryItemWithName:@"videoID"' not in sponsor_text and
+                'queryItemWithName:@"videoId"' not in sponsor_text,
+                "SponsorBlock must not send the full video ID as a query parameter")
+
+    ryd_path = ROOT / "Sources" / "VancedRYD.m"
+    ryd_text = ryd_path.read_text(encoding="utf-8", errors="ignore") if ryd_path.exists() else ""
+    audit.check('hasPrefix:@"id.video.dislike."' in ryd_text,
+                "RYD generic UI gate must be restricted to video dislike controls")
+    audit.check('containsString:@"dislike"' not in ryd_text,
+                "RYD must not use an unrestricted generic dislike-button matcher")
 
     scanned = []
     for path in ROOT.rglob("*"):
