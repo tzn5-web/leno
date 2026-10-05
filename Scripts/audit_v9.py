@@ -83,8 +83,9 @@ for required in [
     "streamingURL",
     '"hls-vod"',
     '"hls-live"',
-    "fetchStreamingInfosWithDownloadFormatsThrowing",
-    "deciphersURLs",
+    "VideoInfosResponse",
+    "processDownloadFormatURL",
+    "/watch page",
     "VideoDownloadFormat",
     "AudioOnlyFormat",
     "ensureVisitorData",
@@ -96,9 +97,17 @@ require(
     "obsolete TVHTML5_SIMPLY_EMBEDDED_PLAYER path returned",
 )
 require(
-    "customHeaders[\n                .videoInfos\n" not in playback_worker
-    and "VideoInfosResponse\n                    .sendThrowingRequest" not in playback_worker,
+    "customHeaders[\n                .videoInfos\n" not in playback_worker,
     "TV Innertube JSON was wired back to the HTML .videoInfos decoder",
+)
+require(
+    "VideoInfosResponse\n                .sendThrowingRequest" in playback_worker
+    and "processDownloadFormatURL" in playback_worker,
+    "secondary native fallback is not the real watch-page/player.js decipher path",
+)
+require(
+    "fetchStreamingInfosWithDownloadFormatsThrowing" not in playback_worker,
+    "stale iOS Innertube fallback returned; it can require GVS PO tokens",
 )
 require(
     "if let hls =" in playback_worker
@@ -154,6 +163,17 @@ require(
     "Fallback opțional" in player_ui
     and "nu este necesar" in player_ui,
     "settings still present resolver as mandatory",
+)
+
+require(
+    "V9MPVPlayerView" in player_ui
+    and ".allowsHitTesting(" in player_ui
+    and "width:\n                        96" in player_ui,
+    "mini player still shows a placeholder instead of the persistent video surface",
+)
+require(
+    "!showPlayer" in root,
+    "mini player is not relinquishing the render surface while full player is open",
 )
 
 # No old lab/manual ID UX.
