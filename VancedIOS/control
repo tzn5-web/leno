@@ -1,0 +1,8 @@
+Package: com.tzn5web.vancedios.core
+Name: Vanced iOS Core
+Version: 0.1.0
+Architecture: iphoneos-arm
+Description: Core scaffolding for the isolated Vanced iOS workspace.
+Maintainer: tzn5-web
+Author: tzn5-web
+Section: Tweaks
