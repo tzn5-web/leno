@@ -48,7 +48,7 @@ require("V9ClientRootView()" in app, "app does not launch native client")
 require("YouTubeKit:" in project, "YouTubeKit package missing")
 require("https://github.com/b5i/YouTubeKit.git" in project, "wrong YouTubeKit package")
 require(
-    "236264622aee6f60b6dd7731a629cc4be3f34bc1" in project,
+    "6532af39da4c1612b0a1af603792419d8fb0e67f" in project,
     "YouTubeKit revision is not pinned to audited revision",
 )
 require("product: YouTubeKit" in project, "YouTubeKit product not linked")
