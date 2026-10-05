@@ -14,7 +14,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 
-APP_VERSION = "0.2.0-lab"
+APP_VERSION = "0.3.0-lab"
 TOKEN_TTL_SECONDS = int(os.getenv("VCD_RELAY_TTL", "21600"))
 YTDLP_BIN = os.getenv("YTDLP_BIN", "yt-dlp")
 YTDLP_TIMEOUT = int(os.getenv("YTDLP_TIMEOUT", "90"))
