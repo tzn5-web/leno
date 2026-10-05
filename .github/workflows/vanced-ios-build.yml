@@ -47,9 +47,15 @@ jobs:
             dpkg-deb -c "$pkg"
           done | tee vanced-ios-packages.log
 
-          dpkg-deb -c dist/vanced-ios/vancedios-core.deb             | grep -qi 'VancedIOSCore.*dylib'
-          dpkg-deb -c dist/vanced-ios/youmod.deb             | grep -qi 'YouMod.*dylib'
-          dpkg-deb -c dist/vanced-ios/youpip.deb             | grep -qi 'YouPiP.*dylib'
+          dpkg-deb -c dist/vanced-ios/vancedios-core.deb > /tmp/vancedios-core.contents
+          dpkg-deb -c dist/vanced-ios/youmod.deb > /tmp/youmod.contents
+          dpkg-deb -c dist/vanced-ios/youpip.deb > /tmp/youpip.contents
+          dpkg-deb -c dist/vanced-ios/return-youtube-dislikes.deb > /tmp/ryd.contents
+
+          grep -qi 'VancedIOSCore.*dylib' /tmp/vancedios-core.contents
+          grep -qi 'YouMod.*dylib' /tmp/youmod.contents
+          grep -qi 'YouPiP.*dylib' /tmp/youpip.contents
+          grep -qi 'YouTubeDislikesReturn.*dylib' /tmp/ryd.contents
 
       - name: Write hashes
         run: |
