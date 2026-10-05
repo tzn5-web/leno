@@ -115,7 +115,11 @@ struct V9MPVPlayerView:
 
         service
             .setRenderSurfaceHosted(
-                true
+                true,
+                hostToken:
+                    context
+                        .coordinator
+                        .hostToken
             )
     }
 
