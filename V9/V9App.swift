@@ -7,7 +7,7 @@ struct YoutubeVcdV9App: App {
 
     var body: some Scene {
         WindowGroup {
-            V9MediaLabView()
+            V9ClientRootView()
                 .environmentObject(
                     player
                 )
