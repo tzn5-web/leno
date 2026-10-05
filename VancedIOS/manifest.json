@@ -4,7 +4,9 @@
   "target": {
     "bundle_id": "com.google.ios.youtube",
     "minimum_ios": "14.0",
-    "arch": "arm64"
+    "arch": "arm64",
+    "tested_youtube_version": "21.18.4",
+    "tested_youtube_date": "2026-05-05"
   },
   "dependencies": {
     "YouMod": {
@@ -43,6 +45,16 @@
       "repo": "https://github.com/PoomSmart/YTVideoOverlay.git",
       "commit": "b93fccb89a6e81d9406322d9719c3621d68e66b5",
       "role": "shared overlay helper required by YouPiP"
+    },
+    "YTUHD": {
+      "repo": "https://github.com/Tonwalter888/YTUHD.git",
+      "commit": "cf266c2a351eb4f97e6bb2fb129509c501bdf207",
+      "role": "2K/4K quality unlock for sideloaded YouTube"
+    },
+    "Cyan": {
+      "repo": "https://github.com/asdfzxcvbn/pyzule-rw.git",
+      "commit": "740d3716dcd98c20c000f12cdb88f1f0b2a533a4",
+      "role": "jailed IPA injection/repackaging"
     }
   }
 }
