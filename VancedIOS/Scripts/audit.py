@@ -246,7 +246,12 @@ def audit_source(audit: Audit) -> None:
     if incomplete:
         audit.error(f"required features are not yet implemented/validated: {incomplete}")
 
-    core_text = (ROOT / "Sources" / "VancedCore.m").read_text(encoding="utf-8", errors="ignore") if (ROOT / "Sources" / "VancedCore.m").exists() else ""
+    compiled_source_text = ""
+    for relative in COMPILED_SOURCE_FILES:
+        source_path = ROOT / relative
+        if source_path.exists():
+            compiled_source_text += "\n" + source_path.read_text(encoding="utf-8", errors="ignore")
+
     settings_text = (ROOT / "Sources" / "VancedSettings.m").read_text(encoding="utf-8", errors="ignore") if (ROOT / "Sources" / "VancedSettings.m").exists() else ""
     absent_settings = [token for token in SETTINGS_SOURCE_EVIDENCE if token not in settings_text]
     audit.check(not absent_settings, f"source evidence missing for settings UI: {absent_settings}")
@@ -259,7 +264,7 @@ def audit_source(audit: Audit) -> None:
     for feature, tokens in FEATURE_SOURCE_EVIDENCE.items():
         state = implementation.get(feature, {}).get("state", "missing")
         if state != "not_implemented":
-            absent = [token for token in tokens if token not in core_text]
+            absent = [token for token in tokens if token not in compiled_source_text]
             audit.check(not absent, f"source evidence missing for {feature}: {absent}")
 
     missing_impl = [str(path.relative_to(ROOT)) for path in EXPECTED_IMPLEMENTATION_FILES if not path.exists()]
