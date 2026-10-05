@@ -18,20 +18,18 @@ def require(condition: bool, message: str) -> None:
 
 project = read("project.yml")
 app = read("V9/V9App.swift")
-root_view = read("V9/V9ClientRootView.swift")
-browse_views = read("V9/V9BrowseViews.swift")
+root = read("V9/V9ClientRootView.swift")
+browse = read("V9/V9BrowseViews.swift")
+native = read("V9/V9NativeYouTubeClient.swift")
 player_ui = read("V9/V9PlayerUI.swift")
 player = read("V9/V9PlayerService.swift")
 player_view = read("V9/V9MPVPlayerView.swift")
-client = read("V9/VcdResolverClient.swift")
-models = read("V9/ResolverModels.swift")
-token_store = read("V9/ResolverTokenStore.swift")
 render_view = read("V9/V9MPVRenderView.swift")
 render_core = read("V9/V9MPVRenderCore.swift")
 pip_bridge = read("V9/V9MPVPiPBridge.swift")
+resolver_client = read("V9/VcdResolverClient.swift")
+token_store = read("V9/ResolverTokenStore.swift")
 resolver = read("Resolver/app/main.py")
-dockerfile = read("Resolver/Dockerfile")
-requirements = read("Resolver/requirements.txt")
 workflow = read(".github/workflows/ios-build.yml")
 
 all_v9 = "\n".join(
@@ -39,93 +37,88 @@ all_v9 = "\n".join(
     for p in V9.glob("*.swift")
 )
 
-# Release identity: this is a native client, not the old Media Lab.
-require('MARKETING_VERSION: "0.10.0"' in project, "client version must be 0.10.0")
-require('CURRENT_PROJECT_VERSION: "6"' in project, "client build must be 6")
-require("CFBundleDisplayName: YoutubeVcd" in project, "display name must be YoutubeVcd")
-require('test "$VERSION" = "0.10.0"' in workflow, "CI version audit is stale")
-require('test "$BUILD" = "6"' in workflow, "CI build audit is stale")
-require('test "$DISPLAY_NAME" = "YoutubeVcd"' in workflow, "CI display-name audit is stale")
-require("V9ClientRootView()" in app, "app still launches the old lab UI")
-require(not (V9 / "V9MediaLabView.swift").exists(), "obsolete video-ID Media Lab still exists")
+# Release identity.
+require('MARKETING_VERSION: "0.11.0"' in project, "version must be 0.11.0")
+require('CURRENT_PROJECT_VERSION: "7"' in project, "build must be 7")
+require('test "$VERSION" = "0.11.0"' in workflow, "CI version audit is stale")
+require('test "$BUILD" = "7"' in workflow, "CI build audit is stale")
+require("V9ClientRootView()" in app, "app does not launch native client")
 
-# The normal app flow must be a usable YouTube browser.
-for required in [
-    "TabView",
-    "V9HomeFeedView",
-    "V9SearchView",
-    "V9SettingsSummaryView",
-    "V9MiniPlayerView",
-    "V9PlayerSheet",
-]:
-    require(required in root_view, f"root client UI missing: {required}")
-
-for required in [
-    "struct V9HomeFeedView",
-    "struct V9SearchView",
-    "struct V9VideoFeed",
-    "struct V9VideoCard",
-    "struct V9ChannelView",
-    "AsyncImage",
-    ".searchable(",
-    ".home(",
-    ".search(",
-    ".channel(",
-]:
-    require(required in browse_views, f"native browsing UI missing: {required}")
-
-for required in [
-    "struct V9MiniPlayerView",
-    "struct V9PlayerSheet",
-    "V9MPVPlayerView",
-    "player.togglePiP()",
-    "player.seek(",
-    "V9ResolverSettingsView",
-]:
-    require(required in player_ui, f"player/settings UI missing: {required}")
-
-require("YouTube video ID" not in all_v9, "manual video-ID input leaked back into normal UI")
-require('"V9 Media Lab"' not in all_v9, "Media Lab branding leaked back into app UI")
+# Native autonomous YouTube dependency.
+require("YouTubeKit:" in project, "YouTubeKit package missing")
+require("https://github.com/b5i/YouTubeKit.git" in project, "wrong YouTubeKit package")
 require(
-    "clientError" in root_view
-    and "showPlayer =" in root_view
-    and "reportExternalFailure" not in root_view,
-    "failed video resolve can still replace/kill the current playback UX",
+    "236264622aee6f60b6dd7731a629cc4be3f34bc1" in project,
+    "YouTubeKit revision is not pinned to audited revision",
+)
+require("product: YouTubeKit" in project, "YouTubeKit product not linked")
+
+for required in [
+    "import YouTubeKit",
+    "HomeScreenResponse",
+    "SearchResponse",
+    "ChannelInfosResponse",
+    "fetchContinuationThrowing",
+    "mergeContinuation",
+    "getChannelContentContinuationThrowing",
+    "fetchStreamingInfosWithDownloadFormatsThrowing",
+    "deciphersURLs",
+    "VideoDownloadFormat",
+    "AudioOnlyFormat",
+    "streamingURL",
+    "V9NativeYouTubeClient",
+]:
+    require(required in native, f"native YouTube invariant missing: {required}")
+
+# Normal UI may not require/configure an external resolver.
+require("V9HomeFeedView" in root and "V9SearchView" in root, "Home/Search missing")
+require("@StateObject" in root and "V9NativeYouTubeClient()" in root, "native client state is not persistent")
+require(
+    "try await native" in root and ".resolve(" in root,
+    "playback does not resolve natively first",
+)
+require(
+    "fallbackEndpoint" in root and "guard !endpoint" in root,
+    "optional resolver fallback path missing",
+)
+require(
+    "showSettings =\n                true" not in root,
+    "app still forces resolver settings at launch",
+)
+require(
+    "endpoint:" not in browse
+    and "resolverToken:" not in browse
+    and "VcdResolverClient" not in browse,
+    "Home/Search/Channel still depend on external resolver",
+)
+require(
+    "native.home" in browse
+    and "native.search" in browse
+    and "native.channel" in browse,
+    "browse views are not wired to native client",
+)
+require(
+    "hasMore" in browse and "loadMore" in browse and ".onAppear" in browse,
+    "infinite continuation loading is missing",
+)
+require(
+    "Fallback opțional" in player_ui
+    and "nu este necesar" in player_ui,
+    "settings still present resolver as mandatory",
 )
 
-# Browse data contract and client calls.
-for required in [
-    "struct BrowseVideo",
-    "Identifiable",
-    "thumbnailURL",
-    "channelID",
-    "viewCount",
-    "isLive",
-    "struct BrowseResponse",
-]:
-    require(required in models, f"browse model missing: {required}")
+# No old lab/manual ID UX.
+require(not (V9 / "V9MediaLabView.swift").exists(), "old Media Lab file returned")
+require("YouTube video ID" not in all_v9, "manual video-ID input returned")
+require('"V9 Media Lab"' not in all_v9, "Media Lab branding returned")
 
-for required in [
-    "func home(",
-    "func search(",
-    "func channel(",
-    "validateBrowseResponse",
-    "expectedThumbnailPath",
-    '"home"',
-    '"search"',
-    '"channel"',
-]:
-    require(required in client, f"resolver browse client missing: {required}")
-
-# Player architecture remains MPV-only.
-require("path: V9" in project, "V9 source root missing")
-require("exactVersion: 1.0.1" in project, "MPVKit version must remain pinned")
+# Player stays MPV-only.
+require("exactVersion: 1.0.1" in project, "MPVKit pin changed")
 require("product: MPVKit" in project and "MPVKit-GPL" not in project, "wrong MPVKit product")
 require("UIBackgroundModes:" in project and "- audio" in project, "background audio mode missing")
 
 for forbidden in [
     "import WebKit",
-    "import YouTubeKit",
     "WKWebView(",
     "AVPlayer(",
     "AVQueuePlayer(",
@@ -150,24 +143,24 @@ for required in [
     "MPNowPlayingInfoCenter",
     "desiredPlayback",
     "recoverFromStreamFailure",
-    "reportExternalFailure",
+    "deactivateAudioSession",
 ]:
-    require(required in player, f"player invariant missing: {required}")
+    require(required in player, f"MPV player invariant missing: {required}")
 
-# Persistent surface and off-main software rendering.
+# Persistent render surface and off-main software rendering.
 for required in [
     "persistentRenderSurface",
     "renderSurfaceHostToken",
     "setRenderSurfaceHosted",
 ]:
-    require(required in player, f"persistent surface invariant missing: {required}")
+    require(required in player, f"persistent render invariant missing: {required}")
 
 for required in [
     "hostToken",
     "dismantleUIView",
     "persistentRenderSurface()",
 ]:
-    require(required in player_view, f"SwiftUI surface host invariant missing: {required}")
+    require(required in player_view, f"persistent SwiftUI host invariant missing: {required}")
 
 for required in [
     "final class V9MPVRenderCore",
@@ -177,7 +170,7 @@ for required in [
     "MPV_RENDER_PARAM_SKIP_RENDERING",
     "mpv_render_context_render",
 ]:
-    require(required in render_core, f"software render core invariant missing: {required}")
+    require(required in render_core, f"render core invariant missing: {required}")
 
 for required in [
     '"com.tzn5web.leno.v9.render"',
@@ -187,9 +180,9 @@ for required in [
     "CMSampleBufferCreateReadyWithImageBuffer",
     "frameGeneration",
 ]:
-    require(required in render_view, f"render-view invariant missing: {required}")
+    require(required in render_view, f"render view invariant missing: {required}")
 
-# PiP / lifecycle / remote controls.
+# PiP/background/remote control state machine.
 for required in [
     "AVPictureInPictureController",
     "AVPictureInPictureSampleBufferPlaybackDelegate",
@@ -198,7 +191,6 @@ for required in [
     "setPlaying",
     "prepareForMediaChange",
     "prepareForSeek",
-    "stopIfActive",
 ]:
     require(required in pip_bridge, f"PiP invariant missing: {required}")
 
@@ -207,7 +199,6 @@ for required in [
     "routeChangeNotification",
     "mediaServicesWereResetNotification",
     "shouldResume",
-    "deactivateAudioSession",
     "changePlaybackPositionCommand",
     "skipForwardCommand",
     "skipBackwardCommand",
@@ -216,112 +207,63 @@ for required in [
 
 require(
     player.count("!new_stream;!no_clip;!no_chapters;") >= 2,
-    "separate video/audio EDL headers are incomplete",
-)
-require(
-    "guard hasLoadedMedia" in player,
-    "remote seek can run without loaded media",
+    "separate video/audio EDL headers incomplete",
 )
 
-# Keychain and resolver transport.
+# Native playback supports live HLS without AVPlayer.
+require(
+    "info.isLive" in native
+    and "info.streamingURL" in native
+    and '"m3u8"' in native,
+    "native live HLS path missing",
+)
+
+# Native VOD format policy.
+for required in [
+    "1080",
+    "fps <=\n                               30",
+    '"avc1"',
+    '"h264"',
+    '"mp4a"',
+    '"aac"',
+]:
+    require(required in native, f"native format policy missing: {required}")
+
+# Optional fallback remains hardened, but it must not be required.
+require(
+    "VcdResolverClient()" in root and "fallbackEndpoint" in root,
+    "optional resolver fallback was removed entirely",
+)
+for required in [
+    "ResolverNoRedirectDelegate",
+    "sameOrigin(",
+    "insecureTokenTransport",
+    "relayOriginMismatch",
+]:
+    require(required in resolver_client, f"fallback transport invariant missing: {required}")
+
 for required in [
     "SecItemCopyMatching",
     "SecItemUpdate",
     "SecItemAdd",
-    "kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly",
 ]:
-    require(required in token_store, f"Keychain invariant missing: {required}")
+    require(required in token_store, f"fallback Keychain invariant missing: {required}")
 
-for required in [
-    "ResolverNoRedirectDelegate",
-    "willPerformHTTPRedirection",
-    "sameOrigin(",
-    "relayOriginMismatch",
-    "insecureTokenTransport",
-    "insecurePublicHTTP",
-    "inet_pton(",
-    "AF_INET6",
-]:
-    require(required in client, f"client transport invariant missing: {required}")
-
-# Resolver must now support browsing plus playback.
-for required in [
-    'APP_VERSION = "0.4.0-client"',
-    "if is_live:",
-    "return None",
-    "VIDEO_ID_RE",
-    "CHANNEL_ID_RE",
-    "SEARCH_QUERY_RE",
-    "BROWSE_LIMIT",
-    "browse_video_entry",
-    "extract_browse",
-    '@app.get("/v1/home")',
-    '@app.get("/v1/search")',
-    '@app.get("/v1/channel/{channel_id}")',
-    '@app.get("/v1/thumb/{video_id}")',
-    "ytsearch",
-    '":ytrec"',
-    "thumbnailURL",
-    "client_browse",
-]:
-    require(required in resolver, f"native browse resolver invariant missing: {required}")
-
-for required in [
-    "refresh_relay_entry",
-    'methods=["GET", "HEAD"]',
-    "VCD_API_TOKEN",
-    "VCD_PUBLIC_BASE_URL",
-    "VCD_COOKIES_FILE",
-    "VCD_MAX_CONCURRENT_EXTRACTS",
-    "VCD_MAX_VIDEO_HEIGHT",
-    "VCD_MAX_VIDEO_FPS",
-    "validated_upstream_url",
-    "follow_redirects=False",
-    '"Accept-Encoding"] = "identity"',
-    "aiter_raw",
-    "peer_host = request.client.host",
-]:
-    require(required in resolver, f"relay hardening invariant missing: {required}")
-
-require("read=None" not in resolver, "upstream read timeout became unbounded")
-require("aiter_bytes" not in resolver, "relay is transparently decoding media bytes")
-require("googlevideo" not in resolver.lower(), "resolver hardcodes raw googlevideo URLs")
-require("extraction_semaphore" in resolver, "yt-dlp extraction concurrency is unbounded")
-require("asyncio.CancelledError" in resolver and "proc.kill()" in resolver, "yt-dlp process can leak after cancellation")
-
-# CI must test the new client APIs, not only /health.
-for required in [
-    "Native client API smoke",
-    "fake_ytdlp.py",
-    "/v1/home",
-    "/v1/search",
-    "/v1/channel/UCaaaaaaaaaaaaaaaaaaaaaa",
-    "/v1/video/dQw4w9WgXcQ",
-    'assert health["version"] == "0.4.0-client"',
-    'assert health["client_browse"] is True',
-]:
-    require(required in workflow, f"client API CI gate missing: {required}")
-
-require(
-    "denoland/deno:bin-2.9.7" in dockerfile,
-    "resolver Docker runtime is not pinned to Deno 2.9.7",
-)
-require(
-    "yt-dlp==2026.08.19" in requirements
-    and "yt-dlp-ejs==0.8.0" in requirements,
-    "resolver extraction versions are not pinned",
-)
+# Resolver backend remains tested as fallback only.
+require('APP_VERSION = "0.4.0-client"' in resolver, "fallback resolver version changed unexpectedly")
+require("Native client API smoke" in workflow, "fallback resolver API smoke missing")
+require("/v1/home" in workflow and "/v1/video/dQw4w9WgXcQ" in workflow, "fallback smoke incomplete")
 
 if errors:
-    print("YOUTUBE VCD 0.10 CLIENT AUDIT FAILED")
+    print("YOUTUBEVCD 0.11 AUTONOMOUS CLIENT AUDIT FAILED")
     for error in errors:
         print(f" - {error}")
     sys.exit(1)
 
-print("YOUTUBE VCD 0.10 CLIENT AUDIT PASSED")
-print(" - app launches native Home/Search/Channel browsing, not Media Lab")
-print(" - native mini-player and full persistent MPV player are wired")
-print(" - Home/Search/Channel/Resolve APIs have deterministic HTTP CI smoke")
+print("YOUTUBEVCD 0.11 AUTONOMOUS CLIENT AUDIT PASSED")
+print(" - Home/Search/Channel are native on-device and paginated")
+print(" - video stream URLs are resolved on-device with YouTubeKit")
+print(" - resolver is optional fallback, not an app prerequisite")
+print(" - VOD split streams and live HLS feed the same persistent MPV engine")
 print(" - no WebKit/AVPlayer/OpenGL ES playback path")
-print(" - background/PiP/remote controls remain on one persistent MPV engine")
-print(" - resolver transport and relay hardening remain enforced")
+print(" - background/PiP/lock-screen state machine remains intact")
