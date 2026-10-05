@@ -1,0 +1,135 @@
+name: VancedIOS Inject User IPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      ipa_url:
+        description: "Direct URL to your own decrypted YouTube IPA"
+        required: true
+        type: string
+      display_name:
+        description: "Installed app name"
+        required: true
+        default: "YouTube"
+        type: string
+      bundle_id:
+        description: "Bundle ID; keep official ID for maximum compatibility"
+        required: true
+        default: "com.google.ios.youtube"
+        type: string
+
+concurrency:
+  group: vanced-ios-inject-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  inject:
+    runs-on: macos-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Mask host URL
+        env:
+          IPA_URL: ${{ inputs.ipa_url }}
+        run: echo "::add-mask::$IPA_URL"
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install build dependencies
+        run: |
+          brew install make ldid
+          pipx install "git+https://github.com/asdfzxcvbn/pyzule-rw.git@740d3716dcd98c20c000f12cdb88f1f0b2a533a4"
+
+      - name: Audit architecture
+        run: python3 VancedIOS/Scripts/audit.py
+
+      - name: Build pinned patch layers
+        run: |
+          chmod +x VancedIOS/Scripts/build_patches.sh
+          VancedIOS/Scripts/build_patches.sh | tee vanced-ios-build.log
+
+      - name: Download user-supplied host IPA
+        env:
+          IPA_URL: ${{ inputs.ipa_url }}
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --retry-delay 2 "$IPA_URL" -o base_youtube.ipa
+          test -s base_youtube.ipa
+
+          python3 - <<'PY'
+          import plistlib, zipfile
+          with zipfile.ZipFile("base_youtube.ipa") as z:
+              infos = [
+                  n for n in z.namelist()
+                  if n.startswith("Payload/") and n.endswith(".app/Info.plist")
+              ]
+              if not infos:
+                  raise SystemExit("Input is not an IPA with Payload/*.app/Info.plist")
+              info = plistlib.loads(z.read(sorted(infos)[0]))
+              print("Host bundle:", info.get("CFBundleIdentifier"))
+              print("Host version:", info.get("CFBundleShortVersionString"))
+          PY
+
+      - name: Inject VancedIOS
+        env:
+          BUNDLE_ID: ${{ inputs.bundle_id }}
+          DISPLAY_NAME: ${{ inputs.display_name }}
+        run: |
+          chmod +x VancedIOS/Scripts/inject.sh
+          VancedIOS/Scripts/inject.sh             base_youtube.ipa             VancedIOS.ipa             "$BUNDLE_ID"             "$DISPLAY_NAME" | tee vanced-ios-inject.log
+
+      - name: Final artifact audit
+        run: |
+          set -euo pipefail
+          test -s VancedIOS.ipa
+          shasum -a 256 VancedIOS.ipa | tee VancedIOS.ipa.sha256
+
+          python3 - <<'PY'
+          import plistlib, zipfile
+          with zipfile.ZipFile("VancedIOS.ipa") as z:
+              infos = [
+                  n for n in z.namelist()
+                  if n.startswith("Payload/") and n.endswith(".app/Info.plist")
+              ]
+              if not infos:
+                  raise SystemExit("Output missing app Info.plist")
+              app = sorted(infos)[0].rsplit("Info.plist", 1)[0]
+              info = plistlib.loads(z.read(app + "Info.plist"))
+              names = [n.lower() for n in z.namelist()]
+              required = {
+                  "YouMod": ("youmod",),
+                  "YouPiP": ("youpip",),
+                  "ReturnYouTubeDislikes": ("youtubedislikes", "ryd"),
+                  "VancedIOSCore": ("vancedioscore",),
+              }
+              for label, needles in required.items():
+                  if not any(any(x in name for x in needles) for name in names):
+                      raise SystemExit(f"Missing injected layer: {label}")
+              print("Final bundle:", info.get("CFBundleIdentifier"))
+              print("Final display:", info.get("CFBundleDisplayName") or info.get("CFBundleName"))
+              print("VancedIOS injection audit: PASS")
+          PY
+
+      - name: Upload VancedIOS IPA
+        uses: actions/upload-artifact@v7
+        with:
+          name: VancedIOS-user-host-unsigned
+          path: |
+            VancedIOS.ipa
+            VancedIOS.ipa.sha256
+          if-no-files-found: error
+
+      - name: Upload injection evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: VancedIOS-injection-evidence
+          path: |
+            vanced-ios-build.log
+            vanced-ios-inject.log
+          if-no-files-found: ignore
+
+      - name: Remove host IPA
+        if: always()
+        run: rm -f base_youtube.ipa
