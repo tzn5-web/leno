@@ -67,17 +67,6 @@ static id VSwitchItem(NSString *title, NSString *description, NSString *key) {
     BOOL (^block)(id, BOOL) = ^BOOL(id cell, BOOL enabled) {
         (void)cell;
         [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:key];
-        if ([key isEqualToString:kHideShortsTabKey]) {
-            Class refreshClass = objc_getClass("YTHeaderContentComboViewController");
-            SEL refreshSelector = sel_registerName("refreshPivotBar");
-            if (refreshClass) {
-                id refreshObject = ((id (*)(id, SEL))objc_msgSend)(refreshClass, sel_registerName("alloc"));
-                refreshObject = ((id (*)(id, SEL))objc_msgSend)(refreshObject, sel_registerName("init"));
-                if ([refreshObject respondsToSelector:refreshSelector]) {
-                    ((void (*)(id, SEL))objc_msgSend)(refreshObject, refreshSelector);
-                }
-            }
-        }
         return YES;
     };
 
@@ -136,7 +125,7 @@ static void VRenderVancedSettings(id manager) {
     if (hideShorts) [items addObject:hideShorts];
     if (hideShortsTab) [items addObject:hideShortsTab];
     id ryd = VSwitchItem(@"Return YouTube Dislike",
-                         @"Show dislike counts using the Return YouTube Dislike public API.",
+                         @"Show dislike counts using the Return YouTube Dislike public API (returnyoutubedislike.com).",
                          kRYDEnabledKey);
     if (sponsorBlock) [items addObject:sponsorBlock];
     if (ryd) [items addObject:ryd];
