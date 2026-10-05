@@ -8,7 +8,6 @@ final class V9NativeYouTubeClient:
     enum NativeError:
         LocalizedError
     {
-        case noPlayableFormats
         case noHomeResults
         case invalidChannel
 
@@ -16,9 +15,6 @@ final class V9NativeYouTubeClient:
             String?
         {
             switch self {
-            case .noPlayableFormats:
-                return "YouTube nu a returnat un flux compatibil pentru acest videoclip."
-
             case .noHomeResults:
                 return "YouTube nu a returnat videoclipuri pentru Home."
 
@@ -482,45 +478,5 @@ final class V9NativeYouTubeClient:
         )
     }
 
-    private func secondsUntilExpiry(
-        _ date:
-            Date?
-    ) -> Int {
-        guard let date
-        else {
-            return 21_600
-        }
 
-        return max(
-            60,
-            Int(
-                date
-                    .timeIntervalSinceNow
-            )
-        )
-    }
-
-    private func container(
-        _ mimeType:
-            String?
-    ) -> String {
-        let value =
-            mimeType?
-                .lowercased() ??
-            ""
-
-        if value.contains(
-            "webm"
-        ) {
-            return "webm"
-        }
-
-        if value.contains(
-            "mp4"
-        ) {
-            return "mp4"
-        }
-
-        return "unknown"
-    }
 }
