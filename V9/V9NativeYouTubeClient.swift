@@ -31,6 +31,13 @@ final class V9NativeYouTubeClient:
     private let youtube =
         YouTubeModel()
 
+    private let tvHtml =
+        YouTubeModel()
+
+    init() {
+        installTVHTML5Overrides()
+    }
+
     private var homeState:
         HomeScreenResponse?
 
@@ -340,6 +347,43 @@ final class V9NativeYouTubeClient:
     ) async throws
         -> ResolvedVideo
     {
+        await ensureVisitorData()
+
+        // First choice: TVHTML5_SIMPLY_EMBEDDED_PLAYER. This profile is used
+        // by current native YouTube clients because its direct media URLs are
+        // normally exempt from the GVS Proof-of-Origin requirement.
+        do {
+            let tvInfo =
+                try await VideoInfosResponse
+                    .sendThrowingRequest(
+                        youtubeModel:
+                            tvHtml,
+                        data:
+                            [
+                                .query:
+                                    videoID
+                            ]
+                    )
+
+            if let resolved =
+                    try? makeResolvedVideo(
+                        videoID:
+                            videoID,
+                        info:
+                            tvInfo,
+                        formats:
+                            tvInfo.defaultFormats +
+                            tvInfo.downloadFormats
+                    ) {
+                return resolved
+            }
+        } catch {
+            // Continue to the player.js decipher path below.
+        }
+
+        // Second choice: normal YouTubeKit watch-page extraction. This path
+        // obtains the current player and deciphers signatureCipher + n using
+        // JavaScriptCore inside YouTubeKit.
         let video =
             YTVideo(
                 videoId:
@@ -364,10 +408,27 @@ final class V9NativeYouTubeClient:
                 )
         }
 
-        let info =
-            response
-                .videoInfos
+        return try makeResolvedVideo(
+            videoID:
+                videoID,
+            info:
+                response.videoInfos,
+            formats:
+                response.downloadFormats +
+                response.defaultFormats
+        )
+    }
 
+    private func makeResolvedVideo(
+        videoID:
+            String,
+        info:
+            VideoInfosResponse,
+        formats:
+            [any AdaptiveDownloadFormat]
+    ) throws
+        -> ResolvedVideo
+    {
         if info.isLive ==
                 true,
            let hls =
@@ -412,12 +473,8 @@ final class V9NativeYouTubeClient:
             )
         }
 
-        let allFormats =
-            response.downloadFormats +
-            response.defaultFormats
-
         let videoFormats =
-            allFormats
+            formats
                 .compactMap {
                     $0 as?
                         VideoDownloadFormat
@@ -510,7 +567,7 @@ final class V9NativeYouTubeClient:
             }
 
         let audioFormats =
-            allFormats
+            formats
                 .compactMap {
                     $0 as?
                         AudioOnlyFormat
@@ -680,6 +737,152 @@ final class V9NativeYouTubeClient:
                     info.videoURLsExpireAt
                 )
         )
+    }
+
+    private func ensureVisitorData()
+        async
+    {
+        guard youtube
+            .visitorData
+            .isEmpty
+        else {
+            if tvHtml
+                .visitorData
+                .isEmpty {
+                tvHtml.visitorData =
+                    youtube.visitorData
+            }
+
+            return
+        }
+
+        do {
+            let response =
+                try await SearchResponse
+                    .sendThrowingRequest(
+                        youtubeModel:
+                            youtube,
+                        data:
+                            [
+                                .query:
+                                    "music"
+                            ]
+                    )
+
+            guard let visitorData =
+                    response.visitorData,
+                  !visitorData
+                    .isEmpty
+            else {
+                return
+            }
+
+            youtube.visitorData =
+                visitorData
+
+            tvHtml.visitorData =
+                visitorData
+        } catch {
+            // Video requests can still succeed without an explicitly
+            // bootstrapped visitor token; do not block playback here.
+        }
+    }
+
+    private func installTVHTML5Overrides() {
+        let bodyPrefix =
+            #"{"context":{"client":{"clientName":"TVHTML5_SIMPLY_EMBEDDED_PLAYER","clientVersion":"2.0","clientScreen":"EMBED","platform":"TV","hl":"en","gl":"US","clientFormFactor":"UNKNOWN_FORM_FACTOR"},"thirdParty":{"embedUrl":"https://www.youtube.com/"}},"contentCheckOk":true,"racyCheckOk":true,"videoId":""#
+
+        let headers =
+            HeadersList(
+                url:
+                    URL(
+                        string:
+                            "https://www.youtube.com/youtubei/v1/player"
+                    )!,
+                method:
+                    .POST,
+                headers:
+                    [
+                        HeadersList.Header(
+                            name:
+                                "Accept",
+                            content:
+                                "*/*"
+                        ),
+                        HeadersList.Header(
+                            name:
+                                "Accept-Encoding",
+                            content:
+                                "gzip, deflate, br"
+                        ),
+                        HeadersList.Header(
+                            name:
+                                "Host",
+                            content:
+                                "www.youtube.com"
+                        ),
+                        HeadersList.Header(
+                            name:
+                                "User-Agent",
+                            content:
+                                "Mozilla/5.0 (PlayStation; PlayStation 4/12.55) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Safari/605.1.15"
+                        ),
+                        HeadersList.Header(
+                            name:
+                                "Content-Type",
+                            content:
+                                "application/json"
+                        ),
+                        HeadersList.Header(
+                            name:
+                                "Origin",
+                            content:
+                                "https://www.youtube.com"
+                        ),
+                        HeadersList.Header(
+                            name:
+                                "Referer",
+                            content:
+                                "https://www.youtube.com/"
+                        )
+                    ],
+                customHeaders:
+                    [
+                        "X-Goog-Visitor-Id":
+                            .visitorData
+                    ],
+                addQueryAfterParts:
+                    [
+                        HeadersList.AddQueryInfo(
+                            index:
+                                0,
+                            encode:
+                                false,
+                            content:
+                                .query
+                        )
+                    ],
+                httpBody:
+                    [
+                        bodyPrefix,
+                        "\"}"
+                    ],
+                parameters:
+                    [
+                        HeadersList.ParameterToAdd(
+                            name:
+                                "prettyPrint",
+                            content:
+                                "false"
+                        )
+                    ]
+            )
+
+        tvHtml
+            .customHeaders[
+                .videoInfos
+            ] =
+            headers
     }
 
     private func discoveryFallback()
