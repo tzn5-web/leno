@@ -98,8 +98,15 @@ final class V9PlayerService:
     private var renderView:
         V9MPVRenderView?
 
-    private var renderSurfaceHosted =
-        false
+    private var renderSurfaceHostToken:
+        UUID?
+
+    private var renderSurfaceHosted:
+        Bool
+    {
+        renderSurfaceHostToken !=
+            nil
+    }
 
     private var pipBridge:
         V9MPVPiPBridge?
@@ -214,12 +221,25 @@ final class V9PlayerService:
 
     func setRenderSurfaceHosted(
         _ hosted:
-            Bool
+            Bool,
+        hostToken:
+            UUID
     ) {
-        renderSurfaceHosted =
-            hosted
+        if hosted {
+            renderSurfaceHostToken =
+                hostToken
+        } else {
+            guard renderSurfaceHostToken ==
+                    hostToken
+            else {
+                return
+            }
 
-        if hosted ||
+            renderSurfaceHostToken =
+                nil
+        }
+
+        if renderSurfaceHosted ||
            pipBridge?
             .shouldKeepRendering ==
             true {
