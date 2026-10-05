@@ -35,9 +35,9 @@ all_v9 = "\n".join(
 
 # Build identity
 require('MARKETING_VERSION: "0.9.2"' in project, "V9 version must be 0.9.2")
-require('CURRENT_PROJECT_VERSION: "3"' in project, "V9 build must be 3")
+require('CURRENT_PROJECT_VERSION: "4"' in project, "V9 build must be 4")
 require('test "$VERSION" = "0.9.2"' in workflow, "CI version audit is stale")
-require('test "$BUILD" = "3"' in workflow, "CI build audit is stale")
+require('test "$BUILD" = "4"' in workflow, "CI build audit is stale")
 
 # Player architecture: V9 must remain MPV-only.
 require("path: V9" in project, "V9 source root missing")
@@ -151,6 +151,12 @@ require(
     "separate video/audio MPV EDL load path missing or legacy audio-add race returned",
 )
 
+require(
+    "A completed load proves the refreshed source is healthy." in player
+    and "refreshAttempts =" in player,
+    "successful refreshed loads do not reset the future recovery budget",
+)
+
 # SwiftUI surface recreation must not detach the persistent renderer.
 require(
     "Always bind the new surface" in player
@@ -222,8 +228,14 @@ require(
 )
 require(
     "insecurePublicHTTP" in client
-    and "insecureTokenTransport" in client,
-    "client transport safety checks are missing",
+    and "insecureTokenTransport" in client
+    and "invalidRelayURL" in client
+    and "insecureRelayTransport" in client,
+    "client transport/relay safety checks are missing",
+)
+require(
+    "validateResolvedVideo" in client,
+    "client does not validate resolver-provided relay URLs before mpv uses them",
 )
 require(
     "refreshProvider:" in view
@@ -233,7 +245,7 @@ require(
 
 # Resolver runtime and relay hardening.
 for required in [
-    'APP_VERSION = "0.2.0-lab"',
+    'APP_VERSION = "0.3.0-lab"',
     "VIDEO_ID_RE",
     "refresh_relay_entry",
     "REFRESHABLE_UPSTREAM_STATUS",
@@ -256,6 +268,10 @@ for required in [
     "enforce_relay_capacity",
     "UPSTREAM_READ_TIMEOUT",
     "is_relayable_format",
+    "is_local_network_host",
+    "resolved_public_base",
+    "include_conditionals=False",
+    '"cache-control"] = "private, no-store"',
     "aiter_raw",
 ]:
     require(required in resolver, f"resolver invariant missing: {required}")
