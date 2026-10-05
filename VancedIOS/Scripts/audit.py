@@ -64,6 +64,16 @@ LEGACY_TOKENS = [
 
 CODE_SUFFIXES = {".m", ".mm", ".xm", ".x", ".swift", ".sh", ".py"}
 
+RESTRICTED_SERVICE_TOKENS = [
+    "isPlayableInBackground",
+    "playableInBackground",
+    "isMonetized",
+    "YTAdsInnerTubeContextDecorator",
+    "YTAccountScopedAdsInnerTubeContextDecorator",
+    "disableAfma",
+    "Premium",
+]
+
 SETTINGS_BINARY_EVIDENCE = [
     ["YTAppSettingsPresentationData"],
     ["YTSettingsSectionItemManager"],
@@ -289,6 +299,9 @@ def audit_source(audit: Audit) -> None:
         for token in LEGACY_TOKENS:
             if token in text:
                 audit.error(f"legacy architecture token {token!r} leaked into {path.relative_to(ROOT)}")
+        for token in RESTRICTED_SERVICE_TOKENS:
+            if token in text:
+                audit.error(f"restricted service-bypass token {token!r} leaked into {path.relative_to(ROOT)}")
 
     audit.info["scanned_code_files"] = scanned
     audit.info["locked_dependencies"] = 1 + len(lock.get("headers", [])) + len(lock.get("modules", []))
