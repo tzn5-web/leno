@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import plistlib
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -13,6 +14,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / "Scripts" / "validate_ipa.py"
 SPEC = importlib.util.spec_from_file_location("vancedios_validate_ipa", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 validator = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = validator
 SPEC.loader.exec_module(validator)
 
 
