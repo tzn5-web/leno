@@ -22,6 +22,7 @@ view = read("V9/V9MediaLabView.swift")
 client = read("V9/VcdResolverClient.swift")
 token_store = read("V9/ResolverTokenStore.swift")
 render_view = read("V9/V9MPVRenderView.swift")
+render_core = read("V9/V9MPVRenderCore.swift")
 pip_bridge = read("V9/V9MPVPiPBridge.swift")
 resolver = read("Resolver/app/main.py")
 dockerfile = read("Resolver/Dockerfile")
@@ -66,7 +67,7 @@ for forbidden in [
         f"V9 target contains forbidden legacy/unsafe renderer symbol: {forbidden}",
     )
 
-# Critical libmpv invariants.
+# Critical libmpv player invariants.
 for required in [
     "import Libmpv",
     "mpv_create()",
@@ -75,26 +76,54 @@ for required in [
     '"libmpv"',
     '"hwdec"',
     '"videotoolbox-copy"',
+    "V9MPVRenderCore",
+    "renderCoreReference",
+    "MPRemoteCommandCenter",
+    "MPNowPlayingInfoCenter",
+    "desiredPlayback",
+    "func handleScenePhase",
+]:
+    require(required in player, f"native MPV player invariant missing: {required}")
+
+# Render API must be isolated from MainActor/UI work behind one serialized core.
+for required in [
+    "final class V9MPVRenderCore",
+    "@unchecked Sendable",
+    "NSLock",
     "mpv_render_context_create",
     "mpv_render_context_update",
     "mpv_render_context_render",
+    "mpv_render_context_free",
     "MPV_RENDER_API_TYPE_SW",
     "MPV_RENDER_PARAM_SW_SIZE",
     "MPV_RENDER_PARAM_SW_FORMAT",
     "MPV_RENDER_PARAM_SW_STRIDE",
     "MPV_RENDER_PARAM_SW_POINTER",
     "MPV_RENDER_PARAM_SKIP_RENDERING",
-    "MPRemoteCommandCenter",
-    "MPNowPlayingInfoCenter",
-    "desiredPlayback",
-    "func handleScenePhase",
 ]:
-    require(required in player, f"native MPV invariant missing: {required}")
+    require(required in render_core, f"render-core invariant missing: {required}")
 
 require(
-    "data:\n                        apiType" in player
-    or "data:\n                                apiType" in player,
-    "MPV_RENDER_PARAM_API_TYPE is not wired to the software API string pointer",
+    "MPV_RENDER_API_TYPE_SW" in render_core
+    and "MPV_RENDER_PARAM_API_TYPE" in render_core,
+    "MPV_RENDER_PARAM_API_TYPE is not wired to the software render core",
+)
+
+for required in [
+    'DispatchQueue(',
+    '"com.tzn5web.leno.v9.render"',
+    ".userInteractive",
+    "renderQueue.async",
+    "V9PixelBufferBox",
+    "forceOpaqueAlpha",
+    "frameGeneration",
+]:
+    require(required in render_view, f"dedicated render-queue invariant missing: {required}")
+
+require(
+    "renderSoftware(" not in render_view
+    or "renderCore" in render_view,
+    "software render path bypasses the isolated render core",
 )
 
 # Audio lifecycle.
@@ -351,7 +380,7 @@ if errors:
 
 print("V9.2 HARDENED AUDIT PASSED")
 print(" - no WebKit/AVPlayer/OpenGL ES playback path in V9 target")
-print(" - libmpv software render API feeds a shared AVSampleBufferDisplayLayer")
+print(" - libmpv render API is serialized off MainActor and feeds a shared AVSampleBufferDisplayLayer")
 print(" - PiP can keep rendering in background without app-owned GPU commands")
 print(" - audio interruption policy prevents unauthorized auto-resume")
 print(" - stream refresh retries use bounded backoff and cancel on media switch")
