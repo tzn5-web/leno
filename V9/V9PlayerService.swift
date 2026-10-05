@@ -601,32 +601,39 @@ final class V9PlayerService:
         var skip:
             Int32 = 1
 
-        var parameters:
-            [mpv_render_param] = [
-                mpv_render_param(
-                    type:
-                        MPV_RENDER_PARAM_SKIP_RENDERING,
-                    data:
-                        &skip
-                ),
-                mpv_render_param(
-                    type:
-                        MPV_RENDER_PARAM_INVALID,
-                    data:
-                        nil
-                )
-            ]
+        withUnsafeMutablePointer(
+            to:
+                &skip
+        ) {
+            skipPointer in
 
-        _ =
-            parameters
-                .withUnsafeMutableBufferPointer {
-                    buffer in
-
-                    mpv_render_context_render(
-                        renderContext,
-                        buffer.baseAddress
+            var parameters:
+                [mpv_render_param] = [
+                    mpv_render_param(
+                        type:
+                            MPV_RENDER_PARAM_SKIP_RENDERING,
+                        data:
+                            skipPointer
+                    ),
+                    mpv_render_param(
+                        type:
+                            MPV_RENDER_PARAM_INVALID,
+                        data:
+                            nil
                     )
-                }
+                ]
+
+            _ =
+                parameters
+                    .withUnsafeMutableBufferPointer {
+                        buffer in
+
+                        mpv_render_context_render(
+                            renderContext,
+                            buffer.baseAddress
+                        )
+                    }
+        }
     }
 
     func load(
