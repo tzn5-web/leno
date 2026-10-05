@@ -1,11 +1,20 @@
-# PHASER360 ADSP interface probe
+# PHASER360 ADSP passive IRQ probe v2
 
-Binds only to `CSAUDIO\ADSP&CTLR_VEN_8086&CTLR_DEV_3198` created by the existing functioning `SklHDAudBus` parent.
+This package upgrades the earlier read-only interface probe bound to `CSAUDIO\ADSP&CTLR_VEN_8086&CTLR_DEV_3198`.
 
-This **is not an audio driver**. It is a minimal KMDF diagnostic function driver which queries `GUID_ADSP_BUS_INTERFACE` version 1 and exposes only a read-only IOCTL for querying the interface status, controller ID and presence of the GetResources and RegisterInterrupt methods. It does **not** call those methods, register an ISR, start firmware, send IPC, touch MMIO, enable speakers or render audio.
+The validated v1 probe already proved:
 
-No alteration to the already-working bus is needed. Test-signing is required for loading, and installation should happen only after reviewing the signed artifact.
+- ADSP bus query status = 0
+- controller = 0x3198
+- interface version = 1
+- interface size = 144
+- GetResources export exists
+- RegisterInterrupt/UnregisterInterrupt exports exist
 
-The result `BUS_INTERFACE_OK=TRUE` will prove that a function driver can bind to the DSP child and obtain the intended ABI. It **cannot** prove interrupt delivery, SOF readiness, or working sound.
+v2 performs one additional operation: it calls the bus interface's `RegisterInterrupt` method with a tiny callback that only increments an atomic 64-bit counter and returns FALSE. Returning FALSE means it does not claim the shared HDA interrupt; normal parent-bus processing continues.
 
-WARNING: This probe claims the DSP PnP child. Before installing a production SOF host, uninstall this probe and verify the child has returned to Code 28 (or binds to the intended production host).
+v2 still performs **no** GetResources call, MMIO read/write, DSP power call, firmware boot, IPC, stream operation, codec/GPIO write, endpoint creation, or audio playback.
+
+`START_PASSIVE_IRQ_TEST.cmd` samples the counter, waits five seconds, samples again, and prints a delta. A zero delta during an idle five-second window is **not** proof of broken routing because this stage deliberately generates no DSP interrupt source. A positive delta proves that the callback path is live.
+
+Before any future production SOF host is installed, remove this diagnostic driver with `START_ROLLBACK.cmd`.
