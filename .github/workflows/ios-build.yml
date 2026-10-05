@@ -103,8 +103,8 @@ jobs:
           test "$DISPLAY_NAME" = "YoutubeVcd V9"
           test "$BUNDLE_ID" = "com.tzn5web.leno"
           test "$BACKGROUND_MODE" = "audio"
-          test "$VERSION" = "0.9.2"
-          test "$BUILD" = "4"
+          test "$VERSION" = "0.9.3"
+          test "$BUILD" = "5"
 
           find "$APP_PATH" -maxdepth 1 -iname '*AppIcon*' -print \
             | tee app-icon-files.log
@@ -126,7 +126,7 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v7
         with:
-          name: YoutubeVcd-v9.2-build4-ipa
+          name: YoutubeVcd-v9.3-build5-ipa
           path: YoutubeVcd-unsigned.ipa
           if-no-files-found: error
 
@@ -153,7 +153,7 @@ jobs:
       - name: Upload V9 source
         uses: actions/upload-artifact@v7
         with:
-          name: YoutubeVcd-v9.2-build4-source
+          name: YoutubeVcd-v9.3-build5-source
           path: YoutubeVcd-V9-source.zip
           if-no-files-found: error
 
@@ -178,14 +178,14 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Build VcdResolver image
-        run: docker build -t vcd-resolver:v9.2 Resolver
+        run: docker build -t vcd-resolver:v9.3 Resolver
 
       - name: Start resolver
         run: |
           docker run -d --rm \
-            --name vcd-resolver-v92 \
+            --name vcd-resolver-v93 \
             -p 8085:8085 \
-            vcd-resolver:v9.2
+            vcd-resolver:v9.3
 
           for attempt in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8085/health > resolver-health.json; then
@@ -210,18 +210,20 @@ jobs:
           assert int(health["relay_ttl"]) >= 3600
           assert int(health["max_relay_entries"]) >= 32
           assert int(health["max_concurrent_extracts"]) >= 1
+          assert int(health["max_video_height"]) == 1080
+          assert float(health["max_video_fps"]) == 30.0
           assert health["cookies_configured"] is False
           assert health["public_base_configured"] is False
           print("resolver health:", health)
           PY
 
-          docker exec vcd-resolver-v92 deno --version | tee resolver-deno.txt
+          docker exec vcd-resolver-v93 deno --version | tee resolver-deno.txt
           grep -q '^deno 2\.9\.7' resolver-deno.txt
 
-          docker exec vcd-resolver-v92 yt-dlp --version | tee resolver-ytdlp.txt
+          docker exec vcd-resolver-v93 yt-dlp --version | tee resolver-ytdlp.txt
           grep -q '^2026\.08\.19' resolver-ytdlp.txt
 
-          docker exec vcd-resolver-v92 python - <<'PY'
+          docker exec vcd-resolver-v93 python - <<'PY'
           import yt_dlp_ejs
           from app.main import (
               VIDEO_ID_RE,
@@ -250,6 +252,10 @@ jobs:
               "protocol": "https",
               "fragments": [{"url": "segment-1"}],
           })
+          assert not is_relayable_format({
+              "url": "http://127.0.0.1/private",
+              "protocol": "http",
+          })
 
           info = {
               "formats": [
@@ -273,6 +279,17 @@ jobs:
               ]
           }
 
+          info["formats"].append({
+              "format_id": "v4k",
+              "url": "https://example.invalid/video-4k",
+              "vcodec": "avc1.640033",
+              "acodec": "none",
+              "ext": "mp4",
+              "height": 2160,
+              "fps": 60,
+              "tbr": 18000,
+          })
+
           video, audio = choose_formats(info)
           assert video["format_id"] == "v1"
           assert audio["format_id"] == "a1"
@@ -281,7 +298,7 @@ jobs:
 
       - name: Stop resolver
         if: always()
-        run: docker rm -f vcd-resolver-v92 || true
+        run: docker rm -f vcd-resolver-v93 || true
 
       - name: Upload resolver evidence
         if: always()
