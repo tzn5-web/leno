@@ -24,6 +24,15 @@ static NSCache *VRYDCache(void) {
     return cache;
 }
 
+static NSMutableDictionary<NSString *, NSMutableArray *> *VRYDInflight(void) {
+    static NSMutableDictionary *requests;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        requests = [NSMutableDictionary dictionary];
+    });
+    return requests;
+}
+
 static BOOL VRYDHook(const char *className, const char *selectorName, IMP replacement, IMP *original) {
     if (*original != NULL) return YES;
     Class cls = objc_getClass(className);
@@ -88,10 +97,24 @@ static void VRYDFetch(NSString *videoID, void (^completion)(NSString *count)) {
     NSString *cached = [VRYDCache() objectForKey:videoID];
     if (cached) { completion(cached); return; }
 
+    NSMutableArray *waiters = VRYDInflight()[videoID];
+    if (waiters) {
+        [waiters addObject:[completion copy]];
+        return;
+    }
+    VRYDInflight()[videoID] = [NSMutableArray arrayWithObject:[completion copy]];
+
     NSURLComponents *components = [NSURLComponents componentsWithString:@"https://returnyoutubedislikeapi.com/votes"];
     components.queryItems = @[[NSURLQueryItem queryItemWithName:@"videoId" value:videoID]];
     NSURL *url = components.URL;
-    if (!url) { completion(nil); return; }
+    if (!url) {
+        NSArray *callbacks = [VRYDInflight()[videoID] copy];
+        [VRYDInflight() removeObjectForKey:videoID];
+        for (id callback in callbacks) {
+            ((void (^)(NSString *))callback)(nil);
+        }
+        return;
+    }
 
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
     request.timeoutInterval = 8.0;
@@ -112,7 +135,13 @@ static void VRYDFetch(NSString *videoID, void (^completion)(NSString *count)) {
             }
         }
         if (formatted) [VRYDCache() setObject:formatted forKey:videoID];
-        dispatch_async(dispatch_get_main_queue(), ^{ completion(formatted); });
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSArray *callbacks = [VRYDInflight()[videoID] copy];
+            [VRYDInflight() removeObjectForKey:videoID];
+            for (id callback in callbacks) {
+                ((void (^)(NSString *))callback)(formatted);
+            }
+        });
     }] resume];
 }
 
@@ -146,10 +175,22 @@ static void VRYDUpdateButton(id button, NSString *videoID) {
     __weak id weakButton = button;
     VRYDFetch(videoID, ^(NSString *count) {
         id strongButton = weakButton;
-        if (!strongButton || count.length == 0) return;
+        if (!strongButton) return;
         NSString *current = objc_getAssociatedObject(strongButton, kRYDButtonVideoKey);
         if (![current isEqualToString:videoID]) return;
-        VRYDSetButtonTitle(strongButton, count);
+        if (count.length > 0) {
+            VRYDSetButtonTitle(strongButton, count);
+            return;
+        }
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(15 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            id retryButton = weakButton;
+            if (!retryButton) return;
+            NSString *retryCurrent = objc_getAssociatedObject(retryButton, kRYDButtonVideoKey);
+            if ([retryCurrent isEqualToString:videoID]) {
+                objc_setAssociatedObject(retryButton, kRYDButtonVideoKey, nil, OBJC_ASSOCIATION_ASSIGN);
+            }
+        });
     });
 }
 
