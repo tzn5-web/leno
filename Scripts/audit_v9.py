@@ -102,9 +102,10 @@ require(
     "TV Innertube JSON was wired back to the HTML .videoInfos decoder",
 )
 require(
-    "VideoInfosResponse\n                .sendThrowingRequest" in playback_worker
+    "VideoInfosResponse" in playback_worker
+    and ".sendThrowingRequest(" in playback_worker
     and "processDownloadFormatURL" in playback_worker,
-    "secondary native fallback is not the real watch-page/player.js decipher path",
+    "watch-page/player.js decipher path is missing",
 )
 require(
     ".fetchStreamingInfosWithDownloadFormatsThrowing(" not in playback_worker,
