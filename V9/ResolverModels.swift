@@ -2,7 +2,8 @@ import Foundation
 
 struct ResolverHealth:
     Decodable,
-    Equatable
+    Equatable,
+    Sendable
 {
     let ok: Bool
     let version: String
@@ -28,7 +29,8 @@ struct ResolverHealth:
 
 struct ResolvedStream:
     Decodable,
-    Equatable
+    Equatable,
+    Sendable
 {
     let relayURL: URL
     let formatID: String
@@ -58,7 +60,8 @@ struct BrowseVideo:
     Decodable,
     Equatable,
     Hashable,
-    Identifiable
+    Identifiable,
+    Sendable
 {
     let id: String
     let title: String
@@ -141,7 +144,8 @@ struct BrowseResponse:
 
 
 struct BrowsePage:
-    Equatable
+    Equatable,
+    Sendable
 {
     let title: String
     let channelID: String?
