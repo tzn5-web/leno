@@ -68,9 +68,9 @@ for required in [
     "struct V9ChannelView",
     "AsyncImage",
     ".searchable(",
-    "resolver.home",
-    "resolver.search",
-    "resolver.channel",
+    ".home(",
+    ".search(",
+    ".channel(",
 ]:
     require(required in browse_views, f"native browsing UI missing: {required}")
 
