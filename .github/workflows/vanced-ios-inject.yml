@@ -100,7 +100,9 @@ jobs:
               names = [n.lower() for n in z.namelist()]
               required = {
                   "YouMod": ("youmod",),
+                  "YTVideoOverlay": ("ytvideooverlay",),
                   "YouPiP": ("youpip",),
+                  "YTUHD": ("ytuhd",),
                   "ReturnYouTubeDislikes": ("youtubedislikes", "ryd"),
                   "VancedIOSCore": ("vancedioscore",),
               }
