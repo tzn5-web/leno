@@ -30,7 +30,7 @@ jobs:
           xcrun swift Scripts/GenerateAppIcon.swift Leno/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
           test -s Leno/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
 
-      - name: V9 native media lab structural audit
+      - name: YoutubeVcd native client structural audit
         run: |
           set -euo pipefail
           python3 Scripts/audit_v9.py
@@ -100,11 +100,11 @@ jobs:
           VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST")"
           BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$PLIST")"
 
-          test "$DISPLAY_NAME" = "YoutubeVcd V9"
+          test "$DISPLAY_NAME" = "YoutubeVcd"
           test "$BUNDLE_ID" = "com.tzn5web.leno"
           test "$BACKGROUND_MODE" = "audio"
-          test "$VERSION" = "0.9.3"
-          test "$BUILD" = "5"
+          test "$VERSION" = "0.10.0"
+          test "$BUILD" = "6"
 
           find "$APP_PATH" -maxdepth 1 -iname '*AppIcon*' -print \
             | tee app-icon-files.log
@@ -126,7 +126,7 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v7
         with:
-          name: YoutubeVcd-v9.3-build5-ipa
+          name: YoutubeVcd-v0.10.0-build6-ipa
           path: YoutubeVcd-unsigned.ipa
           if-no-files-found: error
 
@@ -153,7 +153,7 @@ jobs:
       - name: Upload V9 source
         uses: actions/upload-artifact@v7
         with:
-          name: YoutubeVcd-v9.3-build5-source
+          name: YoutubeVcd-v0.10.0-build6-source
           path: YoutubeVcd-V9-source.zip
           if-no-files-found: error
 
@@ -178,14 +178,14 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Build VcdResolver image
-        run: docker build -t vcd-resolver:v9.3 Resolver
+        run: docker build -t vcd-resolver:v0.10 Resolver
 
       - name: Start resolver
         run: |
           docker run -d --rm \
-            --name vcd-resolver-v93 \
+            --name vcd-resolver-v010 \
             -p 8085:8085 \
-            vcd-resolver:v9.3
+            vcd-resolver:v0.10
 
           for attempt in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8085/health > resolver-health.json; then
@@ -205,7 +205,7 @@ jobs:
           with open("resolver-health.json", "r", encoding="utf-8") as handle:
               health = json.load(handle)
           assert health["ok"] is True
-          assert health["version"] == "0.3.0-lab"
+          assert health["version"] == "0.4.0-client"
           assert health["js_runtime"] == "deno"
           assert int(health["relay_ttl"]) >= 3600
           assert int(health["max_relay_entries"]) >= 32
@@ -214,19 +214,24 @@ jobs:
           assert float(health["max_video_fps"]) == 30.0
           assert health["cookies_configured"] is False
           assert health["public_base_configured"] is False
+          assert health["client_browse"] is True
+          assert int(health["browse_limit"]) >= 8
           print("resolver health:", health)
           PY
 
-          docker exec vcd-resolver-v93 deno --version | tee resolver-deno.txt
+          docker exec vcd-resolver-v010 deno --version | tee resolver-deno.txt
           grep -q '^deno 2\.9\.7' resolver-deno.txt
 
-          docker exec vcd-resolver-v93 yt-dlp --version | tee resolver-ytdlp.txt
+          docker exec vcd-resolver-v010 yt-dlp --version | tee resolver-ytdlp.txt
           grep -q '^2026\.08\.19' resolver-ytdlp.txt
 
-          docker exec vcd-resolver-v93 python - <<'PY'
+          docker exec vcd-resolver-v010 python - <<'PY'
           import yt_dlp_ejs
           from app.main import (
               VIDEO_ID_RE,
+              CHANNEL_ID_RE,
+              SEARCH_QUERY_RE,
+              browse_video_entry,
               choose_formats,
               is_local_network_host,
               is_relayable_format,
@@ -234,6 +239,21 @@ jobs:
 
           assert VIDEO_ID_RE.fullmatch("dQw4w9WgXcQ")
           assert not VIDEO_ID_RE.fullmatch("../bad-video")
+          assert CHANNEL_ID_RE.fullmatch("UCaaaaaaaaaaaaaaaaaaaaaa")
+          assert SEARCH_QUERY_RE.fullmatch("openai")
+          assert not SEARCH_QUERY_RE.fullmatch("x")
+
+          item = browse_video_entry({
+              "id": "dQw4w9WgXcQ",
+              "title": "Fixture",
+              "channel": "Fixture Channel",
+              "channel_id": "UCaaaaaaaaaaaaaaaaaaaaaa",
+              "duration": 100,
+              "view_count": 10,
+          }, base="http://192.168.1.50:8085")
+          assert item["id"] == "dQw4w9WgXcQ"
+          assert item["thumbnailURL"].endswith("/v1/thumb/dQw4w9WgXcQ")
+          assert item["channelID"] == "UCaaaaaaaaaaaaaaaaaaaaaa"
           assert is_local_network_host("192.168.1.50")
           assert is_local_network_host("10.0.0.8")
           assert is_local_network_host("resolver.local")
@@ -296,9 +316,75 @@ jobs:
           print("resolver format selection: OK")
           PY
 
+      - name: Native client API smoke
+        run: |
+          set -euo pipefail
+          chmod +x Resolver/tests/fake_ytdlp.py
+
+          docker run -d --rm \
+            --name vcd-resolver-client-smoke \
+            -p 8086:8085 \
+            -v "$PWD/Resolver/tests:/tests:ro" \
+            -e YTDLP_BIN=/tests/fake_ytdlp.py \
+            vcd-resolver:v0.10
+
+          cleanup() {
+            docker rm -f vcd-resolver-client-smoke >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8086/health >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          curl -fsS http://127.0.0.1:8086/v1/home > client-home.json
+          curl -fsS --get --data-urlencode 'q=openai' \
+            http://127.0.0.1:8086/v1/search > client-search.json
+          curl -fsS \
+            http://127.0.0.1:8086/v1/channel/UCaaaaaaaaaaaaaaaaaaaaaa \
+            > client-channel.json
+          curl -fsS \
+            http://127.0.0.1:8086/v1/video/dQw4w9WgXcQ \
+            > client-video.json
+
+          python3 - <<'PY'
+          import json
+
+          def load(name):
+              with open(name, "r", encoding="utf-8") as handle:
+                  return json.load(handle)
+
+          home = load("client-home.json")
+          search = load("client-search.json")
+          channel = load("client-channel.json")
+          video = load("client-video.json")
+
+          for payload in (home, search, channel):
+              assert len(payload["items"]) == 2
+              first = payload["items"][0]
+              assert first["id"] == "dQw4w9WgXcQ"
+              assert first["thumbnailURL"].endswith("/v1/thumb/dQw4w9WgXcQ")
+              assert first["channelID"] == "UCaaaaaaaaaaaaaaaaaaaaaa"
+
+          assert search["title"] == "openai"
+          assert channel["channelID"] == "UCaaaaaaaaaaaaaaaaaaaaaa"
+          assert video["videoID"] == "dQw4w9WgXcQ"
+          assert video["video"]["relayURL"].startswith(
+              "http://127.0.0.1:8086/v1/relay/"
+          )
+          assert video["audio"]["relayURL"].startswith(
+              "http://127.0.0.1:8086/v1/relay/"
+          )
+
+          print("native client API smoke: OK")
+          PY
+
       - name: Stop resolver
         if: always()
-        run: docker rm -f vcd-resolver-v93 || true
+        run: docker rm -f vcd-resolver-v010 || true
 
       - name: Upload resolver evidence
         if: always()
@@ -309,4 +395,8 @@ jobs:
             resolver-health.json
             resolver-deno.txt
             resolver-ytdlp.txt
+            client-home.json
+            client-search.json
+            client-channel.json
+            client-video.json
           if-no-files-found: ignore
