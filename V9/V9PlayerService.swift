@@ -771,6 +771,19 @@ final class V9PlayerService:
             return
         }
 
+        if hasLoadedMedia,
+           duration > 0,
+           currentTime >=
+            max(
+                0,
+                duration - 0.5
+            ) {
+            seek(
+                to:
+                    0
+            )
+        }
+
         desiredPlayback =
             true
 
@@ -1592,6 +1605,9 @@ final class V9PlayerService:
                 state =
                     .paused
 
+                pipBridge?
+                    .stopIfActive()
+
                 updateNowPlaying()
                 updatePiPPlaybackState()
             }
@@ -1994,6 +2010,9 @@ final class V9PlayerService:
 
         desiredPlayback =
             false
+
+        pipBridge?
+            .stopIfActive()
 
         state =
             .failed(
