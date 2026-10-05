@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import os
 import re
@@ -74,17 +75,61 @@ def enforce_relay_capacity() -> None:
         relay_entries.pop(token, None)
 
 
+def is_local_network_host(host: str) -> bool:
+    value = host.strip().lower().strip("[]")
+
+    if value == "localhost" or value.endswith(".local") or "." not in value:
+        return True
+
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        return False
+
+    return bool(
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+    )
+
+
 def resolved_public_base(request: Request) -> str:
     if PUBLIC_BASE_URL:
-        if not (
-            PUBLIC_BASE_URL.startswith("https://")
-            or PUBLIC_BASE_URL.startswith("http://")
-        ):
+        try:
+            parsed = httpx.URL(PUBLIC_BASE_URL)
+        except Exception as exc:
             raise HTTPException(
                 status_code=500,
-                detail="VCD_PUBLIC_BASE_URL must start with http:// or https://",
+                detail="VCD_PUBLIC_BASE_URL is invalid",
+            ) from exc
+
+        host = parsed.host or ""
+        scheme = parsed.scheme.decode() if isinstance(parsed.scheme, bytes) else str(parsed.scheme)
+
+        if scheme not in {"http", "https"} or not host:
+            raise HTTPException(
+                status_code=500,
+                detail="VCD_PUBLIC_BASE_URL must be an absolute http(s) URL",
             )
+
+        if scheme == "http" and not is_local_network_host(host):
+            raise HTTPException(
+                status_code=500,
+                detail="public VCD_PUBLIC_BASE_URL must use https",
+            )
+
         return PUBLIC_BASE_URL
+
+    host = request.url.hostname or ""
+
+    # request.base_url is derived from the incoming Host header. For LAN use
+    # that is convenient; for Internet deployment it must never become a
+    # capability URL without an explicitly trusted public base.
+    if not is_local_network_host(host):
+        raise HTTPException(
+            status_code=500,
+            detail="set VCD_PUBLIC_BASE_URL for non-LAN deployments",
+        )
 
     return str(request.base_url).rstrip("/")
 
@@ -341,18 +386,26 @@ async def refresh_relay_entry(entry: RelayEntry) -> None:
     entry.generation += 1
 
 
-def forwarded_request_headers(request: Request) -> dict[str, str]:
+def forwarded_request_headers(
+    request: Request,
+    *,
+    include_conditionals: bool,
+) -> dict[str, str]:
     forwarded: dict[str, str] = {}
 
-    for source, target in [
-        ("range", "Range"),
-        ("if-range", "If-Range"),
-        ("if-none-match", "If-None-Match"),
-        ("if-modified-since", "If-Modified-Since"),
-    ]:
-        value = request.headers.get(source)
-        if value:
-            forwarded[target] = value
+    range_value = request.headers.get("range")
+    if range_value:
+        forwarded["Range"] = range_value
+
+    if include_conditionals:
+        for source, target in [
+            ("if-range", "If-Range"),
+            ("if-none-match", "If-None-Match"),
+            ("if-modified-since", "If-Modified-Since"),
+        ]:
+            value = request.headers.get(source)
+            if value:
+                forwarded[target] = value
 
     return forwarded
 
@@ -360,9 +413,16 @@ def forwarded_request_headers(request: Request) -> dict[str, str]:
 async def send_upstream(
     entry: RelayEntry,
     request: Request,
+    *,
+    include_conditionals: bool = True,
 ) -> tuple[httpx.AsyncClient, httpx.Response]:
     headers = dict(entry.headers)
-    headers.update(forwarded_request_headers(request))
+    headers.update(
+        forwarded_request_headers(
+            request,
+            include_conditionals=include_conditionals,
+        )
+    )
 
     client = httpx.AsyncClient(
         follow_redirects=True,
@@ -372,14 +432,27 @@ async def send_upstream(
         ),
     )
 
-    upstream = await client.send(
-        client.build_request(
-            request.method,
-            entry.url,
-            headers=headers,
-        ),
-        stream=True,
-    )
+    try:
+        upstream = await client.send(
+            client.build_request(
+                request.method,
+                entry.url,
+                headers=headers,
+            ),
+            stream=True,
+        )
+    except httpx.TimeoutException as exc:
+        await client.aclose()
+        raise HTTPException(
+            status_code=504,
+            detail="upstream media timeout",
+        ) from exc
+    except httpx.HTTPError as exc:
+        await client.aclose()
+        raise HTTPException(
+            status_code=502,
+            detail="upstream media transport failed",
+        ) from exc
 
     return client, upstream
 
@@ -504,7 +577,11 @@ async def relay(token: str, request: Request) -> Response:
                     detail=f"stream refresh failed: {type(exc).__name__}",
                 ) from exc
 
-        client, upstream = await send_upstream(entry, request)
+        client, upstream = await send_upstream(
+            entry,
+            request,
+            include_conditionals=False,
+        )
 
     if upstream.status_code >= 400:
         status = upstream.status_code
@@ -523,7 +600,6 @@ async def relay(token: str, request: Request) -> Response:
         "content-type",
         "etag",
         "last-modified",
-        "cache-control",
         "content-encoding",
     ]:
         value = upstream.headers.get(key)
@@ -532,6 +608,11 @@ async def relay(token: str, request: Request) -> Response:
 
     if entry.content_type and "content-type" not in response_headers:
         response_headers["content-type"] = entry.content_type
+
+    # Relay URLs are bearer-like capabilities. Never invite reverse proxies,
+    # browsers or shared caches to retain the media response by token URL.
+    response_headers["cache-control"] = "private, no-store"
+    response_headers["x-content-type-options"] = "nosniff"
 
     if request.method == "HEAD":
         status = upstream.status_code
