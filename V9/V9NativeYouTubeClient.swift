@@ -286,7 +286,8 @@ final class V9NativeYouTubeClient:
         ] =
             response
 
-        let videos =
+        let videos:
+            [BrowseVideo] =
             (
                 response
                     .channelContentStore[
@@ -297,7 +298,8 @@ final class V9NativeYouTubeClient:
             )?
             .items
             .compactMap {
-                result in
+                result ->
+                    BrowseVideo? in
 
                 guard let video =
                         result as?
