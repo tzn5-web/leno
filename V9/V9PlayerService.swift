@@ -1521,6 +1521,11 @@ final class V9PlayerService:
                 hasLoadedMedia =
                     true
 
+                // A completed load proves the refreshed source is healthy.
+                // Future expiry/network incidents get a fresh retry budget.
+                refreshAttempts =
+                    0
+
                 if let pendingSeekAfterLoad {
                     self.pendingSeekAfterLoad =
                         nil
