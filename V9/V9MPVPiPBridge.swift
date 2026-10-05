@@ -1,9 +1,6 @@
 import AVKit
 import CoreMedia
-import CoreVideo
 import Foundation
-import os
-import UIKit
 
 private final class V9PiPStateBox:
     @unchecked Sendable
@@ -63,9 +60,6 @@ private final class V9PiPStateBox:
 final class V9MPVPiPBridge:
     NSObject
 {
-    private let sampleBufferLayer =
-        AVSampleBufferDisplayLayer()
-
     private var controller:
         AVPictureInPictureController?
 
@@ -77,12 +71,6 @@ final class V9MPVPiPBridge:
 
     private weak var renderView:
         V9MPVRenderView?
-
-    private var formatDescription:
-        CMVideoFormatDescription?
-
-    private var lastPresentationTime =
-        CMTime.invalid
 
     private var pendingStart =
         false
@@ -131,18 +119,11 @@ final class V9MPVPiPBridge:
         renderView:
             V9MPVRenderView
     ) {
-        guard controller == nil else {
-            self.service =
-                service
-
-            self.renderView =
-                renderView
-
-            updateLayerFrame(
-                renderView.bounds
-            )
-
-            return
+        if let existingRenderView =
+                self.renderView,
+           existingRenderView !==
+                renderView {
+            cleanup()
         }
 
         self.service =
@@ -151,26 +132,17 @@ final class V9MPVPiPBridge:
         self.renderView =
             renderView
 
-        sampleBufferLayer
-            .videoGravity =
-            .resizeAspect
+        renderView.onFrameEnqueued = {
+            [weak self] _ in
 
-        sampleBufferLayer
-            .backgroundColor =
-            UIColor.black
-                .cgColor
+            self?
+                .frameEnqueued()
+        }
 
-        sampleBufferLayer
-            .isHidden =
-            true
-
-        updateLayerFrame(
-            renderView.bounds
-        )
-
-        renderView.layer.addSublayer(
-            sampleBufferLayer
-        )
+        guard controller == nil
+        else {
+            return
+        }
 
         var createdTimebase:
             CMTimebase?
@@ -191,7 +163,8 @@ final class V9MPVPiPBridge:
             timebase =
                 createdTimebase
 
-            sampleBufferLayer
+            renderView
+                .sampleBufferLayer
                 .controlTimebase =
                 createdTimebase
 
@@ -212,7 +185,8 @@ final class V9MPVPiPBridge:
             AVPictureInPictureController
                 .ContentSource(
                     sampleBufferDisplayLayer:
-                        sampleBufferLayer,
+                        renderView
+                            .sampleBufferLayer,
                     playbackDelegate:
                         self
                 )
@@ -262,12 +236,8 @@ final class V9MPVPiPBridge:
         pendingStart =
             false
 
-        renderView?
-            .captureFrames =
+        hasEnqueuedFrame =
             false
-
-        controller?
-            .stopPictureInPicture()
 
         possibleObservation?
             .invalidate()
@@ -275,32 +245,27 @@ final class V9MPVPiPBridge:
         possibleObservation =
             nil
 
-        controller?.delegate =
+        controller?
+            .stopPictureInPicture()
+
+        controller?
+            .delegate =
             nil
 
         controller =
             nil
 
-        sampleBufferLayer
-            .sampleBufferRenderer
-            .flush(
-                removingDisplayedImage:
-                    true,
-                completionHandler:
-                    nil
-            )
-
-        sampleBufferLayer
-            .removeFromSuperlayer()
-
-        formatDescription =
+        renderView?
+            .onFrameEnqueued =
             nil
 
-        hasEnqueuedFrame =
-            false
+        renderView?
+            .sampleBufferLayer
+            .controlTimebase =
+            nil
 
-        lastPresentationTime =
-            .invalid
+        renderView?
+            .resetFrameTimeline()
 
         timebase =
             nil
@@ -319,55 +284,8 @@ final class V9MPVPiPBridge:
         hasEnqueuedFrame =
             false
 
-        lastPresentationTime =
-            .invalid
-
-        formatDescription =
-            nil
-
-        sampleBufferLayer
-            .sampleBufferRenderer
-            .flush(
-                removingDisplayedImage:
-                    true,
-                completionHandler:
-                    nil
-            )
-
         renderView?
-            .captureFrames =
-                isActive
-    }
-
-    func updateLayerFrame(
-        _ bounds:
-            CGRect
-    ) {
-        guard bounds.width > 1,
-              bounds.height > 1
-        else {
-            return
-        }
-
-        CATransaction.begin()
-
-        CATransaction
-            .setDisableActions(
-                true
-            )
-
-        sampleBufferLayer.frame =
-            bounds
-
-        sampleBufferLayer.bounds =
-            CGRect(
-                origin:
-                    .zero,
-                size:
-                    bounds.size
-            )
-
-        CATransaction.commit()
+            .resetFrameTimeline()
     }
 
     func updatePlaybackState(
@@ -431,33 +349,8 @@ final class V9MPVPiPBridge:
         pendingStart =
             true
 
-        // Never allow a new PiP session to reuse a frame/timestamp from
-        // the previously loaded video.
-        hasEnqueuedFrame =
-            false
-
-        lastPresentationTime =
-            .invalid
-
-        formatDescription =
-            nil
-
-        sampleBufferLayer
-            .sampleBufferRenderer
-            .flush(
-                removingDisplayedImage:
-                    true,
-                completionHandler:
-                    nil
-            )
-
-        sampleBufferLayer
-            .isHidden =
-            false
-
         renderView
-            .captureFrames =
-            true
+            .resumeRendering()
 
         renderView
             .requestRender()
@@ -465,214 +358,7 @@ final class V9MPVPiPBridge:
         tryStartIfReady()
     }
 
-    func enqueueFrame(
-        _ pixelBuffer:
-            CVPixelBuffer,
-        presentationTime:
-            CMTime
-    ) {
-        let width =
-            CVPixelBufferGetWidth(
-                pixelBuffer
-            )
-
-        let height =
-            CVPixelBufferGetHeight(
-                pixelBuffer
-            )
-
-        guard width > 0,
-              height > 0
-        else {
-            return
-        }
-
-        if lastPresentationTime
-            .isValid,
-           presentationTime
-            .isValid,
-           presentationTime
-            .seconds
-            .isFinite,
-           lastPresentationTime
-            .seconds
-            .isFinite,
-           presentationTime.seconds + 0.5 <
-            lastPresentationTime.seconds {
-            // A new file starts close to t=0. Flush the old PiP timeline
-            // instead of forcing the new file to continue at the old PTS.
-            sampleBufferLayer
-                .sampleBufferRenderer
-                .flush(
-                    removingDisplayedImage:
-                        true,
-                    completionHandler:
-                        nil
-                )
-
-            lastPresentationTime =
-                .invalid
-
-            hasEnqueuedFrame =
-                false
-        }
-
-        let needsDescription:
-            Bool
-
-        if let formatDescription {
-            let dimensions =
-                CMVideoFormatDescriptionGetDimensions(
-                    formatDescription
-                )
-
-            needsDescription =
-                dimensions.width !=
-                    Int32(
-                        width
-                    ) ||
-                dimensions.height !=
-                    Int32(
-                        height
-                    )
-        } else {
-            needsDescription =
-                true
-        }
-
-        if needsDescription {
-            var description:
-                CMVideoFormatDescription?
-
-            let result =
-                CMVideoFormatDescriptionCreateForImageBuffer(
-                    allocator:
-                        kCFAllocatorDefault,
-                    imageBuffer:
-                        pixelBuffer,
-                    formatDescriptionOut:
-                        &description
-                )
-
-            guard result ==
-                    noErr,
-                  let description
-            else {
-                return
-            }
-
-            formatDescription =
-                description
-
-            sampleBufferLayer
-                .sampleBufferRenderer
-                .flush()
-
-            lastPresentationTime =
-                .invalid
-
-            hasEnqueuedFrame =
-                false
-        }
-
-        guard let formatDescription
-        else {
-            return
-        }
-
-        var effectivePTS =
-            presentationTime
-
-        if !effectivePTS
-            .isValid ||
-           effectivePTS
-            .isIndefinite {
-            effectivePTS =
-                lastPresentationTime
-                    .isValid
-                    ? CMTimeAdd(
-                        lastPresentationTime,
-                        CMTime(
-                            value:
-                                1,
-                            timescale:
-                                30
-                        )
-                    )
-                    : .zero
-        }
-
-        if lastPresentationTime
-            .isValid &&
-           effectivePTS <=
-            lastPresentationTime {
-            effectivePTS =
-                CMTimeAdd(
-                    lastPresentationTime,
-                    CMTime(
-                        value:
-                            1,
-                        timescale:
-                            30
-                    )
-                )
-        }
-
-        var timing =
-            CMSampleTimingInfo(
-                duration:
-                    CMTime(
-                        value:
-                            1,
-                        timescale:
-                            30
-                    ),
-                presentationTimeStamp:
-                    effectivePTS,
-                decodeTimeStamp:
-                    .invalid
-            )
-
-        var sampleBuffer:
-            CMSampleBuffer?
-
-        let createStatus =
-            CMSampleBufferCreateReadyWithImageBuffer(
-                allocator:
-                    kCFAllocatorDefault,
-                imageBuffer:
-                    pixelBuffer,
-                formatDescription:
-                    formatDescription,
-                sampleTiming:
-                    &timing,
-                sampleBufferOut:
-                    &sampleBuffer
-            )
-
-        guard createStatus ==
-                noErr,
-              let sampleBuffer
-        else {
-            return
-        }
-
-        let renderer =
-            sampleBufferLayer
-                .sampleBufferRenderer
-
-        if renderer.status ==
-            .failed {
-            renderer.flush()
-        }
-
-        renderer.enqueue(
-            sampleBuffer
-        )
-
-        lastPresentationTime =
-            effectivePTS
-
+    private func frameEnqueued() {
         hasEnqueuedFrame =
             true
 
@@ -697,12 +383,6 @@ final class V9MPVPiPBridge:
 
         pendingStart =
             false
-
-        updateLayerFrame(
-            renderView?
-                .bounds ??
-                .zero
-        )
 
         controller
             .startPictureInPicture()
@@ -818,10 +498,6 @@ extension V9MPVPiPBridge:
             @MainActor in
 
             renderView?
-                .captureFrames =
-                true
-
-            renderView?
                 .resumeRendering()
         }
     }
@@ -852,20 +528,6 @@ extension V9MPVPiPBridge:
             pendingStart =
                 false
 
-            hasEnqueuedFrame =
-                false
-
-            lastPresentationTime =
-                .invalid
-
-            sampleBufferLayer
-                .isHidden =
-                true
-
-            renderView?
-                .captureFrames =
-                false
-
             onActiveChanged?(
                 false
             )
@@ -893,23 +555,6 @@ extension V9MPVPiPBridge:
 
             pendingStart =
                 false
-
-            hasEnqueuedFrame =
-                false
-
-            lastPresentationTime =
-                .invalid
-
-            sampleBufferLayer
-                .isHidden =
-                true
-
-            renderView?
-                .captureFrames =
-                false
-
-            renderView?
-                .resumeRendering()
 
             onActiveChanged?(
                 false
