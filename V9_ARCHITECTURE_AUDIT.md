@@ -29,6 +29,12 @@ fallback if current YouTube stream extraction changes or fails.
 
 Browsing uses the pinned YouTubeKit revision in `project.yml`.
 
+The pinned library still contains an older February 2026 WEB client version in
+its default request templates. YoutubeVcd overrides Home/Search/Channel and all
+three continuation request types to the current audited WEB client version
+`2.20260708.00.00`, matching the current yt-dlp YouTube client table used for
+this audit.
+
 - Home: `HomeScreenResponse`.
 - Search: `SearchResponse`.
 - Channel: `ChannelInfosResponse` Videos tab.
