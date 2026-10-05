@@ -6,7 +6,7 @@ import os
 import re
 import secrets
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -19,6 +19,10 @@ YTDLP_BIN = os.getenv("YTDLP_BIN", "yt-dlp")
 YTDLP_TIMEOUT = int(os.getenv("YTDLP_TIMEOUT", "90"))
 YTDLP_JS_RUNTIME = os.getenv("YTDLP_JS_RUNTIME", "deno").strip() or "deno"
 API_TOKEN = os.getenv("VCD_API_TOKEN", "").strip()
+PUBLIC_BASE_URL = os.getenv("VCD_PUBLIC_BASE_URL", "").strip().rstrip("/")
+COOKIES_FILE = os.getenv("VCD_COOKIES_FILE", "").strip()
+MAX_RELAY_ENTRIES = max(32, int(os.getenv("VCD_MAX_RELAY_ENTRIES", "1024")))
+UPSTREAM_READ_TIMEOUT = max(10.0, float(os.getenv("VCD_UPSTREAM_READ_TIMEOUT", "45")))
 VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
 REFRESHABLE_UPSTREAM_STATUS = {403, 404, 410}
 
@@ -37,6 +41,8 @@ class RelayEntry:
     video_id: str
     format_id: str
     stream_kind: str
+    generation: int = 0
+    refresh_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
 
 relay_entries: dict[str, RelayEntry] = {}
@@ -52,6 +58,35 @@ def cleanup_entries() -> None:
     ]
     for token in expired:
         relay_entries.pop(token, None)
+
+
+def enforce_relay_capacity() -> None:
+    overflow = len(relay_entries) - MAX_RELAY_ENTRIES + 1
+    if overflow <= 0:
+        return
+
+    oldest = sorted(
+        relay_entries.items(),
+        key=lambda item: item[1].expires_at,
+    )
+
+    for token, _ in oldest[:overflow]:
+        relay_entries.pop(token, None)
+
+
+def resolved_public_base(request: Request) -> str:
+    if PUBLIC_BASE_URL:
+        if not (
+            PUBLIC_BASE_URL.startswith("https://")
+            or PUBLIC_BASE_URL.startswith("http://")
+        ):
+            raise HTTPException(
+                status_code=500,
+                detail="VCD_PUBLIC_BASE_URL must start with http:// or https://",
+            )
+        return PUBLIC_BASE_URL
+
+    return str(request.base_url).rstrip("/")
 
 
 def require_api_token(request: Request) -> None:
@@ -75,6 +110,7 @@ async def create_relay_entry(
 
     async with relay_lock:
         cleanup_entries()
+        enforce_relay_capacity()
         relay_entries[token] = RelayEntry(
             url=str(format_info["url"]),
             headers=normalized_headers(format_info),
@@ -217,7 +253,8 @@ async def extract_video(video_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="invalid video id")
 
     url = f"https://www.youtube.com/watch?v={video_id}"
-    proc = await asyncio.create_subprocess_exec(
+
+    arguments = [
         YTDLP_BIN,
         "--dump-single-json",
         "--no-playlist",
@@ -225,7 +262,26 @@ async def extract_video(video_id: str) -> dict[str, Any]:
         "--no-warnings",
         "--js-runtimes",
         YTDLP_JS_RUNTIME,
-        url,
+    ]
+
+    if COOKIES_FILE:
+        if not os.path.isfile(COOKIES_FILE):
+            raise HTTPException(
+                status_code=500,
+                detail="VCD_COOKIES_FILE does not exist",
+            )
+
+        arguments.extend(
+            [
+                "--cookies",
+                COOKIES_FILE,
+            ]
+        )
+
+    arguments.append(url)
+
+    proc = await asyncio.create_subprocess_exec(
+        *arguments,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -266,6 +322,7 @@ async def refresh_relay_entry(entry: RelayEntry) -> None:
     entry.content_type = str(content_type) if content_type else None
     entry.format_id = str(refreshed_format.get("format_id") or "")
     entry.expires_at = time.time() + TOKEN_TTL_SECONDS
+    entry.generation += 1
 
 
 def forwarded_request_headers(request: Request) -> dict[str, str]:
@@ -293,7 +350,10 @@ async def send_upstream(
 
     client = httpx.AsyncClient(
         follow_redirects=True,
-        timeout=httpx.Timeout(30.0, read=None),
+        timeout=httpx.Timeout(
+            30.0,
+            read=UPSTREAM_READ_TIMEOUT,
+        ),
     )
 
     upstream = await client.send(
@@ -324,6 +384,10 @@ async def health() -> dict[str, Any]:
         "relay_ttl": TOKEN_TTL_SECONDS,
         "js_runtime": YTDLP_JS_RUNTIME,
         "auth_required": bool(API_TOKEN),
+        "cookies_configured": bool(COOKIES_FILE),
+        "public_base_configured": bool(PUBLIC_BASE_URL),
+        "max_relay_entries": MAX_RELAY_ENTRIES,
+        "active_relay_entries": len(relay_entries),
     }
 
 
@@ -337,7 +401,7 @@ async def video(video_id: str, request: Request) -> dict[str, Any]:
     if video_format is None:
         raise HTTPException(status_code=502, detail="no playable stream")
 
-    base = str(request.base_url).rstrip("/")
+    base = resolved_public_base(request)
     split_streams = audio_format is not None
 
     async def make_stream(
@@ -395,20 +459,27 @@ async def relay(token: str, request: Request) -> Response:
     if entry is None:
         raise HTTPException(status_code=404, detail="relay token expired or unknown")
 
+    generation =
+        entry.generation
+
     client, upstream = await send_upstream(entry, request)
 
     if upstream.status_code in REFRESHABLE_UPSTREAM_STATUS:
         await close_upstream(client, upstream)
 
-        try:
-            await refresh_relay_entry(entry)
-        except HTTPException:
-            raise
-        except Exception as exc:
-            raise HTTPException(
-                status_code=502,
-                detail=f"stream refresh failed: {type(exc).__name__}",
-            ) from exc
+        async with entry.refresh_lock:
+            try:
+                # Another concurrent Range request may already have refreshed
+                # this relay while we were waiting for the lock.
+                if entry.generation == generation:
+                    await refresh_relay_entry(entry)
+            except HTTPException:
+                raise
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"stream refresh failed: {type(exc).__name__}",
+                ) from exc
 
         client, upstream = await send_upstream(entry, request)
 
