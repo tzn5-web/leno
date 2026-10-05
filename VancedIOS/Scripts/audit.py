@@ -15,6 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 LOCK = ROOT / "Config" / "dependencies.lock.json"
 MATRIX = ROOT / "Config" / "feature_matrix.json"
+STATUS = ROOT / "Config" / "implementation_status.json"
 
 REQUIRED_FEATURES = {
     "official_youtube_base",
@@ -85,14 +86,17 @@ def is_sha40(value: str) -> bool:
 def audit_source(audit: Audit) -> None:
     audit.check(LOCK.exists(), "missing dependency lock")
     audit.check(MATRIX.exists(), "missing feature matrix")
+    audit.check(STATUS.exists(), "missing implementation status")
     if audit.errors:
         return
 
     lock = load_json(LOCK)
     matrix = load_json(MATRIX)
+    status = load_json(STATUS)
 
     audit.check(lock.get("schema") == 1, "dependency lock schema must be 1")
     audit.check(matrix.get("schema") == 1, "feature matrix schema must be 1")
+    audit.check(status.get("schema") == 1, "implementation status schema must be 1")
 
     refs = [lock.get("theos", {}).get("ref", "")]
     refs.extend(item.get("ref", "") for item in lock.get("headers", []))
@@ -109,6 +113,21 @@ def audit_source(audit: Audit) -> None:
     missing = sorted(REQUIRED_FEATURES - feature_ids)
     extra = sorted(feature_ids - REQUIRED_FEATURES)
     audit.check(not missing and not extra, f"feature matrix mismatch missing={missing} extra={extra}")
+
+    implementation = status.get("features", {})
+    status_missing = sorted(REQUIRED_FEATURES - set(implementation))
+    status_extra = sorted(set(implementation) - REQUIRED_FEATURES)
+    audit.check(not status_missing and not status_extra,
+                f"implementation status mismatch missing={status_missing} extra={status_extra}")
+
+    accepted_states = {"implemented", "validated_static", "validated_device"}
+    incomplete = {
+        feature: implementation.get(feature, {}).get("state", "missing")
+        for feature in sorted(REQUIRED_FEATURES)
+        if implementation.get(feature, {}).get("state") not in accepted_states
+    }
+    if incomplete:
+        audit.error(f"required features are not yet implemented/validated: {incomplete}")
 
     missing_impl = [str(path.relative_to(ROOT)) for path in EXPECTED_IMPLEMENTATION_FILES if not path.exists()]
     if missing_impl:
@@ -131,6 +150,7 @@ def audit_source(audit: Audit) -> None:
     audit.info["scanned_code_files"] = scanned
     audit.info["locked_dependencies"] = 1 + len(lock.get("headers", [])) + len(lock.get("modules", []))
     audit.info["required_features"] = sorted(feature_ids)
+    audit.info["implementation_states"] = {k: v.get("state") for k, v in sorted(implementation.items())}
     audit.info["runtime_device_gates"] = matrix.get("runtime_device_gates", [])
 
 
