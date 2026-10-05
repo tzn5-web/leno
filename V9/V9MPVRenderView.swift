@@ -1,67 +1,15 @@
+import AVFoundation
 import CoreMedia
 import CoreVideo
-import Libmpv
-import OpenGLES
+import QuartzCore
 import UIKit
-
-private func v9OpenGLGetProcAddress(
-    _ context:
-        UnsafeMutableRawPointer?,
-    _ name:
-        UnsafePointer<CChar>?
-) -> UnsafeMutableRawPointer? {
-    guard let name else {
-        return nil
-    }
-
-    let frameworkURL =
-        URL(
-            fileURLWithPath:
-                "/System/Library/Frameworks/OpenGLES.framework"
-        )
-
-    guard let bundle =
-            CFBundleCreate(
-                kCFAllocatorDefault,
-                frameworkURL as CFURL
-            )
-    else {
-        return nil
-    }
-
-    return CFBundleGetFunctionPointerForName(
-        bundle,
-        String(
-            cString:
-                name
-        ) as CFString
-    )
-}
 
 @MainActor
 final class V9MPVRenderView:
     UIView
 {
-    override class var layerClass:
-        AnyClass
-    {
-        CAEAGLLayer.self
-    }
-
-    private var context:
-        EAGLContext?
-
-    private var framebuffer:
-        GLuint = 0
-
-    private var colorRenderbuffer:
-        GLuint = 0
-
-    private var renderWidth:
-        GLint = 0
-
-    private var renderHeight:
-        GLint = 0
+    let sampleBufferLayer =
+        AVSampleBufferDisplayLayer()
 
     private weak var service:
         V9PlayerService?
@@ -72,18 +20,6 @@ final class V9MPVRenderView:
     private(set) var renderingPaused =
         false
 
-    var captureFrames =
-        false
-
-    var onFrame:
-        ((
-            CVPixelBuffer,
-            CMTime
-        ) -> Void)?
-
-    private var captureBuffer:
-        [UInt8] = []
-
     private var pixelBufferPool:
         CVPixelBufferPool?
 
@@ -93,12 +29,22 @@ final class V9MPVRenderView:
     private var pixelBufferPoolHeight =
         0
 
-    private var lastCaptureHostTime:
+    private var formatDescription:
+        CMVideoFormatDescription?
+
+    private var lastPresentationTime =
+        CMTime.invalid
+
+    private var lastRenderHostTime:
         CFTimeInterval =
             0
 
+    var onFrameEnqueued:
+        ((CMTime) -> Void)?
+
     override init(
-        frame: CGRect
+        frame:
+            CGRect
     ) {
         super.init(
             frame:
@@ -109,7 +55,8 @@ final class V9MPVRenderView:
     }
 
     required init?(
-        coder: NSCoder
+        coder:
+            NSCoder
     ) {
         super.init(
             coder:
@@ -121,7 +68,23 @@ final class V9MPVRenderView:
 
     deinit {
         MainActor.assumeIsolated {
-            tearDownGL()
+            onFrameEnqueued =
+                nil
+
+            sampleBufferLayer
+                .sampleBufferRenderer
+                .flush(
+                    removingDisplayedImage:
+                        true,
+                    completionHandler:
+                        nil
+                )
+
+            sampleBufferLayer
+                .removeFromSuperlayer()
+
+            pixelBufferPool =
+                nil
         }
     }
 
@@ -132,11 +95,8 @@ final class V9MPVRenderView:
         self.service =
             service
 
-        guard setupGLIfNeeded(),
-              service.createRenderContext(
-                getProcAddress:
-                    v9OpenGLGetProcAddress
-              )
+        guard service
+            .createRenderContext()
         else {
             return false
         }
@@ -149,16 +109,27 @@ final class V9MPVRenderView:
     override func layoutSubviews() {
         super.layoutSubviews()
 
-        guard setupGLIfNeeded() else {
+        guard bounds.width
+                .isFinite,
+              bounds.height
+                .isFinite,
+              bounds.width > 1,
+              bounds.height > 1
+        else {
             return
         }
 
-        resizeDrawable()
+        CATransaction.begin()
 
-        service?
-            .updatePiPLayerFrame(
-                bounds
+        CATransaction
+            .setDisableActions(
+                true
             )
+
+        sampleBufferLayer.frame =
+            bounds
+
+        CATransaction.commit()
 
         requestRender()
     }
@@ -191,259 +162,50 @@ final class V9MPVRenderView:
         requestRender()
     }
 
+    func resetFrameTimeline() {
+        lastPresentationTime =
+            .invalid
+
+        lastRenderHostTime =
+            0
+
+        formatDescription =
+            nil
+
+        sampleBufferLayer
+            .sampleBufferRenderer
+            .flush(
+                removingDisplayedImage:
+                    true,
+                completionHandler:
+                    nil
+            )
+    }
+
     private func commonInit() {
         backgroundColor =
             .black
 
-        contentScaleFactor =
-            UIScreen.main.scale
-
-        guard let layer =
-                layer as?
-                    CAEAGLLayer
-        else {
-            return
-        }
-
-        layer.isOpaque =
+        clipsToBounds =
             true
 
-        layer.drawableProperties = [
-            kEAGLDrawablePropertyRetainedBacking:
-                true,
-            kEAGLDrawablePropertyColorFormat:
-                kEAGLColorFormatRGBA8
-        ]
-    }
+        sampleBufferLayer
+            .videoGravity =
+            .resizeAspect
 
-    private func setupGLIfNeeded()
-        -> Bool
-    {
-        if context != nil,
-           framebuffer != 0,
-           colorRenderbuffer != 0 {
-            return true
-        }
+        sampleBufferLayer
+            .backgroundColor =
+            UIColor.black
+                .cgColor
 
-        guard let newContext =
-                EAGLContext(
-                    api:
-                        .openGLES3
-                ),
-              EAGLContext.setCurrent(
-                newContext
-              )
-        else {
-            return false
-        }
-
-        context =
-            newContext
-
-        glGenFramebuffers(
-            1,
-            &framebuffer
-        )
-
-        glGenRenderbuffers(
-            1,
-            &colorRenderbuffer
-        )
-
-        resizeDrawable()
-
-        return framebuffer != 0 &&
-               colorRenderbuffer != 0
-    }
-
-    private func resizeDrawable() {
-        guard let context,
-              let layer =
-                layer as?
-                    CAEAGLLayer,
-              framebuffer != 0,
-              colorRenderbuffer != 0,
-              bounds.width > 1,
-              bounds.height > 1
-        else {
-            return
-        }
-
-        EAGLContext.setCurrent(
-            context
-        )
-
-        glBindFramebuffer(
-            GLenum(
-                GL_FRAMEBUFFER
-            ),
-            framebuffer
-        )
-
-        glBindRenderbuffer(
-            GLenum(
-                GL_RENDERBUFFER
-            ),
-            colorRenderbuffer
-        )
-
-        context.renderbufferStorage(
-            Int(
-                GL_RENDERBUFFER
-            ),
-            from:
-                layer
-        )
-
-        glFramebufferRenderbuffer(
-            GLenum(
-                GL_FRAMEBUFFER
-            ),
-            GLenum(
-                GL_COLOR_ATTACHMENT0
-            ),
-            GLenum(
-                GL_RENDERBUFFER
-            ),
-            colorRenderbuffer
-        )
-
-        var width:
-            GLint = 0
-
-        var height:
-            GLint = 0
-
-        glGetRenderbufferParameteriv(
-            GLenum(
-                GL_RENDERBUFFER
-            ),
-            GLenum(
-                GL_RENDERBUFFER_WIDTH
-            ),
-            &width
-        )
-
-        glGetRenderbufferParameteriv(
-            GLenum(
-                GL_RENDERBUFFER
-            ),
-            GLenum(
-                GL_RENDERBUFFER_HEIGHT
-            ),
-            &height
-        )
-
-        renderWidth =
-            width
-
-        renderHeight =
-            height
-
-        glViewport(
-            0,
-            0,
-            width,
-            height
+        layer.addSublayer(
+            sampleBufferLayer
         )
     }
 
     private func renderFrame() {
-        guard let context,
-              let service,
-              framebuffer != 0,
-              colorRenderbuffer != 0,
-              renderWidth > 0,
-              renderHeight > 0,
+        guard let service,
               service.consumeRenderUpdate()
-        else {
-            return
-        }
-
-        EAGLContext.setCurrent(
-            context
-        )
-
-        glBindFramebuffer(
-            GLenum(
-                GL_FRAMEBUFFER
-            ),
-            framebuffer
-        )
-
-        glViewport(
-            0,
-            0,
-            renderWidth,
-            renderHeight
-        )
-
-        glClearColor(
-            0,
-            0,
-            0,
-            1
-        )
-
-        glClear(
-            GLbitfield(
-                GL_COLOR_BUFFER_BIT
-            )
-        )
-
-        service.render(
-            framebuffer:
-                Int32(
-                    framebuffer
-                ),
-            width:
-                Int32(
-                    renderWidth
-                ),
-            height:
-                Int32(
-                    renderHeight
-                )
-        )
-
-        if captureFrames {
-            captureFrame(
-                presentationTime:
-                    service.currentTime
-            )
-        }
-
-        glBindRenderbuffer(
-            GLenum(
-                GL_RENDERBUFFER
-            ),
-            colorRenderbuffer
-        )
-
-        _ =
-            context.presentRenderbuffer(
-                Int(
-                    GL_RENDERBUFFER
-                )
-            )
-    }
-
-    private func captureFrame(
-        presentationTime:
-            Double
-    ) {
-        let width =
-            Int(
-                renderWidth
-            )
-
-        let height =
-            Int(
-                renderHeight
-            )
-
-        guard width > 1,
-              height > 1
         else {
             return
         }
@@ -451,83 +213,53 @@ final class V9MPVRenderView:
         let now =
             CACurrentMediaTime()
 
-        if lastCaptureHostTime > 0,
-           now - lastCaptureHostTime <
+        // Bound software conversion/copy cost. 60 fps YouTube sources are
+        // intentionally sampled to at most 30 fps for the V9 PiP path.
+        if lastRenderHostTime > 0,
+           now - lastRenderHostTime <
             (1.0 / 30.0) {
+            service
+                .skipRenderFrame()
+
             return
         }
 
-        lastCaptureHostTime =
+        lastRenderHostTime =
             now
 
-        let rowBytes =
-            width * 4
+        let size =
+            renderTargetSize()
 
-        let needed =
-            rowBytes * height
-
-        if captureBuffer.count !=
-            needed {
-            captureBuffer =
-                [UInt8](
-                    repeating:
-                        0,
-                    count:
-                        needed
-                )
-        }
-
-        glPixelStorei(
-            GLenum(
-                GL_PACK_ALIGNMENT
-            ),
-            1
-        )
-
-        captureBuffer
-            .withUnsafeMutableBytes {
-                raw in
-
-                guard let base =
-                        raw.baseAddress
-                else {
-                    return
-                }
-
-                glReadPixels(
-                    0,
-                    0,
-                    GLsizei(
-                        width
-                    ),
-                    GLsizei(
-                        height
-                    ),
-                    GLenum(
-                        GL_BGRA
-                    ),
-                    GLenum(
-                        GL_UNSIGNED_BYTE
-                    ),
-                    base
-                )
-            }
-
-        guard let pixelBuffer =
+        guard size.width > 1,
+              size.height > 1,
+              let pixelBuffer =
                 acquirePixelBuffer(
                     width:
-                        width,
+                        size.width,
                     height:
-                        height
+                        size.height
                 )
         else {
+            service
+                .skipRenderFrame()
+
             return
         }
 
-        CVPixelBufferLockBaseAddress(
-            pixelBuffer,
-            []
-        )
+        let lockResult =
+            CVPixelBufferLockBaseAddress(
+                pixelBuffer,
+                []
+            )
+
+        guard lockResult ==
+                kCVReturnSuccess
+        else {
+            service
+                .skipRenderFrame()
+
+            return
+        }
 
         defer {
             CVPixelBufferUnlockBaseAddress(
@@ -536,65 +268,183 @@ final class V9MPVRenderView:
             )
         }
 
-        guard let destination =
+        guard let baseAddress =
                 CVPixelBufferGetBaseAddress(
                     pixelBuffer
                 )
         else {
+            service
+                .skipRenderFrame()
+
             return
         }
 
-        let destinationRowBytes =
+        let stride =
             CVPixelBufferGetBytesPerRow(
                 pixelBuffer
             )
 
-        captureBuffer
-            .withUnsafeBytes {
-                raw in
-
-                guard let source =
-                        raw.baseAddress
-                else {
-                    return
-                }
-
-                for destinationRow
-                    in 0..<height
-                {
-                    let sourceRow =
-                        height -
-                        1 -
-                        destinationRow
-
-                    memcpy(
-                        destination
-                            .advanced(
-                                by:
-                                    destinationRow *
-                                    destinationRowBytes
-                            ),
-                        source
-                            .advanced(
-                                by:
-                                    sourceRow *
-                                    rowBytes
-                            ),
-                        rowBytes
-                    )
-                }
-            }
-
-        onFrame?(
-            pixelBuffer,
-            CMTime(
-                seconds:
-                    max(
-                        0,
-                        presentationTime
+        guard service
+            .renderSoftware(
+                width:
+                    Int32(
+                        size.width
                     ),
-                preferredTimescale:
-                    600
+                height:
+                    Int32(
+                        size.height
+                    ),
+                stride:
+                    stride,
+                pixels:
+                    baseAddress
+            )
+        else {
+            return
+        }
+
+        enqueue(
+            pixelBuffer,
+            presentationTime:
+                service.currentTime
+        )
+    }
+
+    private func renderTargetSize()
+        -> (
+            width:
+                Int,
+            height:
+                Int
+        )
+    {
+        let scale =
+            max(
+                1,
+                window?
+                    .screen
+                    .scale ??
+                UIScreen.main.scale
+            )
+
+        var width =
+            max(
+                2,
+                Int(
+                    (
+                        bounds.width *
+                        scale
+                    )
+                    .rounded()
+                )
+            )
+
+        var height =
+            max(
+                2,
+                Int(
+                    (
+                        bounds.height *
+                        scale
+                    )
+                    .rounded()
+                )
+            )
+
+        let maximumLongEdge =
+            1280.0
+
+        let maximumPixels =
+            1280.0 *
+            720.0
+
+        let longEdge =
+            Double(
+                max(
+                    width,
+                    height
+                )
+            )
+
+        let pixelCount =
+            Double(
+                width *
+                height
+            )
+
+        var downscale =
+            min(
+                1.0,
+                maximumLongEdge /
+                max(
+                    1,
+                    longEdge
+                )
+            )
+
+        if pixelCount *
+            downscale *
+            downscale >
+            maximumPixels {
+            downscale =
+                min(
+                    downscale,
+                    sqrt(
+                        maximumPixels /
+                        pixelCount
+                    )
+                )
+        }
+
+        width =
+            max(
+                2,
+                Int(
+                    (
+                        Double(
+                            width
+                        ) *
+                        downscale
+                    )
+                    .rounded(
+                        .down
+                    )
+                )
+            )
+
+        height =
+            max(
+                2,
+                Int(
+                    (
+                        Double(
+                            height
+                        ) *
+                        downscale
+                    )
+                    .rounded(
+                        .down
+                    )
+                )
+            )
+
+        // Keep dimensions friendly to video conversion paths.
+        width -=
+            width %
+            2
+
+        height -=
+            height %
+            2
+
+        return (
+            max(
+                2,
+                width
+            ),
+            max(
+                2,
+                height
             )
         )
     }
@@ -618,6 +468,9 @@ final class V9MPVRenderView:
 
             pixelBufferPoolHeight =
                 height
+
+            formatDescription =
+                nil
 
             let poolAttributes:
                 [CFString: Any] = [
@@ -658,8 +511,6 @@ final class V9MPVRenderView:
                     kCVReturnSuccess,
                   let pool
             else {
-                pixelBufferPool =
-                    nil
                 return nil
             }
 
@@ -691,56 +542,134 @@ final class V9MPVRenderView:
         return pixelBuffer
     }
 
-    private func tearDownGL() {
-        onFrame =
-            nil
+    private func enqueue(
+        _ pixelBuffer:
+            CVPixelBuffer,
+        presentationTime:
+            Double
+    ) {
+        if formatDescription == nil {
+            var description:
+                CMVideoFormatDescription?
 
-        pixelBufferPool =
-            nil
+            let result =
+                CMVideoFormatDescriptionCreateForImageBuffer(
+                    allocator:
+                        kCFAllocatorDefault,
+                    imageBuffer:
+                        pixelBuffer,
+                    formatDescriptionOut:
+                        &description
+                )
 
-        pixelBufferPoolWidth =
-            0
+            guard result ==
+                    noErr,
+                  let description
+            else {
+                return
+            }
 
-        pixelBufferPoolHeight =
-            0
-
-        lastCaptureHostTime =
-            0
-
-        if let context {
-            EAGLContext.setCurrent(
-                context
-            )
+            formatDescription =
+                description
         }
 
-        if framebuffer != 0 {
-            glDeleteFramebuffers(
-                1,
-                &framebuffer
-            )
-
-            framebuffer =
-                0
+        guard let formatDescription
+        else {
+            return
         }
 
-        if colorRenderbuffer != 0 {
-            glDeleteRenderbuffers(
-                1,
-                &colorRenderbuffer
+        var effectivePTS =
+            CMTime(
+                seconds:
+                    max(
+                        0,
+                        presentationTime
+                    ),
+                preferredTimescale:
+                    600
             )
 
-            colorRenderbuffer =
-                0
+        if !effectivePTS
+            .isValid ||
+           effectivePTS
+            .isIndefinite {
+            effectivePTS =
+                .zero
         }
 
-        if EAGLContext.current() ===
-            context {
-            EAGLContext.setCurrent(
-                nil
+        if lastPresentationTime
+            .isValid,
+           effectivePTS <=
+            lastPresentationTime {
+            effectivePTS =
+                CMTimeAdd(
+                    lastPresentationTime,
+                    CMTime(
+                        value:
+                            1,
+                        timescale:
+                            30
+                    )
+                )
+        }
+
+        var timing =
+            CMSampleTimingInfo(
+                duration:
+                    CMTime(
+                        value:
+                            1,
+                        timescale:
+                            30
+                    ),
+                presentationTimeStamp:
+                    effectivePTS,
+                decodeTimeStamp:
+                    .invalid
             )
+
+        var sampleBuffer:
+            CMSampleBuffer?
+
+        let createStatus =
+            CMSampleBufferCreateReadyWithImageBuffer(
+                allocator:
+                    kCFAllocatorDefault,
+                imageBuffer:
+                    pixelBuffer,
+                formatDescription:
+                    formatDescription,
+                sampleTiming:
+                    &timing,
+                sampleBufferOut:
+                    &sampleBuffer
+            )
+
+        guard createStatus ==
+                noErr,
+              let sampleBuffer
+        else {
+            return
         }
 
-        self.context =
-            nil
+        let renderer =
+            sampleBufferLayer
+                .sampleBufferRenderer
+
+        if renderer.status ==
+            .failed {
+            renderer.flush()
+        }
+
+        renderer.enqueue(
+            sampleBuffer
+        )
+
+        lastPresentationTime =
+            effectivePTS
+
+        onFrameEnqueued?(
+            effectivePTS
+        )
     }
 }
