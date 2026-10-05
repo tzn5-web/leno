@@ -1,7 +1,20 @@
 #requires -version 5.1
-# PHASER360 Gemini Lake bus mod installer
-# Replaces only the driver bound to PCI VEN_8086 DEV_3198.
-# Does not delete the Intel package and does not start audio playback.
+<#
+PHASER360 Gemini Lake bus mod installer
+Target: Google Phaser360 / Octopus, Windows 10 x64, PCI 8086:3198.
+
+Changes:
+- imports the package's test certificate
+- exports the currently bound 8086:3198 driver for rollback
+- stages and force-binds the test-signed SklHDAudBus-derived package
+
+Does NOT:
+- delete the original Intel package
+- boot SOF firmware
+- send DSP IPC
+- create an audio endpoint
+- play audio
+#>
 
 [CmdletBinding()]
 param()
@@ -36,12 +49,56 @@ namespace P360 {
 $INSTALLFLAG_FORCE = 0x00000001
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $inf  = (Resolve-Path (Join-Path $root 'sklhdaudbus.inf')).Path
+$sys  = (Resolve-Path (Join-Path $root 'sklhdaudbus.sys')).Path
+$cat  = (Resolve-Path (Join-Path $root 'sklhdaudbus.cat')).Path
 $cer  = (Resolve-Path (Join-Path $root 'PHASER360_TEST_DRIVER.cer')).Path
+
+# Machine guard: never bind this package on an unrelated PC.
+$cs = Get-CimInstance Win32_ComputerSystem
+$bb = Get-CimInstance Win32_BaseBoard
+$identity = "$($cs.Manufacturer) $($cs.Model) $($bb.Manufacturer) $($bb.Product)"
+if ($identity -notmatch '(?i)Google' -or $identity -notmatch '(?i)(Phaser360|Octopus)') {
+    throw "Target guard failed. This package is only for Google Phaser360/Octopus. Detected: $identity"
+}
+
+# This is a test-signed kernel package. Refuse to proceed unless TestSigning is already enabled.
+$bcd = (& bcdedit.exe /enum "{current}" 2>&1 | Out-String)
+if ($LASTEXITCODE -ne 0) { throw 'Could not read current BCD configuration.' }
+if ($bcd -notmatch '(?im)^\s*testsigning\s+(Yes|Da|On)\s*$') {
+    throw 'Windows TestSigning is not enabled. No driver changes were made.'
+}
+
+# Validate that all signed payloads carry the certificate shipped with the package.
+$certObj = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($cer)
+$certThumbprint = $certObj.Thumbprint.ToUpperInvariant()
+foreach ($file in @($sys,$cat)) {
+    $sig = Get-AuthenticodeSignature -LiteralPath $file
+    if (-not $sig.SignerCertificate) {
+        throw "Package signature missing: $file"
+    }
+    if ($sig.SignerCertificate.Thumbprint.ToUpperInvariant() -ne $certThumbprint) {
+        throw "Package signer mismatch: $file"
+    }
+}
+$infText = Get-Content -LiteralPath $inf -Raw
+if ($infText -notmatch 'PCI\\VEN_8086&DEV_3198&CC_0401') {
+    throw 'INF target mismatch: Gemini Lake 8086:3198 match is missing.'
+}
 
 $target = Get-CimInstance Win32_PnPEntity |
     Where-Object { $_.PNPDeviceID -like 'PCI\VEN_8086&DEV_3198*' } |
     Select-Object -First 1
-if (-not $target) { throw 'PCI 8086:3198 is not enumerated. Stop.' }
+if (-not $target) { throw 'PCI 8086:3198 is not enumerated. No changes were made.' }
+if ($target.Status -ne 'OK' -or [int]$target.ConfigManagerErrorCode -ne 0) {
+    throw "Current 8086:3198 parent is not healthy: Status=$($target.Status) Problem=$($target.ConfigManagerErrorCode)"
+}
+if ($target.Service -eq 'SklHDAudBus') {
+    Write-Host 'PHASER360 bus mod is already bound. Nothing to change.'
+    exit 0
+}
+if ($target.Service -ne 'IntcAudioBus') {
+    throw "Unexpected current parent service '$($target.Service)'. Expected IntcAudioBus; refusing force-bind."
+}
 
 $hwids = @()
 try {
@@ -53,15 +110,24 @@ if (-not $hardwareId) {
 }
 if (-not $hardwareId) { $hardwareId = 'PCI\VEN_8086&DEV_3198&CC_0401' }
 
+$bound = Get-CimInstance Win32_PnPSignedDriver |
+    Where-Object { $_.DeviceID -eq $target.PNPDeviceID } |
+    Select-Object -First 1
+if (-not $bound -or -not $bound.InfName) {
+    throw 'Could not identify the currently bound parent driver package. No changes were made.'
+}
+
+$rootCertExists = [bool](Get-ChildItem 'Cert:\LocalMachine\Root' |
+    Where-Object Thumbprint -eq $certThumbprint | Select-Object -First 1)
+$publisherCertExists = [bool](Get-ChildItem 'Cert:\LocalMachine\TrustedPublisher' |
+    Where-Object Thumbprint -eq $certThumbprint | Select-Object -First 1)
+
 $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 $backup = "C:\P360_AUDIO_SAFE\P360_BUS_MOD_BACKUP_$stamp"
 New-Item -ItemType Directory -Force -Path $backup | Out-Null
 
-$bound = Get-CimInstance Win32_PnPSignedDriver |
-    Where-Object { $_.DeviceID -eq $target.PNPDeviceID } |
-    Select-Object -First 1
-
 @(
+    "Identity=$identity"
     "InstanceId=$($target.PNPDeviceID)"
     "HardwareId=$hardwareId"
     "BeforeName=$($target.Name)"
@@ -71,23 +137,38 @@ $bound = Get-CimInstance Win32_PnPSignedDriver |
     "BeforeInf=$($bound.InfName)"
     "BeforeProvider=$($bound.DriverProviderName)"
     "BeforeVersion=$($bound.DriverVersion)"
+    "CertThumbprint=$certThumbprint"
+    "CertPreexistingRoot=$rootCertExists"
+    "CertPreexistingTrustedPublisher=$publisherCertExists"
+    "PackageSysSHA256=$((Get-FileHash $sys -Algorithm SHA256).Hash)"
+    "PackageCatSHA256=$((Get-FileHash $cat -Algorithm SHA256).Hash)"
 ) | Set-Content -LiteralPath (Join-Path $backup 'BASELINE.txt') -Encoding UTF8
+$bcd | Set-Content -LiteralPath (Join-Path $backup 'BCD_BEFORE.txt') -Encoding UTF8
 
-if ($bound -and $bound.InfName) {
-    $export = Join-Path $backup 'ORIGINAL_DRIVER'
-    New-Item -ItemType Directory -Force -Path $export | Out-Null
-    & pnputil.exe /export-driver $bound.InfName $export |
-        Tee-Object -FilePath (Join-Path $backup 'EXPORT_ORIGINAL.txt')
-    if ($LASTEXITCODE -ne 0) { throw 'Could not export current audio bus driver.' }
+# Freeze the exact current package before changing trust or binding.
+$export = Join-Path $backup 'ORIGINAL_DRIVER'
+New-Item -ItemType Directory -Force -Path $export | Out-Null
+& pnputil.exe /export-driver $bound.InfName $export |
+    Tee-Object -FilePath (Join-Path $backup 'EXPORT_ORIGINAL.txt')
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not export current driver $($bound.InfName). No bind was attempted."
 }
 
 Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\LocalMachine\Root' | Out-Null
 Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' | Out-Null
 
-# Stage package first. Do not rely on PnP ranking to choose a test-signed driver.
+# After trust import, require Windows to see both signatures as valid.
+foreach ($file in @($sys,$cat)) {
+    $sig = Get-AuthenticodeSignature -LiteralPath $file
+    if ($sig.Status -ne 'Valid') {
+        throw "Signature validation failed after certificate import: $file -> $($sig.Status). Backup: $backup"
+    }
+}
+
+# Stage only; do not rely on PnP driver ranking because the current Intel package is WHQL.
 & pnputil.exe /add-driver $inf |
     Tee-Object -FilePath (Join-Path $backup 'STAGE_MOD.txt')
-if ($LASTEXITCODE -ne 0) { throw "pnputil staging failed: $LASTEXITCODE" }
+if ($LASTEXITCODE -ne 0) { throw "pnputil staging failed: $LASTEXITCODE. Backup: $backup" }
 
 $rebootRequired = $false
 $ok = [P360.NewDev]::UpdateDriverForPlugAndPlayDevices(
@@ -99,11 +180,13 @@ $ok = [P360.NewDev]::UpdateDriverForPlugAndPlayDevices(
 
 if (-not $ok) {
     $err = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
-    throw "Forced driver update failed. Win32=$err. Backup: $backup"
+    throw "Forced driver update failed. Win32=$err. Backup/rollback data: $backup"
 }
 
-"ForceBindHardwareId=$hardwareId" | Set-Content -LiteralPath (Join-Path $backup 'FORCE_BIND.txt') -Encoding UTF8
-"RebootRequired=$rebootRequired" | Add-Content -LiteralPath (Join-Path $backup 'FORCE_BIND.txt') -Encoding UTF8
+@(
+    "ForceBindHardwareId=$hardwareId"
+    "RebootRequired=$rebootRequired"
+) | Set-Content -LiteralPath (Join-Path $backup 'FORCE_BIND.txt') -Encoding UTF8
 
 Start-Sleep -Seconds 2
 $after = Get-CimInstance Win32_PnPEntity |
@@ -135,7 +218,7 @@ $modBound = Get-CimInstance Win32_PnPSignedDriver |
 ) | Set-Content -LiteralPath (Join-Path $backup 'AFTER.txt') -Encoding UTF8
 
 if (-not $rebootRequired -and ($after.Service -ne 'SklHDAudBus' -or [int]$after.ConfigManagerErrorCode -ne 0)) {
-    throw "Bus mod did not bind cleanly. Backup/rollback data: $backup"
+    throw "Bus mod did not bind cleanly. Run ROLLBACK_P360_BUS_MOD.ps1. Backup: $backup"
 }
 
 & pnputil.exe /enum-devices /instanceid "$($target.PNPDeviceID)" /relations 2>&1 |
@@ -143,7 +226,12 @@ if (-not $rebootRequired -and ($after.Service -ne 'SklHDAudBus' -or [int]$after.
 
 Write-Host ''
 Write-Host 'PHASER360 BUS MOD: FORCE-BIND COMPLETED'
-Write-Host "Parent service: $($after.Service)"
+Write-Host "Parent service now: $($after.Service)"
 Write-Host "Reboot required: $rebootRequired"
-Write-Host "Backup: $backup"
-Write-Host 'No DSP firmware boot and no audio playback were attempted.'
+Write-Host "Rollback snapshot: $backup"
+Write-Host 'No SOF firmware boot, DSP IPC, endpoint creation or audio playback was attempted.'
+if ($rebootRequired) {
+    Write-Host 'REBOOT ONCE, then run VERIFY_P360_BUS_MOD.ps1.'
+} else {
+    Write-Host 'Run VERIFY_P360_BUS_MOD.ps1 now.'
+}
