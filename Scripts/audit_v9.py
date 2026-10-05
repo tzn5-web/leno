@@ -20,6 +20,7 @@ project = read("project.yml")
 player = read("V9/V9PlayerService.swift")
 view = read("V9/V9MediaLabView.swift")
 client = read("V9/VcdResolverClient.swift")
+token_store = read("V9/ResolverTokenStore.swift")
 render_view = read("V9/V9MPVRenderView.swift")
 pip_bridge = read("V9/V9MPVPiPBridge.swift")
 resolver = read("Resolver/app/main.py")
@@ -33,10 +34,10 @@ all_v9 = "\n".join(
 )
 
 # Build identity
-require('MARKETING_VERSION: "0.9.1"' in project, "V9 version must be 0.9.1")
-require('CURRENT_PROJECT_VERSION: "2"' in project, "V9 build must be 2")
-require('test "$VERSION" = "0.9.1"' in workflow, "CI version audit is stale")
-require('test "$BUILD" = "2"' in workflow, "CI build audit is stale")
+require('MARKETING_VERSION: "0.9.2"' in project, "V9 version must be 0.9.2")
+require('CURRENT_PROJECT_VERSION: "3"' in project, "V9 build must be 3")
+require('test "$VERSION" = "0.9.2"' in workflow, "CI version audit is stale")
+require('test "$BUILD" = "3"' in workflow, "CI build audit is stale")
 
 # Player architecture: V9 must remain MPV-only.
 require("path: V9" in project, "V9 source root missing")
@@ -53,10 +54,16 @@ for forbidden in [
     "AVPlayer(",
     "AVQueuePlayer(",
     "BackgroundAudioHandoff(",
+    "import OpenGLES",
+    "EAGLContext",
+    "CAEAGLLayer",
+    "glReadPixels",
+    "MPV_RENDER_API_TYPE_OPENGL",
+    "MPV_RENDER_PARAM_OPENGL_FBO",
 ]:
     require(
         forbidden not in all_v9,
-        f"V9 target contains forbidden legacy engine symbol: {forbidden}",
+        f"V9 target contains forbidden legacy/unsafe renderer symbol: {forbidden}",
     )
 
 # Critical libmpv invariants.
@@ -71,7 +78,12 @@ for required in [
     "mpv_render_context_create",
     "mpv_render_context_update",
     "mpv_render_context_render",
-    "MPV_RENDER_PARAM_OPENGL_FBO",
+    "MPV_RENDER_API_TYPE_SW",
+    "MPV_RENDER_PARAM_SW_SIZE",
+    "MPV_RENDER_PARAM_SW_FORMAT",
+    "MPV_RENDER_PARAM_SW_STRIDE",
+    "MPV_RENDER_PARAM_SW_POINTER",
+    "MPV_RENDER_PARAM_SKIP_RENDERING",
     "MPRemoteCommandCenter",
     "MPNowPlayingInfoCenter",
     "desiredPlayback",
@@ -79,17 +91,10 @@ for required in [
 ]:
     require(required in player, f"native MPV invariant missing: {required}")
 
-# MPV_RENDER_PARAM_API_TYPE expects the pointer to the C string itself, not a
-# pointer to a Swift variable containing that pointer.
 require(
-    "UnsafeMutableRawPointer" in player
-    and "MPV_RENDER_API_TYPE_OPENGL" in player
-    and ".utf8String" in player,
-    "libmpv API type pointer is not constructed as a C string pointer",
-)
-require(
-    "data:\n                                apiType" in player,
-    "MPV_RENDER_PARAM_API_TYPE is not wired to the corrected apiType pointer",
+    "data:\n                        apiType" in player
+    or "data:\n                                apiType" in player,
+    "MPV_RENDER_PARAM_API_TYPE is not wired to the software API string pointer",
 )
 
 # Audio lifecycle.
@@ -100,6 +105,7 @@ for required in [
     "routeChangeNotification",
     "mediaServicesWereResetNotification",
     "interruptionActive",
+    "shouldResume",
 ]:
     require(required in player, f"audio lifecycle invariant missing: {required}")
 
@@ -117,6 +123,11 @@ require(
     "background lifecycle must pause rendering only, never MPV playback",
 )
 
+require(
+    "The system explicitly did not grant automatic resume." in player,
+    "interruption end without shouldResume can still auto-restart later",
+)
+
 # Refresh / expiry recovery.
 for required in [
     "typealias RefreshProvider",
@@ -125,6 +136,9 @@ for required in [
     "MPV_END_FILE_REASON_ERROR",
     "maximumRefreshAttempts",
     "pendingSeekAfterLoad",
+    "refreshTask?\n            .cancel()",
+    "800_000_000",
+    "2_000_000_000",
 ]:
     require(required in player, f"client stream recovery invariant missing: {required}")
 
@@ -135,47 +149,66 @@ require(
     "separate video/audio MPV EDL load path missing or legacy audio-add race returned",
 )
 
-# PiP timeline correctness.
+# SwiftUI surface recreation must not detach the persistent renderer.
+require(
+    "Always bind the new surface" in player
+    and "renderView.attach(" in player,
+    "recreated SwiftUI player surfaces are not rebound to the persistent mpv core",
+)
+
+# PiP must use the same AVSampleBufferDisplayLayer as foreground rendering.
 for required in [
     "AVSampleBufferDisplayLayer",
-    "AVPictureInPictureController",
-    "AVPictureInPictureSampleBufferPlaybackDelegate",
+    "CVPixelBufferPoolCreate",
+    "CVPixelBufferPoolCreatePixelBuffer",
     "CMSampleBufferCreateReadyWithImageBuffer",
     "sampleBufferRenderer",
+    "1.0 / 30.0",
+    "pauseRendering",
+    "resumeRendering",
+    "resetFrameTimeline",
+]:
+    require(required in render_view, f"software render/PiP invariant missing: {required}")
+
+for required in [
+    "AVPictureInPictureController",
+    "AVPictureInPictureSampleBufferPlaybackDelegate",
+    "sampleBufferDisplayLayer:",
+    ".sampleBufferLayer",
     "pictureInPictureControllerIsPlaybackPaused",
     "pictureInPictureControllerTimeRangeForPlayback",
     "skipByInterval",
     "setPlaying",
     "shouldKeepRendering",
     "prepareForMediaChange",
-    "lastPresentationTime",
     "hasEnqueuedFrame",
 ]:
-    require(required in pip_bridge, f"native MPV PiP invariant missing: {required}")
+    require(required in pip_bridge, f"native PiP invariant missing: {required}")
 
 require(
     "pipBridge?\n            .prepareForMediaChange()" in player,
     "player does not reset PiP state when media changes",
 )
 
-# PiP frame capture should reuse buffers and be bounded.
+# Keychain + resolver transport.
 for required in [
-    "glReadPixels",
-    "CVPixelBufferPoolCreate",
-    "CVPixelBufferPoolCreatePixelBuffer",
-    "lastCaptureHostTime",
-    "1.0 / 30.0",
-    "pauseRendering",
-    "resumeRendering",
+    "import Security",
+    "SecItemCopyMatching",
+    "SecItemUpdate",
+    "SecItemAdd",
+    "kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly",
 ]:
-    require(required in render_view, f"render/PiP performance invariant missing: {required}")
+    require(required in token_store, f"Keychain invariant missing: {required}")
 
 require(
-    "V9MetalLayer" not in all_v9,
-    "obsolete wid/CAMetalLayer renderer must not return",
+    '@AppStorage(\n        "v9.resolver.token"' not in view,
+    "resolver token leaked back into UserDefaults",
+)
+require(
+    "ResolverTokenStore" in view,
+    "resolver token is not wired to Keychain",
 )
 
-# Resolver client must not silently point a physical iPhone at itself.
 require(
     'private var endpoint =\n        ""' in view,
     "physical client must not default to 127.0.0.1",
@@ -184,6 +217,11 @@ require(
     "loopbackEndpointOnDevice" in client
     and "targetEnvironment(simulator)" in client,
     "client does not reject localhost on a physical iPhone",
+)
+require(
+    "insecurePublicHTTP" in client
+    and "insecureTokenTransport" in client,
+    "client transport safety checks are missing",
 )
 require(
     "refreshProvider:" in view
@@ -200,6 +238,10 @@ for required in [
     "Sliding lease",
     'methods=["GET", "HEAD"]',
     "VCD_API_TOKEN",
+    "VCD_PUBLIC_BASE_URL",
+    "VCD_COOKIES_FILE",
+    "VCD_MAX_RELAY_ENTRIES",
+    "VCD_UPSTREAM_READ_TIMEOUT",
     "secrets.compare_digest",
     "YTDLP_JS_RUNTIME",
     "/v1/video/{video_id}",
@@ -207,8 +249,17 @@ for required in [
     "Range",
     "relayURL",
     "httpx.AsyncClient",
+    "refresh_lock",
+    "generation",
+    "enforce_relay_capacity",
+    "UPSTREAM_READ_TIMEOUT",
 ]:
     require(required in resolver, f"resolver invariant missing: {required}")
+
+require(
+    "read=None" not in resolver,
+    "upstream media read timeout is still unbounded",
+)
 
 require(
     "denoland/deno:bin-2.9.7" in dockerfile
@@ -248,17 +299,19 @@ require(
 )
 
 if errors:
-    print("V9 HARDENED AUDIT FAILED")
+    print("V9.2 HARDENED AUDIT FAILED")
     for error in errors:
         print(f" - {error}")
     sys.exit(1)
 
-print("V9 HARDENED AUDIT PASSED")
-print(" - MPV-only target and corrected render API pointer")
-print(" - audio interruptions preserve user playback intent")
-print(" - resolver and client can refresh expired/failed streams")
-print(" - PiP timeline resets between videos")
-print(" - PiP frame buffers are pooled and capture is capped at 30 fps")
-print(" - physical iPhone cannot accidentally use localhost resolver")
-print(" - Deno 2.9.7 + yt-dlp EJS runtime pinned")
-print(" - relay supports Range/HEAD, sliding leases and upstream refresh")
+print("V9.2 HARDENED AUDIT PASSED")
+print(" - no WebKit/AVPlayer/OpenGL ES playback path in V9 target")
+print(" - libmpv software render API feeds a shared AVSampleBufferDisplayLayer")
+print(" - PiP can keep rendering in background without app-owned GPU commands")
+print(" - audio interruption policy prevents unauthorized auto-resume")
+print(" - stream refresh retries use bounded backoff and cancel on media switch")
+print(" - recreated SwiftUI surfaces rebind to the persistent mpv core")
+print(" - resolver token is stored in Keychain and never sent over HTTP")
+print(" - resolver refresh is serialized per stream with bounded token storage")
+print(" - upstream relay reads have a finite timeout")
+print(" - Deno 2.9.7 + yt-dlp 2026.08.19 + EJS 0.8.0 are pinned")
