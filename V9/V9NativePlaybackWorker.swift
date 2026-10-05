@@ -47,7 +47,7 @@ actor V9NativePlaybackWorker
         // base.js player so both signatureCipher and n can be processed with
         // the exact JavaScript YouTube is serving right now.
         do {
-            var info =
+            let info =
                 try await VideoInfosResponse
                     .sendThrowingRequest(
                         youtubeModel:
