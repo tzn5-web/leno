@@ -200,8 +200,8 @@ for token in [
     "workflow.pinned-actions",
     "core.single-media-authority",
     "packages.complete",
-    "dependency.YouTubeHeader",
-    "dependency.PSHeader",
+    '"YouTubeHeader": "theos/include/YouTubeHeader"',
+    '"PSHeader": "theos/include/PSHeader"',
 ]:
     require(token in runner, f"stage runner missing audit dimension: {token}")
 
