@@ -38,7 +38,7 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          brew install make ldid
+          brew install make ldid dpkg
           pipx install "git+https://github.com/asdfzxcvbn/pyzule-rw.git@740d3716dcd98c20c000f12cdb88f1f0b2a533a4"
 
       - name: Audit architecture
