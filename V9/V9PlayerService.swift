@@ -95,8 +95,11 @@ final class V9PlayerService:
     private var hasRenderContext =
         false
 
-    private weak var renderView:
+    private var renderView:
         V9MPVRenderView?
+
+    private var renderSurfaceHosted =
+        false
 
     private var pipBridge:
         V9MPVPiPBridge?
@@ -188,6 +191,43 @@ final class V9PlayerService:
                     mpv
                 )
             }
+        }
+    }
+
+    func persistentRenderSurface()
+        -> V9MPVRenderView
+    {
+        if let renderView {
+            return renderView
+        }
+
+        let view =
+            V9MPVRenderView()
+
+        attach(
+            renderView:
+                view
+        )
+
+        return view
+    }
+
+    func setRenderSurfaceHosted(
+        _ hosted:
+            Bool
+    ) {
+        renderSurfaceHosted =
+            hosted
+
+        if hosted ||
+           pipBridge?
+            .shouldKeepRendering ==
+            true {
+            renderView?
+                .resumeRendering()
+        } else {
+            renderView?
+                .pauseRendering()
         }
     }
 
@@ -715,8 +755,16 @@ final class V9PlayerService:
                 activateAudioSession()
             }
 
-            renderView?
-                .resumeRendering()
+            if renderSurfaceHosted ||
+               pipBridge?
+                .shouldKeepRendering ==
+                true {
+                renderView?
+                    .resumeRendering()
+            } else {
+                renderView?
+                    .pauseRendering()
+            }
 
             if desiredPlayback,
                hasLoadedMedia,
@@ -1724,7 +1772,8 @@ final class V9PlayerService:
             } else if UIApplication
                 .shared
                 .applicationState ==
-                .background {
+                .background ||
+                !self.renderSurfaceHosted {
                 self.renderView?
                     .pauseRendering()
             }
