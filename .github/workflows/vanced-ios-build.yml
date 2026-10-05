@@ -9,6 +9,9 @@ on:
       - ".github/workflows/vanced-ios-build.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: vanced-ios-patches-${{ github.ref }}
   cancel-in-progress: true
@@ -16,74 +19,38 @@ concurrency:
 jobs:
   build:
     runs-on: macos-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install build dependencies
         run: brew install make ldid dpkg
 
-      - name: Audit architecture
-        run: python3 VancedIOS/Scripts/audit.py
-
-      - name: Build pinned patch layers
+      - name: Run exhaustive hostless stage audit and build
         run: |
           set -euo pipefail
-          chmod +x VancedIOS/Scripts/build_patches.sh
-          VancedIOS/Scripts/build_patches.sh | tee vanced-ios-build.log
-
-      - name: Audit package contents
-        run: |
-          set -euo pipefail
-          test -f dist/vanced-ios/youmod.deb
-          test -f dist/vanced-ios/ytvideooverlay.deb
-          test -f dist/vanced-ios/youpip.deb
-          test -f dist/vanced-ios/ytuhd.deb
-          test -f dist/vanced-ios/return-youtube-dislikes.deb
-          test -f dist/vanced-ios/vancedios-core.deb
-
-          for pkg in dist/vanced-ios/*.deb; do
-            echo "===== $pkg ====="
-            dpkg-deb -c "$pkg"
-          done | tee vanced-ios-packages.log
-
-          dpkg-deb -c dist/vanced-ios/vancedios-core.deb > /tmp/vancedios-core.contents
-          dpkg-deb -c dist/vanced-ios/youmod.deb > /tmp/youmod.contents
-          dpkg-deb -c dist/vanced-ios/ytvideooverlay.deb > /tmp/ytvideooverlay.contents
-          dpkg-deb -c dist/vanced-ios/youpip.deb > /tmp/youpip.contents
-          dpkg-deb -c dist/vanced-ios/ytuhd.deb > /tmp/ytuhd.contents
-          dpkg-deb -c dist/vanced-ios/return-youtube-dislikes.deb > /tmp/ryd.contents
-
-          grep -qi 'VancedIOSCore.*dylib' /tmp/vancedios-core.contents
-          grep -qi 'YouMod.*dylib' /tmp/youmod.contents
-          grep -qi 'YTVideoOverlay.*dylib' /tmp/ytvideooverlay.contents
-          grep -qi 'YouPiP.*dylib' /tmp/youpip.contents
-          grep -qi 'YTUHD.*dylib' /tmp/ytuhd.contents
-          grep -qi 'YouTubeDislikesReturn.*dylib' /tmp/ryd.contents
-
-      - name: Write hashes
-        run: |
-          shasum -a 256 dist/vanced-ios/*.deb | tee SHA256SUMS
+          python3 VancedIOS/Scripts/stage_runner.py \
+            --build \
+            --report-dir artifacts/vanced-ios-stage-audit
 
       - name: Upload patch bundle
-        uses: actions/upload-artifact@v7
+        if: success()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: VancedIOS-patch-bundle
           path: |
             dist/vanced-ios/*.deb
-            SHA256SUMS
+            artifacts/vanced-ios-stage-audit/SHA256SUMS
             VancedIOS/manifest.json
             VancedIOS/README.md
           if-no-files-found: error
 
-      - name: Upload build evidence
+      - name: Upload audit evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: VancedIOS-build-evidence
-          path: |
-            vanced-ios-build.log
-            vanced-ios-packages.log
-          if-no-files-found: ignore
+          name: VancedIOS-stage-audit
+          path: artifacts/vanced-ios-stage-audit/
+          if-no-files-found: warn
