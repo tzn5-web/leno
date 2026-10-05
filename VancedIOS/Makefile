@@ -7,7 +7,7 @@ MODULES = jailed
 DISPLAY_NAME = YouTube
 BUNDLE_ID = com.google.ios.youtube
 VancedCore_IPA = ./tmp/Payload/YouTube.app
-REMOVE_EXTENSIONS = 1
+REMOVE_EXTENSIONS = 0
 CODESIGN_IPA = 0
 endif
 
