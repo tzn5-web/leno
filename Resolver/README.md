@@ -1,57 +1,57 @@
-# VcdResolver V9.3 / resolver 0.3.0-lab
+# VcdResolver 0.4.0-client
 
-Resolver separat pentru YoutubeVcd V9.3. Extracția YouTube rămâne în afara IPA-ului, iar iPhone-ul primește URL-uri de relay controlate de resolver.
+Backend-ul pentru YoutubeVcd 0.10.0. Resolverul face atât browsing nativ, cât
+și rezolvarea/relay-ul streamurilor media.
 
-## Stack validat
+## API pentru aplicație
 
-- yt-dlp 2026.08.19 + yt-dlp-ejs 0.8.0.
-- Deno 2.9.7 ca runtime JavaScript.
-- Python 3.12 în container.
-- Relay HTTP cu GET/HEAD, Range, timeout finit și răspunsuri `private, no-store`.
-- TTL glisant pentru tokenurile folosite activ.
-- Refresh serializat per stream la upstream 403/404/410.
-- Limită implicită de 1024 relay-uri active.
-- Refresh serializat per stream fără stampede de procese yt-dlp.
-- Pentru deployment public, `VCD_PUBLIC_BASE_URL` este obligatoriu; nu construim capability URLs dintr-un Host header public nevalidat.
-- Selecție conservatoare H.264/AAC când există.
-- Cookie file opțional pentru conținut care necesită sesiune.
-- Token opțional pentru endpoint-ul de resolve.
-- Deployment public: HTTPS + `VCD_API_TOKEN` sunt obligatorii.
-- Relay-ul clientului rămâne pe aceeași origine ca resolverul; redirect-urile API sunt refuzate.
-- Upstream media local/loopback/private este refuzat.
-- `Accept-Encoding: identity` păstrează Range/Content-Length pe bytes originali.
-- Sursa video este limitată implicit la 1080p / 30 fps, configurabil, pentru a evita decode inutil de 4K/8K pe iPhone.
+- `GET /health`
+- `GET /v1/home`
+- `GET /v1/search?q=<text>`
+- `GET /v1/channel/<UC...>`
+- `GET /v1/thumb/<video-id>`
+- `GET /v1/video/<video-id>`
+- `GET|HEAD /v1/relay/<capability-token>`
 
-## Limită intenționată în V9.2
+Home folosește extractorul yt-dlp `:ytrec`, cu fallback la căutare normală.
+Search folosește `ytsearch`. Channel folosește tab-ul `/videos`.
 
-V9.3 acceptă doar streamuri media directe cu protocol HTTP/HTTPS. Playlisturile HLS/m3u8 și formatele cu liste de fragmente sunt refuzate în loc să lase URL-uri upstream să ajungă pe iPhone.
+Live/upcoming sunt eliminate din feed deoarece relay-ul curent acceptă numai
+media HTTP/HTTPS direct adresabilă; nu afișăm intenționat un clip pe care
+playerul nu îl poate reda.
 
-Asta înseamnă că unele livestreamuri nu sunt încă suportate. Un relay HLS dedicat trebuie să rescrie fiecare segment, EXT-X-KEY și EXT-X-MAP înainte să putem declara live-ul sigur și complet.
+## Stack
+
+- Python 3.12;
+- yt-dlp 2026.08.19;
+- yt-dlp-ejs 0.8.0;
+- Deno 2.9.7;
+- FastAPI / Uvicorn / httpx.
 
 ## Docker local
 
 ```bash
-docker build -t vcd-resolver .
+docker build -t vcd-resolver Resolver
 docker run --rm -p 8085:8085 vcd-resolver
 ```
 
-Pe iPhone, folosește IP-ul LAN al PC-ului, de exemplu:
+Pe iPhone folosește IP-ul LAN al PC-ului, de exemplu:
 
 ```
 http://192.168.1.50:8085
 ```
 
-Nu folosi `127.0.0.1` sau `localhost` pe iPhone; acestea indică telefonul însuși.
+Nu folosi `127.0.0.1` sau `localhost` pe iPhone.
 
-## VPS / Internet
+## Public / VPS
 
-Pentru un resolver public folosește HTTPS și setează explicit `VCD_PUBLIC_BASE_URL`. Clientul V9.3 validează și URL-urile relay primite de la server și refuză:
+Pentru Internet sunt obligatorii:
 
-- HTTP public în afara rețelei locale.
-- trimiterea bearer token-ului prin HTTP necriptat.
-- relay HTTP public sau downgrade de la endpoint HTTPS la relay HTTP.
+- HTTPS;
+- `VCD_PUBLIC_BASE_URL`;
+- `VCD_API_TOKEN`.
 
-Exemplu container:
+Exemplu:
 
 ```bash
 docker run --rm -p 8085:8085 \
@@ -60,55 +60,34 @@ docker run --rm -p 8085:8085 \
   vcd-resolver
 ```
 
-Reverse proxy-ul HTTPS trebuie să trimită traficul către portul 8085.
+Clientul refuză bearer token pe HTTP și refuză redirect-uri API către altă
+origine.
 
-## Cookies opționale
+## Opțiuni
 
-Pentru videoclipuri care cer autentificare poți monta un fișier Netscape cookies:
+- `VCD_API_TOKEN`
+- `VCD_PUBLIC_BASE_URL`
+- `VCD_COOKIES_FILE`
+- `VCD_RELAY_TTL` — implicit 21600 secunde
+- `VCD_MAX_RELAY_ENTRIES` — implicit 1024
+- `VCD_MAX_CONCURRENT_EXTRACTS` — implicit 2
+- `VCD_MAX_VIDEO_HEIGHT` — implicit 1080
+- `VCD_MAX_VIDEO_FPS` — implicit 30
+- `VCD_BROWSE_LIMIT` — implicit 24, limitat la 8…50
+- `VCD_UPSTREAM_READ_TIMEOUT` — implicit 45 secunde
+- `YTDLP_TIMEOUT` — implicit 90 secunde
+- `YTDLP_JS_RUNTIME` — implicit deno
 
-```bash
-docker run --rm -p 8085:8085 \
-  -v "$PWD/cookies.txt:/run/secrets/youtube-cookies.txt:ro" \
-  -e VCD_COOKIES_FILE='/run/secrets/youtube-cookies.txt' \
-  vcd-resolver
-```
+## Cookies
 
-Cookies nu garantează conținutul members-only/age-restricted: unele cazuri YouTube pot necesita și PO Token provider configurat în yt-dlp.
+Pentru conținut care cere sesiune se poate monta un cookies.txt Netscape și
+seta `VCD_COOKIES_FILE`. Unele fluxuri YouTube pot cere în continuare un
+PO-token provider; acest lucru depinde de YouTube/yt-dlp și nu este ascuns ca
+funcționalitate garantată.
 
-## Variabile
+## Relay
 
-- `VCD_API_TOKEN`: protejează endpoint-ul de resolve.
-- `VCD_PUBLIC_BASE_URL`: URL public folosit în relay URLs când resolverul e în spatele unui reverse proxy.
-- `VCD_COOKIES_FILE`: cale opțională către cookies.txt.
-- `VCD_RELAY_TTL`: TTL relay, implicit 21600 secunde.
-- `VCD_MAX_RELAY_ENTRIES`: implicit 1024.
-- `VCD_MAX_CONCURRENT_EXTRACTS`: numărul maxim de procese yt-dlp simultane, implicit 2.
-- `VCD_MAX_VIDEO_HEIGHT`: plafon preferat pentru video, implicit 1080.
-- `VCD_MAX_VIDEO_FPS`: plafon preferat pentru frame-rate, implicit 30.
-- `VCD_UPSTREAM_READ_TIMEOUT`: implicit 45 secunde.
-- `YTDLP_TIMEOUT`: timeout extracție, implicit 90 secunde.
-- `YTDLP_JS_RUNTIME`: implicit deno.
-
-## API
-
-Health:
-
-```
-GET /health
-```
-
-Resolve:
-
-```
-GET /v1/video/<11-character-video-id>
-Authorization: Bearer <token>   # doar dacă VCD_API_TOKEN este setat
-```
-
-Relay:
-
-```
-GET|HEAD /v1/relay/<capability-token>
-Range: bytes=...
-```
-
-Relay tokenurile sunt capability URLs greu de ghicit; URL-ul media upstream nu este returnat de endpoint-ul de resolve.
+Relay-ul păstrează URL-urile media upstream în server și expune către iPhone
+doar capability URLs cu token aleator. Range este suportat, byte encoding este
+`identity`, redirect-urile upstream sunt validate, iar destinațiile
+loopback/private sunt refuzate.
