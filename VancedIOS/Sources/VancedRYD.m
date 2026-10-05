@@ -1,6 +1,7 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import <dispatch/dispatch.h>
+#import <math.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
 
@@ -71,11 +72,11 @@ static NSString *VRYDCompactCount(unsigned long long value) {
     dispatch_once(&onceToken, ^{ suffixes = @[@"K", @"M", @"B", @"T"]; });
     double scaled = (double)value;
     NSUInteger index = 0;
-    while (scaled >= 1000.0 && index + 1 < suffixes.count) {
+    while (scaled >= 1000.0 && index < suffixes.count) {
         scaled /= 1000.0;
         index++;
     }
-    NSString *suffix = suffixes[index - 1];
+    NSString *suffix = suffixes[MIN(index, suffixes.count) - 1];
     if (scaled >= 100.0 || fabs(scaled - round(scaled)) < 0.05) {
         return [NSString stringWithFormat:@"%.0f%@", scaled, suffix];
     }
