@@ -40,10 +40,10 @@ all_v9 = "\n".join(
 )
 
 # Release identity.
-require('MARKETING_VERSION: "0.11.1"' in project, "version must be 0.11.1")
-require('CURRENT_PROJECT_VERSION: "8"' in project, "build must be 8")
-require('test "$VERSION" = "0.11.1"' in workflow, "CI version audit is stale")
-require('test "$BUILD" = "8"' in workflow, "CI build audit is stale")
+require('MARKETING_VERSION: "0.11.2"' in project, "version must be 0.11.2")
+require('CURRENT_PROJECT_VERSION: "9"' in project, "build must be 9")
+require('test "$VERSION" = "0.11.2"' in workflow, "CI version audit is stale")
+require('test "$BUILD" = "9"' in workflow, "CI build audit is stale")
 require("V9ClientRootView()" in app, "app does not launch native client")
 
 # Native autonomous YouTube dependency.
@@ -120,6 +120,12 @@ require(
     "private let playbackWorker" in native
     and "try await playbackWorker" in native,
     "MainActor client still performs heavy stream resolution itself",
+)
+require(
+    "guard let watchPlayer" in playback_worker
+    and "processFormats(" in playback_worker
+    and "decodeNParameterInHLSManifestURL" in playback_worker,
+    "TVHTML5 media can bypass watch-page player.js deciphering",
 )
 
 # Normal UI may not require/configure an external resolver.
@@ -281,6 +287,12 @@ require(
     player.count("!new_stream;!no_clip;!no_chapters;") >= 2,
     "separate video/audio EDL headers incomplete",
 )
+require(
+    "stablePlaybackResetInterval" in player
+    and "lastSuccessfulLoadAt" in player
+    and "timeIntervalSince" in player,
+    "stream recovery retry budget still resets on FILE_LOADED instead of stable playback",
+)
 
 # Native playback supports live HLS without AVPlayer.
 require(
@@ -340,7 +352,7 @@ require("Native client API smoke" in workflow, "fallback resolver API smoke miss
 require("/v1/home" in workflow and "/v1/video/dQw4w9WgXcQ" in workflow, "fallback smoke incomplete")
 
 require(
-    "YoutubeVcd 0.11.1 build 8" in architecture_doc
+    "YoutubeVcd 0.11.2 build 9" in architecture_doc
     and "optional resolver fallback" in architecture_doc.lower()
     and "0.10.0 build 6" not in architecture_doc,
     "architecture document is stale or still describes the mandatory 0.10 resolver design",
@@ -357,7 +369,7 @@ if errors:
         print(f" - {error}")
     sys.exit(1)
 
-print("YOUTUBEVCD 0.11.1 AUTONOMOUS CLIENT AUDIT PASSED")
+print("YOUTUBEVCD 0.11.2 AUTONOMOUS CLIENT AUDIT PASSED")
 print(" - Home/Search/Channel are native on-device and paginated")
 print(" - video stream URLs are resolved off-MainActor with YouTubeKit")
 print(" - TVHTML5 Innertube JSON uses the correct response decoder and HLS-first playback")
