@@ -12,6 +12,10 @@ on:
       - '.github/workflows/vanced-ios-core-build.yml'
   workflow_dispatch:
 
+concurrency:
+  group: vanced-ios-core-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   core-build:
     runs-on: macos-15
