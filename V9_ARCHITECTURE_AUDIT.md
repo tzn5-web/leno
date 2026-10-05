@@ -1,4 +1,4 @@
-# YoutubeVcd 0.11.1 build 8 — autonomous native client audit
+# YoutubeVcd 0.11.2 build 9 — autonomous native client audit
 
 This document describes the code shipped by the current YoutubeVcd branch.
 
@@ -47,22 +47,26 @@ rather than on MainActor.
 
 Primary resolution:
 
-1. issue a native Innertube `TVHTML5` player request using
+1. load the real YouTube `/watch` page through `VideoInfosResponse`;
+2. extract the current `base.js` player and build the JavaScriptCore
+   signature/`n` solver;
+3. if the decoded watch-page HLS manifest exists, use it directly for VOD or
+   live;
+4. otherwise request current `TVHTML5` Innertube streaming data with
    `VideoInfosWithDownloadFormatsResponse`;
-2. prefer the HLS manifest whenever YouTube returns one, for VOD or live;
-3. if HLS is unavailable, prefer <=1080p / <=30 fps H.264 MP4 video and
-   AAC/M4A audio;
-4. fall back to compatible direct formats if preferred codecs are unavailable.
+5. run the TV HLS/direct formats through the player obtained from the watch
+   page before any TV media URL can reach MPV;
+6. prefer <=1080p / <=30 fps H.264 MP4 video and AAC/M4A audio when direct
+   split formats are needed.
 
-The TV request uses the JSON response decoder matching the
-`/youtubei/v1/player` endpoint. The earlier invalid design — feeding Innertube
-JSON into the HTML `.videoInfos` decoder — is forbidden by the audit.
+The TV request uses the JSON response decoder matching
+`/youtubei/v1/player`. The earlier invalid design — feeding Innertube JSON
+into the HTML `.videoInfos` decoder — is forbidden by the audit.
 
-Secondary on-device resolution uses the real `/watch` page through
-`VideoInfosResponse`. YouTubeKit extracts the current `base.js` player and
-builds its JavaScriptCore cipher/n solver. Direct format URLs are processed
-with `PlayerProcessing.Player.processDownloadFormatURL` before MPV receives
-them.
+Undeciphered TV media is also forbidden. If the watch page cannot provide a
+current player at all, the app rejects the TV media instead of presenting a
+possibly broken URL as a successful native resolve; the optional VcdResolver
+then remains the independent fallback.
 
 The obsolete iOS Innertube direct-format fallback is not used because current
 YouTube GVS policy may require PO tokens for those URLs.
@@ -134,8 +138,13 @@ on-device playback.
 
 When configured, it provides an independent yt-dlp/Range-relay extraction path.
 On initial native resolve failure it may be used as fallback. On playback
-expiry/failure, the refresh path tries the optional resolver first (if
-configured), then retries autonomous native extraction.
+expiry/failure, the refresh path can use the optional resolver as an
+independent extraction route before retrying autonomous native extraction.
+
+Recovery is bounded: a mere `FILE_LOADED` event no longer resets the retry
+budget. A stream must remain active for the stable-playback interval before a
+later incident receives a fresh retry budget. Rapid open/fail loops therefore
+cannot refresh forever.
 
 The resolver retains its transport hardening:
 
