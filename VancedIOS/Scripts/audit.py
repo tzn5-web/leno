@@ -37,6 +37,7 @@ EXPECTED_IMPLEMENTATION_FILES = [
     ROOT / "Sources" / "VancedCore.m",
     ROOT / "Sources" / "VancedSettings.m",
     ROOT / "Sources" / "VancedSponsorBlock.m",
+    ROOT / "Sources" / "VancedRYD.m",
     ROOT / "Scripts" / "build.sh",
 ]
 
@@ -95,6 +96,13 @@ BINARY_EVIDENCE = {
         ["seekToTime:", "scrubToTime:"],
         ["currentVideoID", "contentVideoID"],
     ],
+    "return_youtube_dislike": [
+        ["YTQTMButton"],
+        ["YTReelWatchLikesController"],
+        ["updateLikeButtonWithRenderer:"],
+        ["playbackController:didActivateVideo:withPlaybackData:"],
+        ["currentVideoID", "contentVideoID"],
+    ],
 }
 
 FEATURE_SOURCE_EVIDENCE = {
@@ -125,6 +133,13 @@ FEATURE_SOURCE_EVIDENCE = {
         "currentVideoTimeDidChange:",
         "seekToTime:",
         "VancedSponsorBlockEnabled",
+    ],
+    "return_youtube_dislike": [
+        "returnyoutubedislikeapi.com/votes",
+        "YTQTMButton",
+        "YTReelWatchLikesController",
+        "updateLikeButtonWithRenderer:",
+        "VancedReturnYouTubeDislikeEnabled",
     ],
 }
 
