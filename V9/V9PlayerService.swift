@@ -117,6 +117,9 @@ final class V9PlayerService:
     private var refreshTask:
         Task<Void, Never>?
 
+    private var backgroundRenderGraceTask:
+        Task<Void, Never>?
+
     private var refreshAttempts =
         0
 
@@ -142,6 +145,9 @@ final class V9PlayerService:
     deinit {
         MainActor.assumeIsolated {
             refreshTask?
+                .cancel()
+
+            backgroundRenderGraceTask?
                 .cancel()
 
             for token in
@@ -844,14 +850,49 @@ final class V9PlayerService:
     ) {
         switch phase {
         case .background:
-            // Playback remains alive in the single MPV engine.
-            // Without PiP, stop only visual rendering.
-            // With PiP, keep producing frames for AVSampleBufferDisplayLayer.
+            backgroundRenderGraceTask?
+                .cancel()
+
+            // Manual PiP already marks itself as pending. For automatic PiP
+            // iOS can background the app just before the PiP delegate fires,
+            // so keep software frames flowing briefly during that transition.
             if pipBridge?
                 .shouldKeepRendering ==
                 true {
                 renderView?
                     .resumeRendering()
+            } else if isPiPPossible,
+                      desiredPlayback,
+                      hasLoadedMedia {
+                renderView?
+                    .resumeRendering()
+
+                backgroundRenderGraceTask =
+                    Task {
+                        [weak self] in
+
+                        try? await Task.sleep(
+                            nanoseconds:
+                                2_000_000_000
+                        )
+
+                        guard !Task
+                            .isCancelled,
+                              let self,
+                              UIApplication
+                                .shared
+                                .applicationState ==
+                                .background,
+                              self.pipBridge?
+                                .isActive !=
+                                true
+                        else {
+                            return
+                        }
+
+                        self.renderView?
+                            .pauseRendering()
+                    }
             } else {
                 renderView?
                     .pauseRendering()
@@ -864,6 +905,12 @@ final class V9PlayerService:
             }
 
         case .active:
+            backgroundRenderGraceTask?
+                .cancel()
+
+            backgroundRenderGraceTask =
+                nil
+
             if desiredPlayback,
                hasLoadedMedia,
                !interruptionActive {
@@ -1843,6 +1890,12 @@ final class V9PlayerService:
                 active
 
             if active {
+                self.backgroundRenderGraceTask?
+                    .cancel()
+
+                self.backgroundRenderGraceTask =
+                    nil
+
                 self.renderView?
                     .resumeRendering()
             } else if UIApplication
