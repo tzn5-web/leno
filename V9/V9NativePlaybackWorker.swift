@@ -89,6 +89,12 @@ actor V9NativePlaybackWorker
                 nil
         }
 
+        guard let watchPlayer
+        else {
+            throw PlaybackError
+                .noPlayableFormats
+        }
+
         // Next ask the current TVHTML5 Innertube client for streamingData.
         // Plain TVHTML5 is intentionally used instead of TVHTML5_SIMPLY:
         // current yt-dlp policy does not mark plain TVHTML5 GVS as requiring
@@ -119,29 +125,27 @@ actor V9NativePlaybackWorker
                 response
                     .defaultFormats
 
-            if let watchPlayer {
-                if let hls =
-                        info.streamingURL {
-                    info.streamingURL =
-                        watchPlayer
-                            .decodeNParameterInHLSManifestURL(
-                                hls
-                                    .absoluteString
-                            )
-                }
-
-                try processFormats(
-                    &adaptiveFormats,
-                    player:
-                        watchPlayer
-                )
-
-                try processFormats(
-                    &progressiveFormats,
-                    player:
-                        watchPlayer
-                )
+            if let hls =
+                    info.streamingURL {
+                info.streamingURL =
+                    watchPlayer
+                        .decodeNParameterInHLSManifestURL(
+                            hls
+                                .absoluteString
+                        )
             }
+
+            try processFormats(
+                &adaptiveFormats,
+                player:
+                    watchPlayer
+            )
+
+            try processFormats(
+                &progressiveFormats,
+                player:
+                    watchPlayer
+            )
 
             return try makeResolvedVideo(
                 videoID:
@@ -173,28 +177,26 @@ actor V9NativePlaybackWorker
         var progressiveFormats =
             info.defaultFormats
 
-        if let watchPlayer {
-            try processFormats(
-                &adaptiveFormats,
-                player:
-                    watchPlayer
-            )
+        try processFormats(
+            &adaptiveFormats,
+            player:
+                watchPlayer
+        )
 
-            try processFormats(
-                &progressiveFormats,
-                player:
-                    watchPlayer
-            )
+        try processFormats(
+            &progressiveFormats,
+            player:
+                watchPlayer
+        )
 
-            if let hls =
-                    info.streamingURL {
-                info.streamingURL =
-                    watchPlayer
-                        .decodeNParameterInHLSManifestURL(
-                            hls
-                                .absoluteString
-                        )
-            }
+        if let hls =
+                info.streamingURL {
+            info.streamingURL =
+                watchPlayer
+                    .decodeNParameterInHLSManifestURL(
+                        hls
+                            .absoluteString
+                    )
         }
 
         return try makeResolvedVideo(
