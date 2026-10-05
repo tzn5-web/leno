@@ -25,24 +25,24 @@
       "state": "not_implemented"
     },
     "sponsorblock": {
-      "state": "implemented_unvalidated",
-      "evidence": "Own VancedSponsorBlock module uses SHA-256 4-character k-anonymous SponsorBlock queries, validates skip segments, tracks active video, and seeks with native YouTube selectors"
+      "state": "validated_static",
+      "evidence": "Own VancedSponsorBlock module uses SHA-256 4-character k-anonymous SponsorBlock queries, validates skip segments, tracks active video, and seeks with native YouTube selectors; compiled and linked in successful arm64 core build"
     },
     "return_youtube_dislike": {
-      "state": "implemented_unvalidated",
-      "evidence": "Own VancedRYD module caches RYD votes API counts, updates YTQTMButton dislike UI for normal playback, and hooks YTReelWatchLikesController for Shorts"
+      "state": "validated_static",
+      "evidence": "Own VancedRYD module caches RYD votes API counts, updates YTQTMButton dislike UI for normal playback, and hooks YTReelWatchLikesController for Shorts; compiled and linked in successful arm64 core build"
     },
     "quality_memory_controls": {
-      "state": "implemented_unvalidated",
-      "evidence": "VancedCore stores qualityLabel from original/redesigned quality controllers and reapplies MLQuickMenuVideoQualitySettingFormatConstraint after player load"
+      "state": "validated_static",
+      "evidence": "VancedCore stores qualityLabel from original/redesigned quality controllers and reapplies MLQuickMenuVideoQualitySettingFormatConstraint after player load; compiled and linked in successful arm64 core build"
     },
     "speed_memory_controls": {
-      "state": "implemented_unvalidated",
-      "evidence": "VancedCore dynamically hooks YTMainAppVideoPlayerOverlayViewController setPlaybackRate: and restores after YTPlayerViewController loadWithPlayerTransition:playbackConfig:"
+      "state": "validated_static",
+      "evidence": "VancedCore dynamically hooks YTMainAppVideoPlayerOverlayViewController setPlaybackRate: and restores after YTPlayerViewController loadWithPlayerTransition:playbackConfig:; compiled and linked in successful arm64 core build"
     },
     "ui_shorts_controls": {
-      "state": "partial_implemented",
-      "evidence": "VancedCore filters Shorts shelves/cells outside history; VancedShortsUI removes FEshorts from YTPivotBarView; both are exposed as native Vanced Settings toggles"
+      "state": "validated_static",
+      "evidence": "VancedCore filters Shorts shelves/cells outside history; VancedShortsUI removes FEshorts from YTPivotBarView; both are exposed as native Vanced Settings toggles; all related sources compile with -Werror in the arm64 core build; device behavior remains unvalidated"
     },
     "navigation_intact": {
       "state": "design_guard_only",
