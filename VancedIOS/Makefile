@@ -1,6 +1,8 @@
 ARCHS = arm64
 TARGET = iphone:clang:latest:15.0
 INSTALL_TARGET_PROCESSES = YouTube
+DEBUG = 0
+FINALPACKAGE = 1
 
 ifeq ($(PACKAGE_IPA),1)
 MODULES = jailed
