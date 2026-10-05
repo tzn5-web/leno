@@ -461,8 +461,25 @@ struct V9MediaLabView:
                             ? "auth ON"
                             : "auth OFF"
 
+                    let cap =
+                        health.maxVideoHeight
+                            .map {
+                                height in
+
+                                let fps =
+                                    Int(
+                                        health.maxVideoFPS ??
+                                        0
+                                    )
+
+                                return fps > 0
+                                    ? " • max \(height)p/\(fps)fps"
+                                    : " • max \(height)p"
+                            } ??
+                        ""
+
                     healthText =
-                        "OK • \(health.version) • \(runtime) • \(auth) • relay TTL \(health.relayTTL)s"
+                        "OK • \(health.version) • \(runtime) • \(auth) • relay TTL \(health.relayTTL)s\(cap)"
                 }
             } catch {
                 await MainActor.run {
