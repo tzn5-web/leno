@@ -1,4 +1,7 @@
 #import <Foundation/Foundation.h>
+#import <dispatch/dispatch.h>
+#import <math.h>
+#import <stdarg.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
 
