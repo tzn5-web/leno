@@ -17,11 +17,10 @@ struct V9MediaLabView:
     private var endpoint =
         ""
 
-    @AppStorage(
-        "v9.resolver.token"
-    )
+    @State
     private var resolverToken =
-        ""
+        ResolverTokenStore
+            .load()
 
     @State
     private var videoID =
@@ -75,6 +74,18 @@ struct V9MediaLabView:
             player.handleScenePhase(
                 newPhase
             )
+        }
+        .onChange(
+            of:
+                resolverToken
+        ) {
+            _,
+            newValue in
+
+            ResolverTokenStore
+                .save(
+                    newValue
+                )
         }
     }
 
