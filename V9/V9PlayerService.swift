@@ -65,6 +65,14 @@ final class V9PlayerService:
     private(set) var isPiPActive =
         false
 
+    var prefersPiPQualityRender:
+        Bool
+    {
+        pipBridge?
+            .shouldKeepRendering ==
+            true
+    }
+
     var stateDescription:
         String
     {
