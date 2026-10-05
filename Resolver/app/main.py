@@ -16,7 +16,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 
-APP_VERSION = "0.3.0-lab"
+APP_VERSION = "0.4.0-client"
 TOKEN_TTL_SECONDS = int(os.getenv("VCD_RELAY_TTL", "21600"))
 YTDLP_BIN = os.getenv("YTDLP_BIN", "yt-dlp")
 YTDLP_TIMEOUT = int(os.getenv("YTDLP_TIMEOUT", "90"))
@@ -30,6 +30,9 @@ MAX_VIDEO_HEIGHT = max(360, int(os.getenv("VCD_MAX_VIDEO_HEIGHT", "1080")))
 MAX_VIDEO_FPS = max(24.0, float(os.getenv("VCD_MAX_VIDEO_FPS", "30")))
 UPSTREAM_READ_TIMEOUT = max(10.0, float(os.getenv("VCD_UPSTREAM_READ_TIMEOUT", "45")))
 VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
+CHANNEL_ID_RE = re.compile(r"^UC[A-Za-z0-9_-]{22}$")
+SEARCH_QUERY_RE = re.compile(r"^[^\x00-\x1f\x7f]{2,120}$")
+BROWSE_LIMIT = max(8, min(50, int(os.getenv("VCD_BROWSE_LIMIT", "24"))))
 REFRESHABLE_UPSTREAM_STATUS = {403, 404, 410}
 
 app = FastAPI(
@@ -382,6 +385,171 @@ def select_refresh_format(
     return None
 
 
+def browse_video_entry(
+    raw: dict[str, Any],
+    *,
+    base: str,
+) -> dict[str, Any] | None:
+    video_id = str(raw.get("id") or "")
+
+    if not VIDEO_ID_RE.fullmatch(video_id):
+        return None
+
+    title = str(raw.get("title") or "YouTube")
+    channel = str(
+        raw.get("channel")
+        or raw.get("uploader")
+        or ""
+    )
+    channel_id = str(
+        raw.get("channel_id")
+        or ""
+    )
+
+    if not CHANNEL_ID_RE.fullmatch(channel_id):
+        channel_id = ""
+
+    duration_raw = raw.get("duration")
+    try:
+        duration = (
+            float(duration_raw)
+            if duration_raw is not None
+            else None
+        )
+    except (TypeError, ValueError):
+        duration = None
+
+    view_count_raw = raw.get("view_count")
+    try:
+        view_count = (
+            int(view_count_raw)
+            if view_count_raw is not None
+            else None
+        )
+    except (TypeError, ValueError):
+        view_count = None
+
+    return {
+        "id": video_id,
+        "title": title,
+        "channel": channel,
+        "channelID": channel_id or None,
+        "duration": duration,
+        "viewCount": view_count,
+        "thumbnailURL": f"{base}/v1/thumb/{video_id}",
+        "isLive": bool(
+            raw.get("is_live")
+            or str(raw.get("live_status") or "").lower()
+            in {"is_live", "is_upcoming"}
+        ),
+    }
+
+
+async def extract_browse(
+    target: str,
+    *,
+    base: str,
+    limit: int = BROWSE_LIMIT,
+) -> list[dict[str, Any]]:
+    async with extraction_semaphore:
+        arguments = [
+            YTDLP_BIN,
+            "--dump-single-json",
+            "--flat-playlist",
+            "--skip-download",
+            "--no-warnings",
+            "--playlist-end",
+            str(limit),
+            "--extractor-args",
+            "youtubetab:approximate_date",
+            "--js-runtimes",
+            YTDLP_JS_RUNTIME,
+        ]
+
+        if COOKIES_FILE:
+            if not os.path.isfile(COOKIES_FILE):
+                raise HTTPException(
+                    status_code=500,
+                    detail="VCD_COOKIES_FILE does not exist",
+                )
+
+            arguments.extend(
+                [
+                    "--cookies",
+                    COOKIES_FILE,
+                ]
+            )
+
+        arguments.append(target)
+
+        proc = await asyncio.create_subprocess_exec(
+            *arguments,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(),
+                timeout=YTDLP_TIMEOUT,
+            )
+        except asyncio.CancelledError:
+            if proc.returncode is None:
+                proc.kill()
+                await proc.wait()
+            raise
+        except TimeoutError:
+            if proc.returncode is None:
+                proc.kill()
+                await proc.wait()
+            raise HTTPException(
+                status_code=504,
+                detail="YouTube browse timeout",
+            )
+
+        if proc.returncode != 0:
+            diagnostic = stderr.decode(
+                "utf-8",
+                errors="replace",
+            )[-1200:]
+
+            print(
+                f"yt-dlp browse failed for {target!r}: {diagnostic}",
+                file=sys.stderr,
+            )
+
+            raise HTTPException(
+                status_code=502,
+                detail="YouTube browse failed",
+            )
+
+        try:
+            info = json.loads(stdout)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(
+                status_code=502,
+                detail="invalid YouTube browse response",
+            ) from exc
+
+        entries = info.get("entries") or []
+
+        normalized: list[dict[str, Any]] = []
+
+        for raw in entries:
+            if not isinstance(raw, dict):
+                continue
+
+            item = browse_video_entry(
+                raw,
+                base=base,
+            )
+
+            if item is not None:
+                normalized.append(item)
+
+        return normalized
+
+
 async def extract_video(video_id: str) -> dict[str, Any]:
     if not VIDEO_ID_RE.fullmatch(video_id):
         raise HTTPException(status_code=400, detail="invalid video id")
@@ -614,7 +782,155 @@ async def health() -> dict[str, Any]:
         "max_video_height": MAX_VIDEO_HEIGHT,
         "max_video_fps": MAX_VIDEO_FPS,
         "active_relay_entries": active_relay_entries,
+        "browse_limit": BROWSE_LIMIT,
+        "client_browse": True,
     }
+
+
+@app.get("/v1/home")
+async def home(request: Request) -> dict[str, Any]:
+    require_api_token(request)
+    base = resolved_public_base(request)
+
+    # yt-dlp has a dedicated YouTube recommended extractor (:ytrec). Without
+    # cookies it can be unavailable depending on YouTube's current behavior,
+    # so fall back to a normal video search rather than presenting an empty UI.
+    items: list[dict[str, Any]] = []
+
+    try:
+        items = await extract_browse(
+            ":ytrec",
+            base=base,
+        )
+    except HTTPException:
+        items = []
+
+    if not items:
+        items = await extract_browse(
+            "ytsearch24:popular videos",
+            base=base,
+        )
+
+    return {
+        "title": "Home",
+        "items": items,
+    }
+
+
+@app.get("/v1/search")
+async def search_videos(
+    q: str,
+    request: Request,
+) -> dict[str, Any]:
+    require_api_token(request)
+    base = resolved_public_base(request)
+
+    query = q.strip()
+
+    if not SEARCH_QUERY_RE.fullmatch(query):
+        raise HTTPException(
+            status_code=400,
+            detail="search query must contain 2-120 printable characters",
+        )
+
+    items = await extract_browse(
+        f"ytsearch{BROWSE_LIMIT}:{query}",
+        base=base,
+    )
+
+    return {
+        "title": query,
+        "items": items,
+    }
+
+
+@app.get("/v1/channel/{channel_id}")
+async def channel_videos(
+    channel_id: str,
+    request: Request,
+) -> dict[str, Any]:
+    require_api_token(request)
+    base = resolved_public_base(request)
+
+    if not CHANNEL_ID_RE.fullmatch(channel_id):
+        raise HTTPException(
+            status_code=400,
+            detail="invalid YouTube channel id",
+        )
+
+    items = await extract_browse(
+        f"https://www.youtube.com/channel/{channel_id}/videos",
+        base=base,
+    )
+
+    title = (
+        items[0].get("channel")
+        if items
+        else "Channel"
+    ) or "Channel"
+
+    return {
+        "title": title,
+        "channelID": channel_id,
+        "items": items,
+    }
+
+
+@app.get("/v1/thumb/{video_id}")
+async def thumbnail(
+    video_id: str,
+) -> Response:
+    if not VIDEO_ID_RE.fullmatch(video_id):
+        raise HTTPException(
+            status_code=400,
+            detail="invalid video id",
+        )
+
+    url = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+
+    try:
+        async with httpx.AsyncClient(
+            follow_redirects=False,
+            timeout=httpx.Timeout(15.0),
+        ) as client:
+            response = await client.get(
+                url,
+                headers={
+                    "Accept": "image/avif,image/webp,image/*,*/*;q=0.8",
+                    "Accept-Encoding": "identity",
+                },
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="thumbnail fetch failed",
+        ) from exc
+
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=404,
+            detail="thumbnail unavailable",
+        )
+
+    content_type = response.headers.get(
+        "content-type",
+        "image/jpeg",
+    )
+
+    if not content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=502,
+            detail="invalid thumbnail response",
+        )
+
+    return Response(
+        content=response.content,
+        media_type=content_type,
+        headers={
+            "cache-control": "private, max-age=3600",
+            "x-content-type-options": "nosniff",
+        },
+    )
 
 
 @app.get("/v1/video/{video_id}")
