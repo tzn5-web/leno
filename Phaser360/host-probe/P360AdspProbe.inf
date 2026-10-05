@@ -1,0 +1,47 @@
+; PHASER360 ADSP interface diagnostic-only function driver
+[Version]
+Signature="$WINDOWS NT$"
+Class=System
+ClassGuid={4d36e97d-e325-11ce-bfc1-08002be10318}
+Provider=%Provider%
+DriverVer=10/06/2026,1.0.0.0
+CatalogFile=P360AdspProbe.cat
+PnpLockdown=1
+
+[DestinationDirs]
+DriverCopy=12
+
+[SourceDisksNames]
+1=%Disk%,,,""
+[SourceDisksFiles]
+P360AdspProbe.sys=1,,
+
+[Manufacturer]
+%Provider%=Models,NTamd64
+[Models.NTamd64]
+%Device%=P360Install,CSAUDIO\ADSP&CTLR_VEN_8086&CTLR_DEV_3198
+
+[P360Install.NT]
+CopyFiles=DriverCopy
+[P360Install.NT.Services]
+AddService=P360AdspProbe,0x00000002,P360Service
+[P360Install.NT.Wdf]
+KmdfService=P360AdspProbe,P360Wdf
+[P360Wdf]
+KmdfLibraryVersion=1.15
+
+[DriverCopy]
+P360AdspProbe.sys
+
+[P360Service]
+DisplayName=%Service%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%12%\P360AdspProbe.sys
+
+[Strings]
+Provider="PHASER360 Project"
+Device="PHASER360 ADSP Interface Probe (no DSP boot)"
+Service="PHASER360 ADSP Diagnostic"
+Disk="PHASER360 Diagnostic Driver Disk"
