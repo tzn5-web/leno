@@ -196,11 +196,6 @@ final class V9MPVRenderView:
         let generation =
             frameGeneration
 
-        let presentationTime =
-            service?
-                .currentTime ??
-            0
-
         let now =
             CACurrentMediaTime()
 
@@ -368,6 +363,11 @@ final class V9MPVRenderView:
                     if rendered,
                        generation ==
                         self.frameGeneration {
+                        let presentationTime =
+                            self.service?
+                                .currentTime ??
+                            0
+
                         self.enqueue(
                             buffer,
                             presentationTime:
