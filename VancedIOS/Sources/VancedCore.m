@@ -183,7 +183,7 @@ static void VApplyRememberedQuality(id playerController) {
     id constraint = ((id (*)(id, SEL))objc_msgSend)(constraintClass, sel_registerName("alloc"));
     SEL initSelector = sel_registerName("initWithVideoQualitySetting:formatSelectionReason:qualityLabel:");
     if (!constraint || ![constraint respondsToSelector:initSelector]) return;
-    constraint = ((id (*)(id, SEL, NSInteger, NSInteger, id))objc_msgSend)(
+    constraint = ((id (*)(id, SEL, int, NSInteger, id))objc_msgSend)(
         constraint, initSelector, 3, 2, qualityLabel);
 
     SEL setConstraintSelector = sel_registerName("setVideoFormatConstraint:");
