@@ -6,7 +6,7 @@ include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = VancedCore
 VancedCore_FILES = Sources/VancedCore.m
-VancedCore_CFLAGS = -fobjc-arc -Wall -Wextra
+VancedCore_CFLAGS = -fobjc-arc -Wall -Wextra -Werror -Wno-unused-parameter
 VancedCore_FRAMEWORKS = Foundation
 
 include $(THEOS_MAKE_PATH)/tweak.mk
