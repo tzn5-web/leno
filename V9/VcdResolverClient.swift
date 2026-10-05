@@ -149,6 +149,151 @@ actor VcdResolverClient {
         )
     }
 
+    func home(
+        endpoint:
+            String,
+        bearerToken:
+            String = ""
+    ) async throws
+        -> BrowseResponse
+    {
+        let base =
+            try baseURL(
+                endpoint
+            )
+
+        let url =
+            base
+                .appending(
+                    path:
+                        "v1"
+                )
+                .appending(
+                    path:
+                        "home"
+                )
+
+        let data =
+            try await request(
+                url,
+                bearerToken:
+                    bearerToken
+            )
+
+        return try decoder.decode(
+            BrowseResponse.self,
+            from:
+                data
+        )
+    }
+
+    func search(
+        query:
+            String,
+        endpoint:
+            String,
+        bearerToken:
+            String = ""
+    ) async throws
+        -> BrowseResponse
+    {
+        let base =
+            try baseURL(
+                endpoint
+            )
+
+        var components =
+            URLComponents(
+                url:
+                    base
+                    .appending(
+                        path:
+                            "v1"
+                    )
+                    .appending(
+                        path:
+                            "search"
+                    ),
+                resolvingAgainstBaseURL:
+                    false
+            )
+
+        components?
+            .queryItems = [
+                URLQueryItem(
+                    name:
+                        "q",
+                    value:
+                        query
+                )
+            ]
+
+        guard let url =
+                components?
+                    .url
+        else {
+            throw ResolverClientError
+                .invalidEndpoint
+        }
+
+        let data =
+            try await request(
+                url,
+                bearerToken:
+                    bearerToken
+            )
+
+        return try decoder.decode(
+            BrowseResponse.self,
+            from:
+                data
+        )
+    }
+
+    func channel(
+        channelID:
+            String,
+        endpoint:
+            String,
+        bearerToken:
+            String = ""
+    ) async throws
+        -> BrowseResponse
+    {
+        let base =
+            try baseURL(
+                endpoint
+            )
+
+        let url =
+            base
+                .appending(
+                    path:
+                        "v1"
+                )
+                .appending(
+                    path:
+                        "channel"
+                )
+                .appending(
+                    path:
+                        channelID
+                )
+
+        let data =
+            try await request(
+                url,
+                bearerToken:
+                    bearerToken
+            )
+
+        return try decoder.decode(
+            BrowseResponse.self,
+            from:
+                data
+        )
+    }
+
     func resolve(
         videoID: String,
         endpoint: String,
