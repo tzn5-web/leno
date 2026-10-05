@@ -36,7 +36,8 @@
       "evidence": "VancedCore dynamically hooks YTMainAppVideoPlayerOverlayViewController setPlaybackRate: and restores after YTPlayerViewController loadWithPlayerTransition:playbackConfig:"
     },
     "ui_shorts_controls": {
-      "state": "not_implemented"
+      "state": "partial_implemented",
+      "evidence": "Vanced settings exposes Hide Shorts in feeds; VancedCore filters YTIElementRenderer Shorts shelves/cells while preserving history"
     },
     "navigation_intact": {
       "state": "design_guard_only",
