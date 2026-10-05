@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 private final class ResolverNoRedirectDelegate:
@@ -509,29 +510,138 @@ actor VcdResolverClient {
             String
     ) -> Bool {
         let value =
-            host.lowercased()
+            host
+                .lowercased()
+                .trimmingCharacters(
+                    in:
+                        CharacterSet(
+                            charactersIn:
+                                "[]"
+                        )
+                )
 
-        if value == "localhost" ||
-           value == "::1" ||
+        if value ==
+                "localhost" ||
            value.hasSuffix(
                 ".local"
-           ) ||
-           !value.contains(
-                "."
            ) {
             return true
         }
 
-        if value.hasPrefix(
-            "fe80:"
-        ) ||
-           value.hasPrefix(
-                "fc"
-           ) ||
-           value.hasPrefix(
-                "fd"
-           ) {
-            return true
+        if value.contains(
+            ":"
+        ) {
+            var address =
+                in6_addr()
+
+            guard inet_pton(
+                AF_INET6,
+                value,
+                &address
+            ) ==
+                1
+            else {
+                return false
+            }
+
+            let bytes =
+                withUnsafeBytes(
+                    of:
+                        address
+                ) {
+                    Array(
+                        $0
+                    )
+                }
+
+            guard bytes.count >=
+                    16
+            else {
+                return false
+            }
+
+            let isLoopback =
+                bytes[
+                    0..<15
+                ]
+                .allSatisfy {
+                    $0 ==
+                        0
+                } &&
+                bytes[
+                    15
+                ] ==
+                1
+
+            let isLinkLocal =
+                bytes[
+                    0
+                ] ==
+                0xfe &&
+                (
+                    bytes[
+                        1
+                    ] &
+                    0xc0
+                ) ==
+                0x80
+
+            let isUniqueLocal =
+                (
+                    bytes[
+                        0
+                    ] &
+                    0xfe
+                ) ==
+                0xfc
+
+            let isIPv4Mapped =
+                bytes[
+                    0..<10
+                ]
+                .allSatisfy {
+                    $0 ==
+                        0
+                } &&
+                bytes[
+                    10
+                ] ==
+                0xff &&
+                bytes[
+                    11
+                ] ==
+                0xff
+
+            if isIPv4Mapped {
+                return isPrivateIPv4(
+                    [
+                        Int(
+                            bytes[
+                                12
+                            ]
+                        ),
+                        Int(
+                            bytes[
+                                13
+                            ]
+                        ),
+                        Int(
+                            bytes[
+                                14
+                            ]
+                        ),
+                        Int(
+                            bytes[
+                                15
+                            ]
+                        )
+                    ]
+                )
+            }
+
+            return isLoopback ||
+                   isLinkLocal ||
+                   isUniqueLocal
         }
 
         let parts =
@@ -546,6 +656,25 @@ actor VcdResolverClient {
                     )
                 }
 
+        if parts.count ==
+                4 {
+            return isPrivateIPv4(
+                parts
+            )
+        }
+
+        // A dotless, non-IP hostname is treated as a LAN/mDNS-style local
+        // name. Public IPv6 addresses never reach this branch.
+        return !value.isEmpty &&
+               !value.contains(
+                   "."
+               )
+    }
+
+    private func isPrivateIPv4(
+        _ parts:
+            [Int]
+    ) -> Bool {
         guard parts.count ==
                 4,
               parts.allSatisfy({
@@ -558,30 +687,51 @@ actor VcdResolverClient {
             return false
         }
 
-        if parts[0] ==
+        if parts[
+            0
+        ] ==
             10 {
             return true
         }
 
-        if parts[0] ==
+        if parts[
+                0
+           ] ==
+                127 {
+            return true
+        }
+
+        if parts[
+                0
+           ] ==
                 172,
            (16...31)
             .contains(
-                parts[1]
+                parts[
+                    1
+                ]
             ) {
             return true
         }
 
-        if parts[0] ==
+        if parts[
+                0
+           ] ==
                 192,
-           parts[1] ==
+           parts[
+                1
+           ] ==
                 168 {
             return true
         }
 
-        if parts[0] ==
+        if parts[
+                0
+           ] ==
                 169,
-           parts[1] ==
+           parts[
+                1
+           ] ==
                 254 {
             return true
         }
