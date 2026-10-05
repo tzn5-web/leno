@@ -22,7 +22,7 @@ function Replace-Once {
         throw "Patch anchor not unique: $Label in $Path"
     }
     $text = $text.Substring(0,$idx) + $New + $text.Substring($idx + $Old.Length)
-    Set-Content -LiteralPath $Path -Value $text -Encoding utf8NoBOM
+    [System.IO.File]::WriteAllText($Path, $text, (New-Object System.Text.UTF8Encoding($false)))
     Write-Host "PATCHED: $Label"
 }
 
@@ -149,7 +149,7 @@ $vcxText = Get-Content -LiteralPath $vcx -Raw
 $oldCount = ([regex]::Matches($vcxText, '<TimeStamp>1\.0\.6</TimeStamp>')).Count
 if ($oldCount -ne 4) { throw "Expected 4 TimeStamp anchors, found $oldCount" }
 $vcxText = $vcxText.Replace('<TimeStamp>1.0.6</TimeStamp>','<TimeStamp>1.1.0.360</TimeStamp>')
-Set-Content -LiteralPath $vcx -Value $vcxText -Encoding utf8NoBOM
+[System.IO.File]::WriteAllText($vcx, $vcxText, (New-Object System.Text.UTF8Encoding($false)))
 Write-Host "PATCHED: driver package version 1.1.0.360"
 
 Run-Git -C $Upstream diff --check
