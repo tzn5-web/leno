@@ -38,7 +38,9 @@ jobs:
         run: |
           set -euo pipefail
           test -f dist/vanced-ios/youmod.deb
+          test -f dist/vanced-ios/ytvideooverlay.deb
           test -f dist/vanced-ios/youpip.deb
+          test -f dist/vanced-ios/ytuhd.deb
           test -f dist/vanced-ios/return-youtube-dislikes.deb
           test -f dist/vanced-ios/vancedios-core.deb
 
@@ -49,12 +51,16 @@ jobs:
 
           dpkg-deb -c dist/vanced-ios/vancedios-core.deb > /tmp/vancedios-core.contents
           dpkg-deb -c dist/vanced-ios/youmod.deb > /tmp/youmod.contents
+          dpkg-deb -c dist/vanced-ios/ytvideooverlay.deb > /tmp/ytvideooverlay.contents
           dpkg-deb -c dist/vanced-ios/youpip.deb > /tmp/youpip.contents
+          dpkg-deb -c dist/vanced-ios/ytuhd.deb > /tmp/ytuhd.contents
           dpkg-deb -c dist/vanced-ios/return-youtube-dislikes.deb > /tmp/ryd.contents
 
           grep -qi 'VancedIOSCore.*dylib' /tmp/vancedios-core.contents
           grep -qi 'YouMod.*dylib' /tmp/youmod.contents
+          grep -qi 'YTVideoOverlay.*dylib' /tmp/ytvideooverlay.contents
           grep -qi 'YouPiP.*dylib' /tmp/youpip.contents
+          grep -qi 'YTUHD.*dylib' /tmp/ytuhd.contents
           grep -qi 'YouTubeDislikesReturn.*dylib' /tmp/ryd.contents
 
       - name: Write hashes
