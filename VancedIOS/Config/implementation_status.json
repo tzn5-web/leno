@@ -1,19 +1,22 @@
 {
   "schema": 1,
-  "stage": "foundation",
+  "stage": "ipa_packaging_ready_unvalidated",
   "features": {
     "official_youtube_base": {
       "state": "infrastructure_ready",
       "evidence": "IPA/app audit supported"
     },
     "ad_block_video": {
-      "state": "not_implemented"
+      "state": "blocked_policy",
+      "evidence": "Not implemented: no YouTube ad-entitlement or monetization bypass hooks are permitted in this project."
     },
     "ad_block_feed": {
-      "state": "not_implemented"
+      "state": "blocked_policy",
+      "evidence": "Not implemented: no YouTube advertising-service bypass hooks are permitted in this project."
     },
     "background_playback": {
-      "state": "not_implemented"
+      "state": "blocked_policy",
+      "evidence": "Not implemented: no Premium/background entitlement bypass hooks are permitted in this project."
     },
     "pause_state_preservation": {
       "state": "not_implemented"
