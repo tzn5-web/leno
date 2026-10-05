@@ -1,0 +1,49 @@
+name: Vanced iOS Stage Audit
+
+on:
+  push:
+    branches: [vanced-ios]
+    paths:
+      - 'VancedIOS/**'
+      - '.github/workflows/vanced-ios-audit.yml'
+  pull_request:
+    paths:
+      - 'VancedIOS/**'
+      - '.github/workflows/vanced-ios-audit.yml'
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python syntax check
+        run: python3 -m py_compile VancedIOS/Scripts/audit.py
+
+      - name: Run stage audit
+        id: stage
+        shell: bash
+        run: |
+          set +e
+          bash VancedIOS/Scripts/run_stage_audit.sh
+          rc=$?
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vanced-ios-stage-audit
+          path: VancedIOS/reports/STAGE_AUDIT.json
+          if-no-files-found: error
+
+      - name: Enforce audit gate
+        if: steps.stage.outputs.rc != '0'
+        run: |
+          cat VancedIOS/reports/STAGE_AUDIT.json
+          echo 'VANCED_STAGE_AUDIT=NEEDS_REVIEW'
+          exit 1
