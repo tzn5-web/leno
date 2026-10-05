@@ -3,10 +3,30 @@
   "architecture": "youtube-official-plus-injected-modular-tweaks",
   "target": {
     "bundle_id": "com.google.ios.youtube",
-    "minimum_ios": "14.0",
+    "minimum_ios": "15.0",
     "arch": "arm64",
     "tested_youtube_version": "21.18.4",
     "tested_youtube_date": "2026-05-05"
+  },
+  "host_validation": {
+    "strict_version": true,
+    "require_decrypted": true,
+    "required_arches": [
+      "arm64"
+    ],
+    "required_background_modes": [
+      "audio"
+    ]
+  },
+  "payload": {
+    "required_dylibs": [
+      "YouMod.dylib",
+      "YTVideoOverlay.dylib",
+      "YouPiP.dylib",
+      "YTUHD.dylib",
+      "YouTubeDislikesReturn.dylib",
+      "VancedIOSCore.dylib"
+    ]
   },
   "dependencies": {
     "YouMod": {
