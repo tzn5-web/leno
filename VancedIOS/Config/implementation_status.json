@@ -26,7 +26,8 @@
       "evidence": "Own VancedSponsorBlock module uses SHA-256 4-character k-anonymous SponsorBlock queries, validates skip segments, tracks active video, and seeks with native YouTube selectors"
     },
     "return_youtube_dislike": {
-      "state": "not_implemented"
+      "state": "implemented_unvalidated",
+      "evidence": "Own VancedRYD module caches RYD votes API counts, updates YTQTMButton dislike UI for normal playback, and hooks YTReelWatchLikesController for Shorts"
     },
     "quality_memory_controls": {
       "state": "implemented_unvalidated",
