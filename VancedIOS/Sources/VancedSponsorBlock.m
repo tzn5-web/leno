@@ -205,7 +205,30 @@ static double VSBTime(id timeObject) {
     return ((double (*)(id, SEL))objc_msgSend)(timeObject, selector);
 }
 
-static void VSBHandleTick(id player, id timeObject) {
+static double VSBMediaDuration(id video) {
+    if (!video) return NAN;
+    SEL selector = sel_registerName("totalMediaTime");
+    if (![video respondsToSelector:selector]) return NAN;
+    return ((double (*)(id, SEL))objc_msgSend)(video, selector);
+}
+
+static BOOL VSBEntryMatchesDuration(NSDictionary *entry, double currentDuration) {
+    if (!isfinite(currentDuration) || currentDuration <= 0) return YES;
+    NSNumber *submittedDuration = entry[@"videoDuration"];
+    if (![submittedDuration isKindOfClass:[NSNumber class]] || submittedDuration.doubleValue <= 0) return YES;
+
+    NSArray *range = entry[@"segment"];
+    if (![range isKindOfClass:[NSArray class]] || range.count < 2) return NO;
+    double start = [range[0] doubleValue];
+    double end = [range[1] doubleValue];
+    double segmentLength = end - start;
+    if (!isfinite(segmentLength) || segmentLength <= 0) return NO;
+
+    double difference = fabs(currentDuration - submittedDuration.doubleValue);
+    return difference < 1.0 || (difference < 5.0 && (difference / segmentLength) < 0.05);
+}
+
+static void VSBHandleTick(id player, id video, id timeObject) {
     if (![[NSUserDefaults standardUserDefaults] boolForKey:kSponsorBlockEnabledKey]) return;
     if (VSBSendBool(player, "isPlayingAd")) return;
     VSponsorState *state = [VSBStateMap() objectForKey:player];
@@ -213,7 +236,9 @@ static void VSBHandleTick(id player, id timeObject) {
 
     double now = VSBTime(timeObject);
     if (!isfinite(now)) return;
+    double currentDuration = VSBMediaDuration(video);
     for (NSDictionary *entry in state.segments) {
+        if (!VSBEntryMatchesDuration(entry, currentDuration)) continue;
         NSArray *range = entry[@"segment"];
         double start = [range[0] doubleValue];
         double end = [range[1] doubleValue];
@@ -239,14 +264,14 @@ static void VSBVideoTime(id self, SEL _cmd, id video, id timeObject) {
     if (gOriginalVideoTime) {
         ((void (*)(id, SEL, id, id))gOriginalVideoTime)(self, _cmd, video, timeObject);
     }
-    VSBHandleTick(self, timeObject);
+    VSBHandleTick(self, video, timeObject);
 }
 
 static void VSBMutatedVideoTime(id self, SEL _cmd, id video, id timeObject) {
     if (gOriginalMutatedVideoTime) {
         ((void (*)(id, SEL, id, id))gOriginalMutatedVideoTime)(self, _cmd, video, timeObject);
     }
-    VSBHandleTick(self, timeObject);
+    VSBHandleTick(self, video, timeObject);
 }
 
 static void VSBInstallHooks(void) {
