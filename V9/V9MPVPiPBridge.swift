@@ -144,6 +144,15 @@ final class V9MPVPiPBridge:
             return
         }
 
+        guard AVPictureInPictureController
+            .isPictureInPictureSupported()
+        else {
+            onPossibleChanged?(
+                false
+            )
+            return
+        }
+
         var createdTimebase:
             CMTimebase?
 
