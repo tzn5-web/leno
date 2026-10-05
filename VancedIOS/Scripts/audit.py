@@ -36,6 +36,7 @@ EXPECTED_IMPLEMENTATION_FILES = [
     ROOT / "Makefile",
     ROOT / "Sources" / "VancedCore.m",
     ROOT / "Sources" / "VancedSettings.m",
+    ROOT / "Sources" / "VancedSponsorBlock.m",
     ROOT / "Scripts" / "build.sh",
 ]
 
@@ -87,6 +88,13 @@ BINARY_EVIDENCE = {
         ["YTIElementRenderer"],
         ["elementData"],
     ],
+    "sponsorblock": [
+        ["YTPlayerViewController"],
+        ["playbackController:didActivateVideo:withPlaybackData:"],
+        ["singleVideo:currentVideoTimeDidChange:", "potentiallyMutatedSingleVideo:currentVideoTimeDidChange:"],
+        ["seekToTime:", "scrubToTime:"],
+        ["currentVideoID", "contentVideoID"],
+    ],
 }
 
 FEATURE_SOURCE_EVIDENCE = {
@@ -109,6 +117,14 @@ FEATURE_SOURCE_EVIDENCE = {
         "YTIElementRenderer",
         "elementData",
         "VancedHideShortsInFeeds",
+    ],
+    "sponsorblock": [
+        "sponsor.ajay.app/api/skipSegments/",
+        "CC_SHA256",
+        "playbackController:didActivateVideo:withPlaybackData:",
+        "currentVideoTimeDidChange:",
+        "seekToTime:",
+        "VancedSponsorBlockEnabled",
     ],
 }
 
