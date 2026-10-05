@@ -135,8 +135,7 @@ final class V9MPVRenderView:
     }
 
     func requestRender() {
-        guard !renderingPaused,
-              !rendering
+        guard !rendering
         else {
             return
         }
@@ -144,7 +143,16 @@ final class V9MPVRenderView:
         rendering =
             true
 
-        renderFrame()
+        if renderingPaused {
+            if let service,
+               service
+                .consumeRenderUpdate() {
+                service
+                    .skipRenderFrame()
+            }
+        } else {
+            renderFrame()
+        }
 
         rendering =
             false
@@ -153,6 +161,10 @@ final class V9MPVRenderView:
     func pauseRendering() {
         renderingPaused =
             true
+
+        // Consume any frame already pending in libmpv without producing
+        // pixels, so video back-pressure cannot stall background audio.
+        requestRender()
     }
 
     func resumeRendering() {
