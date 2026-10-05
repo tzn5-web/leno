@@ -366,7 +366,8 @@ def audit_ipa(audit: Audit, raw_path: str, built: bool = False) -> None:
         executable = app / executable_name
 
         if built:
-            audit.check("youtube" in bundle_id.lower(), f"built app no longer identifies as YouTube: {bundle_id}")
+            audit.check(bundle_id == "com.google.ios.youtube",
+                        f"built app changed the original YouTube bundle id: {bundle_id}")
         else:
             audit.check(bundle_id == "com.google.ios.youtube", f"unexpected input bundle id: {bundle_id}")
         audit.check(bool(version), "CFBundleShortVersionString is missing")
