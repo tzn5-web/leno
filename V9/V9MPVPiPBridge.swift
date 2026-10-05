@@ -288,6 +288,14 @@ final class V9MPVPiPBridge:
             .resetFrameTimeline()
     }
 
+    func prepareForSeek() {
+        hasEnqueuedFrame =
+            false
+
+        renderView?
+            .resetFrameTimeline()
+    }
+
     func updatePlaybackState(
         duration:
             Double,
