@@ -529,7 +529,9 @@ final class V9MPVRenderView:
                     kCVPixelBufferCGImageCompatibilityKey:
                         true,
                     kCVPixelBufferCGBitmapContextCompatibilityKey:
-                        true
+                        true,
+                    kCVPixelBufferBytesPerRowAlignmentKey:
+                        64
                 ]
 
             var pool:
@@ -697,6 +699,20 @@ final class V9MPVRenderView:
         if renderer.status ==
             .failed {
             renderer.flush()
+
+            lastPresentationTime =
+                .invalid
+
+            effectivePTS =
+                CMTime(
+                    seconds:
+                        max(
+                            0,
+                            presentationTime
+                        ),
+                    preferredTimescale:
+                        600
+                )
         }
 
         renderer.enqueue(
