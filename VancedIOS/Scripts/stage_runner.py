@@ -280,6 +280,26 @@ def syntax_scan(audit: Audit) -> None:
         )
 
 
+def unit_test_scan(audit: Audit) -> None:
+    tests = VANCED / "Tests"
+    if not tests.is_dir():
+        audit.add("tests.python", "FAIL", "VancedIOS/Tests is missing")
+        return
+    audit.command(
+        "tests.python",
+        [
+            sys.executable,
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            str(tests),
+            "-p",
+            "test_*.py",
+        ],
+    )
+
+
 def workflow_scan(audit: Audit) -> None:
     workflows = sorted(WORKFLOWS.glob("vanced-ios-*.yml"))
     audit.require(
@@ -541,6 +561,7 @@ def main() -> int:
         static_contract(audit, manifest)
     repository_scan(audit)
     syntax_scan(audit)
+    unit_test_scan(audit)
     workflow_scan(audit)
 
     audit.command(
