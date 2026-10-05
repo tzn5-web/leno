@@ -123,6 +123,12 @@ def resolved_public_base(request: Request) -> str:
                 detail="public VCD_PUBLIC_BASE_URL must use https",
             )
 
+        if not is_local_network_host(host) and not API_TOKEN:
+            raise HTTPException(
+                status_code=500,
+                detail="public VCD_PUBLIC_BASE_URL requires VCD_API_TOKEN",
+            )
+
         return PUBLIC_BASE_URL
 
     host = request.url.hostname or ""
@@ -175,11 +181,28 @@ async def create_relay_entry(
 
 
 def is_relayable_format(format_info: dict[str, Any]) -> bool:
-    if not format_info.get("url"):
+    raw_url = str(format_info.get("url") or "")
+    if not raw_url:
         return False
 
-    protocol = str(format_info.get("protocol") or "https").lower()
-    if protocol not in {"http", "https"}:
+    protocol = str(format_info.get("protocol") or "").lower()
+    if protocol and protocol not in {"http", "https"}:
+        return False
+
+    try:
+        parsed = httpx.URL(raw_url)
+    except Exception:
+        return False
+
+    scheme = str(parsed.scheme).lower()
+    host = str(parsed.host or "")
+
+    if scheme not in {"http", "https"} or not host:
+        return False
+
+    # yt-dlp is the only source of upstream URLs, but never let a malformed
+    # extraction turn the relay into a local-network/loopback fetcher.
+    if is_local_network_host(host):
         return False
 
     # Fragment/manifest protocols need URL rewriting for every nested segment.
@@ -545,6 +568,9 @@ async def health() -> dict[str, Any]:
 async def video(video_id: str, request: Request) -> dict[str, Any]:
     require_api_token(request)
 
+    # Validate deployment/origin before starting an expensive yt-dlp process.
+    base = resolved_public_base(request)
+
     info = await extract_video(video_id)
     video_format, audio_format = choose_formats(info)
 
@@ -559,7 +585,6 @@ async def video(video_id: str, request: Request) -> dict[str, Any]:
             detail=detail,
         )
 
-    base = resolved_public_base(request)
     split_streams = audio_format is not None
 
     async def make_stream(
