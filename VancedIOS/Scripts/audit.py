@@ -279,7 +279,7 @@ def locate_app(path: Path):
     return apps[0], temp
 
 
-def audit_ipa(audit: Audit, raw_path: str) -> None:
+def audit_ipa(audit: Audit, raw_path: str, built: bool = False) -> None:
     path = Path(raw_path).expanduser().resolve()
     try:
         app, temp = locate_app(path)
@@ -302,7 +302,10 @@ def audit_ipa(audit: Audit, raw_path: str) -> None:
         executable_name = str(info.get("CFBundleExecutable", "YouTube"))
         executable = app / executable_name
 
-        audit.check(bundle_id == "com.google.ios.youtube", f"unexpected input bundle id: {bundle_id}")
+        if built:
+            audit.check("youtube" in bundle_id.lower(), f"built app no longer identifies as YouTube: {bundle_id}")
+        else:
+            audit.check(bundle_id == "com.google.ios.youtube", f"unexpected input bundle id: {bundle_id}")
         audit.check(bool(version), "CFBundleShortVersionString is missing")
         audit.check(executable.exists(), f"main executable missing: {executable_name}")
 
@@ -379,6 +382,31 @@ def audit_ipa(audit: Audit, raw_path: str) -> None:
 
         audit.info["binary_compatibility"] = compatibility
 
+        built_details = {}
+        if built:
+            frameworks = app / "Frameworks"
+            core_dylib = frameworks / "VancedCore.dylib"
+            audit.check(core_dylib.exists() and core_dylib.stat().st_size > 0,
+                        "built IPA is missing Frameworks/VancedCore.dylib")
+            built_details["core_dylib"] = str(core_dylib) if core_dylib.exists() else None
+
+            otool = shutil.which("otool")
+            if executable.exists() and otool:
+                try:
+                    linked = subprocess.check_output(
+                        [otool, "-L", str(executable)],
+                        text=True,
+                        errors="ignore",
+                        stderr=subprocess.DEVNULL,
+                    )
+                    audit.check("VancedCore.dylib" in linked,
+                                "main executable does not contain a load command for VancedCore.dylib")
+                    built_details["linked_vanced_core"] = "VancedCore.dylib" in linked
+                except Exception as exc:
+                    audit.error(f"built IPA linkage probe failed: {exc}")
+            elif executable.exists():
+                audit.warn("otool unavailable; built IPA dylib linkage cannot be proven")
+
         audit.info["ipa"] = {
             "path": str(path),
             "bundle_id": bundle_id,
@@ -387,6 +415,8 @@ def audit_ipa(audit: Audit, raw_path: str) -> None:
             "executable": executable_name,
             "architecture_probe": arch,
             "background_modes": info.get("UIBackgroundModes", []),
+            "built_output": built,
+            "built_details": built_details,
         }
     finally:
         if temp is not None:
@@ -396,13 +426,21 @@ def audit_ipa(audit: Audit, raw_path: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Vanced iOS stage audit")
     parser.add_argument("--ipa", help="optional decrypted YouTube .ipa or .app to inspect")
+    parser.add_argument("--built-ipa", help="optional packaged IPA to verify after injection")
+    parser.add_argument("--ipa-only", action="store_true",
+                        help="inspect only IPA compatibility; skip full product stage gate")
     parser.add_argument("--json-out", help="optional path for a JSON report")
     args = parser.parse_args()
 
     audit = Audit()
-    audit_source(audit)
+    if not args.ipa_only:
+        audit_source(audit)
     if args.ipa:
-        audit_ipa(audit, args.ipa)
+        audit_ipa(audit, args.ipa, built=False)
+    if args.built_ipa:
+        audit_ipa(audit, args.built_ipa, built=True)
+    if args.ipa_only and not args.ipa and not args.built_ipa:
+        audit.error("--ipa-only requires --ipa or --built-ipa")
 
     result = audit.result()
     rendered = json.dumps(result, indent=2, sort_keys=True)
