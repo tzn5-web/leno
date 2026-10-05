@@ -38,6 +38,8 @@ def read(name):
 result={
   'stage_rc':stage_rc,
   'build_rc':build_rc,
+  'input_ipa_supplied': bool(read('PREBUILD_IPA_AUDIT.json')),
+  'input_ipa_required_for_final_validation': not bool(read('PREBUILD_IPA_AUDIT.json')),
   'product_stage':read('STAGE_AUDIT.json'),
   'core_build':read('CORE_BUILD.json'),
   'prebuild_ipa':read('PREBUILD_IPA_AUDIT.json'),
@@ -50,6 +52,10 @@ print(json.dumps(result,indent=2,sort_keys=True))
 PY
 
 echo "FINAL_REPORT=$REPORTS/FINAL_REPORT.json"
+if [[ -z "$INPUT" ]]; then
+  echo "INPUT_IPA_REQUIRED=1"
+  echo "NEXT_COMMAND=$ROOT/RUNNER.sh /path/to/YouTube.ipa"
+fi
 if [[ "$build_rc" -ne 0 ]]; then
   exit "$build_rc"
 fi
