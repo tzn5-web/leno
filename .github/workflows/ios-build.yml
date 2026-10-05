@@ -254,6 +254,13 @@ jobs:
           assert item["id"] == "dQw4w9WgXcQ"
           assert item["thumbnailURL"].endswith("/v1/thumb/dQw4w9WgXcQ")
           assert item["channelID"] == "UCaaaaaaaaaaaaaaaaaaaaaa"
+
+          live_item = browse_video_entry({
+              "id": "dQw4w9WgXcQ",
+              "title": "Live fixture",
+              "live_status": "is_live",
+          }, base="http://192.168.1.50:8085")
+          assert live_item is None
           assert is_local_network_host("192.168.1.50")
           assert is_local_network_host("10.0.0.8")
           assert is_local_network_host("resolver.local")
