@@ -9,6 +9,7 @@ static NSString * const kVancedSettingsAccessibilityID = @"VancedIOSSettingsItem
 static NSString * const kRememberSpeedKey = @"VancedRememberPlaybackSpeed";
 static NSString * const kRememberQualityKey = @"VancedRememberVideoQuality";
 static NSString * const kHideShortsKey = @"VancedHideShortsInFeeds";
+static NSString * const kSponsorBlockEnabledKey = @"VancedSponsorBlockEnabled";
 
 static IMP gOriginalSettingsCategoryOrder = NULL;
 static IMP gOriginalUpdateSection = NULL;
@@ -113,7 +114,11 @@ static void VRenderVancedSettings(id manager) {
                                 kHideShortsKey);
     if (speed) [items addObject:speed];
     if (quality) [items addObject:quality];
+    id sponsorBlock = VSwitchItem(@"SponsorBlock",
+                                  @"Automatically skip sponsor, self-promotion, interaction, intro and outro segments.",
+                                  kSponsorBlockEnabledKey);
     if (hideShorts) [items addObject:hideShorts];
+    if (sponsorBlock) [items addObject:sponsorBlock];
     if (items.count == 0) return;
 
     SEL newSelector = sel_registerName("setSectionItems:forCategory:title:icon:titleDescription:headerHidden:");
