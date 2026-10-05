@@ -6,7 +6,7 @@ INPUT="${1:-}"
 REPORTS="$ROOT/reports"
 mkdir -p "$REPORTS"
 
-"$ROOT/Scripts/bootstrap_theos.sh"
+bash "$ROOT/Scripts/bootstrap_theos.sh"
 export THEOS="$ROOT/.toolchain/theos"
 
 if [[ -z "$INPUT" ]]; then
