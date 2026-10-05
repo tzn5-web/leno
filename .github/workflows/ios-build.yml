@@ -30,70 +30,11 @@ jobs:
           xcrun swift Scripts/GenerateAppIcon.swift Leno/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
           test -s Leno/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
 
-      - name: Native handoff source audit
+      - name: YoutubeVcd native client structural audit
         run: |
           set -euo pipefail
-
-          grep -q 'CFBundleDisplayName: YoutubeVcd' project.yml
-          grep -q 'UIBackgroundModes:' project.yml
-          grep -q 'MARKETING_VERSION: "0.4.3"' project.yml
-          grep -q 'CURRENT_PROJECT_VERSION: "8"' project.yml
-
-          grep -q 'allowsPictureInPictureMediaPlayback = true' Leno/YouTubeWebView.swift
-          grep -q 'allowsAirPlayForMediaPlayback = true' Leno/YouTubeWebView.swift
-          grep -Fq 'mediaTypesRequiringUserActionForPlayback = []' Leno/YouTubeWebView.swift
-          grep -q 'name: "mediaState"' Leno/YouTubeWebView.swift
-          grep -q 'name: "mediaCandidate"' Leno/YouTubeWebView.swift
-
-          grep -q 'publishMediaCandidate' Leno/AdBlockScript.swift
-          grep -q 'audio/mp4' Leno/AdBlockScript.swift
-          grep -q 'hlsManifestUrl' Leno/AdBlockScript.swift
-
-          grep -q '__YOUTUBE_VCD_PLAYBACK_BRIDGE__' Leno/PlaybackBridgeScript.swift
-          grep -q 'prepareNativeHandoff' Leno/PlaybackBridgeScript.swift
-          grep -q 'resumeFromNative' Leno/PlaybackBridgeScript.swift
-          grep -q 'videoScore' Leno/PlaybackBridgeScript.swift
-
-          grep -q 'final class BackgroundAudioHandoff' Leno/BackgroundAudioHandoff.swift
-          grep -q 'AVPlayer()' Leno/BackgroundAudioHandoff.swift
-          grep -q 'continuesIfPossible' Leno/BackgroundAudioHandoff.swift
-
-          grep -q 'AVAudioSession' Leno/YouTubeSession.swift
-          grep -q 'MPRemoteCommandCenter' Leno/YouTubeSession.swift
-          grep -q 'beginNativeHandoffIfPossible' Leno/YouTubeSession.swift
-          grep -q 'prepareNativeHandoffCall' Leno/YouTubeSession.swift
-          grep -q 'setAllMediaPlaybackSuspended' Leno/YouTubeSession.swift
-          grep -q 'observeApplicationLifecycle' Leno/YouTubeSession.swift
-
-          if grep -Fq 'HTMLMediaElement.prototype.pause' Leno/PlaybackBridgeScript.swift; then
-            echo "Global HTMLMediaElement.pause patch must not return."
-            exit 1
-          fi
-
-          if grep -Fq 'messageHandlers?.mediaState' Leno/AdBlockScript.swift; then
-            echo "AdBlockScript must not compete for media-state reporting."
-            exit 1
-          fi
-
-          if grep -q 'scenePhase' Leno/YouTubeView.swift; then
-            echo "SwiftUI scenePhase must not duplicate lifecycle notifications."
-            exit 1
-          fi
-
-          if grep -q 'StreamResolver.swift' project.yml; then
-            echo "External stream resolver must not be active."
-            exit 1
-          fi
-
-          if grep -q 'YouTubeKit' project.yml; then
-            echo "YouTubeKit must not be an active dependency."
-            exit 1
-          fi
-
-          if grep -q 'JSON.parse = function' Leno/AdBlockScript.swift; then
-            echo "Global JSON.parse hook is forbidden."
-            exit 1
-          fi
+          python3 Scripts/audit_v9.py
+          python3 -m py_compile Resolver/app/main.py
 
       - name: Generate Xcode project
         run: xcodegen generate
@@ -162,8 +103,8 @@ jobs:
           test "$DISPLAY_NAME" = "YoutubeVcd"
           test "$BUNDLE_ID" = "com.tzn5web.leno"
           test "$BACKGROUND_MODE" = "audio"
-          test "$VERSION" = "0.4.3"
-          test "$BUILD" = "8"
+          test "$VERSION" = "0.11.2"
+          test "$BUILD" = "9"
 
           find "$APP_PATH" -maxdepth 1 -iname '*AppIcon*' -print \
             | tee app-icon-files.log
@@ -185,8 +126,35 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v7
         with:
-          name: YoutubeVcd-v3-native-background-handoff-ipa
+          name: YoutubeVcd-v0.11.2-build9-ipa
           path: YoutubeVcd-unsigned.ipa
+          if-no-files-found: error
+
+      - name: Package V9 source snapshot
+        run: |
+          set -euo pipefail
+          rm -rf YoutubeVcd-V9-source
+          mkdir -p YoutubeVcd-V9-source/Leno
+          cp -R V9 Resolver Scripts YoutubeVcd-V9-source/
+          cp -R Leno/Assets.xcassets YoutubeVcd-V9-source/Leno/
+          cp Leno/Info.plist YoutubeVcd-V9-source/Leno/
+          cp project.yml V9_ARCHITECTURE_AUDIT.md YoutubeVcd-V9-source/
+
+          if find YoutubeVcd-V9-source -type f \
+            \( -name 'YouTubeWebView.swift' -o -name 'NativePlaybackController.swift' -o -name 'BackgroundAudioHandoff.swift' \) \
+            | grep -q .; then
+            echo "Legacy playback sources leaked into V9 source package."
+            exit 1
+          fi
+
+          ditto -c -k --sequesterRsrc --keepParent \
+            YoutubeVcd-V9-source YoutubeVcd-V9-source.zip
+
+      - name: Upload V9 source
+        uses: actions/upload-artifact@v7
+        with:
+          name: YoutubeVcd-v0.11.2-build9-source
+          path: YoutubeVcd-V9-source.zip
           if-no-files-found: error
 
       - name: Upload build evidence
@@ -199,4 +167,243 @@ jobs:
             build.log
             simulator-build.log
             app-icon-files.log
+          if-no-files-found: ignore
+
+  resolver-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Build VcdResolver image
+        run: docker build -t vcd-resolver:fallback-0.4 Resolver
+
+      - name: Start resolver
+        run: |
+          docker run -d --rm \
+            --name vcd-resolver-v010 \
+            -p 8085:8085 \
+            vcd-resolver:fallback-0.4
+
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8085/health > resolver-health.json; then
+              break
+            fi
+            sleep 1
+          done
+
+          test -s resolver-health.json
+
+      - name: Audit resolver runtime
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import json
+          with open("resolver-health.json", "r", encoding="utf-8") as handle:
+              health = json.load(handle)
+          assert health["ok"] is True
+          assert health["version"] == "0.4.0-client"
+          assert health["js_runtime"] == "deno"
+          assert int(health["relay_ttl"]) >= 3600
+          assert int(health["max_relay_entries"]) >= 32
+          assert int(health["max_concurrent_extracts"]) >= 1
+          assert int(health["max_video_height"]) == 1080
+          assert float(health["max_video_fps"]) == 30.0
+          assert health["cookies_configured"] is False
+          assert health["public_base_configured"] is False
+          assert health["client_browse"] is True
+          assert int(health["browse_limit"]) >= 8
+          print("resolver health:", health)
+          PY
+
+          docker exec vcd-resolver-v010 deno --version | tee resolver-deno.txt
+          grep -q '^deno 2\.9\.7' resolver-deno.txt
+
+          docker exec vcd-resolver-v010 yt-dlp --version | tee resolver-ytdlp.txt
+          grep -q '^2026\.08\.19' resolver-ytdlp.txt
+
+          docker exec vcd-resolver-v010 python - <<'PY'
+          import yt_dlp_ejs
+          from app.main import (
+              VIDEO_ID_RE,
+              CHANNEL_ID_RE,
+              SEARCH_QUERY_RE,
+              browse_video_entry,
+              choose_formats,
+              is_local_network_host,
+              is_relayable_format,
+          )
+
+          assert VIDEO_ID_RE.fullmatch("dQw4w9WgXcQ")
+          assert not VIDEO_ID_RE.fullmatch("../bad-video")
+          assert CHANNEL_ID_RE.fullmatch("UCaaaaaaaaaaaaaaaaaaaaaa")
+          assert SEARCH_QUERY_RE.fullmatch("openai")
+          assert not SEARCH_QUERY_RE.fullmatch("x")
+
+          item = browse_video_entry({
+              "id": "dQw4w9WgXcQ",
+              "title": "Fixture",
+              "channel": "Fixture Channel",
+              "channel_id": "UCaaaaaaaaaaaaaaaaaaaaaa",
+              "duration": 100,
+              "view_count": 10,
+          }, base="http://192.168.1.50:8085")
+          assert item["id"] == "dQw4w9WgXcQ"
+          assert item["thumbnailURL"].endswith("/v1/thumb/dQw4w9WgXcQ")
+          assert item["channelID"] == "UCaaaaaaaaaaaaaaaaaaaaaa"
+
+          live_item = browse_video_entry({
+              "id": "dQw4w9WgXcQ",
+              "title": "Live fixture",
+              "live_status": "is_live",
+          }, base="http://192.168.1.50:8085")
+          assert live_item is None
+          assert is_local_network_host("192.168.1.50")
+          assert is_local_network_host("10.0.0.8")
+          assert is_local_network_host("resolver.local")
+          assert not is_local_network_host("resolver.example.com")
+
+          assert is_relayable_format({
+              "url": "https://example.invalid/video",
+              "protocol": "https",
+          })
+          assert not is_relayable_format({
+              "url": "https://example.invalid/live.m3u8",
+              "protocol": "m3u8_native",
+          })
+          assert not is_relayable_format({
+              "url": "https://example.invalid/dash",
+              "protocol": "https",
+              "fragments": [{"url": "segment-1"}],
+          })
+          assert not is_relayable_format({
+              "url": "http://127.0.0.1/private",
+              "protocol": "http",
+          })
+
+          info = {
+              "formats": [
+                  {
+                      "format_id": "v1",
+                      "url": "https://example.invalid/video",
+                      "vcodec": "avc1.640028",
+                      "acodec": "none",
+                      "ext": "mp4",
+                      "height": 1080,
+                      "tbr": 4000,
+                  },
+                  {
+                      "format_id": "a1",
+                      "url": "https://example.invalid/audio",
+                      "vcodec": "none",
+                      "acodec": "mp4a.40.2",
+                      "ext": "m4a",
+                      "abr": 128,
+                  },
+              ]
+          }
+
+          info["formats"].append({
+              "format_id": "v4k",
+              "url": "https://example.invalid/video-4k",
+              "vcodec": "avc1.640033",
+              "acodec": "none",
+              "ext": "mp4",
+              "height": 2160,
+              "fps": 60,
+              "tbr": 18000,
+          })
+
+          video, audio = choose_formats(info)
+          assert video["format_id"] == "v1"
+          assert audio["format_id"] == "a1"
+          print("resolver format selection: OK")
+          PY
+
+      - name: Native client API smoke
+        run: |
+          set -euo pipefail
+          chmod +x Resolver/tests/fake_ytdlp.py
+
+          docker run -d --rm \
+            --name vcd-resolver-client-smoke \
+            -p 8086:8085 \
+            -v "$PWD/Resolver/tests:/tests:ro" \
+            -e YTDLP_BIN=/tests/fake_ytdlp.py \
+            vcd-resolver:fallback-0.4
+
+          cleanup() {
+            docker rm -f vcd-resolver-client-smoke >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8086/health >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          curl -fsS http://127.0.0.1:8086/v1/home > client-home.json
+          curl -fsS --get --data-urlencode 'q=openai' \
+            http://127.0.0.1:8086/v1/search > client-search.json
+          curl -fsS \
+            http://127.0.0.1:8086/v1/channel/UCaaaaaaaaaaaaaaaaaaaaaa \
+            > client-channel.json
+          curl -fsS \
+            http://127.0.0.1:8086/v1/video/dQw4w9WgXcQ \
+            > client-video.json
+
+          python3 - <<'PY'
+          import json
+
+          def load(name):
+              with open(name, "r", encoding="utf-8") as handle:
+                  return json.load(handle)
+
+          home = load("client-home.json")
+          search = load("client-search.json")
+          channel = load("client-channel.json")
+          video = load("client-video.json")
+
+          for payload in (home, search, channel):
+              assert len(payload["items"]) == 2
+              first = payload["items"][0]
+              assert first["id"] == "dQw4w9WgXcQ"
+              assert first["thumbnailURL"].endswith("/v1/thumb/dQw4w9WgXcQ")
+              assert first["channelID"] == "UCaaaaaaaaaaaaaaaaaaaaaa"
+
+          assert search["title"] == "openai"
+          assert channel["channelID"] == "UCaaaaaaaaaaaaaaaaaaaaaa"
+          assert video["videoID"] == "dQw4w9WgXcQ"
+          assert video["video"]["relayURL"].startswith(
+              "http://127.0.0.1:8086/v1/relay/"
+          )
+          assert video["audio"]["relayURL"].startswith(
+              "http://127.0.0.1:8086/v1/relay/"
+          )
+
+          print("native client API smoke: OK")
+          PY
+
+      - name: Stop resolver
+        if: always()
+        run: docker rm -f vcd-resolver-v010 || true
+
+      - name: Upload resolver evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: resolver-evidence
+          path: |
+            resolver-health.json
+            resolver-deno.txt
+            resolver-ytdlp.txt
+            client-home.json
+            client-search.json
+            client-channel.json
+            client-video.json
           if-no-files-found: ignore
