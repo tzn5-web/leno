@@ -76,9 +76,9 @@ actor V9NativePlaybackWorker
 
         // Second choice: the real /watch page. VideoInfosResponse.decodeData
         // extracts the current base.js player and builds the JavaScriptCore
-        // signature/n solver. This is intentionally different from
-        // fetchStreamingInfosWithDownloadFormatsThrowing(), which uses an
-        // Innertube iOS client and may require a GVS PO token.
+        // signature/n solver. This deliberately avoids YouTubeKit's iOS
+        // Innertube format request because current iOS GVS URLs may require
+        // a PO token.
         let info =
             try await VideoInfosResponse
                 .sendThrowingRequest(
