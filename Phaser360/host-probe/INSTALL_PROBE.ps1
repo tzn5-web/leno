@@ -108,6 +108,23 @@ if(-not $ok){
 }
 
 Start-Sleep -Seconds 2
+
+# Important: v1 and v2 intentionally use the same service name. Windows may
+# update the package but keep the old loaded image until the DSP child is
+# restarted. Restart ONLY the CSAUDIO DSP child; never restart the parent bus.
+if(-not $reboot){
+  Write-Host 'Reloading the CSAUDIO DSP child so the v2 binary is actually loaded...'
+  & pnputil.exe /restart-device "$($child.PNPDeviceID)" |
+    Tee-Object -FilePath (Join-Path $backup 'RESTART_CHILD.txt')
+  $restartRc=$LASTEXITCODE
+  if($restartRc -ne 0){
+    Write-Host "Child restart returned $restartRc; a reboot is required."
+    $reboot=$true
+  } else {
+    Start-Sleep -Seconds 3
+  }
+}
+
 $after=Get-CimInstance Win32_PnPEntity | Where-Object PNPDeviceID -eq $child.PNPDeviceID | Select-Object -First 1
 $afterDriver=Get-CimInstance Win32_PnPSignedDriver | Where-Object DeviceID -eq $child.PNPDeviceID | Select-Object -First 1
 @(
@@ -123,5 +140,5 @@ Write-Host "AfterService=$($after.Service); AfterProblem=$($after.ConfigManagerE
 Write-Host "RebootRequired=$reboot"
 Write-Host 'This v2 probe registers only a passive callback with the parent ISR.'
 Write-Host 'DSP_BOOT=NO; MMIO=NO; IPC=NO; AUDIO=NO'
-if($reboot){Write-Host 'Reboot once, then run START_QUERY.cmd and START_PASSIVE_IRQ_TEST.cmd.'}
-else{Write-Host 'Run START_QUERY.cmd and START_PASSIVE_IRQ_TEST.cmd.'}
+if($reboot){Write-Host 'REBOOT ONCE before START_QUERY.cmd / START_PASSIVE_IRQ_TEST.cmd.'}
+else{Write-Host 'Child reloaded. Run START_QUERY.cmd, then START_PASSIVE_IRQ_TEST.cmd.'}
