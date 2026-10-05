@@ -57,6 +57,9 @@ struct V9MPVPlayerView:
         let service:
             V9PlayerService
 
+        let hostToken =
+            UUID()
+
         init(
             service:
                 V9PlayerService
@@ -89,7 +92,11 @@ struct V9MPVPlayerView:
 
         service
             .setRenderSurfaceHosted(
-                true
+                true,
+                hostToken:
+                    context
+                        .coordinator
+                        .hostToken
             )
 
         return host
@@ -121,7 +128,10 @@ struct V9MPVPlayerView:
         coordinator
             .service
             .setRenderSurfaceHosted(
-                false
+                false,
+                hostToken:
+                    coordinator
+                        .hostToken
             )
     }
 }
