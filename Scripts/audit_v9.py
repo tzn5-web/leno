@@ -167,6 +167,14 @@ require(
     "infinite continuation loading is missing",
 )
 require(
+    'webClientVersion =\n        "2.20260708.00.00"' in native
+    and "installCurrentWebClientVersion" in native
+    and ".homeVideosContinuationHeader" in native
+    and ".searchContinuationHeaders" in native
+    and ".channelContinuationHeaders" in native,
+    "native Home/Search/Channel still use the stale pinned YouTubeKit WEB client version",
+)
+require(
     "Fallback opțional" in player_ui
     and "nu este necesar" in player_ui,
     "settings still present resolver as mandatory",
