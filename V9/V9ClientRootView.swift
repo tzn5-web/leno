@@ -30,6 +30,10 @@ struct V9ClientRootView:
     private var showPlayer =
         false
 
+    @State
+    private var clientError:
+        String?
+
     private let resolver =
         VcdResolverClient()
 
@@ -129,6 +133,37 @@ struct V9ClientRootView:
                     resolver
             )
         }
+        .alert(
+            "Nu pot reda videoclipul",
+            isPresented:
+                Binding(
+                    get: {
+                        clientError != nil
+                    },
+                    set: {
+                        visible in
+
+                        if !visible {
+                            clientError =
+                                nil
+                        }
+                    }
+                )
+        ) {
+            Button(
+                "OK",
+                role:
+                    .cancel
+            ) {
+                clientError =
+                    nil
+            }
+        } message: {
+            Text(
+                clientError ??
+                "Eroare necunoscută."
+            )
+        }
         .task {
             if endpoint
                 .trimmingCharacters(
@@ -188,9 +223,6 @@ struct V9ClientRootView:
             return
         }
 
-        showPlayer =
-            true
-
         Task {
             do {
                 let resolved =
@@ -222,14 +254,15 @@ struct V9ClientRootView:
                                     )
                             }
                     )
+
+                    showPlayer =
+                        true
                 }
             } catch {
                 await MainActor.run {
-                    player
-                        .reportExternalFailure(
-                            error
-                                .localizedDescription
-                        )
+                    clientError =
+                        error
+                            .localizedDescription
                 }
             }
         }
