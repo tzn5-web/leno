@@ -1,8 +1,24 @@
 import AVFoundation
 import CoreMedia
 import CoreVideo
+import Foundation
 import QuartzCore
 import UIKit
+
+private final class V9PixelBufferBox:
+    @unchecked Sendable
+{
+    let buffer:
+        CVPixelBuffer
+
+    init(
+        _ buffer:
+            CVPixelBuffer
+    ) {
+        self.buffer =
+            buffer
+    }
+}
 
 @MainActor
 final class V9MPVRenderView:
@@ -14,7 +30,21 @@ final class V9MPVRenderView:
     private weak var service:
         V9PlayerService?
 
+    private var renderCore:
+        V9MPVRenderCore?
+
+    private let renderQueue =
+        DispatchQueue(
+            label:
+                "com.tzn5web.leno.v9.render",
+            qos:
+                .userInteractive
+        )
+
     private var rendering =
+        false
+
+    private var renderPending =
         false
 
     private(set) var renderingPaused =
@@ -38,6 +68,9 @@ final class V9MPVRenderView:
     private var lastRenderHostTime:
         CFTimeInterval =
             0
+
+    private var frameGeneration:
+        UInt64 = 0
 
     var onFrameEnqueued:
         ((CMTime) -> Void)?
@@ -68,6 +101,9 @@ final class V9MPVRenderView:
 
     deinit {
         MainActor.assumeIsolated {
+            frameGeneration &+=
+                1
+
             onFrameEnqueued =
                 nil
 
@@ -85,6 +121,9 @@ final class V9MPVRenderView:
 
             pixelBufferPool =
                 nil
+
+            renderCore =
+                nil
         }
     }
 
@@ -100,6 +139,10 @@ final class V9MPVRenderView:
         else {
             return false
         }
+
+        renderCore =
+            service
+                .renderCoreReference()
 
         requestRender()
 
@@ -135,103 +178,46 @@ final class V9MPVRenderView:
     }
 
     func requestRender() {
-        guard !rendering
+        guard let renderCore
         else {
+            return
+        }
+
+        if rendering {
+            renderPending =
+                true
+
             return
         }
 
         rendering =
             true
 
-        if renderingPaused {
-            if let service,
-               service
-                .consumeRenderUpdate() {
-                service
-                    .skipRenderFrame()
-            }
-        } else {
-            renderFrame()
-        }
+        let generation =
+            frameGeneration
 
-        rendering =
-            false
-    }
-
-    func pauseRendering() {
-        renderingPaused =
-            true
-
-        // Consume any frame already pending in libmpv without producing
-        // pixels, so video back-pressure cannot stall background audio.
-        requestRender()
-    }
-
-    func resumeRendering() {
-        renderingPaused =
-            false
-
-        requestRender()
-    }
-
-    func resetFrameTimeline() {
-        lastPresentationTime =
-            .invalid
-
-        lastRenderHostTime =
+        let presentationTime =
+            service?
+                .currentTime ??
             0
-
-        formatDescription =
-            nil
-
-        sampleBufferLayer
-            .sampleBufferRenderer
-            .flush(
-                removingDisplayedImage:
-                    true,
-                completionHandler:
-                    nil
-            )
-    }
-
-    private func commonInit() {
-        backgroundColor =
-            .black
-
-        clipsToBounds =
-            true
-
-        sampleBufferLayer
-            .videoGravity =
-            .resizeAspect
-
-        sampleBufferLayer
-            .backgroundColor =
-            UIColor.black
-                .cgColor
-
-        layer.addSublayer(
-            sampleBufferLayer
-        )
-    }
-
-    private func renderFrame() {
-        guard let service,
-              service.consumeRenderUpdate()
-        else {
-            return
-        }
 
         let now =
             CACurrentMediaTime()
 
-        // Bound software conversion/copy cost. 60 fps YouTube sources are
-        // intentionally sampled to at most 30 fps for the V9 PiP path.
-        if lastRenderHostTime > 0,
-           now - lastRenderHostTime <
-            (1.0 / 30.0) {
-            service
-                .skipRenderFrame()
+        let throttled =
+            !renderingPaused &&
+            lastRenderHostTime > 0 &&
+            now - lastRenderHostTime <
+                (1.0 / 30.0)
+
+        if renderingPaused ||
+           throttled {
+            scheduleSkip(
+                core:
+                    renderCore,
+                generation:
+                    generation
+            )
 
             return
         }
@@ -252,72 +238,247 @@ final class V9MPVRenderView:
                         size.height
                 )
         else {
-            service
-                .skipRenderFrame()
-
-            return
-        }
-
-        let lockResult =
-            CVPixelBufferLockBaseAddress(
-                pixelBuffer,
-                []
+            scheduleSkip(
+                core:
+                    renderCore,
+                generation:
+                    generation
             )
 
-        guard lockResult ==
-                kCVReturnSuccess
-        else {
-            service
-                .skipRenderFrame()
-
             return
         }
 
-        defer {
-            CVPixelBufferUnlockBaseAddress(
-                pixelBuffer,
-                []
-            )
-        }
-
-        guard let baseAddress =
-                CVPixelBufferGetBaseAddress(
-                    pixelBuffer
-                )
-        else {
-            service
-                .skipRenderFrame()
-
-            return
-        }
-
-        let stride =
-            CVPixelBufferGetBytesPerRow(
+        let box =
+            V9PixelBufferBox(
                 pixelBuffer
             )
 
-        guard service
-            .renderSoftware(
-                width:
-                    Int32(
-                        size.width
-                    ),
-                height:
-                    Int32(
-                        size.height
-                    ),
-                stride:
-                    stride,
-                pixels:
-                    baseAddress
-            )
-        else {
-            return
-        }
+        let width =
+            size.width
 
-        // libmpv's guaranteed "bgr0" software format leaves the fourth
-        // byte undefined/zero. AVSampleBufferDisplayLayer receives BGRA,
-        // so force the alpha channel opaque before enqueuing the frame.
+        let height =
+            size.height
+
+        renderQueue.async {
+            [weak self] in
+
+            guard renderCore
+                .consumeUpdate()
+            else {
+                DispatchQueue
+                    .main
+                    .async {
+                        self?
+                            .completeRender(
+                                generation:
+                                    generation
+                            )
+                    }
+
+                return
+            }
+
+            let buffer =
+                box.buffer
+
+            guard CVPixelBufferLockBaseAddress(
+                buffer,
+                []
+            ) ==
+                kCVReturnSuccess
+            else {
+                renderCore
+                    .skipFrame()
+
+                DispatchQueue
+                    .main
+                    .async {
+                        self?
+                            .completeRender(
+                                generation:
+                                    generation
+                            )
+                    }
+
+                return
+            }
+
+            var rendered =
+                false
+
+            if let baseAddress =
+                    CVPixelBufferGetBaseAddress(
+                        buffer
+                    ) {
+                let stride =
+                    CVPixelBufferGetBytesPerRow(
+                        buffer
+                    )
+
+                rendered =
+                    renderCore
+                        .renderSoftware(
+                            width:
+                                Int32(
+                                    width
+                                ),
+                            height:
+                                Int32(
+                                    height
+                                ),
+                            stride:
+                                stride,
+                            pixels:
+                                baseAddress
+                        )
+
+                if rendered {
+                    Self
+                        .forceOpaqueAlpha(
+                            baseAddress:
+                                baseAddress,
+                            width:
+                                width,
+                            height:
+                                height,
+                            stride:
+                                stride
+                        )
+                }
+            }
+
+            CVPixelBufferUnlockBaseAddress(
+                buffer,
+                []
+            )
+
+            if !rendered {
+                renderCore
+                    .skipFrame()
+            }
+
+            DispatchQueue
+                .main
+                .async {
+                    guard let self
+                    else {
+                        return
+                    }
+
+                    if rendered,
+                       generation ==
+                        self.frameGeneration {
+                        self.enqueue(
+                            buffer,
+                            presentationTime:
+                                presentationTime
+                        )
+                    }
+
+                    self.completeRender(
+                        generation:
+                            generation
+                    )
+                }
+        }
+    }
+
+    func pauseRendering() {
+        renderingPaused =
+            true
+
+        // Consume pending video updates without producing pixels. This keeps
+        // libmpv video from applying back-pressure to background audio.
+        requestRender()
+    }
+
+    func resumeRendering() {
+        renderingPaused =
+            false
+
+        requestRender()
+    }
+
+    func resetFrameTimeline() {
+        frameGeneration &+=
+            1
+
+        lastPresentationTime =
+            .invalid
+
+        lastRenderHostTime =
+            0
+
+        formatDescription =
+            nil
+
+        sampleBufferLayer
+            .sampleBufferRenderer
+            .flush(
+                removingDisplayedImage:
+                    true,
+                completionHandler:
+                    nil
+            )
+
+        requestRender()
+    }
+
+    private func scheduleSkip(
+        core:
+            V9MPVRenderCore,
+        generation:
+            UInt64
+    ) {
+        renderQueue.async {
+            [weak self] in
+
+            if core
+                .consumeUpdate() {
+                core
+                    .skipFrame()
+            }
+
+            DispatchQueue
+                .main
+                .async {
+                    self?
+                        .completeRender(
+                            generation:
+                                generation
+                        )
+                }
+        }
+    }
+
+    private func completeRender(
+        generation:
+            UInt64
+    ) {
+        rendering =
+            false
+
+        let shouldRenderAgain =
+            renderPending
+
+        renderPending =
+            false
+
+        if shouldRenderAgain {
+            requestRender()
+        }
+    }
+
+    private nonisolated static func forceOpaqueAlpha(
+        baseAddress:
+            UnsafeMutableRawPointer,
+        width:
+            Int,
+        height:
+            Int,
+        stride:
+            Int
+    ) {
         let bytes =
             baseAddress
                 .assumingMemoryBound(
@@ -325,7 +486,7 @@ final class V9MPVRenderView:
                         UInt8.self
                 )
 
-        for row in 0..<size.height {
+        for row in 0..<height {
             let rowStart =
                 bytes.advanced(
                     by:
@@ -333,7 +494,7 @@ final class V9MPVRenderView:
                         stride
                 )
 
-            for column in 0..<size.width {
+            for column in 0..<width {
                 rowStart[
                     column *
                     4 +
@@ -342,11 +503,26 @@ final class V9MPVRenderView:
                     255
             }
         }
+    }
 
-        enqueue(
-            pixelBuffer,
-            presentationTime:
-                service.currentTime
+    private func commonInit() {
+        backgroundColor =
+            .black
+
+        clipsToBounds =
+            true
+
+        sampleBufferLayer
+            .videoGravity =
+            .resizeAspect
+
+        sampleBufferLayer
+            .backgroundColor =
+            UIColor.black
+                .cgColor
+
+        layer.addSublayer(
+            sampleBufferLayer
         )
     }
 
@@ -466,7 +642,6 @@ final class V9MPVRenderView:
                 )
             )
 
-        // Keep dimensions friendly to video conversion paths.
         width -=
             width %
             2
