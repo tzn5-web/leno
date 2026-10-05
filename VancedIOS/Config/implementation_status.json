@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "stage": "foundation",
+  "features": {
+    "official_youtube_base": {
+      "state": "infrastructure_ready",
+      "evidence": "IPA/app audit supported"
+    },
+    "ad_block_video": {
+      "state": "not_implemented"
+    },
+    "ad_block_feed": {
+      "state": "not_implemented"
+    },
+    "background_playback": {
+      "state": "not_implemented"
+    },
+    "pause_state_preservation": {
+      "state": "not_implemented"
+    },
+    "picture_in_picture": {
+      "state": "not_implemented"
+    },
+    "sponsorblock": {
+      "state": "not_implemented"
+    },
+    "return_youtube_dislike": {
+      "state": "not_implemented"
+    },
+    "quality_memory_controls": {
+      "state": "not_implemented"
+    },
+    "speed_memory_controls": {
+      "state": "not_implemented"
+    },
+    "ui_shorts_controls": {
+      "state": "not_implemented"
+    },
+    "navigation_intact": {
+      "state": "design_guard_only",
+      "evidence": "legacy architecture scanner enabled"
+    }
+  }
+}
