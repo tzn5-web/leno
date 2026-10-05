@@ -20,15 +20,20 @@
     "return_youtube_dislike": "PASS",
     "settings_ui": "PASS"
   },
-  "vanced_core_build_sha": "92bf61fad1ccbde0d643f6d45afbce51cb27f6e0",
-  "vanced_core_sha256": "0d3bc19e82572dc5c8e2add2ce07d9a3686157d4d94d41d34a9687f9a90fc47d",
-  "packaged_output_sha256": "9d1526a49a2dd2b467dd2e1bab133880ea6e68896a36084c6a980551fe4c1058",
+  "vanced_core_build_sha": "661b4935372442f73b46149550fee40cff40c76d",
+  "vanced_core_sha256": "2f0e23945d2197db04744d45e7143049e900767b87325bc4ac2f1ce00437394e",
+  "packaged_output_sha256": "c117479f99775e990a362506aa363bf8b3ed54fc0c69b3358df5346a8e4bc53b",
   "packaged_identity_changed": false,
   "injected_load_command": "@executable_path/Frameworks/VancedCore.dylib",
-  "validation": "static_packaging_pass_device_pending",
+  "validation": "static_unsigned_ipa_pass_device_and_resign_pending",
   "notes": [
     "The proprietary YouTube IPA is not stored in this repository.",
-    "The packaged IPA must be re-signed before installation.",
-    "No Premium entitlement, ad-service bypass, or background entitlement bypass is included."
-  ]
+    "The audited output preserves every original IPA entry except the main executable and adds only Frameworks/VancedCore.dylib; all other existing ZIP payloads remain byte-identical.",
+    "The main executable intentionally has its stale LC_CODE_SIGNATURE removed before injection and requires a full recursive re-sign before installation.",
+    "Google account login after third-party re-signing is not yet implemented/proven; SSO/keychain/app-group behavior is signing-identity dependent.",
+    "Push notifications after re-signing depend on the signing profile and APS entitlement even though all five original app extensions are preserved.",
+    "The repository MODULES=jailed IPA packaging path is not validated because the pinned dependency set does not install the external theos-jailed module.",
+    "No Premium entitlement, ad-service bypass, or restricted background-playback entitlement bypass is included."
+  ],
+  "packaging_path": "conservative_macho_signature_strip_then_dylib_injection"
 }
