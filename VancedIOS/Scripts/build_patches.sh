@@ -53,6 +53,35 @@ clone_at() {
   }
 }
 
+clone_sdk_at() {
+  local dst="$1"
+  local sdk_name="$2"
+  local url commit
+  url="$(dep iOSSDKs repo)"
+  commit="$(dep iOSSDKs commit)"
+
+  if head_matches "$dst" "$commit" && [[ -d "$dst/$sdk_name" ]]; then
+    echo "==> Reuse pinned iOSSDKs @ $commit ($sdk_name)"
+    return 0
+  fi
+
+  echo "==> Sparse checkout pinned iOSSDKs @ $commit ($sdk_name)"
+  rm -rf "$dst"
+  git init -q "$dst"
+  git -C "$dst" remote add origin "$url"
+  git -C "$dst" config core.sparseCheckout true
+  printf "%s\n" "$sdk_name/" > "$dst/.git/info/sparse-checkout"
+  git -C "$dst" fetch -q --depth=1 origin "$commit"
+  git -C "$dst" checkout -q --detach FETCH_HEAD
+
+  local actual
+  actual="$(git -C "$dst" rev-parse HEAD)"
+  [[ "$actual" == "$commit" && -d "$dst/$sdk_name" ]] || {
+    echo "Pinned SDK checkout mismatch or SDK missing: $sdk_name @ $commit" >&2
+    exit 1
+  }
+}
+
 echo "==> Audit architecture"
 python3 "$ROOT/VancedIOS/Scripts/audit.py"
 
@@ -72,7 +101,7 @@ SDK_REPO="$WORK/iOS-SDKs"
 SDK_COMMIT="$(dep iOSSDKs commit)"
 SDK_MARKER="$THEOS/sdks/.vancedios-${SDK_NAME}.commit"
 
-clone_at iOSSDKs "$SDK_REPO"
+clone_sdk_at "$SDK_REPO" "$SDK_NAME"
 mkdir -p "$THEOS/sdks"
 
 INSTALLED_SDK_COMMIT=""
