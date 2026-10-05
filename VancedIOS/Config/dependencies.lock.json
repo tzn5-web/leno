@@ -5,20 +5,20 @@
     "name": "Theos",
     "repo": "https://github.com/theos/theos.git",
     "ref": "dd5c14bb9d91311e221d51b5bfb8c9e5948156db",
-    "license": "BSD-style/Theos project"
+    "license": "GPL-3.0-or-later"
   },
   "headers": [
     {
       "name": "PSHeader",
       "repo": "https://github.com/PoomSmart/PSHeader.git",
       "ref": "1bb7d9c7d1bc40a57f83e1e58aa53bcf4acdcbfa",
-      "license": "upstream"
+      "license": "NO-LICENSE-DETECTED"
     },
     {
       "name": "YouTubeHeader",
       "repo": "https://github.com/PoomSmart/YouTubeHeader.git",
       "ref": "8d12546da0a2a8337b040ebf90d3848c14fa6eaa",
-      "license": "upstream"
+      "license": "MIT"
     }
   ],
   "modules": [
@@ -26,7 +26,7 @@
       "name": "Alderis",
       "repo": "https://github.com/hbang/Alderis.git",
       "ref": "92cfde8ee6e76fa28378c644b9be81a5dcf233b0",
-      "license": "MIT"
+      "license": "Apache-2.0"
     },
     {
       "name": "YouPiP",
@@ -50,7 +50,7 @@
       "name": "YTVideoOverlay",
       "repo": "https://github.com/PoomSmart/YTVideoOverlay.git",
       "ref": "b93fccb89a6e81d9406322d9719c3621d68e66b5",
-      "license": "upstream"
+      "license": "MIT"
     },
     {
       "name": "YouQuality",
