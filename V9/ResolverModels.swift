@@ -9,6 +9,8 @@ struct ResolverHealth:
     let relayTTL: Int
     let jsRuntime: String?
     let authRequired: Bool?
+    let maxVideoHeight: Int?
+    let maxVideoFPS: Double?
 
     enum CodingKeys:
         String,
@@ -19,6 +21,8 @@ struct ResolverHealth:
         case relayTTL = "relay_ttl"
         case jsRuntime = "js_runtime"
         case authRequired = "auth_required"
+        case maxVideoHeight = "max_video_height"
+        case maxVideoFPS = "max_video_fps"
     }
 }
 
