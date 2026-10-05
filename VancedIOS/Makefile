@@ -5,7 +5,7 @@ INSTALL_TARGET_PROCESSES = YouTube
 include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = VancedCore
-VancedCore_FILES = Sources/VancedCore.m Sources/VancedSettings.m
+VancedCore_FILES = Sources/VancedCore.m Sources/VancedSettings.m Sources/VancedSponsorBlock.m
 VancedCore_CFLAGS = -fobjc-arc -Wall -Wextra -Werror -Wno-unused-parameter
 VancedCore_FRAMEWORKS = Foundation UIKit
 
