@@ -10,11 +10,14 @@ function Admin {
   return $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 function W([string]$s){Write-Host $s; Add-Content -LiteralPath $script:Log -Value $s -Encoding UTF8}
-function KV([string]$k,[object]$v){$script:Report.Add("$k=$v")|Out-Null}
-function Safe([scriptblock]$b){try{& $b}catch{return $null}}
+function KV([string]$k,[object]$v){$script:ReportLines.Add("$k=$v")|Out-Null}
 function FindDev([string]$prefix){
   Get-CimInstance Win32_PnPEntity -ErrorAction SilentlyContinue |
-   Where-Object {$_.PNPDeviceID -like "$prefix*"} | Select-Object -First 1
+    Where-Object {$_.PNPDeviceID -like "$prefix*"} | Select-Object -First 1
+}
+function FindSignedDriver([string]$instanceId){
+  Get-CimInstance Win32_PnPSignedDriver -ErrorAction SilentlyContinue |
+    Where-Object {$_.DeviceID -eq $instanceId} | Select-Object -First 1
 }
 
 if(-not (Admin)){throw 'Administrator required.'}
@@ -51,7 +54,9 @@ function Ioctl([string]$path,[uint32]$code,[int]$size){
     $ok=[P360.Native]::DeviceIoControl($h,$code,[IntPtr]::Zero,0,$b,[uint32]$size,[ref]$n,[IntPtr]::Zero)
     if(-not $ok){throw "DeviceIoControl 0x$('{0:X8}' -f $code) failed Win32=$([Runtime.InteropServices.Marshal]::GetLastWin32Error())"}
     [pscustomobject]@{Bytes=$b;Written=$n}
-  } finally {[void][P360.Native]::CloseHandle($h)}
+  } finally {
+    [void][P360.Native]::CloseHandle($h)
+  }
 }
 
 function Read-DspProbe {
@@ -60,19 +65,19 @@ function Read-DspProbe {
   $b=$r.Bytes
   if([BitConverter]::ToUInt32($b,0) -ne 0x50333630){throw 'DSP probe magic mismatch'}
   [pscustomobject]@{
-   Version=[BitConverter]::ToUInt32($b,4)
-   Query=[BitConverter]::ToUInt32($b,8)
-   Register=[BitConverter]::ToUInt32($b,12)
-   Flags=[BitConverter]::ToUInt32($b,16)
-   Controller=[BitConverter]::ToUInt16($b,20)
-   InterfaceVersion=[BitConverter]::ToUInt16($b,22)
-   InterfaceSize=[BitConverter]::ToUInt32($b,24)
-   Irq=[BitConverter]::ToInt64($b,32)
+    Version=[BitConverter]::ToUInt32($b,4)
+    Query=[BitConverter]::ToUInt32($b,8)
+    Register=[BitConverter]::ToUInt32($b,12)
+    Flags=[BitConverter]::ToUInt32($b,16)
+    Controller=[BitConverter]::ToUInt16($b,20)
+    InterfaceVersion=[BitConverter]::ToUInt16($b,22)
+    InterfaceSize=[BitConverter]::ToUInt32($b,24)
+    Irq=[BitConverter]::ToInt64($b,32)
   }
 }
 
 function Read-Hda([bool]$trigger){
-  $code=if($trigger){[uint32]0x22E088}else{[uint32]0x226084}
+  if($trigger){$code=[uint32]0x22E088}else{$code=[uint32]0x226084}
   $r=Ioctl '\\.\P360HdaReadProbe' $code 56
   if($r.Written -ne 56){throw "HDA probe response is $($r.Written) bytes, expected 56"}
   $b=$r.Bytes
@@ -94,21 +99,115 @@ function Read-Hda([bool]$trigger){
   }
 }
 
+function Get-HardwareId([string]$instanceId){
+  try {
+    $ids=@((Get-PnpDeviceProperty -InstanceId $instanceId -KeyName 'DEVPKEY_Device_HardwareIds' -ErrorAction Stop).Data)
+    $id=$ids | Where-Object {$_ -like 'HDAUDIO\FUNC_01&VEN_8086&DEV_280D*'} | Select-Object -First 1
+    if($id){return [string]$id}
+  } catch {}
+  return 'HDAUDIO\FUNC_01&VEN_8086&DEV_280D'
+}
+
+function Restore-HdaBaseline {
+  $restoreOk=$false
+  $restoreReason=''
+  try {
+    if(-not $script:HdaChildId){
+      return [pscustomobject]@{Ok=$true;Reason='No HDA child was modified'}
+    }
+
+    $cur=Get-CimInstance Win32_PnPEntity -ErrorAction SilentlyContinue |
+      Where-Object {$_.PNPDeviceID -eq $script:HdaChildId} | Select-Object -First 1
+
+    if($script:OriginalHdaService -eq 'IntcDAud'){
+      if($cur -and $cur.Service -eq 'IntcDAud' -and $cur.ConfigManagerErrorCode -eq 0){
+        $restoreOk=$true
+        $restoreReason='IntcDAud already active'
+      } else {
+        if(-not $script:OriginalExportDir -or !(Test-Path $script:OriginalExportDir)){
+          throw 'Original IntcDAud export directory missing'
+        }
+        $origInf=Get-ChildItem $script:OriginalExportDir -Recurse -Filter '*.inf' -File |
+          Select-Object -First 1
+        if(-not $origInf){throw 'Exported original IntcDAud INF not found'}
+
+        W "[ROLLBACK] staging original Intel Display Audio INF: $($origInf.FullName)"
+        & pnputil.exe /add-driver $origInf.FullName |
+          Tee-Object -FilePath (Join-Path $script:Out 'HDA_RESTORE_STAGE.txt')
+        if($LASTEXITCODE){throw "Original INF staging failed rc=$LASTEXITCODE"}
+
+        [bool]$restoreReboot=$false
+        $ok=[P360.NewDev]::UpdateDriverForPlugAndPlayDevices(
+          [IntPtr]::Zero,$script:HdaHardwareId,$origInf.FullName,[uint32]1,[ref]$restoreReboot)
+        if(-not $ok){
+          throw "Original IntcDAud force-restore failed Win32=$([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
+        }
+        if($restoreReboot){
+          throw 'Original IntcDAud restore requested reboot; do not remove trust/package before reboot'
+        }
+
+        Start-Sleep -Seconds 3
+        $cur=Get-CimInstance Win32_PnPEntity -ErrorAction SilentlyContinue |
+          Where-Object {$_.PNPDeviceID -eq $script:HdaChildId} | Select-Object -First 1
+        if(-not $cur -or $cur.Service -ne 'IntcDAud' -or $cur.ConfigManagerErrorCode -ne 0){
+          throw "Original IntcDAud did not return cleanly: service=$($cur.Service) code=$($cur.ConfigManagerErrorCode)"
+        }
+
+        $restoredSigned=FindSignedDriver $script:HdaChildId
+        KV 'HDA_RESTORED_INF' $restoredSigned.InfName
+        KV 'HDA_RESTORED_VERSION' $restoredSigned.DriverVersion
+        $restoreOk=$true
+        $restoreReason='Original IntcDAud restored'
+      }
+    } elseif($script:OriginalHdaService -eq ''){
+      if($script:ProbeInfName -and $script:ProbeInfName -match '^oem\d+\.inf$'){
+        W "[ROLLBACK] uninstalling temporary HDA probe $script:ProbeInfName"
+        & pnputil.exe /delete-driver $script:ProbeInfName /uninstall /force |
+          Tee-Object -FilePath (Join-Path $script:Out 'HDA_REMOVE_PROBE.txt')
+        if($LASTEXITCODE){throw "Probe uninstall failed rc=$LASTEXITCODE"}
+        Start-Sleep -Seconds 2
+      }
+      $cur=Get-CimInstance Win32_PnPEntity -ErrorAction SilentlyContinue |
+        Where-Object {$_.PNPDeviceID -eq $script:HdaChildId} | Select-Object -First 1
+      if($cur -and -not $cur.Service -and $cur.ConfigManagerErrorCode -eq 28){
+        $restoreOk=$true
+        $restoreReason='Original unbound Code 28 state restored'
+      } else {
+        throw "Unbound baseline not restored: service=$($cur.Service) code=$($cur.ConfigManagerErrorCode)"
+      }
+    } else {
+      throw "Unsupported original HDA service '$($script:OriginalHdaService)'"
+    }
+  } catch {
+    $restoreReason=$_.Exception.Message
+  }
+  return [pscustomobject]@{Ok=$restoreOk;Reason=$restoreReason}
+}
+
 $stamp=Get-Date -Format yyyyMMdd_HHmmss
 $root='C:\P360_AUDIO_SAFE'
 $script:Out=Join-Path $root ("P360_PREAUDIO_GATE_"+$stamp)
 New-Item -ItemType Directory -Force -Path $script:Out | Out-Null
 $script:Log=Join-Path $script:Out 'RUN.log'
-$script:Report=New-Object 'System.Collections.Generic.List[string]'
-$script:CleanupNeeded=$false
-$script:HdaInfName=$null
+$script:ReportLines=New-Object 'System.Collections.Generic.List[string]'
+$script:ExitCode=0
+$script:HdaChildId=$null
+$script:HdaHardwareId=$null
+$script:OriginalHdaService=$null
+$script:OriginalHdaInfName=$null
+$script:OriginalHdaVersion=$null
+$script:OriginalHdaProvider=$null
+$script:OriginalExportDir=$null
+$script:ProbeInfName=$null
+$script:ProbeBindAttempted=$false
 $script:CertThumb=$null
 $script:HadRoot=$false
 $script:HadPublisher=$false
-$script:HdaChildId=$null
+$script:RestoreSucceeded=$true
 
-W '=== PHASER360 PRE-AUDIO GATE ==='
+W '=== PHASER360 PRE-AUDIO GATE V2 ==='
 W 'NO SOF BOOT / NO DSP MMIO / NO IPC / NO STREAM / NO CODEC WRITE / NO AUDIO'
+W 'HDA child may be temporarily switched from IntcDAud to a read-only probe, then restored.'
 
 $package=Split-Path -Parent $MyInvocation.MyCommand.Path
 $inf=(Resolve-Path (Join-Path $package 'P360HdaReadProbe.inf')).Path
@@ -142,7 +241,7 @@ try {
   }
   W '[OK] G1 SklHDAudBus parent healthy'
 
-  # G2 DSP child and passive callback probe
+  # G2 DSP child / passive callback probe
   $dsp=FindDev 'CSAUDIO\ADSP&CTLR_VEN_8086&CTLR_DEV_3198'
   if(-not $dsp){throw 'G2_DSP_CHILD_MISSING'}
   KV 'DSP_SERVICE' $dsp.Service
@@ -161,28 +260,60 @@ try {
   }
   W "[OK] G2 DSP probe v2 + IRQ callback registered; idle count=$($ds0.Irq)"
 
-  # G3 current audio topology snapshot
+  # G3 topology snapshot
   $da=FindDev 'ACPI\DLGS7219'
   $mx=FindDev 'ACPI\MX98357A'
-  KV 'DA7219_STATUS' $(if($da){"$($da.Status)/$($da.ConfigManagerErrorCode)/$($da.Service)"}else{'ABSENT'})
-  KV 'MAX98357A_STATUS' $(if($mx){"$($mx.Status)/$($mx.ConfigManagerErrorCode)/$($mx.Service)"}else{'ABSENT'})
-  $eps=@(Get-CimInstance Win32_PnPEntity -ErrorAction SilentlyContinue | Where-Object {$_.ClassGuid -eq '{c166523c-fe0c-4a94-a586-f1a80cfbbf3e}' -and $_.Status -eq 'OK'})
+  if($da){KV 'DA7219_STATUS' "$($da.Status)/$($da.ConfigManagerErrorCode)/$($da.Service)"}else{KV 'DA7219_STATUS' 'ABSENT'}
+  if($mx){KV 'MAX98357A_STATUS' "$($mx.Status)/$($mx.ConfigManagerErrorCode)/$($mx.Service)"}else{KV 'MAX98357A_STATUS' 'ABSENT'}
+  $eps=@(Get-CimInstance Win32_PnPEntity -ErrorAction SilentlyContinue |
+    Where-Object {$_.ClassGuid -eq '{c166523c-fe0c-4a94-a586-f1a80cfbbf3e}' -and $_.Status -eq 'OK'})
   KV 'ACTIVE_AUDIO_ENDPOINTS_BEFORE' $eps.Count
 
-  # G4 HDA HDMI child must be unbound; we use it as a safe read-only interrupt source.
+  # G4 HDA graphics child. IntcDAud is an allowed baseline and is preserved.
   $hda=FindDev 'HDAUDIO\FUNC_01&VEN_8086&DEV_280D'
   if(-not $hda){throw 'G4_HDA_CHILD_MISSING'}
   $script:HdaChildId=$hda.PNPDeviceID
-  KV 'HDA_BEFORE_SERVICE' $hda.Service
-  KV 'HDA_BEFORE_CODE' $hda.ConfigManagerErrorCode
-  if($hda.Service){
-    throw "G4_HDA_CHILD_ALREADY_BOUND: service=$($hda.Service). Refusing replacement."
-  }
-  if($hda.ConfigManagerErrorCode -ne 28){
-    throw "G4_HDA_UNEXPECTED_STATE: code=$($hda.ConfigManagerErrorCode)"
+  $script:HdaHardwareId=Get-HardwareId $hda.PNPDeviceID
+  $script:OriginalHdaService=[string]$hda.Service
+
+  $origSigned=FindSignedDriver $hda.PNPDeviceID
+  if($origSigned){
+    $script:OriginalHdaInfName=[string]$origSigned.InfName
+    $script:OriginalHdaVersion=[string]$origSigned.DriverVersion
+    $script:OriginalHdaProvider=[string]$origSigned.DriverProviderName
   }
 
-  # Signer/certificate validation
+  KV 'HDA_INSTANCE' $script:HdaChildId
+  KV 'HDA_HARDWARE_ID' $script:HdaHardwareId
+  KV 'HDA_BEFORE_SERVICE' $script:OriginalHdaService
+  KV 'HDA_BEFORE_CODE' $hda.ConfigManagerErrorCode
+  KV 'HDA_BEFORE_INF' $script:OriginalHdaInfName
+  KV 'HDA_BEFORE_VERSION' $script:OriginalHdaVersion
+  KV 'HDA_BEFORE_PROVIDER' $script:OriginalHdaProvider
+
+  if($script:OriginalHdaService -eq 'IntcDAud'){
+    if($hda.ConfigManagerErrorCode -ne 0){throw "G4_INTCSERVICE_BAD: Code $($hda.ConfigManagerErrorCode)"}
+    if(-not $script:OriginalHdaInfName){throw 'G4_INTCSERVICE_INF_UNKNOWN'}
+
+    $script:OriginalExportDir=Join-Path $script:Out 'ORIGINAL_INTCD_AUD'
+    New-Item -ItemType Directory -Force -Path $script:OriginalExportDir | Out-Null
+    W "[G4] exporting current Intel Display Audio package $($script:OriginalHdaInfName)"
+    & pnputil.exe /export-driver $script:OriginalHdaInfName $script:OriginalExportDir |
+      Tee-Object -FilePath (Join-Path $script:Out 'HDA_EXPORT_ORIGINAL.txt')
+    if($LASTEXITCODE){throw "G4_INTCD_EXPORT_FAIL rc=$LASTEXITCODE"}
+    if(-not (Get-ChildItem $script:OriginalExportDir -Recurse -Filter '*.inf' -File | Select-Object -First 1)){
+      throw 'G4_INTCD_EXPORT_EMPTY'
+    }
+    KV 'HDA_ORIGINAL_EXPORTED' $true
+    W '[OK] G4 baseline IntcDAud captured for exact rollback'
+  } elseif(-not $script:OriginalHdaService -and $hda.ConfigManagerErrorCode -eq 28){
+    KV 'HDA_ORIGINAL_EXPORTED' $false
+    W '[OK] G4 baseline is unbound Code 28'
+  } else {
+    throw "G4_UNSUPPORTED_HDA_BASELINE: service=$($script:OriginalHdaService) code=$($hda.ConfigManagerErrorCode)"
+  }
+
+  # Signer validation + trust
   $signer=New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($cer)
   $script:CertThumb=$signer.Thumbprint
   foreach($file in @($sys,$cat)){
@@ -191,8 +322,12 @@ try {
       throw "G4_PACKAGE_SIGNER_MISMATCH: $file"
     }
   }
-  $script:HadRoot=[bool](Get-ChildItem Cert:\LocalMachine\Root | Where-Object Thumbprint -eq $script:CertThumb | Select-Object -First 1)
-  $script:HadPublisher=[bool](Get-ChildItem Cert:\LocalMachine\TrustedPublisher | Where-Object Thumbprint -eq $script:CertThumb | Select-Object -First 1)
+
+  $script:HadRoot=[bool](Get-ChildItem Cert:\LocalMachine\Root |
+    Where-Object Thumbprint -eq $script:CertThumb | Select-Object -First 1)
+  $script:HadPublisher=[bool](Get-ChildItem Cert:\LocalMachine\TrustedPublisher |
+    Where-Object Thumbprint -eq $script:CertThumb | Select-Object -First 1)
+
   Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
   Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher | Out-Null
   foreach($file in @($sys,$cat)){
@@ -200,26 +335,31 @@ try {
     if($sig.Status -ne 'Valid'){throw "G4_SIGNATURE_NOT_VALID_AFTER_TRUST: $file -> $($sig.Status)"}
   }
 
-  & pnputil.exe /add-driver $inf | Tee-Object -FilePath (Join-Path $script:Out 'HDA_STAGE.txt')
+  # Stage and temporarily force-bind the read-only probe.
+  & pnputil.exe /add-driver $inf | Tee-Object -FilePath (Join-Path $script:Out 'HDA_STAGE_PROBE.txt')
   if($LASTEXITCODE){throw "G4_STAGE_FAIL rc=$LASTEXITCODE"}
 
-  [bool]$reboot=$false
-  $ok=[P360.NewDev]::UpdateDriverForPlugAndPlayDevices([IntPtr]::Zero,'HDAUDIO\FUNC_01&VEN_8086&DEV_280D',$inf,[uint32]1,[ref]$reboot)
+  [bool]$probeReboot=$false
+  $script:ProbeBindAttempted=$true
+  $ok=[P360.NewDev]::UpdateDriverForPlugAndPlayDevices(
+    [IntPtr]::Zero,$script:HdaHardwareId,$inf,[uint32]1,[ref]$probeReboot)
   if(-not $ok){throw "G4_BIND_FAIL Win32=$([Runtime.InteropServices.Marshal]::GetLastWin32Error())"}
-  if($reboot){throw 'G4_BIND_REQUESTED_REBOOT: refusing to continue active test before reboot'}
+  if($probeReboot){throw 'G4_BIND_REQUESTED_REBOOT: rollback will be attempted immediately'}
 
-  Start-Sleep -Seconds 2
-  $hda=Get-CimInstance Win32_PnPEntity | Where-Object PNPDeviceID -eq $script:HdaChildId | Select-Object -First 1
-  $bound=Get-CimInstance Win32_PnPSignedDriver | Where-Object DeviceID -eq $script:HdaChildId | Select-Object -First 1
-  $script:HdaInfName=$bound.InfName
-  $script:CleanupNeeded=$true
-  KV 'HDA_PROBE_INF' $script:HdaInfName
+  Start-Sleep -Seconds 3
+  $hda=Get-CimInstance Win32_PnPEntity | Where-Object {$_.PNPDeviceID -eq $script:HdaChildId} | Select-Object -First 1
+  $bound=FindSignedDriver $script:HdaChildId
+  $script:ProbeInfName=[string]$bound.InfName
+
+  KV 'HDA_PROBE_INF' $script:ProbeInfName
   KV 'HDA_PROBE_SERVICE' $hda.Service
   KV 'HDA_PROBE_CODE' $hda.ConfigManagerErrorCode
+  KV 'HDA_PROBE_VERSION' $bound.DriverVersion
+
   if($hda.Service -ne 'P360HdaReadProbe' -or $hda.ConfigManagerErrorCode -ne 0){
     throw "G4_HDA_PROBE_START_FAIL: service=$($hda.Service) code=$($hda.ConfigManagerErrorCode)"
   }
-  W '[OK] G4 temporary HDA read-only probe bound'
+  W '[OK] G4 temporary HDA read-only probe bound; original package remains exported'
 
   # G5 HDA bus interface
   $hs=Read-Hda $false
@@ -233,10 +373,12 @@ try {
   }
   W "[OK] G5 HDA bus interface addr=$($hs.CodecAddress) fg=$($hs.FunctionGroup)"
 
-  # G6 Active IRQ proof using exactly three read-only GET_PARAMETER(VENDOR_ID) verbs.
+  # G6: three read-only GET_PARAMETER(VENDOR_ID) transfers.
   $totalDelta=[int64]0
   $validReads=0
-  $vendorExpected=0x8086280D
+  $vendorMatches=0
+  [uint32]$vendorExpected=0x8086280D
+
   for($i=1;$i -le 3;$i++){
     $before=Read-DspProbe
     $hr=Read-Hda $true
@@ -244,16 +386,19 @@ try {
     $after=Read-DspProbe
     $delta=$after.Irq-$before.Irq
     $totalDelta+=$delta
-    if($hr.Transfer -eq 0 -and $hr.Valid -eq 1){$validReads++}
 
-    W ("[G6.{0}] transfer=0x{1:X8} response=0x{2:X8} valid={3} overrun={4} IRQ {5}->{6} delta={7}" -f
-      $i,$hr.Transfer,$hr.Response,$hr.Valid,$hr.Overrun,$before.Irq,$after.Irq,$delta)
+    if($hr.Transfer -eq 0 -and $hr.Valid -eq 1){$validReads++}
+    if($hr.Response -eq $vendorExpected){$vendorMatches++}
+
+    W ("[G6.{0}] transfer=0x{1:X8} command=0x{2:X8} response=0x{3:X8} valid={4} overrun={5} IRQ {6}->{7} delta={8}" -f
+      $i,$hr.Transfer,$hr.Command,$hr.Response,$hr.Valid,$hr.Overrun,$before.Irq,$after.Irq,$delta)
 
     [pscustomobject]@{
       Iteration=$i
       TransferStatus=('0x{0:X8}' -f $hr.Transfer)
       Command=('0x{0:X8}' -f $hr.Command)
       Response=('0x{0:X8}' -f $hr.Response)
+      ExpectedResponse=('0x{0:X8}' -f $vendorExpected)
       Valid=$hr.Valid
       FifoOverrun=$hr.Overrun
       IrqBefore=$before.Irq
@@ -261,27 +406,26 @@ try {
       IrqDelta=$delta
     } | Export-Csv -LiteralPath (Join-Path $script:Out 'ACTIVE_IRQ_READS.csv') -NoTypeInformation -Append -Encoding UTF8
   }
+
   KV 'HDA_VALID_READS' $validReads
+  KV 'HDA_VENDOR_MATCHES' $vendorMatches
   KV 'ACTIVE_IRQ_DELTA_TOTAL' $totalDelta
   KV 'ACTIVE_IRQ_PROVED' ($validReads -ge 1 -and $totalDelta -gt 0)
   KV 'HDA_EXPECTED_VENDOR_DEVICE' ('0x{0:X8}' -f $vendorExpected)
   KV 'HDA_LAST_VENDOR_DEVICE' ('0x{0:X8}' -f $hr.Response)
 
-  if($validReads -lt 1){
-    throw 'G6_HDA_READ_FAILED: no valid RIRB response'
-  }
-  if($totalDelta -le 0){
-    throw 'G6_IRQ_CALLBACK_NOT_OBSERVED_DURING_CONFIRMED_HDA_TRANSFER'
-  }
-  W "[OK] G6 ACTIVE IRQ PROVED: validReads=$validReads totalDelta=$totalDelta"
+  if($validReads -lt 1){throw 'G6_HDA_READ_FAILED: no valid RIRB response'}
+  if($totalDelta -le 0){throw 'G6_IRQ_CALLBACK_NOT_OBSERVED_DURING_CONFIRMED_HDA_TRANSFER'}
 
-  # G7 collect next-stage prerequisites; no writes.
+  W "[OK] G6 ACTIVE IRQ PROVED: validReads=$validReads vendorMatches=$vendorMatches totalDelta=$totalDelta"
+
+  # G7: collect remaining blockers. Still no writes to DSP/codecs.
   $sofFiles=@()
   foreach($base in @('D:\PHASER360_WORK','C:\Windows\System32\drivers')){
     if(Test-Path $base){
       $sofFiles+=Get-ChildItem $base -Recurse -File -ErrorAction SilentlyContinue |
-       Where-Object {$_.Name -match '(?i)sof.*\.(ri|tplg)$|.*\.tplg$'} |
-       Select-Object FullName,Length,LastWriteTime
+        Where-Object {$_.Name -match '(?i)sof.*\.(ri|tplg)$|.*\.tplg$'} |
+        Select-Object FullName,Length,LastWriteTime
     }
   }
   $sofFiles | Export-Csv -LiteralPath (Join-Path $script:Out 'SOF_FIRMWARE_TOPOLOGY_FILES.csv') -NoTypeInformation -Encoding UTF8
@@ -296,12 +440,15 @@ try {
   KV 'DA7219_DRIVER_BOUND' ([bool]($da2 -and $da2.Service -and $da2.ConfigManagerErrorCode -eq 0))
   KV 'MAX98357A_DRIVER_BOUND' ([bool]($mx2 -and $mx2.Service -and $mx2.ConfigManagerErrorCode -eq 0))
 
-  $eps2=@(Get-CimInstance Win32_PnPEntity -ErrorAction SilentlyContinue | Where-Object {$_.ClassGuid -eq '{c166523c-fe0c-4a94-a586-f1a80cfbbf3e}' -and $_.Status -eq 'OK'})
+  $eps2=@(Get-CimInstance Win32_PnPEntity -ErrorAction SilentlyContinue |
+    Where-Object {$_.ClassGuid -eq '{c166523c-fe0c-4a94-a586-f1a80cfbbf3e}' -and $_.Status -eq 'OK'})
   KV 'ACTIVE_AUDIO_ENDPOINTS_AFTER' $eps2.Count
 
-  # It is deliberately impossible to PASS audio readiness without SOF/codec/endpoints.
-  $audioReady=($sofSvc.Count -gt 0 -and $da2 -and $da2.Service -and $da2.ConfigManagerErrorCode -eq 0 -and
-               $mx2 -and $mx2.Service -and $mx2.ConfigManagerErrorCode -eq 0 -and $eps2.Count -gt 0)
+  $audioReady=($sofSvc.Count -gt 0 -and
+    $da2 -and $da2.Service -and $da2.ConfigManagerErrorCode -eq 0 -and
+    $mx2 -and $mx2.Service -and $mx2.ConfigManagerErrorCode -eq 0 -and
+    $eps2.Count -gt 0)
+
   KV 'AUDIO_READY' $audioReady
   if($audioReady){
     KV 'FINAL_GATE' 'AUDIO_STACK_PRESENT__VOLUME_GUARD_REQUIRED_BEFORE_PLAYBACK'
@@ -310,43 +457,82 @@ try {
   }
 
 } catch {
+  $script:ExitCode=2
   KV 'FINAL_GATE' 'FAIL'
   KV 'FAILURE' $_.Exception.Message
   W "[FAIL] $($_.Exception.Message)"
 } finally {
-  # Always remove our temporary HDA probe; never touch SklHDAudBus or DSP probe.
-  if($script:CleanupNeeded -and $script:HdaInfName -match '^oem\d+\.inf$'){
-    W "[CLEANUP] removing temporary HDA probe $script:HdaInfName"
-    & pnputil.exe /delete-driver $script:HdaInfName /uninstall /force |
-      Tee-Object -FilePath (Join-Path $script:Out 'HDA_CLEANUP.txt')
-    KV 'HDA_CLEANUP_RC' $LASTEXITCODE
-    Start-Sleep -Seconds 2
+  # Always restore the exact HDA baseline before removing the temporary probe/trust.
+  if($script:ProbeBindAttempted){
+    W '[ROLLBACK] restoring HDA child baseline...'
+    $restore=Restore-HdaBaseline
+    $script:RestoreSucceeded=[bool]$restore.Ok
+    KV 'HDA_BASELINE_RESTORED' $script:RestoreSucceeded
+    KV 'HDA_RESTORE_REASON' $restore.Reason
+    W "[ROLLBACK] $($restore.Reason)"
+
+    if(-not $script:RestoreSucceeded){
+      $script:ExitCode=3
+      KV 'ROLLBACK_FAILURE' $restore.Reason
+    }
+  } else {
+    KV 'HDA_BASELINE_RESTORED' $true
+    KV 'HDA_RESTORE_REASON' 'No temporary HDA bind was attempted'
   }
-  if($script:CertThumb){
+
+  # Remove temporary probe package only after baseline restore succeeds.
+  if($script:RestoreSucceeded -and $script:ProbeInfName -and
+     $script:ProbeInfName -match '^oem\d+\.inf$' -and
+     $script:ProbeInfName -ne $script:OriginalHdaInfName){
+    W "[CLEANUP] deleting temporary probe package $script:ProbeInfName"
+    & pnputil.exe /delete-driver $script:ProbeInfName /force 2>&1 |
+      Tee-Object -FilePath (Join-Path $script:Out 'HDA_DELETE_PROBE_PACKAGE.txt')
+    KV 'HDA_PROBE_DELETE_RC' $LASTEXITCODE
+  }
+
+  # Do not remove trust if rollback failed; keep the current test driver loadable.
+  if($script:RestoreSucceeded -and $script:CertThumb){
     if(-not $script:HadRoot){
-      Get-ChildItem Cert:\LocalMachine\Root | Where-Object Thumbprint -eq $script:CertThumb | Remove-Item -Force -ErrorAction SilentlyContinue
+      Get-ChildItem Cert:\LocalMachine\Root |
+        Where-Object Thumbprint -eq $script:CertThumb |
+        Remove-Item -Force -ErrorAction SilentlyContinue
     }
     if(-not $script:HadPublisher){
-      Get-ChildItem Cert:\LocalMachine\TrustedPublisher | Where-Object Thumbprint -eq $script:CertThumb | Remove-Item -Force -ErrorAction SilentlyContinue
+      Get-ChildItem Cert:\LocalMachine\TrustedPublisher |
+        Where-Object Thumbprint -eq $script:CertThumb |
+        Remove-Item -Force -ErrorAction SilentlyContinue
     }
   }
 
   $p2=FindDev 'PCI\VEN_8086&DEV_3198'
   $h2=FindDev 'HDAUDIO\FUNC_01&VEN_8086&DEV_280D'
   $d2=FindDev 'CSAUDIO\ADSP&CTLR_VEN_8086&CTLR_DEV_3198'
-  KV 'POST_PARENT' $(if($p2){"$($p2.Status)/$($p2.ConfigManagerErrorCode)/$($p2.Service)"}else{'ABSENT'})
-  KV 'POST_HDA' $(if($h2){"$($h2.Status)/$($h2.ConfigManagerErrorCode)/$($h2.Service)"}else{'ABSENT'})
-  KV 'POST_DSP' $(if($d2){"$($d2.Status)/$($d2.ConfigManagerErrorCode)/$($d2.Service)"}else{'ABSENT'})
 
-  $report=Join-Path $script:Out 'REPORT.txt'
-  $script:Report | Set-Content -LiteralPath $report -Encoding UTF8
+  if($p2){KV 'POST_PARENT' "$($p2.Status)/$($p2.ConfigManagerErrorCode)/$($p2.Service)"}else{KV 'POST_PARENT' 'ABSENT'}
+  if($h2){KV 'POST_HDA' "$($h2.Status)/$($h2.ConfigManagerErrorCode)/$($h2.Service)"}else{KV 'POST_HDA' 'ABSENT'}
+  if($d2){KV 'POST_DSP' "$($d2.Status)/$($d2.ConfigManagerErrorCode)/$($d2.Service)"}else{KV 'POST_DSP' 'ABSENT'}
+
+  if($script:OriginalHdaService -eq 'IntcDAud' -and $h2){
+    $postHdaOk=($h2.Service -eq 'IntcDAud' -and $h2.ConfigManagerErrorCode -eq 0)
+    KV 'POST_HDA_BASELINE_OK' $postHdaOk
+    if(-not $postHdaOk){$script:ExitCode=3}
+  }
+
+  KV 'AUDIO_PLAYBACK' 'NO'
+  KV 'RUNNER_EXIT_CODE' $script:ExitCode
+
+  $reportPath=Join-Path $script:Out 'REPORT.txt'
+  $script:ReportLines | Set-Content -LiteralPath $reportPath -Encoding UTF8
+
   Write-Host ''
   Write-Host '================ REPORT ================'
-  Get-Content $report | ForEach-Object {Write-Host $_}
+  Get-Content $reportPath | ForEach-Object {Write-Host $_}
 
   $desktop=[Environment]::GetFolderPath('Desktop')
-  $zip=Join-Path $desktop ("P360_PREAUDIO_GATE_"+$stamp+".zip")
-  Compress-Archive -Path (Join-Path $script:Out '*') -DestinationPath $zip -Force
-  Write-Host "ZIP=$zip"
+  $zipPath=Join-Path $desktop ("P360_PREAUDIO_GATE_V2_"+$stamp+".zip")
+  Compress-Archive -Path (Join-Path $script:Out '*') -DestinationPath $zipPath -Force
+  Write-Host "ZIP=$zipPath"
   Write-Host 'AUDIO_PLAYBACK=NO'
 }
+
+exit $script:ExitCode
