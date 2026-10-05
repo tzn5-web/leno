@@ -822,6 +822,9 @@ final class V9PlayerService:
                     : seconds
             )
 
+        pipBridge?
+            .prepareForSeek()
+
         command(
             [
                 "seek",
