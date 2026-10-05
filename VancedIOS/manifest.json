@@ -38,6 +38,11 @@
       "repo": "https://github.com/Tonwalter888/iOS-SDKs.git",
       "commit": "a4262fddfae9ce1a211f093479edb1555f68228d",
       "sdk": "iPhoneOS26.5.sdk"
+    },
+    "YTVideoOverlay": {
+      "repo": "https://github.com/PoomSmart/YTVideoOverlay.git",
+      "commit": "b93fccb89a6e81d9406322d9719c3621d68e66b5",
+      "role": "shared overlay helper required by YouPiP"
     }
   }
 }
