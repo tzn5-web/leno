@@ -1,7 +1,8 @@
-# VcdResolver 0.4.0-client
+# VcdResolver 0.4.0-client — optional fallback for YoutubeVcd 0.11.1
 
-Backend-ul pentru YoutubeVcd 0.10.0. Resolverul face atât browsing nativ, cât
-și rezolvarea/relay-ul streamurilor media.
+YoutubeVcd 0.11.1 face Home/Search/Channel și rezolvarea principală direct pe
+iPhone. Acest resolver nu mai este obligatoriu; rămâne un fallback independent
+pentru playback/extraction atunci când calea nativă YouTube se schimbă sau eșuează.
 
 ## API pentru aplicație
 
