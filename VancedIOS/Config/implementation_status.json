@@ -39,7 +39,7 @@
     },
     "ui_shorts_controls": {
       "state": "partial_implemented",
-      "evidence": "Vanced settings exposes Hide Shorts in feeds; VancedCore filters YTIElementRenderer Shorts shelves/cells while preserving history"
+      "evidence": "VancedCore filters Shorts shelves/cells outside history; VancedShortsUI removes FEshorts from YTPivotBarView; both are exposed as native Vanced Settings toggles"
     },
     "navigation_intact": {
       "state": "design_guard_only",
