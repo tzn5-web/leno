@@ -253,13 +253,20 @@ require(
 # Native VOD format policy.
 for required in [
     "1080",
-    "fps <=\n                               30",
+    "isEligibleVideo",
+    "isPreferredH264MP4",
+    "bestVideo",
     '"avc1"',
     '"h264"',
     '"mp4a"',
     '"aac"',
 ]:
     require(required in native, f"native format policy missing: {required}")
+
+require(
+    "fps" in native and "30" in native,
+    "native video frame-rate cap is missing",
+)
 
 # Optional fallback remains hardened, but it must not be required.
 require(
