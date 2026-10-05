@@ -4,8 +4,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOCK="$ROOT/Config/dependencies.lock.json"
 DEST="$ROOT/ThirdParty"
+THEOS="${THEOS:-$ROOT/.toolchain/theos}"
 
 mkdir -p "$DEST"
+[[ -d "$THEOS" ]] || { echo "THEOS_NOT_BOOTSTRAPPED=$THEOS" >&2; exit 20; }
+mkdir -p "$THEOS/include"
 
 clone_exact() {
   local name="$1" repo="$2" ref="$3" dest="$4"
@@ -33,6 +36,10 @@ while IFS=$'\t' read -r kind name remote ref; do
   esac
   mkdir -p "$(dirname "$dest")"
   clone_exact "$name" "$remote" "$ref" "$dest"
+  if [[ "$kind" == "header" ]]; then
+    rm -rf "$THEOS/include/$name"
+    ln -s "$dest" "$THEOS/include/$name"
+  fi
 done < <(python3 - "$LOCK" <<'PY'
 import json, sys
 with open(sys.argv[1], 'r', encoding='utf-8') as f:
