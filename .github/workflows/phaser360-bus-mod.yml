@@ -20,13 +20,23 @@ jobs:
 
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
+        with:
+          msbuild-architecture: x64
 
-      - name: Install Windows SDK and WDK 26100
+      - name: Verify preinstalled SDK and WDK
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          winget install --id Microsoft.WindowsSDK.10.0.26100 --exact --silent --accept-package-agreements --accept-source-agreements
-          winget install --id Microsoft.WindowsWDK.10.0.26100 --exact --silent --accept-package-agreements --accept-source-agreements
+          $sdk = 'C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0'
+          $wdk = 'C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\km'
+          $wdkVsix = 'C:\Program Files (x86)\Windows Kits\10\Vsix'
+          if (!(Test-Path $sdk)) { throw "Windows SDK 26100 missing: $sdk" }
+          if (!(Test-Path $wdk)) { throw "WDK 26100 kernel headers missing: $wdk" }
+          Write-Host "SDK OK: $sdk"
+          Write-Host "WDK KM headers OK: $wdk"
+          Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64' -ErrorAction SilentlyContinue |
+            Where-Object Name -in @('Inf2Cat.exe','signtool.exe') |
+            Select-Object Name,FullName
 
       - name: Clone pinned CoolStar bus and apply Phaser360 patch
         shell: pwsh
@@ -65,24 +75,21 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $stage = Join-Path $env:GITHUB_WORKSPACE 'P360_BUS_PACKAGE'
+          $kitBin = 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64'
+          $inf2cat = Join-Path $kitBin 'Inf2Cat.exe'
+          $signtool = Join-Path $kitBin 'signtool.exe'
 
-          $inf2cat = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter Inf2Cat.exe -File |
-            Sort-Object FullName -Descending | Select-Object -First 1
-          $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter signtool.exe -File |
-            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
-            Sort-Object FullName -Descending | Select-Object -First 1
+          if (!(Test-Path $inf2cat)) { throw "Inf2Cat.exe not found: $inf2cat" }
+          if (!(Test-Path $signtool)) { throw "signtool.exe not found: $signtool" }
 
-          if (-not $inf2cat) { throw 'Inf2Cat.exe not found' }
-          if (-not $signtool) { throw 'signtool.exe not found' }
-
-          & $inf2cat.FullName /driver:$stage /os:10_X64
+          & $inf2cat /driver:$stage /os:10_X64
           if ($LASTEXITCODE -ne 0) { throw "Inf2Cat failed: $LASTEXITCODE" }
 
           $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=PHASER360 Test Driver' -CertStoreLocation 'Cert:\CurrentUser\My' -KeyExportPolicy Exportable -NotAfter (Get-Date).AddYears(2)
           Export-Certificate -Cert $cert -FilePath (Join-Path $stage 'PHASER360_TEST_DRIVER.cer') | Out-Null
 
           foreach ($file in @('sklhdaudbus.sys','sklhdaudbus.cat')) {
-            & $signtool.FullName sign /v /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $stage $file)
+            & $signtool sign /v /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $stage $file)
             if ($LASTEXITCODE -ne 0) { throw "signtool failed for $file" }
           }
 
