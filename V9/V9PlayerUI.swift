@@ -15,37 +15,45 @@ struct V9MiniPlayerView:
             spacing:
                 12
         ) {
-            Button {
-                openPlayer()
-            } label: {
-                HStack(
-                    spacing:
-                        10
-                ) {
-                    ZStack {
-                        RoundedRectangle(
-                            cornerRadius:
-                                8
-                        )
-                        .fill(
-                            .quaternary
-                        )
+            HStack(
+                spacing:
+                    10
+            ) {
+                ZStack {
+                    Color.black
 
-                        Image(
-                            systemName:
-                                "play.rectangle.fill"
-                        )
-                        .foregroundStyle(
-                            .secondary
-                        )
-                    }
-                    .frame(
-                        width:
-                            58,
-                        height:
-                            34
+                    V9MPVPlayerView(
+                        service:
+                            player
+                    )
+                    .allowsHitTesting(
+                        false
                     )
 
+                    Color.clear
+                        .contentShape(
+                            Rectangle()
+                        )
+                        .onTapGesture {
+                            openPlayer()
+                        }
+                }
+                .frame(
+                    width:
+                        96,
+                    height:
+                        54
+                )
+                .clipShape(
+                    RoundedRectangle(
+                        cornerRadius:
+                            8
+                    )
+                )
+
+                Button {
+                    openPlayer()
+                } label: {
                     VStack(
                         alignment:
                             .leading,
@@ -83,10 +91,10 @@ struct V9MiniPlayerView:
                         )
                     }
                 }
+                .buttonStyle(
+                    .plain
+                )
             }
-            .buttonStyle(
-                .plain
-            )
 
             Spacer()
 
