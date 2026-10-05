@@ -76,6 +76,9 @@ clone_at YTVideoOverlay "$WORK/YTVideoOverlay"
 clone_at YouPiP "$WORK/YouPiP"
 clone_at ReturnYouTubeDislikes "$WORK/Return-YouTube-Dislikes"
 
+echo "==> Audit pinned patch contracts"
+python3 "$ROOT/VancedIOS/Scripts/audit_patches.py" "$WORK"
+
 build_deb() {
   local dir="$1"
   local out="$2"
