@@ -488,6 +488,26 @@ actor VcdResolverClient {
             let thumbnail =
                 item.thumbnailURL
 
+            var basePath =
+                endpointBase.path
+
+            while basePath.count > 1,
+                  basePath.hasSuffix(
+                    "/"
+                  ) {
+                basePath
+                    .removeLast()
+            }
+
+            if basePath ==
+                "/" {
+                basePath =
+                    ""
+            }
+
+            let expectedThumbnailPath =
+                "\(basePath)/v1/thumb/\(item.id)"
+
             guard
                 let scheme =
                     thumbnail.scheme?
@@ -501,7 +521,7 @@ actor VcdResolverClient {
                 thumbnail.query == nil,
                 thumbnail.fragment == nil,
                 thumbnail.path ==
-                    "/v1/thumb/\(item.id)"
+                    expectedThumbnailPath
             else {
                 throw ResolverClientError
                     .relayOriginMismatch
