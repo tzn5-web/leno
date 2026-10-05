@@ -371,9 +371,10 @@ final class V9NativeYouTubeClient:
                             videoID,
                         info:
                             tvInfo,
-                        formats:
-                            tvInfo.defaultFormats +
-                            tvInfo.downloadFormats
+                        adaptiveFormats:
+                            tvInfo.downloadFormats,
+                        progressiveFormats:
+                            tvInfo.defaultFormats
                     ) {
                 return resolved
             }
@@ -413,8 +414,9 @@ final class V9NativeYouTubeClient:
                 videoID,
             info:
                 response.videoInfos,
-            formats:
-                response.downloadFormats +
+            adaptiveFormats:
+                response.downloadFormats,
+            progressiveFormats:
                 response.defaultFormats
         )
     }
@@ -424,7 +426,9 @@ final class V9NativeYouTubeClient:
             String,
         info:
             VideoInfosResponse,
-        formats:
+        adaptiveFormats:
+            [any AdaptiveDownloadFormat],
+        progressiveFormats:
             [any AdaptiveDownloadFormat]
     ) throws
         -> ResolvedVideo
@@ -473,101 +477,35 @@ final class V9NativeYouTubeClient:
             )
         }
 
-        let videoFormats =
-            formats
+        let adaptiveVideos =
+            adaptiveFormats
                 .compactMap {
                     $0 as?
                         VideoDownloadFormat
                 }
                 .filter {
-                    format in
-
-                    guard format.url !=
-                            nil
-                    else {
-                        return false
-                    }
-
-                    let height =
-                        format.height ??
-                        0
-
-                    let fps =
-                        format.fps ??
-                        0
-
-                    return height <=
-                            1080 &&
-                           (
-                               fps ==
-                               0 ||
-                               fps <=
-                               30
-                           )
+                    isEligibleVideo(
+                        $0
+                    )
                 }
 
         let compatibleVideos =
-            videoFormats.filter {
-                format in
-
-                let mime =
-                    format.mimeType?
-                        .lowercased() ??
-                    ""
-
-                let codec =
-                    format.codec?
-                        .lowercased() ??
-                    ""
-
-                return mime.contains(
-                    "mp4"
-                ) &&
-                (
-                    codec.contains(
-                        "avc1"
-                    ) ||
-                    codec.contains(
-                        "h264"
-                    )
+            adaptiveVideos.filter {
+                isPreferredH264MP4(
+                    $0
                 )
             }
 
         let selectedVideo =
-            (
+            bestVideo(
                 compatibleVideos
                     .isEmpty
-                    ? videoFormats
+                    ? adaptiveVideos
                     : compatibleVideos
             )
-            .max {
-                lhs,
-                rhs in
 
-                let left =
-                    (
-                        lhs.height ??
-                        0,
-                        lhs.bitrate ??
-                        lhs.averageBitrate ??
-                        0
-                    )
-
-                let right =
-                    (
-                        rhs.height ??
-                        0,
-                        rhs.bitrate ??
-                        rhs.averageBitrate ??
-                        0
-                    )
-
-                return left <
-                    right
-            }
-
-        let audioFormats =
-            formats
+        let adaptiveAudio =
+            adaptiveFormats
                 .compactMap {
                     $0 as?
                         AudioOnlyFormat
@@ -578,7 +516,7 @@ final class V9NativeYouTubeClient:
                 }
 
         let compatibleAudio =
-            audioFormats.filter {
+            adaptiveAudio.filter {
                 format in
 
                 let mime =
@@ -609,7 +547,7 @@ final class V9NativeYouTubeClient:
             (
                 compatibleAudio
                     .isEmpty
-                    ? audioFormats
+                    ? adaptiveAudio
                     : compatibleAudio
             )
             .max {
@@ -628,52 +566,86 @@ final class V9NativeYouTubeClient:
                 )
             }
 
-        guard let selectedVideo,
-              let videoURL =
-                selectedVideo.url
+        if let selectedVideo,
+           let videoURL =
+                selectedVideo.url,
+           let selectedAudio,
+           let audioURL =
+                selectedAudio.url {
+            return ResolvedVideo(
+                videoID:
+                    videoID,
+                title:
+                    info.title ??
+                    "YouTube",
+                duration:
+                    selectedVideo
+                        .contentDuration
+                        .map {
+                            Double(
+                                $0
+                            ) /
+                            1000
+                        },
+                thumbnail:
+                    info.thumbnails
+                        .last?
+                        .url,
+                video:
+                    stream(
+                        video:
+                            selectedVideo,
+                        url:
+                            videoURL
+                    ),
+                audio:
+                    stream(
+                        audio:
+                            selectedAudio,
+                        url:
+                            audioURL
+                    ),
+                expiresIn:
+                    secondsUntilExpiry(
+                        info.videoURLsExpireAt
+                    )
+            )
+        }
+
+        // If adaptive pairing is unavailable, use a progressive YouTube
+        // format as one complete stream. Never pair a progressive format
+        // that already contains audio with another audio stream.
+        let progressiveVideos =
+            progressiveFormats
+                .compactMap {
+                    $0 as?
+                        VideoDownloadFormat
+                }
+                .filter {
+                    isEligibleVideo(
+                        $0
+                    )
+                }
+
+        let compatibleProgressive =
+            progressiveVideos.filter {
+                isPreferredH264MP4(
+                    $0
+                )
+            }
+
+        guard let progressive =
+                bestVideo(
+                    compatibleProgressive
+                        .isEmpty
+                        ? progressiveVideos
+                        : compatibleProgressive
+                ),
+              let progressiveURL =
+                progressive.url
         else {
             throw NativeError
                 .noPlayableFormats
-        }
-
-        let audioStream:
-            ResolvedStream?
-
-        if let selectedAudio,
-           let audioURL =
-            selectedAudio.url {
-            audioStream =
-                ResolvedStream(
-                    relayURL:
-                        audioURL,
-                    formatID:
-                        String(
-                            selectedAudio.itag
-                        ),
-                    container:
-                        container(
-                            selectedAudio
-                                .mimeType
-                        ),
-                    videoCodec:
-                        nil,
-                    audioCodec:
-                        selectedAudio
-                            .codec,
-                    height:
-                        nil,
-                    fps:
-                        nil,
-                    bitrate:
-                        Double(
-                            selectedAudio.bitrate ??
-                            selectedAudio.averageBitrate ??
-                            0
-                        )
-                )
-        } else {
-            audioStream =
-                nil
         }
 
         return ResolvedVideo(
@@ -683,7 +655,7 @@ final class V9NativeYouTubeClient:
                 info.title ??
                 "YouTube",
             duration:
-                selectedVideo
+                progressive
                     .contentDuration
                     .map {
                         Double(
@@ -698,43 +670,195 @@ final class V9NativeYouTubeClient:
             video:
                 ResolvedStream(
                     relayURL:
-                        videoURL,
+                        progressiveURL,
                     formatID:
                         String(
-                            selectedVideo
-                                .itag
+                            progressive.itag
                         ),
                     container:
                         container(
-                            selectedVideo
-                                .mimeType
+                            progressive.mimeType
                         ),
                     videoCodec:
-                        selectedVideo
-                            .codec,
+                        progressive.codec,
                     audioCodec:
-                        nil,
+                        "embedded",
                     height:
-                        selectedVideo
-                            .height,
+                        progressive.height,
                     fps:
-                        selectedVideo
-                            .fps
+                        progressive.fps
                             .map(
                                 Double.init
                             ),
                     bitrate:
                         Double(
-                            selectedVideo.bitrate ??
-                            selectedVideo.averageBitrate ??
+                            progressive.bitrate ??
+                            progressive.averageBitrate ??
                             0
                         )
                 ),
             audio:
-                audioStream,
+                nil,
             expiresIn:
                 secondsUntilExpiry(
                     info.videoURLsExpireAt
+                )
+        )
+    }
+
+    private func isEligibleVideo(
+        _ format:
+            VideoDownloadFormat
+    ) -> Bool {
+        guard format.url !=
+                nil
+        else {
+            return false
+        }
+
+        let height =
+            format.height ??
+            0
+
+        let fps =
+            format.fps ??
+            0
+
+        return height <=
+                1080 &&
+               (
+                   fps ==
+                   0 ||
+                   fps <=
+                   30
+               )
+    }
+
+    private func isPreferredH264MP4(
+        _ format:
+            VideoDownloadFormat
+    ) -> Bool {
+        let mime =
+            format.mimeType?
+                .lowercased() ??
+            ""
+
+        let codec =
+            format.codec?
+                .lowercased() ??
+            ""
+
+        return mime.contains(
+            "mp4"
+        ) &&
+        (
+            codec.contains(
+                "avc1"
+            ) ||
+            codec.contains(
+                "h264"
+            )
+        )
+    }
+
+    private func bestVideo(
+        _ formats:
+            [VideoDownloadFormat]
+    ) -> VideoDownloadFormat? {
+        formats.max {
+            lhs,
+            rhs in
+
+            let left =
+                (
+                    lhs.height ??
+                    0,
+                    lhs.bitrate ??
+                    lhs.averageBitrate ??
+                    0
+                )
+
+            let right =
+                (
+                    rhs.height ??
+                    0,
+                    rhs.bitrate ??
+                    rhs.averageBitrate ??
+                    0
+                )
+
+            return left <
+                right
+        }
+    }
+
+    private func stream(
+        video:
+            VideoDownloadFormat,
+        url:
+            URL
+    ) -> ResolvedStream {
+        ResolvedStream(
+            relayURL:
+                url,
+            formatID:
+                String(
+                    video.itag
+                ),
+            container:
+                container(
+                    video.mimeType
+                ),
+            videoCodec:
+                video.codec,
+            audioCodec:
+                nil,
+            height:
+                video.height,
+            fps:
+                video.fps
+                    .map(
+                        Double.init
+                    ),
+            bitrate:
+                Double(
+                    video.bitrate ??
+                    video.averageBitrate ??
+                    0
+                )
+        )
+    }
+
+    private func stream(
+        audio:
+            AudioOnlyFormat,
+        url:
+            URL
+    ) -> ResolvedStream {
+        ResolvedStream(
+            relayURL:
+                url,
+            formatID:
+                String(
+                    audio.itag
+                ),
+            container:
+                container(
+                    audio.mimeType
+                ),
+            videoCodec:
+                nil,
+            audioCodec:
+                audio.codec,
+            height:
+                nil,
+            fps:
+                nil,
+            bitrate:
+                Double(
+                    audio.bitrate ??
+                    audio.averageBitrate ??
+                    0
                 )
         )
     }
