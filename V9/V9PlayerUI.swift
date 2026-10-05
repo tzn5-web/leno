@@ -393,14 +393,22 @@ struct V9SettingsSummaryView:
         NavigationStack {
             Form {
                 Section(
-                    "Conexiune"
+                    "YoutubeVcd"
+                ) {
+                    Text(
+                        "Home, Search, canale și rezolvarea streamurilor rulează direct pe iPhone. Playerul persistent, background audio, lock-screen controls și Picture in Picture folosesc același motor MPV."
+                    )
+                }
+
+                Section(
+                    "Fallback opțional"
                 ) {
                     LabeledContent(
-                        "Resolver"
+                        "VcdResolver"
                     ) {
                         Text(
                             endpoint.isEmpty
-                                ? "Neconfigurat"
+                                ? "Dezactivat"
                                 : endpoint
                         )
                         .lineLimit(
@@ -409,17 +417,21 @@ struct V9SettingsSummaryView:
                     }
 
                     Button(
-                        "Configurează VcdResolver"
+                        endpoint.isEmpty
+                            ? "Adaugă fallback resolver"
+                            : "Configurează fallback resolver"
                     ) {
                         openSettings()
                     }
-                }
 
-                Section(
-                    "YoutubeVcd"
-                ) {
                     Text(
-                        "Home, Search, canale, player persistent, background audio, lock-screen controls și Picture in Picture folosesc același motor MPV."
+                        "Resolverul extern nu este necesar pentru folosirea normală. Este utilizat doar dacă rezolvarea nativă a unui videoclip eșuează."
+                    )
+                    .font(
+                        .footnote
+                    )
+                    .foregroundStyle(
+                        .secondary
                     )
                 }
             }
@@ -453,7 +465,7 @@ struct V9ResolverSettingsView:
 
     @State
     private var status =
-        "Introdu adresa resolverului."
+        "Opțional. Lasă gol pentru funcționare complet nativă."
 
     @State
     private var statusOK =
@@ -463,7 +475,7 @@ struct V9ResolverSettingsView:
         NavigationStack {
             Form {
                 Section(
-                    "VcdResolver"
+                    "Fallback VcdResolver"
                 ) {
                     TextField(
                         "http://192.168.1.50:8085",
@@ -524,23 +536,22 @@ struct V9ResolverSettingsView:
                 }
 
                 Section(
-                    "Pe iPhone"
+                    "Când îl folosești"
                 ) {
                     Text(
-                        "Pentru resolverul rulat pe PC folosește IP-ul LAN al PC-ului, nu 127.0.0.1 și nu localhost."
+                        "YoutubeVcd încearcă întotdeauna mai întâi rezolvarea nativă pe iPhone. Acest endpoint este fallback."
                     )
 
                     Text(
-                        "Exemplu: http://192.168.1.50:8085"
+                        "Dacă fallback-ul rulează pe PC, folosește IP-ul LAN al PC-ului, de exemplu http://192.168.1.50:8085."
                     )
                     .font(
                         .caption
-                            .monospaced()
                     )
                 }
             }
             .navigationTitle(
-                "Conectare"
+                "Fallback resolver"
             )
             .toolbar {
                 ToolbarItem(
