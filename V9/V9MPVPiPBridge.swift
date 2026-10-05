@@ -339,6 +339,18 @@ final class V9MPVPiPBridge:
             .invalidatePlaybackState()
     }
 
+    func stopIfActive() {
+        pendingStart =
+            false
+
+        if controller?
+            .isPictureInPictureActive ==
+            true {
+            controller?
+                .stopPictureInPicture()
+        }
+    }
+
     func requestToggle() {
         guard let controller,
               let renderView
