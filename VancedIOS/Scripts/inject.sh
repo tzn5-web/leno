@@ -7,77 +7,67 @@ if [[ $# -lt 2 ]]; then
 fi
 
 BASE_IPA="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
-OUTPUT="$2"
+OUTPUT_DIR="$(cd "$(dirname "$2")" && pwd)"
+OUTPUT="$OUTPUT_DIR/$(basename "$2")"
 BUNDLE_ID="${3:-com.google.ios.youtube}"
 DISPLAY_NAME="${4:-YouTube}"
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+MANIFEST="$ROOT/VancedIOS/manifest.json"
 DIST="${VANCEDIOS_DIST:-$ROOT/dist/vanced-ios}"
+VALIDATOR="$ROOT/VancedIOS/Scripts/validate_ipa.py"
+
+[[ "$BASE_IPA" != "$OUTPUT" ]] || {
+  echo "Input and output IPA paths must be different." >&2
+  exit 2
+}
+
+TESTED_VERSION="$(
+  python3 - "$MANIFEST" <<'PY'
+import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    print(json.load(f)["target"]["tested_youtube_version"])
+PY
+)"
+echo "VancedIOS tested_youtube_version=$TESTED_VERSION"
 
 python3 "$ROOT/VancedIOS/Scripts/audit.py"
 
 for f in youmod.deb ytvideooverlay.deb youpip.deb ytuhd.deb return-youtube-dislikes.deb vancedios-core.deb; do
-  test -f "$DIST/$f" || {
+  [[ -f "$DIST/$f" ]] || {
     echo "Missing $DIST/$f. Run build_patches.sh first." >&2
     exit 1
   }
 done
 
-python3 - "$BASE_IPA" <<'PY'
-import plistlib, sys, zipfile
-p = sys.argv[1]
-with zipfile.ZipFile(p) as z:
-    app_roots = sorted({n.split("/Info.plist")[0] + "/" for n in z.namelist() if n.startswith("Payload/") and n.endswith(".app/Info.plist")})
-    if not app_roots:
-        raise SystemExit("IPA does not contain Payload/*.app/Info.plist")
-    app = app_roots[0]
-    info = plistlib.loads(z.read(app + "Info.plist"))
-    name = info.get("CFBundleDisplayName") or info.get("CFBundleName")
-    bid = info.get("CFBundleIdentifier")
-    ver = info.get("CFBundleShortVersionString")
-    print(f"Host: {name} {ver} ({bid})")
-PY
+# Strict preflight: official host bundle, exact tested version, arm64,
+# UIBackgroundModes audio, and decrypted App Store Mach-O (cryptid == 0).
+python3 "$VALIDATOR" host "$BASE_IPA" --manifest "$MANIFEST"
 
-command -v cyan >/dev/null || {
-  echo "cyan not found. Install the pinned pyzule-rw/cyan tool first." >&2
+command -v cyan >/dev/null 2>&1 || {
+  echo "cyan not found. Install the manifest-pinned pyzule-rw/cyan revision first." >&2
   exit 1
 }
 
-cyan -i "$BASE_IPA" -o "$OUTPUT" -uwef \
-  "$DIST/youmod.deb" \
-  "$DIST/ytvideooverlay.deb" \
-  "$DIST/youpip.deb" \
-  "$DIST/ytuhd.deb" \
-  "$DIST/return-youtube-dislikes.deb" \
-  "$DIST/vancedios-core.deb" \
-  -b "$BUNDLE_ID" \
-  -n "$DISPLAY_NAME"
+rm -f "$OUTPUT"
+cleanup_failed_output() {
+  local rc=$?
+  if [[ $rc -ne 0 ]]; then
+    rm -f "$OUTPUT"
+  fi
+  exit "$rc"
+}
+trap cleanup_failed_output EXIT
 
-python3 - "$OUTPUT" <<'PY'
-import plistlib, sys, zipfile
-p = sys.argv[1]
-with zipfile.ZipFile(p) as z:
-    app_roots = sorted({n.split("/Info.plist")[0] + "/" for n in z.namelist() if n.startswith("Payload/") and n.endswith(".app/Info.plist")})
-    if not app_roots:
-        raise SystemExit("Output IPA missing Payload/*.app/Info.plist")
-    app = app_roots[0]
-    info = plistlib.loads(z.read(app + "Info.plist"))
-    names = [n.lower() for n in z.namelist()]
-    groups = {
-        "YouMod": ("youmod",),
-        "YTVideoOverlay": ("ytvideooverlay",),
-        "YouPiP": ("youpip",),
-        "YTUHD": ("ytuhd",),
-        "ReturnYouTubeDislikes": ("youtubedislikes", "return-youtube-dislikes", "ryd"),
-        "VancedIOSCore": ("vancedioscore",),
-    }
-    missing=[]
-    for label, needles in groups.items():
-        if not any(any(needle in name for needle in needles) for name in names):
-            missing.append(label)
-    if missing:
-        raise SystemExit("Injected payload missing: " + ", ".join(missing))
-    print("Output bundle:", info.get("CFBundleIdentifier"))
-    print("Output name:", info.get("CFBundleDisplayName") or info.get("CFBundleName"))
-    print("Injected tweak layers: OK")
-PY
+cyan -i "$BASE_IPA" -o "$OUTPUT" -uwef   "$DIST/youmod.deb"   "$DIST/ytvideooverlay.deb"   "$DIST/youpip.deb"   "$DIST/ytuhd.deb"   "$DIST/return-youtube-dislikes.deb"   "$DIST/vancedios-core.deb"   -b "$BUNDLE_ID"   -n "$DISPLAY_NAME"
+
+[[ -s "$OUTPUT" ]] || {
+  echo "cyan returned without producing a non-empty output IPA." >&2
+  exit 1
+}
+
+# Strict postflight verifies exact injected dylibs and LC_LOAD_DYLIB entries.
+python3 "$VALIDATOR" output "$OUTPUT"   --manifest "$MANIFEST"   --bundle-id "$BUNDLE_ID"   --display-name "$DISPLAY_NAME"
+
+trap - EXIT
+echo "VancedIOS injection: PASS"

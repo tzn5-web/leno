@@ -4,7 +4,7 @@
 #import <objc/runtime.h>
 
 static NSString * const VIOProfileVersionKey = @"VancedIOSProfileVersion";
-static NSString * const VIOProfileVersion = @"2";
+static NSString * const VIOProfileVersion = @"3";
 
 static NSDictionary<NSString *, id> *VIOVancedDefaults(void) {
     return @{
@@ -14,6 +14,13 @@ static NSDictionary<NSString *, id> *VIOVancedDefaults(void) {
         @"YouModHideAreYouThereDialog": @YES,
         @"YouModDisableHints": @YES,
         @"YouModFixPlaybackIssues": @YES,
+
+        // YouMod persists user changes to these settings. Zero means no forced
+        // quality/speed on first launch while retaining persistent controls.
+        @"YouModWifiQualityIndex": @0,
+        @"YouModCellQualityIndex": @0,
+        @"YouModLowPowerQualityIndex": @0,
+        @"YouModAutoSpeedIndex": @0,
 
         // Vanced-like player conveniences.
         @"YouModTapToSeek": @YES,
@@ -27,8 +34,7 @@ static NSDictionary<NSString *, id> *VIOVancedDefaults(void) {
         @"YouModHidePaidPromoOverlay": @YES,
         @"YouModHideSurveys": @YES,
 
-        // SponsorBlock. YouMod itself owns segment fetching and category
-        // defaults; sponsor is AutoSkip by default upstream.
+        // SponsorBlock. YouMod owns segment fetching and category behavior.
         @"YouModSBEnabled": @YES,
         @"YouModSBShowButton": @YES,
         @"YouModSBShowNotifications": @YES,
@@ -71,8 +77,8 @@ static void VIORegisterDefaults(void) {
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     [defaults registerDefaults:VIOVancedDefaults()];
 
-    // Marker is diagnostic only. Registered defaults never overwrite explicit
-    // choices the user later makes in YouMod/YouPiP settings.
+    // Diagnostic marker only. Registered defaults do not overwrite explicit
+    // choices later made in YouMod/YouPiP settings.
     [defaults setObject:VIOProfileVersion forKey:VIOProfileVersionKey];
 }
 
@@ -117,8 +123,8 @@ didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
 
     BOOL result = %orig(application, launchOptions);
 
-    // Run after YouTube and injected dylibs have finished their launch-time
-    // constructors. This is diagnostic only and does not block launch.
+    // Diagnostic only. Playback, lock-screen controls, background lifecycle
+    // and PiP remain owned by YouTube plus the pinned feature tweaks.
     dispatch_async(dispatch_get_main_queue(), ^{
         VIOLogRuntimeStatus();
     });

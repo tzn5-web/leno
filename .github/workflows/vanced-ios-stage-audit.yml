@@ -1,23 +1,29 @@
-name: VancedIOS Patch Build
+name: VancedIOS Stage Audit
 
 on:
   push:
     branches:
+      - vanced-ios-stage-audit
+    paths:
+      - "VancedIOS/**"
+      - ".github/workflows/vanced-ios-*.yml"
+  pull_request:
+    branches:
       - vanced-ios-patcher
     paths:
       - "VancedIOS/**"
-      - ".github/workflows/vanced-ios-build.yml"
+      - ".github/workflows/vanced-ios-*.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: vanced-ios-patches-${{ github.ref }}
+  group: vanced-ios-stage-audit-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build:
+  audit:
     runs-on: macos-latest
     timeout-minutes: 45
 
@@ -28,29 +34,17 @@ jobs:
       - name: Install build dependencies
         run: brew install make ldid dpkg
 
-      - name: Run exhaustive hostless stage audit and build
+      - name: Run exhaustive stage runner
         run: |
           set -euo pipefail
           python3 VancedIOS/Scripts/stage_runner.py \
             --build \
             --report-dir artifacts/vanced-ios-stage-audit
 
-      - name: Upload patch bundle
-        if: success()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: VancedIOS-patch-bundle
-          path: |
-            dist/vanced-ios/*.deb
-            artifacts/vanced-ios-stage-audit/SHA256SUMS
-            VancedIOS/manifest.json
-            VancedIOS/README.md
-          if-no-files-found: error
-
       - name: Upload audit evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: VancedIOS-stage-audit
+          name: VancedIOS-stage-audit-evidence
           path: artifacts/vanced-ios-stage-audit/
           if-no-files-found: warn

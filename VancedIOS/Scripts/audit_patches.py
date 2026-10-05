@@ -19,7 +19,7 @@ def read(rel: str) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
-def require(haystack: str, needles: list[str], label: str) -> None:
+def require_all(haystack: str, needles: list[str], label: str) -> None:
     for needle in needles:
         if needle not in haystack:
             errors.append(f"{label} missing invariant: {needle}")
@@ -29,6 +29,10 @@ ads = read("YouMod/Files/Ads.x")
 background = read("YouMod/Files/Others.x")
 sponsor = read("YouMod/Files/SponsorBlock.x")
 sideload = read("YouMod/Files/Sideloading.x")
+headers = read("YouMod/Files/Headers.h")
+settings = read("YouMod/Files/Settings.x")
+player = read("YouMod/Files/Player.x")
+shorts = read("YouMod/Files/Shorts.x")
 pip_header = read("YouPiP/Header.h")
 pip_tweak = read("YouPiP/Tweak.x")
 overlay_makefile = read("YTVideoOverlay/Makefile")
@@ -37,7 +41,7 @@ uhd_makefile = read("YTUHD/Makefile")
 uhd_tweak = read("YTUHD/Tweak.xm")
 ryd_makefile = read("Return-YouTube-Dislikes/Makefile")
 
-require(
+require_all(
     ads,
     [
         "playerAdsArray",
@@ -48,7 +52,7 @@ require(
     ],
     "YouMod ad layer",
 )
-require(
+require_all(
     background,
     [
         "playableInBackground",
@@ -58,7 +62,7 @@ require(
     ],
     "YouMod background layer",
 )
-require(
+require_all(
     sponsor,
     [
         "fetchSegmentsForVideoID",
@@ -67,7 +71,7 @@ require(
     ],
     "YouMod SponsorBlock layer",
 )
-require(
+require_all(
     sideload,
     [
         "SSOKeychainHelper",
@@ -79,15 +83,51 @@ require(
     ],
     "YouMod sideload/account compatibility layer",
 )
-require(
+require_all(
+    headers,
+    [
+        '#define BackgroundPlayback @"YouModEnablesBackgroundPlayback"',
+        '#define SBEnabled @"YouModSBEnabled"',
+        '#define SBShowButton @"YouModSBShowButton"',
+        '#define WifiQualityIndex @"YouModWifiQualityIndex"',
+        '#define CellQualityIndex @"YouModCellQualityIndex"',
+        '#define LowPowerQualityIndex @"YouModLowPowerQualityIndex"',
+        '#define AutoSpeedIndex @"YouModAutoSpeedIndex"',
+        '#define FixPlaybackIssues @"YouModFixPlaybackIssues"',
+    ],
+    "YouMod preference ABI",
+)
+require_all(
+    settings + player,
+    [
+        "WifiQualityIndex",
+        "CellQualityIndex",
+        "LowPowerQualityIndex",
+        "YouModAutoQuality",
+        "AutoSpeedIndex",
+        "YouModSetAutoSpeed",
+    ],
+    "YouMod persistent quality/speed layer",
+)
+require_all(
+    shorts,
+    [
+        "enableShortsVideoQualityPicker",
+        "AutoSpeedIndex",
+        "YouModSetAutoSpeed",
+    ],
+    "YouMod Shorts quality/speed layer",
+)
+require_all(
     pip_header + pip_tweak,
     [
-        "YouPiPEnabled",
+        '#define EnabledKey @"YouPiPEnabled"',
         "AVPictureInPicture",
+        "registerDefaults",
     ],
     "YouPiP layer",
 )
-require(
+require_all(
     overlay_makefile + overlay_tweak,
     [
         "YTVideoOverlay",
@@ -95,7 +135,7 @@ require(
     ],
     "YTVideoOverlay layer",
 )
-require(
+require_all(
     uhd_makefile + uhd_tweak,
     [
         "TWEAK_NAME = YTUHD",
@@ -106,7 +146,7 @@ require(
     ],
     "YTUHD quality layer",
 )
-require(
+require_all(
     ryd_makefile,
     ["YouTubeDislikesReturn"],
     "Return YouTube Dislikes layer",
@@ -123,7 +163,9 @@ print(" - ad response/feed/player hooks present")
 print(" - background playback hooks present")
 print(" - SponsorBlock runtime hooks present")
 print(" - sideload Google/keychain compatibility hooks present")
-print(" - native PiP patch present")
+print(" - preference ABI matches VancedIOSCore defaults")
+print(" - persistent quality/speed and Shorts hooks present")
+print(" - native PiP patch present and enabled by the expected key")
 print(" - shared YouTube player overlay layer present")
 print(" - 2K/4K YTUHD quality layer present")
 print(" - dislike module present")
