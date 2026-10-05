@@ -13,6 +13,7 @@ static IMP gRYDOriginalButtonDidMoveToWindow = NULL;
 static IMP gRYDOriginalButtonLayoutSubviews = NULL;
 static IMP gRYDOriginalReelUpdate = NULL;
 static NSString *gRYDCurrentVideoID = nil;
+static NSDate *gRYDBackoffUntil = nil;
 
 static NSCache *VRYDCache(void) {
     static NSCache *cache;
@@ -94,6 +95,10 @@ static NSString *VRYDCompactCount(unsigned long long value) {
 
 static void VRYDFetch(NSString *videoID, void (^completion)(NSString *count)) {
     if (videoID.length == 0) { completion(nil); return; }
+    if (gRYDBackoffUntil && [gRYDBackoffUntil timeIntervalSinceNow] > 0) {
+        completion(nil);
+        return;
+    }
     NSString *cached = [VRYDCache() objectForKey:videoID];
     if (cached) { completion(cached); return; }
 
@@ -125,7 +130,12 @@ static void VRYDFetch(NSString *videoID, void (^completion)(NSString *count)) {
         completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         NSString *formatted = nil;
         NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
-        if (!error && http.statusCode == 200 && data.length > 0) {
+        if (!error && http.statusCode == 429) {
+            NSTimeInterval delay = 60.0;
+            NSString *retryAfter = [http.allHeaderFields[@"Retry-After"] description];
+            if (retryAfter.doubleValue > 0) delay = MIN(MAX(retryAfter.doubleValue, 5.0), 3600.0);
+            gRYDBackoffUntil = [NSDate dateWithTimeIntervalSinceNow:delay];
+        } else if (!error && http.statusCode == 200 && data.length > 0) {
             id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
             if ([json isKindOfClass:[NSDictionary class]]) {
                 NSNumber *dislikes = ((NSDictionary *)json)[@"dislikes"];
