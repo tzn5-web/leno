@@ -289,7 +289,7 @@ def audit_ipa(audit: Audit, raw_path: str) -> None:
                         errors="ignore",
                         stderr=subprocess.DEVNULL,
                     )
-                    cryptids = re.findall(r"\\bcryptid\\s+(\\d+)", load_commands)
+                    cryptids = re.findall(r"\bcryptid\s+(\d+)", load_commands)
                     if cryptids:
                         audit.info["cryptids"] = cryptids
                         audit.check(all(value == "0" for value in cryptids),
