@@ -66,6 +66,9 @@ jobs:
           Copy-Item './Phaser360/bus-mod/scripts/INSTALL_P360_BUS_MOD.ps1' $stage -Force
           Copy-Item './Phaser360/bus-mod/scripts/ROLLBACK_P360_BUS_MOD.ps1' $stage -Force
           Copy-Item './Phaser360/bus-mod/scripts/VERIFY_P360_BUS_MOD.ps1' $stage -Force
+          Copy-Item './Phaser360/bus-mod/scripts/START_INSTALL_P360_BUS_MOD.cmd' $stage -Force
+          Copy-Item './Phaser360/bus-mod/scripts/START_VERIFY_P360_BUS_MOD.cmd' $stage -Force
+          Copy-Item './Phaser360/bus-mod/scripts/START_ROLLBACK_P360_BUS_MOD.cmd' $stage -Force
           Copy-Item './Phaser360/bus-mod/README.md' $stage -Force
           Copy-Item './Phaser360/bus-mod/PATCH_APPLIED.diff' $stage -Force
 
