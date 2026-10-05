@@ -1,7 +1,7 @@
 #include <ntddk.h>
 #include <wdf.h>
-#include <hdaudio.h>
 #include <initguid.h>
+#include <hdaudio.h>
 
 #define IOCTL_P360_HDA_STATUS CTL_CODE(FILE_DEVICE_UNKNOWN,0x821,METHOD_BUFFERED,FILE_READ_ACCESS)
 #define IOCTL_P360_HDA_READ_VENDOR CTL_CODE(FILE_DEVICE_UNKNOWN,0x822,METHOD_BUFFERED,FILE_READ_ACCESS|FILE_WRITE_ACCESS)
