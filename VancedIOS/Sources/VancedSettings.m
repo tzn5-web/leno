@@ -10,6 +10,7 @@ static NSString * const kRememberSpeedKey = @"VancedRememberPlaybackSpeed";
 static NSString * const kRememberQualityKey = @"VancedRememberVideoQuality";
 static NSString * const kHideShortsKey = @"VancedHideShortsInFeeds";
 static NSString * const kSponsorBlockEnabledKey = @"VancedSponsorBlockEnabled";
+static NSString * const kRYDEnabledKey = @"VancedReturnYouTubeDislikeEnabled";
 
 static IMP gOriginalSettingsCategoryOrder = NULL;
 static IMP gOriginalUpdateSection = NULL;
@@ -118,7 +119,11 @@ static void VRenderVancedSettings(id manager) {
                                   @"Automatically skip sponsor, self-promotion, interaction, intro and outro segments.",
                                   kSponsorBlockEnabledKey);
     if (hideShorts) [items addObject:hideShorts];
+    id ryd = VSwitchItem(@"Return YouTube Dislike",
+                         @"Show dislike counts using the Return YouTube Dislike public API.",
+                         kRYDEnabledKey);
     if (sponsorBlock) [items addObject:sponsorBlock];
+    if (ryd) [items addObject:ryd];
     if (items.count == 0) return;
 
     SEL newSelector = sel_registerName("setSectionItems:forCategory:title:icon:titleDescription:headerHidden:");
