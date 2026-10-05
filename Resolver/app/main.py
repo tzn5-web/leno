@@ -25,6 +25,8 @@ PUBLIC_BASE_URL = os.getenv("VCD_PUBLIC_BASE_URL", "").strip().rstrip("/")
 COOKIES_FILE = os.getenv("VCD_COOKIES_FILE", "").strip()
 MAX_RELAY_ENTRIES = max(32, int(os.getenv("VCD_MAX_RELAY_ENTRIES", "1024")))
 MAX_CONCURRENT_EXTRACTS = max(1, int(os.getenv("VCD_MAX_CONCURRENT_EXTRACTS", "2")))
+MAX_VIDEO_HEIGHT = max(360, int(os.getenv("VCD_MAX_VIDEO_HEIGHT", "1080")))
+MAX_VIDEO_FPS = max(24.0, float(os.getenv("VCD_MAX_VIDEO_FPS", "30")))
 UPSTREAM_READ_TIMEOUT = max(10.0, float(os.getenv("VCD_UPSTREAM_READ_TIMEOUT", "45")))
 VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
 REFRESHABLE_UPSTREAM_STATUS = {403, 404, 410}
@@ -203,6 +205,28 @@ def choose_formats(
         and f.get("acodec") in (None, "none")
     ]
 
+    def constrain_video(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not candidates:
+            return candidates
+
+        within_height = [
+            f for f in candidates
+            if int(f.get("height") or 0) <= MAX_VIDEO_HEIGHT
+        ]
+        if within_height:
+            candidates = within_height
+
+        within_fps = [
+            f for f in candidates
+            if float(f.get("fps") or 0) <= MAX_VIDEO_FPS
+        ]
+        if within_fps:
+            candidates = within_fps
+
+        return candidates
+
+    video_only = constrain_video(video_only)
+
     audio_only = [
         f for f in formats
         if f.get("acodec") not in (None, "none")
@@ -214,6 +238,7 @@ def choose_formats(
         if f.get("vcodec") not in (None, "none")
         and f.get("acodec") not in (None, "none")
     ]
+    muxed = constrain_video(muxed)
 
     def video_score(f: dict[str, Any]) -> tuple[int, int, int, float]:
         height = int(f.get("height") or 0)
@@ -356,9 +381,15 @@ async def extract_video(video_id: str) -> dict[str, Any]:
                 proc.communicate(),
                 timeout=YTDLP_TIMEOUT,
             )
+        except asyncio.CancelledError:
+            if proc.returncode is None:
+                proc.kill()
+                await proc.wait()
+            raise
         except TimeoutError:
-            proc.kill()
-            await proc.wait()
+            if proc.returncode is None:
+                proc.kill()
+                await proc.wait()
             raise HTTPException(status_code=504, detail="yt-dlp timeout")
 
         if proc.returncode != 0:
@@ -435,6 +466,11 @@ async def send_upstream(
     include_conditionals: bool = True,
 ) -> tuple[httpx.AsyncClient, httpx.Response]:
     headers = dict(entry.headers)
+
+    # Range semantics and Content-Length must describe the original media
+    # bytes, not a transparently compressed HTTP representation.
+    headers["Accept-Encoding"] = "identity"
+
     headers.update(
         forwarded_request_headers(
             request,
@@ -485,6 +521,10 @@ async def close_upstream(
 
 @app.get("/health")
 async def health() -> dict[str, Any]:
+    async with relay_lock:
+        cleanup_entries()
+        active_relay_entries = len(relay_entries)
+
     return {
         "ok": True,
         "version": APP_VERSION,
@@ -495,7 +535,9 @@ async def health() -> dict[str, Any]:
         "public_base_configured": bool(PUBLIC_BASE_URL),
         "max_relay_entries": MAX_RELAY_ENTRIES,
         "max_concurrent_extracts": MAX_CONCURRENT_EXTRACTS,
-        "active_relay_entries": len(relay_entries),
+        "max_video_height": MAX_VIDEO_HEIGHT,
+        "max_video_fps": MAX_VIDEO_FPS,
+        "active_relay_entries": active_relay_entries,
     }
 
 
