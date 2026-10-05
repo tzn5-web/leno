@@ -1,10 +1,10 @@
-; PHASER360 ADSP interface diagnostic-only function driver
+; PHASER360 ADSP passive IRQ diagnostic function driver
 [Version]
 Signature="$WINDOWS NT$"
 Class=System
 ClassGuid={4d36e97d-e325-11ce-bfc1-08002be10318}
 Provider=%Provider%
-DriverVer=10/06/2026,1.0.0.0
+DriverVer=10/06/2026,1.1.0.0
 CatalogFile=P360AdspProbe.cat
 PnpLockdown=1
 
@@ -42,6 +42,6 @@ ServiceBinary=%12%\P360AdspProbe.sys
 
 [Strings]
 Provider="PHASER360 Project"
-Device="PHASER360 ADSP Interface Probe (no DSP boot)"
-Service="PHASER360 ADSP Diagnostic"
-Disk="PHASER360 Diagnostic Driver Disk"
+Device="PHASER360 ADSP Passive IRQ Probe"
+Service="PHASER360 ADSP Passive IRQ Diagnostic"
+Disk="PHASER360 Passive IRQ Diagnostic Driver Disk"
