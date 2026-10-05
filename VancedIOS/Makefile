@@ -2,6 +2,15 @@ ARCHS = arm64
 TARGET = iphone:clang:latest:15.0
 INSTALL_TARGET_PROCESSES = YouTube
 
+ifeq ($(PACKAGE_IPA),1)
+MODULES = jailed
+DISPLAY_NAME = YouTube
+BUNDLE_ID = com.google.ios.youtube
+VancedCore_IPA = ./tmp/Payload/YouTube.app
+REMOVE_EXTENSIONS = 1
+CODESIGN_IPA = 0
+endif
+
 include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = VancedCore
