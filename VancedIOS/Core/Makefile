@@ -9,6 +9,4 @@ TWEAK_NAME = VancedIOSCore
 VancedIOSCore_FILES = VancedIOSCore.xm
 VancedIOSCore_FRAMEWORKS = UIKit Foundation
 VancedIOSCore_CFLAGS = -fobjc-arc -Wall -Wextra
-VancedIOSCore_FILTER = YouTube
-
 include $(THEOS_MAKE_PATH)/tweak.mk
