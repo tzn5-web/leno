@@ -37,10 +37,63 @@ actor V9NativePlaybackWorker
     {
         await ensureVisitorData()
 
-        // First choice: current TVHTML5 Innertube player JSON. yt-dlp's
-        // current policy does not mark the plain TVHTML5 client as requiring
-        // a GVS PO token. Prefer HLS whenever YouTube exposes it; MPV can
-        // consume the manifest directly and we avoid fragile direct GVS URLs.
+        var watchInfo:
+            VideoInfosResponse?
+
+        var watchPlayer:
+            PlayerProcessing.Player?
+
+        // First obtain the real /watch page. This gives us the current
+        // base.js player so both signatureCipher and n can be processed with
+        // the exact JavaScript YouTube is serving right now.
+        do {
+            var info =
+                try await VideoInfosResponse
+                    .sendThrowingRequest(
+                        youtubeModel:
+                            youtube,
+                        data:
+                            [
+                                .query:
+                                    videoID
+                            ]
+                    )
+
+            watchPlayer =
+                info.player
+
+            // VideoInfosResponse.decodeData already decodes n in the watch
+            // HLS URL. Prefer that PO-token-light path immediately when it is
+            // available.
+            if let resolved =
+                    try? makeResolvedVideo(
+                        videoID:
+                            videoID,
+                        info:
+                            info,
+                        adaptiveFormats:
+                            [],
+                        progressiveFormats:
+                            []
+                    ) {
+                return resolved
+            }
+
+            watchInfo =
+                info
+        } catch {
+            watchInfo =
+                nil
+
+            watchPlayer =
+                nil
+        }
+
+        // Next ask the current TVHTML5 Innertube client for streamingData.
+        // Plain TVHTML5 is intentionally used instead of TVHTML5_SIMPLY:
+        // current yt-dlp policy does not mark plain TVHTML5 GVS as requiring
+        // a PO token. If we got the watch-page player above, apply it to the
+        // TV URLs as well so n/signatureCipher are not left raw.
         do {
             let response =
                 try await VideoInfosWithDownloadFormatsResponse
@@ -54,42 +107,65 @@ actor V9NativePlaybackWorker
                             ]
                     )
 
-            if let resolved =
-                    try? makeResolvedVideo(
-                        videoID:
-                            videoID,
-                        info:
-                            response
-                                .videoInfos,
-                        adaptiveFormats:
-                            response
-                                .downloadFormats,
-                        progressiveFormats:
-                            response
-                                .defaultFormats
-                    ) {
-                return resolved
+            var info =
+                response
+                    .videoInfos
+
+            var adaptiveFormats =
+                response
+                    .downloadFormats
+
+            var progressiveFormats =
+                response
+                    .defaultFormats
+
+            if let watchPlayer {
+                if let hls =
+                        info.streamingURL {
+                    info.streamingURL =
+                        watchPlayer
+                            .decodeNParameterInHLSManifestURL(
+                                hls
+                                    .absoluteString
+                            )
+                }
+
+                try processFormats(
+                    &adaptiveFormats,
+                    player:
+                        watchPlayer
+                )
+
+                try processFormats(
+                    &progressiveFormats,
+                    player:
+                        watchPlayer
+                )
             }
+
+            return try makeResolvedVideo(
+                videoID:
+                    videoID,
+                info:
+                    info,
+                adaptiveFormats:
+                    adaptiveFormats,
+                progressiveFormats:
+                    progressiveFormats
+            )
         } catch {
-            // Fall through to the watch-page/player.js path.
+            // If TV extraction itself fails, still use the watch-page formats
+            // after deciphering them with the player that came from that same
+            // page. WEB direct GVS can be stricter than HLS, so this remains
+            // the last on-device path before the optional external resolver.
         }
 
-        // Second choice: the real /watch page. VideoInfosResponse.decodeData
-        // extracts the current base.js player and builds the JavaScriptCore
-        // signature/n solver. This deliberately avoids YouTubeKit's iOS
-        // Innertube format request because current iOS GVS URLs may require
-        // a PO token.
-        let info =
-            try await VideoInfosResponse
-                .sendThrowingRequest(
-                    youtubeModel:
-                        youtube,
-                    data:
-                        [
-                            .query:
-                                videoID
-                        ]
-                )
+        guard var info =
+                watchInfo
+        else {
+            throw PlaybackError
+                .noPlayableFormats
+        }
 
         var adaptiveFormats =
             info.downloadFormats
@@ -97,44 +173,27 @@ actor V9NativePlaybackWorker
         var progressiveFormats =
             info.defaultFormats
 
-        if let player =
-                info.player {
-            for index in
-                adaptiveFormats.indices {
-                var format =
-                    adaptiveFormats[
-                        index
-                    ]
+        if let watchPlayer {
+            try processFormats(
+                &adaptiveFormats,
+                player:
+                    watchPlayer
+            )
 
-                try player
-                    .processDownloadFormatURL(
-                        item:
-                            &format
-                    )
+            try processFormats(
+                &progressiveFormats,
+                player:
+                    watchPlayer
+            )
 
-                adaptiveFormats[
-                    index
-                ] =
-                    format
-            }
-
-            for index in
-                progressiveFormats.indices {
-                var format =
-                    progressiveFormats[
-                        index
-                    ]
-
-                try player
-                    .processDownloadFormatURL(
-                        item:
-                            &format
-                    )
-
-                progressiveFormats[
-                    index
-                ] =
-                    format
+            if let hls =
+                    info.streamingURL {
+                info.streamingURL =
+                    watchPlayer
+                        .decodeNParameterInHLSManifestURL(
+                            hls
+                                .absoluteString
+                        )
             }
         }
 
@@ -148,6 +207,32 @@ actor V9NativePlaybackWorker
             progressiveFormats:
                 progressiveFormats
         )
+    }
+
+    private func processFormats(
+        _ formats:
+            inout [any AdaptiveDownloadFormat],
+        player:
+            PlayerProcessing.Player
+    ) throws {
+        for index in
+            formats.indices {
+            var format =
+                formats[
+                    index
+                ]
+
+            try player
+                .processDownloadFormatURL(
+                    item:
+                        &format
+                )
+
+            formats[
+                index
+            ] =
+                format
+        }
     }
 
     private func makeResolvedVideo(
