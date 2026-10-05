@@ -180,11 +180,20 @@ actor VcdResolverClient {
                     bearerToken
             )
 
-        return try decoder.decode(
-            BrowseResponse.self,
-            from:
-                data
+        let result =
+            try decoder.decode(
+                BrowseResponse.self,
+                from:
+                    data
+            )
+
+        try validateBrowseResponse(
+            result,
+            endpointBase:
+                base
         )
+
+        return result
     }
 
     func search(
@@ -243,11 +252,20 @@ actor VcdResolverClient {
                     bearerToken
             )
 
-        return try decoder.decode(
-            BrowseResponse.self,
-            from:
-                data
+        let result =
+            try decoder.decode(
+                BrowseResponse.self,
+                from:
+                    data
+            )
+
+        try validateBrowseResponse(
+            result,
+            endpointBase:
+                base
         )
+
+        return result
     }
 
     func channel(
@@ -287,11 +305,20 @@ actor VcdResolverClient {
                     bearerToken
             )
 
-        return try decoder.decode(
-            BrowseResponse.self,
-            from:
-                data
+        let result =
+            try decoder.decode(
+                BrowseResponse.self,
+                from:
+                    data
+            )
+
+        try validateBrowseResponse(
+            result,
+            endpointBase:
+                base
         )
+
+        return result
     }
 
     func resolve(
@@ -434,6 +461,60 @@ actor VcdResolverClient {
         }
 
         return url
+    }
+
+    private func validateBrowseResponse(
+        _ response:
+            BrowseResponse,
+        endpointBase:
+            URL
+    ) throws {
+        for item in response.items {
+            guard item.id.count ==
+                    11,
+                  item.id.allSatisfy({
+                      $0.isLetter ||
+                      $0.isNumber ||
+                      $0 == "_" ||
+                      $0 == "-"
+                  })
+            else {
+                throw ResolverClientError
+                    .server(
+                        "Resolverul a returnat un video ID invalid."
+                    )
+            }
+
+            let thumbnail =
+                item.thumbnailURL
+
+            guard
+                let scheme =
+                    thumbnail.scheme?
+                        .lowercased(),
+                scheme == "http" ||
+                scheme == "https",
+                sameOrigin(
+                    thumbnail,
+                    endpointBase
+                ),
+                thumbnail.query == nil,
+                thumbnail.fragment == nil,
+                thumbnail.path ==
+                    "/v1/thumb/\(item.id)"
+            else {
+                throw ResolverClientError
+                    .relayOriginMismatch
+            }
+
+            if endpointBase.scheme?
+                    .lowercased() ==
+                    "https",
+               scheme != "https" {
+                throw ResolverClientError
+                    .insecureRelayTransport
+            }
+        }
     }
 
     private func validateResolvedVideo(
