@@ -10,6 +10,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urljoin
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
@@ -185,6 +186,33 @@ async def create_relay_entry(
     return token
 
 
+def validated_upstream_url(raw_url: str) -> str:
+    try:
+        parsed = httpx.URL(raw_url)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="invalid upstream media URL",
+        ) from exc
+
+    scheme = str(parsed.scheme).lower()
+    host = str(parsed.host or "")
+
+    if scheme not in {"http", "https"} or not host:
+        raise HTTPException(
+            status_code=502,
+            detail="unsupported upstream media URL",
+        )
+
+    if is_local_network_host(host):
+        raise HTTPException(
+            status_code=502,
+            detail="unsafe upstream media destination",
+        )
+
+    return str(parsed)
+
+
 def is_relayable_format(format_info: dict[str, Any]) -> bool:
     raw_url = str(format_info.get("url") or "")
     if not raw_url:
@@ -195,19 +223,8 @@ def is_relayable_format(format_info: dict[str, Any]) -> bool:
         return False
 
     try:
-        parsed = httpx.URL(raw_url)
-    except Exception:
-        return False
-
-    scheme = str(parsed.scheme).lower()
-    host = str(parsed.host or "")
-
-    if scheme not in {"http", "https"} or not host:
-        return False
-
-    # yt-dlp is the only source of upstream URLs, but never let a malformed
-    # extraction turn the relay into a local-network/loopback fetcher.
-    if is_local_network_host(host):
+        validated_upstream_url(raw_url)
+    except HTTPException:
         return False
 
     # Fragment/manifest protocols need URL rewriting for every nested segment.
@@ -493,35 +510,65 @@ async def send_upstream(
     *,
     include_conditionals: bool = True,
 ) -> tuple[httpx.AsyncClient, httpx.Response]:
-    headers = dict(entry.headers)
-
-    # Range semantics and Content-Length must describe the original media
-    # bytes, not a transparently compressed HTTP representation.
-    headers["Accept-Encoding"] = "identity"
-
-    headers.update(
-        forwarded_request_headers(
-            request,
-            include_conditionals=include_conditionals,
-        )
+    forwarded = forwarded_request_headers(
+        request,
+        include_conditionals=include_conditionals,
     )
 
     client = httpx.AsyncClient(
-        follow_redirects=True,
+        follow_redirects=False,
         timeout=httpx.Timeout(
             30.0,
             read=UPSTREAM_READ_TIMEOUT,
         ),
     )
 
+    current_url = validated_upstream_url(entry.url)
+    original_host = str(httpx.URL(current_url).host or "").lower()
+
     try:
-        upstream = await client.send(
-            client.build_request(
-                request.method,
-                entry.url,
-                headers=headers,
-            ),
-            stream=True,
+        for _ in range(6):
+            headers = dict(entry.headers)
+
+            # Range semantics and Content-Length must describe the original
+            # media bytes, not a transparently compressed representation.
+            headers["Accept-Encoding"] = "identity"
+            headers.update(forwarded)
+
+            current_host = str(httpx.URL(current_url).host or "").lower()
+            if current_host != original_host:
+                for key in list(headers):
+                    if key.lower() == "cookie":
+                        headers.pop(key, None)
+
+            upstream = await client.send(
+                client.build_request(
+                    request.method,
+                    current_url,
+                    headers=headers,
+                ),
+                stream=True,
+            )
+
+            if upstream.status_code not in {301, 302, 303, 307, 308}:
+                return client, upstream
+
+            location = upstream.headers.get("location")
+            if not location:
+                return client, upstream
+
+            next_url = urljoin(
+                str(upstream.url),
+                location,
+            )
+
+            await upstream.aclose()
+            current_url = validated_upstream_url(next_url)
+
+        await client.aclose()
+        raise HTTPException(
+            status_code=502,
+            detail="too many upstream media redirects",
         )
     except httpx.TimeoutException as exc:
         await client.aclose()
@@ -535,8 +582,9 @@ async def send_upstream(
             status_code=502,
             detail="upstream media transport failed",
         ) from exc
-
-    return client, upstream
+    except HTTPException:
+        await client.aclose()
+        raise
 
 
 async def close_upstream(
