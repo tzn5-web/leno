@@ -323,6 +323,10 @@ struct V9MediaLabView:
                 .accessibilityLabel(
                     "Picture in Picture"
                 )
+                .disabled(
+                    !player
+                        .isPiPPossible
+                )
             }
             .buttonStyle(
                 .bordered
