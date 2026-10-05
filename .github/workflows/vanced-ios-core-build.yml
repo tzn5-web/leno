@@ -33,6 +33,9 @@ jobs:
       - name: Python syntax check
         run: python3 -m py_compile VancedIOS/Scripts/audit.py
 
+      - name: Install Theos signing dependency
+        run: brew install ldid
+
       - name: Build core scaffold
         run: bash VancedIOS/Scripts/build.sh
 
