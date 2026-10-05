@@ -1,4 +1,4 @@
-# VcdResolver V9.2 / resolver 0.3.0
+# VcdResolver V9.2 / resolver 0.3.0-lab
 
 Resolver separat pentru YoutubeVcd V9.2. Extracția YouTube rămâne în afara IPA-ului, iar iPhone-ul primește URL-uri de relay controlate de resolver.
 
@@ -77,6 +77,7 @@ Cookies nu garantează conținutul members-only/age-restricted: unele cazuri You
 - `VCD_COOKIES_FILE`: cale opțională către cookies.txt.
 - `VCD_RELAY_TTL`: TTL relay, implicit 21600 secunde.
 - `VCD_MAX_RELAY_ENTRIES`: implicit 1024.
+- `VCD_MAX_CONCURRENT_EXTRACTS`: numărul maxim de procese yt-dlp simultane, implicit 2.
 - `VCD_UPSTREAM_READ_TIMEOUT`: implicit 45 secunde.
 - `YTDLP_TIMEOUT`: timeout extracție, implicit 90 secunde.
 - `YTDLP_JS_RUNTIME`: implicit deno.
