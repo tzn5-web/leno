@@ -34,15 +34,22 @@ jobs:
             if(!(Test-Path $path)){throw "Missing build output $path"}
             Copy-Item $path $stage
           }
-          Copy-Item 'Phaser360/host-probe/QUERY_PROBE.ps1' $stage
-          Copy-Item 'Phaser360/host-probe/README.md' $stage
+          foreach($name in @(
+            'QUERY_PROBE.ps1','INSTALL_PROBE.ps1','ROLLBACK_PROBE.ps1',
+            'START_INSTALL.cmd','START_QUERY.cmd','START_ROLLBACK.cmd','README.md'
+          )) { Copy-Item (Join-Path 'Phaser360/host-probe' $name) $stage }
       - name: Audit script and target
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
           $t=$null; $e=$null
-          [void][System.Management.Automation.Language.Parser]::ParseFile('P360_ADSP_PROBE_PACKAGE/QUERY_PROBE.ps1',[ref]$t,[ref]$e)
-          if($e.Count){$e | Out-String | Write-Host; throw 'PowerShell 5.1 parser errors'}
+          foreach($file in @('QUERY_PROBE.ps1','INSTALL_PROBE.ps1','ROLLBACK_PROBE.ps1')){
+            $t=$null; $e=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Join-Path 'P360_ADSP_PROBE_PACKAGE' $file),[ref]$t,[ref]$e)
+            if($e.Count){$e | Out-String | Write-Host; throw "PowerShell 5.1 parser errors: $file"}
+            Write-Host "PS5.1 PARSE OK: $file"
+          }
           $inf=Get-Content 'P360_ADSP_PROBE_PACKAGE/P360AdspProbe.inf' -Raw
           if($inf -notmatch 'CSAUDIO\\ADSP&CTLR_VEN_8086&CTLR_DEV_3198') {throw 'Bad hardware ID'}
           Write-Host 'STATIC_GATE=PASS'
