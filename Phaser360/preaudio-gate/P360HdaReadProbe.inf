@@ -1,0 +1,46 @@
+; PHASER360 read-only HDA active IRQ proof driver
+[Version]
+Signature="$WINDOWS NT$"
+Class=System
+ClassGuid={4d36e97d-e325-11ce-bfc1-08002be10318}
+Provider=%Provider%
+DriverVer=10/06/2026,1.0.0.0
+CatalogFile=P360HdaReadProbe.cat
+PnpLockdown=1
+
+[DestinationDirs]
+DriverCopy=12
+[SourceDisksNames]
+1=%Disk%,,,""
+[SourceDisksFiles]
+P360HdaReadProbe.sys=1,,
+
+[Manufacturer]
+%Provider%=Models,NTamd64
+[Models.NTamd64]
+%Device%=Install,HDAUDIO\FUNC_01&VEN_8086&DEV_280D
+
+[Install.NT]
+CopyFiles=DriverCopy
+[Install.NT.Services]
+AddService=P360HdaReadProbe,0x00000002,Service
+[Install.NT.Wdf]
+KmdfService=P360HdaReadProbe,Wdf
+[Wdf]
+KmdfLibraryVersion=1.15
+
+[DriverCopy]
+P360HdaReadProbe.sys
+
+[Service]
+DisplayName=%Svc%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%12%\P360HdaReadProbe.sys
+
+[Strings]
+Provider="PHASER360 Project"
+Device="PHASER360 HDA Read-Only IRQ Probe"
+Svc="PHASER360 HDA Read-Only Diagnostic"
+Disk="PHASER360 HDA Diagnostic Disk"
