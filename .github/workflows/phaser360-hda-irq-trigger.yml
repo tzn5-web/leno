@@ -1,0 +1,122 @@
+name: Build Phaser360 HDA read-only IRQ trigger
+
+on:
+  push:
+    branches:
+      - phaser360-audio-bus-mod
+    paths:
+      - 'Phaser360/hda-irq-trigger/**'
+      - '.github/workflows/phaser360-hda-irq-trigger.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: microsoft/setup-msbuild@v2
+        with:
+          msbuild-architecture: x64
+
+      - name: Build x64 Release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          msbuild 'Phaser360/hda-irq-trigger/P360HdaIrqTrigger.vcxproj' /m /t:Build /p:Configuration=Release /p:Platform=x64 /p:WindowsTargetPlatformVersion=10.0.26100.0 /p:SignMode=Off
+          if($LASTEXITCODE){throw "MSBuild failed: $LASTEXITCODE"}
+
+      - name: Stage package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $dir='Phaser360/hda-irq-trigger/x64/Release'
+          $stage='P360_HDA_IRQ_TRIGGER_PACKAGE'
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          foreach($ext in @('sys','inf')){
+            $p=Join-Path $dir "P360HdaIrqTrigger.$ext"
+            if(!(Test-Path $p)){throw "Missing $p"}
+            Copy-Item $p $stage
+          }
+          foreach($name in @(
+            'INSTALL_HDA_TRIGGER.ps1','ROLLBACK_HDA_TRIGGER.ps1','ACTIVE_IRQ_TEST.ps1',
+            'START_INSTALL.cmd','RUN_ACTIVE_IRQ_TEST.cmd','START_ROLLBACK.cmd','README.md'
+          )) {
+            Copy-Item (Join-Path 'Phaser360/hda-irq-trigger' $name) $stage
+          }
+
+      - name: Static safety audit
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($file in @('INSTALL_HDA_TRIGGER.ps1','ROLLBACK_HDA_TRIGGER.ps1','ACTIVE_IRQ_TEST.ps1')){
+            $t=$null;$e=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Join-Path 'P360_HDA_IRQ_TRIGGER_PACKAGE' $file),[ref]$t,[ref]$e)
+            if($e.Count){$e | Out-String | Write-Host; throw "PowerShell 5.1 parser errors: $file"}
+            Write-Host "PS5.1 PARSE OK: $file"
+          }
+
+          $inf=Get-Content 'P360_HDA_IRQ_TRIGGER_PACKAGE/P360HdaIrqTrigger.inf' -Raw
+          if($inf -notmatch 'HDAUDIO\\FUNC_01&VEN_8086&DEV_280D'){throw 'Target ID missing'}
+
+          $src=Get-Content 'Phaser360/hda-irq-trigger/P360HdaIrqTrigger.c' -Raw
+
+          foreach($required in @(
+            'TransferCodecVerbs',
+            'VerbId = 0xF00',
+            'Data = 0x00',
+            'Node = 0',
+            'GetResourceInformation'
+          )){
+            if($src -notmatch [regex]::Escape($required)){throw "Required fixed read-only path missing: $required"}
+          }
+
+          foreach($forbidden in @(
+            'AllocateRenderDmaEngine\s*\(',
+            'AllocateCaptureDmaEngine\s*\(',
+            'SetDmaEngineState\s*\(',
+            'RegisterEventCallback\s*\(',
+            'MmMapIoSpace\s*\(',
+            'READ_REGISTER_',
+            'WRITE_REGISTER_',
+            'GUID_ADSP_BUS_INTERFACE',
+            'PrepareDSP\s*\(',
+            'TriggerDSP\s*\('
+          )){
+            if($src -match $forbidden){throw "Forbidden operation in HDA trigger: $forbidden"}
+          }
+
+          Write-Host 'STATIC_GATE=PASS_FIXED_HDA_READ_ONLY_VERB'
+
+      - name: Test-sign SYS and CAT
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $stage=(Resolve-Path 'P360_HDA_IRQ_TRIGGER_PACKAGE').Path
+          $kit='C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0'
+          $sign=Join-Path $kit 'x64\signtool.exe'
+          $cat=Join-Path $kit 'x86\Inf2Cat.exe'
+          if(!(Test-Path $sign) -or !(Test-Path $cat)){throw 'WDK signing tools missing'}
+
+          $cert=New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=PHASER360 HDA IRQ Trigger Test' -CertStoreLocation 'Cert:\CurrentUser\My' -KeyExportPolicy Exportable -NotAfter (Get-Date).AddYears(2)
+          Export-Certificate -Cert $cert -FilePath (Join-Path $stage 'P360_HDA_TRIGGER_TEST.cer') | Out-Null
+
+          & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $stage 'P360HdaIrqTrigger.sys')
+          if($LASTEXITCODE){throw 'SYS sign failed'}
+
+          & $cat /driver:$stage /os:10_X64
+          if($LASTEXITCODE){throw "Inf2Cat failed: $LASTEXITCODE"}
+
+          & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $stage 'P360HdaIrqTrigger.cat')
+          if($LASTEXITCODE){throw 'CAT sign failed'}
+
+          Get-FileHash (Join-Path $stage 'P360HdaIrqTrigger.sys') -Algorithm SHA256 | Format-List | Out-File (Join-Path $stage 'HASHES.txt')
+          Get-FileHash (Join-Path $stage 'P360HdaIrqTrigger.cat') -Algorithm SHA256 | Format-List | Out-File (Join-Path $stage 'HASHES.txt') -Append
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: P360_HDA_READONLY_IRQ_TRIGGER_TESTSIGNED
+          path: P360_HDA_IRQ_TRIGGER_PACKAGE
+          if-no-files-found: error
