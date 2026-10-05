@@ -74,44 +74,79 @@ actor V9NativePlaybackWorker
             // Fall through to the watch-page/player.js path.
         }
 
-        // Second choice: YouTubeKit's watch-page path. It obtains the current
-        // base.js player and deciphers signatureCipher + n with JavaScriptCore.
-        let video =
-            YTVideo(
-                videoId:
-                    videoID
-            )
-
-        var response =
-            try await video
-                .fetchStreamingInfosWithDownloadFormatsThrowing(
+        // Second choice: the real /watch page. VideoInfosResponse.decodeData
+        // extracts the current base.js player and builds the JavaScriptCore
+        // signature/n solver. This is intentionally different from
+        // fetchStreamingInfosWithDownloadFormatsThrowing(), which uses an
+        // Innertube iOS client and may require a GVS PO token.
+        let info =
+            try await VideoInfosResponse
+                .sendThrowingRequest(
                     youtubeModel:
-                        youtube
+                        youtube,
+                    data:
+                        [
+                            .query:
+                                videoID
+                        ]
                 )
+
+        var adaptiveFormats =
+            info.downloadFormats
+
+        var progressiveFormats =
+            info.defaultFormats
 
         if let player =
-                response
-                    .videoInfos
-                    .player {
-            try response
-                .deciphersURLs(
-                    player:
-                        player
-                )
+                info.player {
+            for index in
+                adaptiveFormats.indices {
+                var format =
+                    adaptiveFormats[
+                        index
+                    ]
+
+                try player
+                    .processDownloadFormatURL(
+                        item:
+                            &format
+                    )
+
+                adaptiveFormats[
+                    index
+                ] =
+                    format
+            }
+
+            for index in
+                progressiveFormats.indices {
+                var format =
+                    progressiveFormats[
+                        index
+                    ]
+
+                try player
+                    .processDownloadFormatURL(
+                        item:
+                            &format
+                    )
+
+                progressiveFormats[
+                    index
+                ] =
+                    format
+            }
         }
 
         return try makeResolvedVideo(
             videoID:
                 videoID,
             info:
-                response
-                    .videoInfos,
+                info,
             adaptiveFormats:
-                response
-                    .downloadFormats,
+                adaptiveFormats,
             progressiveFormats:
-                response
-                    .defaultFormats
+                progressiveFormats
         )
     }
 
