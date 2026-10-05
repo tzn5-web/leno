@@ -723,15 +723,6 @@ final class V9PlayerService:
             .requestToggle()
     }
 
-    func reportExternalFailure(
-        _ message:
-            String
-    ) {
-        fail(
-            message
-        )
-    }
-
     func handleScenePhase(
         _ phase:
             ScenePhase
