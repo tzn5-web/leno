@@ -209,6 +209,7 @@ jobs:
           assert health["js_runtime"] == "deno"
           assert int(health["relay_ttl"]) >= 3600
           assert int(health["max_relay_entries"]) >= 32
+          assert int(health["max_concurrent_extracts"]) >= 1
           assert health["cookies_configured"] is False
           assert health["public_base_configured"] is False
           print("resolver health:", health)
@@ -222,10 +223,19 @@ jobs:
 
           docker exec vcd-resolver-v92 python - <<'PY'
           import yt_dlp_ejs
-          from app.main import VIDEO_ID_RE, choose_formats, is_relayable_format
+          from app.main import (
+              VIDEO_ID_RE,
+              choose_formats,
+              is_local_network_host,
+              is_relayable_format,
+          )
 
           assert VIDEO_ID_RE.fullmatch("dQw4w9WgXcQ")
           assert not VIDEO_ID_RE.fullmatch("../bad-video")
+          assert is_local_network_host("192.168.1.50")
+          assert is_local_network_host("10.0.0.8")
+          assert is_local_network_host("resolver.local")
+          assert not is_local_network_host("resolver.example.com")
 
           assert is_relayable_format({
               "url": "https://example.invalid/video",
