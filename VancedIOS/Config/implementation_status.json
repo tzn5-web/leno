@@ -3,8 +3,8 @@
   "stage": "ipa_packaging_ready_unvalidated",
   "features": {
     "official_youtube_base": {
-      "state": "infrastructure_ready",
-      "evidence": "IPA/app audit supported"
+      "state": "validated_static",
+      "evidence": "YouTube 20.21.6 input verified as com.google.ios.youtube, arm64, cryptid=0; all required runtime selector groups for the implemented modules are present. See Compatibility/YouTube-20.21.6.json."
     },
     "ad_block_video": {
       "state": "blocked_policy",
