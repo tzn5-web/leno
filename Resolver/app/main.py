@@ -6,6 +6,7 @@ import json
 import os
 import re
 import secrets
+import sys
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -23,6 +24,7 @@ API_TOKEN = os.getenv("VCD_API_TOKEN", "").strip()
 PUBLIC_BASE_URL = os.getenv("VCD_PUBLIC_BASE_URL", "").strip().rstrip("/")
 COOKIES_FILE = os.getenv("VCD_COOKIES_FILE", "").strip()
 MAX_RELAY_ENTRIES = max(32, int(os.getenv("VCD_MAX_RELAY_ENTRIES", "1024")))
+MAX_CONCURRENT_EXTRACTS = max(1, int(os.getenv("VCD_MAX_CONCURRENT_EXTRACTS", "2")))
 UPSTREAM_READ_TIMEOUT = max(10.0, float(os.getenv("VCD_UPSTREAM_READ_TIMEOUT", "45")))
 VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
 REFRESHABLE_UPSTREAM_STATUS = {403, 404, 410}
@@ -48,6 +50,7 @@ class RelayEntry:
 
 relay_entries: dict[str, RelayEntry] = {}
 relay_lock = asyncio.Lock()
+extraction_semaphore = asyncio.Semaphore(MAX_CONCURRENT_EXTRACTS)
 
 
 def cleanup_entries() -> None:
@@ -313,58 +316,73 @@ async def extract_video(video_id: str) -> dict[str, Any]:
     if not VIDEO_ID_RE.fullmatch(video_id):
         raise HTTPException(status_code=400, detail="invalid video id")
 
-    url = f"https://www.youtube.com/watch?v={video_id}"
+    async with extraction_semaphore:
+        url = f"https://www.youtube.com/watch?v={video_id}"
 
-    arguments = [
-        YTDLP_BIN,
-        "--dump-single-json",
-        "--no-playlist",
-        "--skip-download",
-        "--no-warnings",
-        "--js-runtimes",
-        YTDLP_JS_RUNTIME,
-    ]
+        arguments = [
+            YTDLP_BIN,
+            "--dump-single-json",
+            "--no-playlist",
+            "--skip-download",
+            "--no-warnings",
+            "--js-runtimes",
+            YTDLP_JS_RUNTIME,
+        ]
 
-    if COOKIES_FILE:
-        if not os.path.isfile(COOKIES_FILE):
-            raise HTTPException(
-                status_code=500,
-                detail="VCD_COOKIES_FILE does not exist",
+        if COOKIES_FILE:
+            if not os.path.isfile(COOKIES_FILE):
+                raise HTTPException(
+                    status_code=500,
+                    detail="VCD_COOKIES_FILE does not exist",
+                )
+
+            arguments.extend(
+                [
+                    "--cookies",
+                    COOKIES_FILE,
+                ]
             )
 
-        arguments.extend(
-            [
-                "--cookies",
-                COOKIES_FILE,
-            ]
+        arguments.append(url)
+
+        proc = await asyncio.create_subprocess_exec(
+            *arguments,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
 
-    arguments.append(url)
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(),
+                timeout=YTDLP_TIMEOUT,
+            )
+        except TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise HTTPException(status_code=504, detail="yt-dlp timeout")
 
-    proc = await asyncio.create_subprocess_exec(
-        *arguments,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+        if proc.returncode != 0:
+            diagnostic = stderr.decode("utf-8", errors="replace")[-1200:]
+            print(
+                f"yt-dlp failed for {video_id}: {diagnostic}",
+                file=sys.stderr,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="yt-dlp extraction failed",
+            )
 
-    try:
-        stdout, stderr = await asyncio.wait_for(
-            proc.communicate(),
-            timeout=YTDLP_TIMEOUT,
-        )
-    except TimeoutError:
-        proc.kill()
-        await proc.wait()
-        raise HTTPException(status_code=504, detail="yt-dlp timeout")
-
-    if proc.returncode != 0:
-        detail = stderr.decode("utf-8", errors="replace")[-1200:]
-        raise HTTPException(status_code=502, detail=f"yt-dlp failed: {detail}")
-
-    try:
-        return json.loads(stdout)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=502, detail=f"invalid yt-dlp json: {exc}")
+        try:
+            return json.loads(stdout)
+        except json.JSONDecodeError as exc:
+            print(
+                f"yt-dlp returned invalid JSON for {video_id}: {exc}",
+                file=sys.stderr,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="invalid yt-dlp response",
+            ) from exc
 
 
 async def refresh_relay_entry(entry: RelayEntry) -> None:
@@ -476,6 +494,7 @@ async def health() -> dict[str, Any]:
         "cookies_configured": bool(COOKIES_FILE),
         "public_base_configured": bool(PUBLIC_BASE_URL),
         "max_relay_entries": MAX_RELAY_ENTRIES,
+        "max_concurrent_extracts": MAX_CONCURRENT_EXTRACTS,
         "active_relay_entries": len(relay_entries),
     }
 
@@ -533,7 +552,9 @@ async def video(video_id: str, request: Request) -> dict[str, Any]:
         "videoID": video_id,
         "title": str(info.get("title") or "YouTube"),
         "duration": info.get("duration"),
-        "thumbnail": info.get("thumbnail"),
+        # Never hand raw upstream thumbnail URLs to the client. A future
+        # metadata UI can add a dedicated image relay/cache.
+        "thumbnail": None,
         "video": await make_stream(
             video_format,
             "video" if split_streams else "muxed",
