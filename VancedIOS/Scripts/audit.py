@@ -28,8 +28,29 @@ require(
     manifest.get("target", {}).get("bundle_id") == "com.google.ios.youtube",
     "default host bundle id changed",
 )
+require(
+    manifest.get("target", {}).get("tested_youtube_version") == "21.18.4",
+    "tested YouTube host version must remain explicitly pinned",
+)
 
 sha40 = re.compile(r"^[0-9a-f]{40}$")
+for required_dep in [
+    "YouMod",
+    "YTVideoOverlay",
+    "YouPiP",
+    "YTUHD",
+    "ReturnYouTubeDislikes",
+    "YouTubeHeader",
+    "PSHeader",
+    "Theos",
+    "iOSSDKs",
+    "Cyan",
+]:
+    require(
+        required_dep in manifest.get("dependencies", {}),
+        f"required dependency missing from manifest: {required_dep}",
+    )
+
 for name, dep in manifest.get("dependencies", {}).items():
     commit = dep.get("commit")
     require(
@@ -45,6 +66,10 @@ for key in [
     "YouPiPEnabled",
     "YouModBlockUpgradeDialogs",
     "YouModHideAreYouThereDialog",
+    "YouModFixPlaybackIssues",
+    "YouModTapToSeek",
+    "YouModAddExtraSpeed",
+    "YouModHidePaidPromoOverlay",
 ]:
     require(key in core, f"Vanced default missing: {key}")
 
@@ -67,6 +92,25 @@ for path in ROOT.rglob("*"):
     if path.is_dir() and lower == "youtube.app":
         errors.append(f"proprietary host app present in repo: {path.relative_to(ROOT)}")
 
+build_script = (VANCED / "Scripts" / "build_patches.sh").read_text(encoding="utf-8")
+inject_script = (VANCED / "Scripts" / "inject.sh").read_text(encoding="utf-8")
+
+for token in [
+    "YTVideoOverlay",
+    "YTUHD",
+    "ytvideooverlay.deb",
+    "ytuhd.deb",
+]:
+    require(token in build_script, f"patch build is incomplete: missing {token}")
+    require(token in inject_script, f"IPA injection is incomplete: missing {token}")
+
+for token in [
+    "tested_youtube_version",
+    "cryptid",
+    "com.google.ios.youtube",
+]:
+    require(token in inject_script, f"host validation missing from injector: {token}")
+
 workflow_dir = ROOT / ".github" / "workflows"
 for workflow in workflow_dir.glob("vanced-ios-*.yml"):
     text = workflow.read_text(encoding="utf-8").lower()
@@ -84,5 +128,7 @@ if errors:
 print("VANCEDIOS ARCHITECTURE AUDIT PASSED")
 print(" - official YouTube remains the host application")
 print(" - patch layers are modular and dependency commits are pinned")
-print(" - Vanced defaults cover background/SponsorBlock/PiP")
+print(" - Vanced defaults cover background/SponsorBlock/player resilience")
+print(" - PiP/UHD helper dependencies are mandatory and audited")
+print(" - injector validates the official decrypted host and tested version")
 print(" - repository contains no YouTube IPA/app binary")
