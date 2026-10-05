@@ -10,7 +10,7 @@ packages:
     exactVersion: 1.0.1
   YouTubeKit:
     url: https://github.com/b5i/YouTubeKit.git
-    revision: 236264622aee6f60b6dd7731a629cc4be3f34bc1
+    revision: 6532af39da4c1612b0a1af603792419d8fb0e67f
 
 settings:
   base:
