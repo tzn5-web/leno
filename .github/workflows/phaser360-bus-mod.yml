@@ -29,14 +29,10 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $sdk = 'C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0'
           $wdk = 'C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\km'
-          $wdkVsix = 'C:\Program Files (x86)\Windows Kits\10\Vsix'
           if (!(Test-Path $sdk)) { throw "Windows SDK 26100 missing: $sdk" }
           if (!(Test-Path $wdk)) { throw "WDK 26100 kernel headers missing: $wdk" }
           Write-Host "SDK OK: $sdk"
           Write-Host "WDK KM headers OK: $wdk"
-          Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64' -ErrorAction SilentlyContinue |
-            Where-Object Name -in @('Inf2Cat.exe','signtool.exe') |
-            Select-Object Name,FullName
 
       - name: Clone pinned CoolStar bus and apply Phaser360 patch
         shell: pwsh
@@ -51,7 +47,7 @@ jobs:
           msbuild $proj /m /t:Build /p:Configuration=Release /p:Platform=x64 /p:WindowsTargetPlatformVersion=10.0.26100.0 /p:SignMode=Off
           if ($LASTEXITCODE -ne 0) { throw "MSBuild failed: $LASTEXITCODE" }
 
-      - name: Stage INF and SYS
+      - name: Stage built INF and SYS
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -59,39 +55,45 @@ jobs:
           $stage = Join-Path $env:GITHUB_WORKSPACE 'P360_BUS_PACKAGE'
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
-          $sys = Get-ChildItem $src -Recurse -Filter sklhdaudbus.sys -File |
-            Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if (-not $sys) { throw 'sklhdaudbus.sys not found after build' }
+          $builtDir = Join-Path $src 'sklhdaudbus\x64\Release'
+          $sys = Join-Path $builtDir 'sklhdaudbus.sys'
+          $inf = Join-Path $builtDir 'sklhdaudbus.inf'
+          if (!(Test-Path $sys)) { throw "Built SYS missing: $sys" }
+          if (!(Test-Path $inf)) { throw "Stamped INF missing: $inf" }
 
-          Copy-Item $sys.FullName (Join-Path $stage 'sklhdaudbus.sys') -Force
-          Copy-Item (Join-Path $src 'sklhdaudbus\sklhdaudbus.inf') (Join-Path $stage 'sklhdaudbus.inf') -Force
+          Copy-Item $sys (Join-Path $stage 'sklhdaudbus.sys') -Force
+          Copy-Item $inf (Join-Path $stage 'sklhdaudbus.inf') -Force
           Copy-Item './Phaser360/bus-mod/scripts/INSTALL_P360_BUS_MOD.ps1' $stage -Force
           Copy-Item './Phaser360/bus-mod/scripts/ROLLBACK_P360_BUS_MOD.ps1' $stage -Force
           Copy-Item './Phaser360/bus-mod/scripts/VERIFY_P360_BUS_MOD.ps1' $stage -Force
           Copy-Item './Phaser360/bus-mod/README.md' $stage -Force
+          Copy-Item './Phaser360/bus-mod/PATCH_APPLIED.diff' $stage -Force
 
-      - name: Create catalog and test-sign package
+      - name: Test-sign SYS then generate and sign catalog
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $stage = Join-Path $env:GITHUB_WORKSPACE 'P360_BUS_PACKAGE'
-          $kitBin = 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64'
-          $inf2cat = Join-Path $kitBin 'Inf2Cat.exe'
-          $signtool = Join-Path $kitBin 'signtool.exe'
+          $inf2cat = 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x86\Inf2Cat.exe'
+          $signtool = 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe'
 
           if (!(Test-Path $inf2cat)) { throw "Inf2Cat.exe not found: $inf2cat" }
           if (!(Test-Path $signtool)) { throw "signtool.exe not found: $signtool" }
 
-          & $inf2cat /driver:$stage /os:10_X64
-          if ($LASTEXITCODE -ne 0) { throw "Inf2Cat failed: $LASTEXITCODE" }
-
           $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=PHASER360 Test Driver' -CertStoreLocation 'Cert:\CurrentUser\My' -KeyExportPolicy Exportable -NotAfter (Get-Date).AddYears(2)
           Export-Certificate -Cert $cert -FilePath (Join-Path $stage 'PHASER360_TEST_DRIVER.cer') | Out-Null
 
-          foreach ($file in @('sklhdaudbus.sys','sklhdaudbus.cat')) {
-            & $signtool sign /v /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $stage $file)
-            if ($LASTEXITCODE -ne 0) { throw "signtool failed for $file" }
-          }
+          & $signtool sign /v /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $stage 'sklhdaudbus.sys')
+          if ($LASTEXITCODE -ne 0) { throw "signtool failed for SYS" }
+
+          & $inf2cat /driver:$stage /os:10_X64
+          if ($LASTEXITCODE -ne 0) { throw "Inf2Cat failed: $LASTEXITCODE" }
+
+          & $signtool sign /v /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $stage 'sklhdaudbus.cat')
+          if ($LASTEXITCODE -ne 0) { throw "signtool failed for CAT" }
+
+          & $signtool verify /v /kp (Join-Path $stage 'sklhdaudbus.sys')
+          & $signtool verify /v /pa (Join-Path $stage 'sklhdaudbus.cat')
 
           Get-FileHash (Join-Path $stage 'sklhdaudbus.sys') -Algorithm SHA256 |
             Format-List | Out-File (Join-Path $stage 'SHA256.txt')
