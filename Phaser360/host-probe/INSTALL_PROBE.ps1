@@ -2,16 +2,35 @@
 [CmdletBinding()]
 param()
 $ErrorActionPreference = 'Stop'
+
 function Require-Admin {
   $p=New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
   if(-not $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){ throw 'Administrator required.' }
 }
 Require-Admin
+
+if (-not ('P360.NewDevProbe' -as [type])) {
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+namespace P360 {
+  public static class NewDevProbe {
+    [DllImport("newdev.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+    public static extern bool UpdateDriverForPlugAndPlayDevices(
+      IntPtr hwndParent, string HardwareId, string FullInfPath,
+      uint InstallFlags, out bool RebootRequired);
+  }
+}
+'@
+}
+
 $root=Split-Path -Parent $MyInvocation.MyCommand.Path
 $inf=(Resolve-Path (Join-Path $root 'P360AdspProbe.inf')).Path
 $sys=(Resolve-Path (Join-Path $root 'P360AdspProbe.sys')).Path
 $cat=(Resolve-Path (Join-Path $root 'P360AdspProbe.cat')).Path
 $cer=(Resolve-Path (Join-Path $root 'P360_ADSP_PROBE_TEST.cer')).Path
+$hardwareId='CSAUDIO\ADSP&CTLR_VEN_8086&CTLR_DEV_3198'
+
 $cs=Get-CimInstance Win32_ComputerSystem
 $bb=Get-CimInstance Win32_BaseBoard
 $identity="$($cs.Manufacturer) $($cs.Model) $($bb.Product)"
@@ -24,12 +43,17 @@ if($bcd -notmatch '(?im)^\s*testsigning\s+(Yes|Da|On)\s*$'){
 }
 $parent=Get-CimInstance Win32_PnPEntity | Where-Object { $_.PNPDeviceID -like 'PCI\VEN_8086&DEV_3198*' } | Select-Object -First 1
 if(-not $parent -or $parent.Service -ne 'SklHDAudBus' -or $parent.ConfigManagerErrorCode -ne 0){
-  throw 'The already working SklHDAudBus parent is not healthy. No changes.'
+  throw 'The working SklHDAudBus parent is not healthy. No changes.'
 }
-$child=Get-CimInstance Win32_PnPEntity | Where-Object { $_.PNPDeviceID -like 'CSAUDIO\ADSP&CTLR_VEN_8086&CTLR_DEV_3198*' } | Select-Object -First 1
+$child=Get-CimInstance Win32_PnPEntity | Where-Object { $_.PNPDeviceID -like "$hardwareId*" } | Select-Object -First 1
 if(-not $child){throw 'Canonical CSAUDIO DSP child not enumerated.'}
-if($child.Service -eq 'P360AdspProbe'){Write-Host 'Probe already installed';exit 0}
-if($child.ConfigManagerErrorCode -ne 28){throw "Expected Code 28 before first probe install, got $($child.ConfigManagerErrorCode)."}
+if($child.Service -and $child.Service -ne 'P360AdspProbe'){
+  throw "DSP child has unexpected service '$($child.Service)'; refusing replacement."
+}
+if(-not $child.Service -and $child.ConfigManagerErrorCode -ne 28){
+  throw "Unexpected unbound DSP state Code $($child.ConfigManagerErrorCode)."
+}
+
 $signer=New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($cer)
 foreach($file in @($sys,$cat)){
   $sig=Get-AuthenticodeSignature $file
@@ -37,26 +61,67 @@ foreach($file in @($sys,$cat)){
     throw "Test signature/certificate mismatch in $file"
   }
 }
+
+$beforeDriver=Get-CimInstance Win32_PnPSignedDriver | Where-Object DeviceID -eq $child.PNPDeviceID | Select-Object -First 1
 $stamp=Get-Date -Format yyyyMMdd_HHmmss
-$backup=Join-Path 'C:\P360_AUDIO_SAFE' ("P360_ADSP_PROBE_BACKUP_"+$stamp)
+$backup=Join-Path 'C:\P360_AUDIO_SAFE' ("P360_ADSP_IRQ_PROBE_BACKUP_"+$stamp)
 New-Item -ItemType Directory -Force $backup | Out-Null
 $thumb=$signer.Thumbprint
 $hadRoot=[bool](Get-ChildItem Cert:\LocalMachine\Root | Where-Object Thumbprint -eq $thumb | Select-Object -First 1)
 $hadPublisher=[bool](Get-ChildItem Cert:\LocalMachine\TrustedPublisher | Where-Object Thumbprint -eq $thumb | Select-Object -First 1)
-@("Parent=$($parent.PNPDeviceID)","Child=$($child.PNPDeviceID)","BeforeCode=$($child.ConfigManagerErrorCode)","Cert=$thumb","HadRoot=$hadRoot","HadPublisher=$hadPublisher") |
-  Set-Content (Join-Path $backup 'BASELINE.txt') -Encoding UTF8
+
+@(
+ "Parent=$($parent.PNPDeviceID)"
+ "Child=$($child.PNPDeviceID)"
+ "BeforeService=$($child.Service)"
+ "BeforeCode=$($child.ConfigManagerErrorCode)"
+ "BeforeInf=$($beforeDriver.InfName)"
+ "BeforeVersion=$($beforeDriver.DriverVersion)"
+ "Cert=$thumb"
+ "HadRoot=$hadRoot"
+ "HadPublisher=$hadPublisher"
+) | Set-Content (Join-Path $backup 'BASELINE.txt') -Encoding UTF8
+
+if($beforeDriver -and $beforeDriver.InfName){
+  $export=Join-Path $backup 'PREVIOUS_DRIVER'
+  New-Item -ItemType Directory -Force $export | Out-Null
+  & pnputil.exe /export-driver $beforeDriver.InfName $export | Tee-Object -FilePath (Join-Path $backup 'EXPORT_PREVIOUS.txt')
+  if($LASTEXITCODE){throw "Could not export previous probe package. No bind attempted. Backup=$backup"}
+}
+
 Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
 Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher | Out-Null
 foreach($file in @($sys,$cat)){
   $sig=Get-AuthenticodeSignature $file
   if($sig.Status -ne 'Valid'){throw "Package signature validation failed: $file Status=$($sig.Status). Backup=$backup"}
 }
-& pnputil.exe /add-driver $inf /install | Tee-Object -FilePath (Join-Path $backup 'PNPUTIL_INSTALL.txt')
-$rc=$LASTEXITCODE
+
+& pnputil.exe /add-driver $inf | Tee-Object -FilePath (Join-Path $backup 'STAGE.txt')
+if($LASTEXITCODE){throw "PnPUtil staging failed. Backup=$backup"}
+
+[bool]$reboot=$false
+$ok=[P360.NewDevProbe]::UpdateDriverForPlugAndPlayDevices(
+  [IntPtr]::Zero,$hardwareId,$inf,[uint32]1,[ref]$reboot)
+if(-not $ok){
+  $err=[Runtime.InteropServices.Marshal]::GetLastWin32Error()
+  throw "Forced probe update failed Win32=$err. Backup=$backup"
+}
+
+Start-Sleep -Seconds 2
 $after=Get-CimInstance Win32_PnPEntity | Where-Object PNPDeviceID -eq $child.PNPDeviceID | Select-Object -First 1
-@("PnPUtilExit=$rc","AfterService=$($after.Service)","AfterCode=$($after.ConfigManagerErrorCode)") | Set-Content (Join-Path $backup 'AFTER.txt')
+$afterDriver=Get-CimInstance Win32_PnPSignedDriver | Where-Object DeviceID -eq $child.PNPDeviceID | Select-Object -First 1
+@(
+ "AfterService=$($after.Service)"
+ "AfterCode=$($after.ConfigManagerErrorCode)"
+ "AfterInf=$($afterDriver.InfName)"
+ "AfterVersion=$($afterDriver.DriverVersion)"
+ "RebootRequired=$reboot"
+) | Set-Content (Join-Path $backup 'AFTER.txt') -Encoding UTF8
+
 Write-Host "Backup=$backup"
-if($rc -ne 0){throw "PnPUtil returned $rc; review backup and use rollback if required."}
-Write-Host "AfterService=$($after.Service); AfterProblem=$($after.ConfigManagerErrorCode)"
-Write-Host 'No firmware, MMIO, IRQ registration, IPC, audio endpoint or playback is performed by this probe.'
-Write-Host 'Run QUERY_PROBE.ps1 (or START_QUERY.cmd); if the new driver is pending, reboot once.'
+Write-Host "AfterService=$($after.Service); AfterProblem=$($after.ConfigManagerErrorCode); Version=$($afterDriver.DriverVersion)"
+Write-Host "RebootRequired=$reboot"
+Write-Host 'This v2 probe registers only a passive callback with the parent ISR.'
+Write-Host 'DSP_BOOT=NO; MMIO=NO; IPC=NO; AUDIO=NO'
+if($reboot){Write-Host 'Reboot once, then run START_QUERY.cmd and START_PASSIVE_IRQ_TEST.cmd.'}
+else{Write-Host 'Run START_QUERY.cmd and START_PASSIVE_IRQ_TEST.cmd.'}
