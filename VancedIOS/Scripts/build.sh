@@ -71,18 +71,41 @@ python3 "$ROOT/Scripts/audit.py" \
   --json-out "$REPORTS/POSTBUILD_IPA_AUDIT.json"
 
 python3 - "$INPUT" "$OUTPUT" "$REPORTS/PACKAGE_BUILD.json" <<'PY'
-import hashlib, json, pathlib, sys
+import hashlib, json, pathlib, plistlib, sys, zipfile
+
 src=pathlib.Path(sys.argv[1])
 out=pathlib.Path(sys.argv[2])
 report=pathlib.Path(sys.argv[3])
+
+def info_from_ipa(path):
+    with zipfile.ZipFile(path) as z:
+        names=[n for n in z.namelist() if n.startswith("Payload/") and n.count("/") == 2 and n.endswith(".app/Info.plist")]
+        if len(names) != 1:
+            raise SystemExit(f"expected exactly one app Info.plist in {path}, found {len(names)}")
+        return plistlib.loads(z.read(names[0]))
+
+src_info=info_from_ipa(src)
+out_info=info_from_ipa(out)
+keys=["CFBundleIdentifier","CFBundleShortVersionString","CFBundleVersion","CFBundleExecutable","UIBackgroundModes"]
+changes={}
+for key in keys:
+    before=src_info.get(key)
+    after=out_info.get(key)
+    if before != after:
+        changes[key]={"input":before,"output":after}
+
 data=out.read_bytes()
-report.write_text(json.dumps({
-  'status':'PASS',
-  'input':str(src),
-  'output':str(out),
-  'output_size':len(data),
-  'output_sha256':hashlib.sha256(data).hexdigest()
-}, indent=2)+'\n', encoding='utf-8')
+result={
+  "status":"PASS" if not changes else "FAIL",
+  "input":str(src),
+  "output":str(out),
+  "output_size":len(data),
+  "output_sha256":hashlib.sha256(data).hexdigest(),
+  "identity_changes":changes,
+}
+report.write_text(json.dumps(result,indent=2,sort_keys=True)+"\n",encoding="utf-8")
+if changes:
+    raise SystemExit(f"packaged IPA changed protected identity fields: {changes}")
 PY
 
 echo "VANCED_IPA_PACKAGE=PASS"
