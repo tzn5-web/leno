@@ -73,6 +73,7 @@
   <ItemGroup>
     <ClCompile Include="p360_driver.c" />
     <ClCompile Include="..\src\p360_state.c" />
+    <ClCompile Include="..\src\p360_safety.c" />
     <ClCompile Include="..\src\p360_board.c" />
     <ClCompile Include="..\src\p360_nhlt.c" />
     <ClCompile Include="..\src\p360_cs_bus.c" />
