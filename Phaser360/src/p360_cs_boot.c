@@ -772,3 +772,173 @@ p360_cs_boot_adapter_retire(
 
     return STATUS_SUCCESS;
 }
+
+
+static NTSTATUS
+p360_cs_live_read_adspcs(
+    _In_ P360_CS_BOOT_ADAPTER *a,
+    _Out_ ULONG *value
+    )
+{
+    if (!a || !value || !a->Bus || !a->Bus->resources_valid ||
+        !a->Bus->dsp.Base.baseptr ||
+        a->Bus->dsp.Len < P360_DSP_ADSPCS + sizeof(ULONG)) {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+
+    *value = READ_REGISTER_ULONG(
+        (volatile ULONG *)(a->Bus->dsp.Base.baseptr + P360_DSP_ADSPCS));
+
+    return *value == MAXULONG ?
+        STATUS_DEVICE_HARDWARE_ERROR :
+        STATUS_SUCCESS;
+}
+
+static NTSTATUS
+p360_cs_live_update_adspcs(
+    _In_ P360_CS_BOOT_ADAPTER *a,
+    _In_ ULONG mask,
+    _In_ ULONG bits
+    )
+{
+    ULONG before;
+    ULONG after;
+    ULONG wanted;
+    NTSTATUS status;
+
+    status = p360_cs_live_read_adspcs(a,&before);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    wanted = (before & ~mask) | (bits & mask);
+
+    WRITE_REGISTER_ULONG(
+        (volatile ULONG *)(a->Bus->dsp.Base.baseptr + P360_DSP_ADSPCS),
+        wanted);
+    KeMemoryBarrier();
+
+    status = p360_cs_live_read_adspcs(a,&after);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    if ((after & mask) != (wanted & mask) ||
+        (after & ~mask) != (before & ~mask)) {
+        return STATUS_DEVICE_HARDWARE_ERROR;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS
+p360_cs_live_poll_adspcs(
+    _In_ P360_CS_BOOT_ADAPTER *a,
+    _In_ ULONG mask,
+    _In_ ULONG wanted,
+    _In_ ULONG timeoutUs
+    )
+{
+    ULONGLONG start;
+    ULONGLONG now;
+    ULONG value;
+    ULONG samples;
+    NTSTATUS status;
+
+    start = p360_cs_boot_now_us(a);
+
+    for (samples = 0; samples < timeoutUs / 500u + 2u; ++samples) {
+        now = p360_cs_boot_now_us(a);
+        if (now < start || now - start >= timeoutUs)
+            return STATUS_IO_TIMEOUT;
+
+        status = p360_cs_live_read_adspcs(a,&value);
+        if (!NT_SUCCESS(status))
+            return status;
+
+        if ((value & mask) == wanted)
+            return STATUS_SUCCESS;
+
+        p360_cs_boot_wait_us(a,500u);
+    }
+
+    return STATUS_IO_TIMEOUT;
+}
+
+NTSTATUS
+p360_cs_boot_adapter_shutdown_live(
+    P360_CS_BOOT_ADAPTER *a
+    )
+{
+    NTSTATUS status;
+
+    if (!a || !p360_cs_boot_passive() ||
+        !a->Bus || !a->Bus->resources_valid ||
+        !a->LiveDsp || !a->PowerHeld ||
+        a->Acquired || a->StreamOwned || a->StreamPrepared ||
+        a->Running || a->PayloadMdl || !a->DmaDetached ||
+        a->Quarantined) {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+
+    /*
+     * Same conservative core shutdown ordering used by the audited B4
+     * cleanup path: stall -> reset -> prove reset -> clear SPA -> prove CPA=0.
+     * Only ADSPCS ownership bits are modified; unrelated bits are preserved.
+     */
+    status = p360_cs_live_update_adspcs(a,0x00000300u,0x00000300u);
+    if (!NT_SUCCESS(status))
+        goto quarantine;
+
+    status = p360_cs_live_update_adspcs(a,0x00000003u,0x00000003u);
+    if (!NT_SUCCESS(status))
+        goto quarantine;
+
+    status = p360_cs_live_poll_adspcs(a,0x00000003u,0x00000003u,50000u);
+    if (!NT_SUCCESS(status))
+        goto quarantine;
+
+    status = p360_cs_live_update_adspcs(a,0x00030000u,0);
+    if (!NT_SUCCESS(status))
+        goto quarantine;
+
+    status = p360_cs_live_poll_adspcs(a,0x03000000u,0,50000u);
+    if (!NT_SUCCESS(status))
+        goto quarantine;
+
+    if (a->Bus->iface.SetDSPPowerState) {
+        status = a->Bus->iface.SetDSPPowerState(
+            a->Bus->iface.Context,
+            PowerDeviceD3);
+        if (!NT_SUCCESS(status))
+            goto quarantine;
+    }
+
+    a->LiveDsp = FALSE;
+    a->PowerHeld = FALSE;
+    return STATUS_SUCCESS;
+
+quarantine:
+    a->Quarantined = TRUE;
+    return status;
+}
+
+NTSTATUS
+p360_cs_boot_adapter_rearm(
+    P360_CS_BOOT_ADAPTER *a
+    )
+{
+    P360_CS_BUS *bus;
+
+    if (!a || !p360_cs_boot_passive() ||
+        !a->Bus || !a->Bus->resources_valid ||
+        a->LiveDsp || a->PowerHeld || a->Acquired ||
+        a->StreamOwned || a->StreamPrepared || a->Running ||
+        a->PayloadMdl || !a->DmaDetached || a->Quarantined) {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+
+    bus = a->Bus;
+    RtlZeroMemory(a,sizeof(*a));
+    a->Bus = bus;
+    a->DmaDetached = TRUE;
+    return STATUS_SUCCESS;
+}
