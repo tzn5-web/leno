@@ -9,6 +9,10 @@
  * existing Phaser360 host modules for WdfFdoQueryForInterface and as a parent
  * for non-PnP framework objects.
  */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 NTSTATUS
 p360_portcls_create_wdf_miniport(
     _In_ PDEVICE_OBJECT PortClsFdo,
@@ -20,3 +24,7 @@ VOID
 p360_portcls_delete_wdf_miniport(
     _Inout_ WDFDEVICE *Device
     );
+
+#ifdef __cplusplus
+}
+#endif
