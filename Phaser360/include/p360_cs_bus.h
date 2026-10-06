@@ -1,6 +1,7 @@
 #pragma once
 #include "p360_coolstar_adsp.h"
 #include "p360_board.h"
+#include "../sof_core/p360_transport_core.h"
 
 typedef struct P360_CS_BUS {
     WDFDEVICE device;
@@ -17,3 +18,4 @@ typedef struct P360_CS_BUS {
 NTSTATUS p360_cs_bus_open(P360_CS_BUS *bus, WDFDEVICE device);
 void p360_cs_bus_close(P360_CS_BUS *bus);
 NTSTATUS p360_cs_bus_validate_resources(P360_CS_BUS *bus);
+NTSTATUS p360_cs_bus_read_identity(P360_CS_BUS *bus, struct p360_pci_identity *identity);
