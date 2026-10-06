@@ -12,6 +12,11 @@ static void test_board(void)
     assert(p360_board_validate_identity(0x8086u, 0x3198u));
     assert(!p360_board_validate_identity(0x8086u, 0x1234u));
     assert(p360_board_validate_nhlt(&ok));
+    assert(g_p360_phaser360_profile.ssp_amp == 1);
+    assert(g_p360_phaser360_profile.sample_rate == 48000u);
+    assert(g_p360_phaser360_profile.speaker_channels == 2u);
+    assert(g_p360_phaser360_profile.speaker_container_bits == 32u);
+    assert(g_p360_phaser360_profile.speaker_valid_bits == 24u);
 
     bad.ssp2_capture = 0;
     assert(!p360_board_validate_nhlt(&bad));
