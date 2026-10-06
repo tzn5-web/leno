@@ -170,6 +170,17 @@ p360_csaudio_speaker_start(
             &link->SpeakerRegistered,0,0))
         return STATUS_NOT_FOUND;
 
+    if (!InterlockedCompareExchange(
+            &link->SpeakerFormatSeen,0,0) ||
+        link->SpeakerChannels!=(UINT16)P360_SPEAKER_CHANNELS ||
+        link->SpeakerFrequency!=(UINT16)P360_SAMPLE_RATE ||
+        link->SpeakerBitsPerSample!=16u ||
+        link->SpeakerValidBitsPerSample!=
+            (UINT16)P360_SPEAKER_VALID_BITS ||
+        !link->SpeakerForce32) {
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+    }
+
     if (InterlockedCompareExchange(
             &link->SpeakerStarted,1,0)!=0)
         return STATUS_DEVICE_BUSY;
