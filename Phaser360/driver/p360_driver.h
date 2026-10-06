@@ -34,6 +34,10 @@
 #define P360_IPC_PROBE_ENABLED 0
 #endif
 
+#ifndef P360_SPEAKER_ENDPOINT_ENABLED
+#define P360_SPEAKER_ENDPOINT_ENABLED 0
+#endif
+
 
 typedef struct _P360_DEVICE_CONTEXT {
     P360_STATE_MACHINE State;
@@ -49,11 +53,14 @@ typedef struct _P360_DEVICE_CONTEXT {
 
     WDFDEVICE FrameworkDevice;
     PDEVICE_OBJECT PortClsFdo;
+    PVOID SpeakerTopologyPort;
+    PVOID SpeakerWavePort;
 
     BOOLEAN BusOpen;
     BOOLEAN BootInitialized;
     BOOLEAN RuntimeInitialized;
     BOOLEAN CsAudioInitialized;
+    BOOLEAN SpeakerEndpointInstalled;
     BOOLEAN Prepared;
     volatile LONG Removing;
 } P360_DEVICE_CONTEXT;
