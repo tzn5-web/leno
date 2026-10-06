@@ -3,9 +3,10 @@
 #define P360_DISPATCH_H
 #include "p360_irq.h"
 #include "../p360_transport_core.h"
-#define P360_DISPATCH_MAP_BYTES 0xa2000u
-#define P360_REPLY_BOX 0xa0000u
-#define P360_NOTIFY_BOX 0x81000u
+#define P360_DSP_UPBOX           0x81000u
+#define P360_HOST_DOWNBOX        0xa0000u
+#define P360_STREAM_BOX          0xc1000u
+#define P360_DISPATCH_MAP_BYTES  0xc2000u
 struct p360_dispatch_io {
     int (*copy)(void *context,uint32_t offset,uint8_t *out,uint32_t bytes);
     /* Serialize with ISR; recheck admission, epoch and captured doorbells.
