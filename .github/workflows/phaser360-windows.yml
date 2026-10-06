@@ -1,0 +1,72 @@
+name: Phaser360 Windows WDK
+
+on:
+  push:
+    branches:
+      - phaser360-sof-windows-port
+    paths:
+      - "Phaser360/**"
+      - ".github/workflows/phaser360-windows.yml"
+  pull_request:
+    paths:
+      - "Phaser360/**"
+
+jobs:
+  build-x64:
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up NuGet
+        uses: NuGet/setup-nuget@v2
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Restore pinned WDK and SDK
+        shell: pwsh
+        run: |
+          nuget restore Phaser360\packages.config -PackagesDirectory Phaser360\packages -NonInteractive -Verbosity detailed
+
+          $required = @(
+            "Phaser360\packages\Microsoft.Windows.WDK.x64.10.0.26100.6584\build\native\Microsoft.Windows.WDK.x64.props",
+            "Phaser360\packages\Microsoft.Windows.SDK.CPP.x64.10.0.26100.6584\build\native\Microsoft.Windows.SDK.cpp.x64.props",
+            "Phaser360\packages\Microsoft.Windows.SDK.CPP.10.0.26100.6584\build\native\Microsoft.Windows.SDK.cpp.props"
+          )
+
+          foreach ($p in $required) {
+            if (-not (Test-Path $p)) {
+              throw "Missing pinned build dependency: $p"
+            }
+          }
+
+      - name: Build integrated KMDF driver shell
+        shell: pwsh
+        run: |
+          msbuild Phaser360\driver\P360SofAudio.vcxproj /m /t:Build /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /v:minimal
+
+      - name: Prove driver image exists
+        shell: pwsh
+        run: |
+          $sys = "Phaser360\driver\out\Release\P360SofAudio.sys"
+          if (-not (Test-Path $sys)) {
+            Get-ChildItem Phaser360\driver -Recurse | Select-Object FullName,Length
+            throw "P360SofAudio.sys missing"
+          }
+
+          $f = Get-Item $sys
+          $h = Get-FileHash $sys -Algorithm SHA256
+          Write-Host "WINDOWS_DRIVER_BUILD=PASS"
+          Write-Host "SYS=$($f.FullName)"
+          Write-Host "BYTES=$($f.Length)"
+          Write-Host "SHA256=$($h.Hash)"
+
+      - name: Upload unsigned compile artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: P360SofAudio-unsigned-build
+          path: |
+            Phaser360/driver/out/Release/P360SofAudio.sys
+            Phaser360/driver/out/Release/P360SofAudio.pdb
+          if-no-files-found: error
