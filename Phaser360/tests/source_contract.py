@@ -127,6 +127,7 @@ if not re.search(r"#define\s+P360_PORTCLS_SHELL_ENABLED\s+0\b", driver_h):
 
 portcls=(ROOT/"src/p360_portcls_bridge.cpp").read_text()
 project=(ROOT/"driver/P360SofAudio.vcxproj").read_text()
+portcls_shell=(ROOT/"src/p360_portcls_shell.cpp").read_text()
 for token in (
     "PcGetPhysicalDeviceObject(",
     "IoGetLowerDeviceObject(",
@@ -142,10 +143,37 @@ if "WdfFdoQueryForInterface(" not in bus_source:
 
 for token in (
     r"..\src\p360_portcls_bridge.cpp",
+    r"..\src\p360_portcls_shell.cpp",
     "PortCls.lib",
 ):
     if token not in project:
         raise SystemExit(f"PortCls bridge build integration missing: {token}")
+
+for token in (
+    "WdfDriverInitNoDispatchOverride",
+    "PcInitializeAdapterDriver(",
+    "PcAddAdapterDevice(",
+    "p360_portcls_create_wdf_miniport(",
+    "p360_host_prepare(",
+    "p360_host_d0_entry(",
+):
+    if token not in portcls_shell:
+        raise SystemExit(f"dormant PortCls shell contract missing: {token}")
+
+for token in (
+    "WDFDEVICE FrameworkDevice;",
+    "PDEVICE_OBJECT PortClsFdo;",
+    "extern \"C\" {",
+):
+    if token not in driver_h:
+        raise SystemExit(f"PortCls shell C ABI/lifetime contract missing: {token}")
+
+driver_entry_i=driver.index("DriverEntry(")
+shell_gate_i=driver.index("#if P360_PORTCLS_SHELL_ENABLED", driver_entry_i)
+shell_init_i=driver.index("p360_portcls_driver_initialize(", shell_gate_i)
+kmdf_init_i=driver.index("WDF_DRIVER_CONFIG_INIT(&config,P360EvtDeviceAdd);", shell_init_i)
+if not (driver_entry_i < shell_gate_i < shell_init_i < kmdf_init_i):
+    raise SystemExit("PortCls shell activation gate no longer preserves KMDF baseline")
 
 driver=(ROOT/"driver/p360_driver.c").read_text()
 for token in (
