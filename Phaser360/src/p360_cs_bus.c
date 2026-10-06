@@ -77,12 +77,13 @@ NTSTATUS p360_cs_bus_validate_resources(P360_CS_BUS *bus)
     /*
      * B4 proved that 4 KiB was insufficient for the GLK HDA extended
      * capability chain; require at least 16 KiB before using the HDA BAR.
-     * The DSP BAR must cover ROM status/mailbox addresses used by APL/GLK SOF.
+     * The B4 IPC dispatcher uses the reply mailbox at 0xA0000 and validates
+     * a mapping of at least 0xA2000 bytes.
      */
     if (!bus->hda.Base.Base || bus->hda.Len < 0x4000u)
         return STATUS_DEVICE_CONFIGURATION_ERROR;
 
-    if (!bus->dsp.Base.Base || bus->dsp.Len < 0x90000u)
+    if (!bus->dsp.Base.Base || bus->dsp.Len < 0xA2000u)
         return STATUS_DEVICE_CONFIGURATION_ERROR;
 
     if (!bus->nhlt.nhlt || bus->nhlt.nhltSz < 36u || bus->nhlt.nhltSz > 0x10000u)
