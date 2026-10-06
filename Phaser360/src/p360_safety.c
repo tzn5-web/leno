@@ -7,12 +7,15 @@ const P360_SAFETY_POLICY g_p360_default_safety_policy = {
 int p360_safety_can_start_headphone(const P360_STATE_MACHINE *sm)
 {
     if (!sm) return 0;
-    return sm->hardware_identity_ok &&
+    return sm->state == P360_STATE_AUDIO_CORE_READY &&
+           sm->hardware_identity_ok &&
            sm->nhlt_ok &&
            sm->fw_ready &&
            sm->ipc_ready &&
            sm->topology_ready &&
-           sm->audio_core_ready;
+           sm->audio_core_ready &&
+           !sm->headphone_ready &&
+           !sm->speaker_runtime_armed;
 }
 
 int p360_safety_can_start_speaker(const P360_STATE_MACHINE *sm)
