@@ -11,6 +11,7 @@ typedef struct P360_CS_BUS {
     PVOID ppcap;
     P360_CS_NHLT_INFO nhlt;
     BUS_INTERFACE_STANDARD pci;
+    BOOLEAN interface_acquired;
     BOOLEAN interface_valid;
     BOOLEAN resources_valid;
 } P360_CS_BUS;
