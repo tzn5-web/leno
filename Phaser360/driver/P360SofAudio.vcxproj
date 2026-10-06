@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{9DCC48A9-882F-4C0E-9FD1-BE25FD10F360}</ProjectGuid>
+    <RootNamespace>P360SofAudio</RootNamespace>
+    <ProjectName>P360SofAudio</ProjectName>
+    <KMDF_VERSION_MAJOR>1</KMDF_VERSION_MAJOR>
+    <Configuration Condition="'$(Configuration)'==''">Release</Configuration>
+    <Platform Condition="'$(Platform)'==''">x64</Platform>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <TargetVersion>Windows10</TargetVersion>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <DriverTargetPlatform>Windows Driver</DriverTargetPlatform>
+    <DriverType>KMDF</DriverType>
+    <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <TargetVersion>Windows10</TargetVersion>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <DriverTargetPlatform>Windows Driver</DriverTargetPlatform>
+    <DriverType>KMDF</DriverType>
+    <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+  <PropertyGroup>
+    <TargetName>P360SofAudio</TargetName>
+    <OutDir>$(ProjectDir)out\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
+    <EnableInf2Cat>false</EnableInf2Cat>
+    <SignMode>Off</SignMode>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <WarningLevel>Level4</WarningLevel>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <BufferSecurityCheck>true</BufferSecurityCheck>
+      <SDLCheck>true</SDLCheck>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\include;$(ProjectDir)..\sof_core;$(ProjectDir)..\sof_core\loader;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>P360_RUNTIME_BUILD=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+    <DriverSign>
+      <FileDigestAlgorithm>sha256</FileDigestAlgorithm>
+    </DriverSign>
+  </ItemDefinitionGroup>
+
+  <ItemGroup>
+    <ClCompile Include="p360_driver.c" />
+    <ClCompile Include="..\src\p360_state.c" />
+    <ClCompile Include="..\src\p360_board.c" />
+    <ClCompile Include="..\src\p360_nhlt.c" />
+    <ClCompile Include="..\src\p360_cs_bus.c" />
+    <ClCompile Include="..\src\p360_cs_boot.c" />
+    <ClCompile Include="..\sof_core\p360_transport_core.c" />
+    <ClCompile Include="..\sof_core\loader\p360_loader.c" />
+    <ClCompile Include="..\sof_core\loader\p360_fw_image.c" />
+    <ClCompile Include="..\sof_core\loader\p360_irq.c" />
+    <ClCompile Include="..\sof_core\loader\p360_dispatch.c" />
+    <ClCompile Include="..\sof_core\loader\p360_ipc_timer.c" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ClInclude Include="p360_driver.h" />
+    <ClInclude Include="..\include\p360_state.h" />
+    <ClInclude Include="..\include\p360_board.h" />
+    <ClInclude Include="..\include\p360_nhlt.h" />
+    <ClInclude Include="..\include\p360_coolstar_adsp.h" />
+    <ClInclude Include="..\include\p360_cs_bus.h" />
+    <ClInclude Include="..\include\p360_cs_boot.h" />
+    <ClInclude Include="..\sof_core\p360_transport_core.h" />
+    <ClInclude Include="..\sof_core\loader\p360_loader.h" />
+    <ClInclude Include="..\sof_core\loader\p360_irq.h" />
+    <ClInclude Include="..\sof_core\loader\p360_dispatch.h" />
+    <ClInclude Include="..\sof_core\loader\p360_ipc_timer.h" />
+  </ItemGroup>
+
+  <!-- INX stays source-only during the compile/link gate. Packaging/signing is a later transaction. -->
+  <ItemGroup>
+    <None Include="P360SofAudio.inx" />
+  </ItemGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>
