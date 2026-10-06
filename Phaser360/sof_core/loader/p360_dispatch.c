@@ -8,7 +8,7 @@ static int Fail(struct p360_dispatch *d)
 int p360_dispatch_prepare(struct p360_dispatch *d,const uint8_t *image,
     size_t bytes,uint32_t mapped_bytes)
 {
-    struct p360_fw_view view;const uint8_t *up,*down;
+    struct p360_fw_view view;const uint8_t *up,*down,*stream;
     if(!d || d->prepared || d->active || d->poisoned || d->ipc.boot_epoch ||
         mapped_bytes<P360_DISPATCH_MAP_BYTES || p360_fw_validate(image,bytes,&view)) return -1;
     /* Pinned XMan element type1 at0x10; ext window type1, fixed7 descriptors.
@@ -16,11 +16,13 @@ int p360_dispatch_prepare(struct p360_dispatch *d,const uint8_t *image,
     if(U32(image+0x10)!=1 || U32(image+0x14)!=0x1a0 ||
        U32(image+0x18)!=0x190 || U32(image+0x1c)!=0x70000000 ||
        U32(image+0x20)!=1 || U32(image+0x24)!=7) return -1;
-    up=image+0x40;down=image+0x58;
+    up=image+0x40;down=image+0x58;stream=image+0xa0;
     if(U32(up)!=0 || U32(up+4)!=1 || U32(up+8)!=0 || U32(up+12)!=0 ||
        U32(up+16)!=0x1000 || U32(up+20)!=0x1000 ||
        U32(down)!=0 || U32(down+4)!=0 || U32(down+8)!=1 || U32(down+12)!=0 ||
-       U32(down+16)!=0x2000 || U32(down+20)!=0) return -1;
+       U32(down+16)!=0x2000 || U32(down+20)!=0 ||
+       U32(stream)!=0 || U32(stream+4)!=4 || U32(stream+8)!=2 || U32(stream+12)!=0 ||
+       U32(stream+16)!=0x1000 || U32(stream+20)!=0x1000) return -1;
     p360_ipc_init(&d->ipc);d->prepared=1;return 0;
 }
 int p360_dispatch_bind(struct p360_dispatch *d,uint64_t epoch)
@@ -70,13 +72,13 @@ int p360_dispatch_process(struct p360_dispatch *d,const struct p360_irq_event *e
     now=io->now(ctx);next=d->ipc;
     if(p360_ipc_expire(&next,now)) return Fail(d);
     if(causes&1) {
-        if(next.state!=P360_IPC_PENDING || Stable(io,ctx,P360_REPLY_BOX,reply,12) ||
+        if(next.state!=P360_IPC_PENDING || Stable(io,ctx,P360_DSP_UPBOX,reply,12) ||
            U32(reply+4)!=0x10000000u) return Fail(d);
     }
     if(causes&2) {
         if(!d->stream_id || d->positions==UINT32_MAX || e->hipcte!=0 ||
            (e->hipct&0x7fffffffu)!=(0x600a0000u|d->stream_id) ||
-           Stable(io,ctx,P360_NOTIFY_BOX,position,76) ||
+           Stable(io,ctx,P360_STREAM_BOX,position,76) ||
            U32(position+4)!=(0x600a0000u|d->stream_id) ||
            U32(position+8)!=0 || U32(position+12)!=d->stream_id ||
            (U32(position+16)&~0x000f0f0fu) || U32(position+68)!=0 || U32(position+72)!=0)
