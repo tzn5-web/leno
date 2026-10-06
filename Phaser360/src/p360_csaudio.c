@@ -50,7 +50,7 @@ p360_csaudio_callback(
             frequency!=(UINT16)P360_SAMPLE_RATE ||
             local.formatOverride.bitsPerSample!=16u ||
             local.formatOverride.validBitsPerSample!=
-                (UINT16)P360_SPEAKER_VALID_BITS ||
+                (UINT16)P360_SPEAKER_PCM_VALID_BITS ||
             !local.formatOverride.force32BitOutputContainer) {
             return;
         }
@@ -176,7 +176,7 @@ p360_csaudio_speaker_start(
         link->SpeakerFrequency!=(UINT16)P360_SAMPLE_RATE ||
         link->SpeakerBitsPerSample!=16u ||
         link->SpeakerValidBitsPerSample!=
-            (UINT16)P360_SPEAKER_VALID_BITS ||
+            (UINT16)P360_SPEAKER_PCM_VALID_BITS ||
         !link->SpeakerForce32) {
         return STATUS_DEVICE_CONFIGURATION_ERROR;
     }
