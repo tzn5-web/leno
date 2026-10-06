@@ -16,14 +16,18 @@
  * Same final driver, staged safely. This switch controls only whether D0Entry
  * starts the already-integrated SOF loader; it does not select a probe driver.
  */
+#ifndef P360_RUNTIME_BOOT_ENABLED
 #define P360_RUNTIME_BOOT_ENABLED 0
+#endif
 
 /*
  * Final endpoint shell gate. PortCls bridge code is compiled and audited, but
  * the active DriverEntry remains the current KMDF host until the PortCls
  * adapter lifecycle is complete.
  */
+#ifndef P360_PORTCLS_SHELL_ENABLED
 #define P360_PORTCLS_SHELL_ENABLED 0
+#endif
 
 typedef struct _P360_DEVICE_CONTEXT {
     P360_STATE_MACHINE State;
