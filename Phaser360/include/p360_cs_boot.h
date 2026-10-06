@@ -65,3 +65,19 @@ NTSTATUS
 p360_cs_boot_adapter_retire(
     _Inout_ P360_CS_BOOT_ADAPTER *Adapter
     );
+
+/*
+ * Runtime shutdown after a proved FW_READY handoff. Caller must already have
+ * masked/drained IPC handling. This routine only quiesces DSP cores and drops
+ * the D0 reference; it never touches codec/SSP/speaker state.
+ */
+NTSTATUS
+p360_cs_boot_adapter_shutdown_live(
+    _Inout_ P360_CS_BOOT_ADAPTER *Adapter
+    );
+
+/* Re-arm a clean adapter for the next D0 boot epoch after shutdown. */
+NTSTATUS
+p360_cs_boot_adapter_rearm(
+    _Inout_ P360_CS_BOOT_ADAPTER *Adapter
+    );
