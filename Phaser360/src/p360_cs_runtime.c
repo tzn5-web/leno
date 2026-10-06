@@ -490,7 +490,7 @@ p360_rt_tx_write_box(
         !InterlockedCompareExchange(&rt->Active,0,0) ||
         InterlockedCompareExchange(&rt->Stopping,0,0) ||
         InterlockedCompareExchange(&rt->Fault,0,0) ||
-        offset!=P360_REPLY_BOX ||
+        offset!=P360_HOST_DOWNBOX ||
         bytes<8u || bytes>P360_IPC3_MAX_MESSAGE_BYTES ||
         (bytes&3u) ||
         offset>rt->Bus->dsp.Len ||
