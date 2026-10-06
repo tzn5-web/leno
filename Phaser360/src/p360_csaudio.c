@@ -1,4 +1,5 @@
 #include "../include/p360_csaudio.h"
+#include "../include/p360_board.h"
 
 static VOID
 p360_csaudio_callback(
@@ -31,12 +32,34 @@ p360_csaudio_callback(
 
     if (local.endpointRequest==P360_CSAUDIO_ENDPOINT_OVERRIDE_FORMAT &&
         local.argSz>=sizeof(P360_CSAUDIO_ARG)) {
-        link->SpeakerChannels=local.formatOverride.channels;
-        link->SpeakerFrequency=local.formatOverride.frequency;
+        UINT16 channels=local.formatOverride.channels ?
+            local.formatOverride.channels :
+            (UINT16)P360_SPEAKER_CHANNELS;
+        UINT16 frequency=local.formatOverride.frequency ?
+            local.formatOverride.frequency :
+            (UINT16)P360_SAMPLE_RATE;
+
+        /*
+         * CoolStar max98357a publishes bits=16, valid=16 and leaves
+         * channels/frequency at zero while forcing a 32-bit output
+         * container.  Zero therefore means "keep board default", not an
+         * invalid 0 Hz/0 channel format.  Reject any incompatible callback
+         * instead of silently changing the fixed Phaser360 speaker profile.
+         */
+        if (channels!=(UINT16)P360_SPEAKER_CHANNELS ||
+            frequency!=(UINT16)P360_SAMPLE_RATE ||
+            local.formatOverride.bitsPerSample!=16u ||
+            local.formatOverride.validBitsPerSample!=
+                (UINT16)P360_SPEAKER_VALID_BITS ||
+            !local.formatOverride.force32BitOutputContainer) {
+            return;
+        }
+
+        link->SpeakerChannels=channels;
+        link->SpeakerFrequency=frequency;
         link->SpeakerBitsPerSample=local.formatOverride.bitsPerSample;
         link->SpeakerValidBitsPerSample=local.formatOverride.validBitsPerSample;
-        link->SpeakerForce32=
-            local.formatOverride.force32BitOutputContainer ? TRUE : FALSE;
+        link->SpeakerForce32=TRUE;
         KeMemoryBarrier();
         InterlockedExchange(&link->SpeakerFormatSeen,1);
     }
