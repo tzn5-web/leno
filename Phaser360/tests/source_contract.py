@@ -168,6 +168,7 @@ for token in (
     if token not in driver_h:
         raise SystemExit(f"PortCls shell C ABI/lifetime contract missing: {token}")
 
+driver=(ROOT/"driver/p360_driver.c").read_text()
 driver_entry_i=driver.index("DriverEntry(")
 shell_gate_i=driver.index("#if P360_PORTCLS_SHELL_ENABLED", driver_entry_i)
 shell_init_i=driver.index("p360_portcls_driver_initialize(", shell_gate_i)
@@ -175,7 +176,6 @@ kmdf_init_i=driver.index("WDF_DRIVER_CONFIG_INIT(&config,P360EvtDeviceAdd);", sh
 if not (driver_entry_i < shell_gate_i < shell_init_i < kmdf_init_i):
     raise SystemExit("PortCls shell activation gate no longer preserves KMDF baseline")
 
-driver=(ROOT/"driver/p360_driver.c").read_text()
 for token in (
     "p360_runtime_boot_start(",
     "p360_firmware_load(&firmware)",
