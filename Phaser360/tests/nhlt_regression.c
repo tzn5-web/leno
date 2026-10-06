@@ -107,6 +107,17 @@ int main(void)
     b[100]^=1;
     assert(!p360_nhlt_parse(b,n,&f));
 
+    /* Matching format may not bypass bounds checking of its specific blob. */
+    n=fixture(b,sizeof(b));
+    put32(b+37+68*3+64,0x1000u);
+    {
+        unsigned i;uint8_t sum=0;
+        b[9]=0;
+        for(i=0;i<n;i++)sum=(uint8_t)(sum+b[i]);
+        b[9]=(uint8_t)(0u-sum);
+    }
+    assert(!p360_nhlt_parse(b,n,&f));
+
     puts("Phaser360 NHLT regression: PASS");
     return 0;
 }
