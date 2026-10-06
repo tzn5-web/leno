@@ -15,7 +15,7 @@ p360_csaudio_callback(
     if (!link || !arg || Argument2==&link->SenderCookie)
         return;
 
-    if (arg->argSz < FIELD_OFFSET(P360_CSAUDIO_ARG,formatOverride) ||
+    if (arg->argSz < (UINT32)FIELD_OFFSET(P360_CSAUDIO_ARG,Payload) ||
         arg->argSz > sizeof(P360_CSAUDIO_ARG))
         return;
 
@@ -32,11 +32,11 @@ p360_csaudio_callback(
 
     if (local.endpointRequest==P360_CSAUDIO_ENDPOINT_OVERRIDE_FORMAT &&
         local.argSz>=sizeof(P360_CSAUDIO_ARG)) {
-        UINT16 channels=local.formatOverride.channels ?
-            local.formatOverride.channels :
+        UINT16 channels=local.Payload.formatOverride.channels ?
+            local.Payload.formatOverride.channels :
             (UINT16)P360_SPEAKER_CHANNELS;
-        UINT16 frequency=local.formatOverride.frequency ?
-            local.formatOverride.frequency :
+        UINT16 frequency=local.Payload.formatOverride.frequency ?
+            local.Payload.formatOverride.frequency :
             (UINT16)P360_SAMPLE_RATE;
 
         /*
@@ -48,17 +48,17 @@ p360_csaudio_callback(
          */
         if (channels!=(UINT16)P360_SPEAKER_CHANNELS ||
             frequency!=(UINT16)P360_SAMPLE_RATE ||
-            local.formatOverride.bitsPerSample!=16u ||
-            local.formatOverride.validBitsPerSample!=
+            local.Payload.formatOverride.bitsPerSample!=16u ||
+            local.Payload.formatOverride.validBitsPerSample!=
                 (UINT16)P360_SPEAKER_PCM_VALID_BITS ||
-            !local.formatOverride.force32BitOutputContainer) {
+            !local.Payload.formatOverride.force32BitOutputContainer) {
             return;
         }
 
         link->SpeakerChannels=channels;
         link->SpeakerFrequency=frequency;
-        link->SpeakerBitsPerSample=local.formatOverride.bitsPerSample;
-        link->SpeakerValidBitsPerSample=local.formatOverride.validBitsPerSample;
+        link->SpeakerBitsPerSample=local.Payload.formatOverride.bitsPerSample;
+        link->SpeakerValidBitsPerSample=local.Payload.formatOverride.validBitsPerSample;
         link->SpeakerForce32=TRUE;
         KeMemoryBarrier();
         InterlockedExchange(&link->SpeakerFormatSeen,1);
