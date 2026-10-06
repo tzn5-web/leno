@@ -36,6 +36,9 @@ typedef struct _P360_DEVICE_CONTEXT {
     struct p360_loader Loader;
     ULONGLONG BootEpoch;
 
+    WDFDEVICE FrameworkDevice;
+    PDEVICE_OBJECT PortClsFdo;
+
     BOOLEAN BusOpen;
     BOOLEAN BootInitialized;
     BOOLEAN RuntimeInitialized;
@@ -54,6 +57,10 @@ NTSTATUS p360_host_d0_entry(
     _Inout_ P360_DEVICE_CONTEXT *ctx);
 NTSTATUS p360_host_d0_exit(
     _Inout_ P360_DEVICE_CONTEXT *ctx);
+
+NTSTATUS p360_portcls_driver_initialize(
+    _In_ PDRIVER_OBJECT DriverObject,
+    _In_ PUNICODE_STRING RegistryPath);
 
 DRIVER_INITIALIZE DriverEntry;
 EVT_WDF_DRIVER_DEVICE_ADD P360EvtDeviceAdd;
