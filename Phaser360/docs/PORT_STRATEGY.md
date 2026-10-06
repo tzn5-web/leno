@@ -23,9 +23,9 @@ P360 SOF host
           │
           ▼
 P360 PortCls / WaveRT
-  ├─ headphone render first (SSP2 / DA7219)
-  ├─ headset mic / DMIC
-  └─ internal speaker last (SSP1 / MAX98357A)
+  ├─ internal speaker first (SSP1 / MAX98357A)
+  ├─ headphone render later (SSP2 / DA7219)
+  └─ headset mic / DMIC later
 ```
 
 ## What B4 contributes
@@ -80,14 +80,16 @@ A generic `.tplg` parser is deferred until real audio is stable.
 
 Internal speaker is compile-time disabled initially.
 
-The first physical playback target is DA7219/headphones. Speaker enable requires:
+The first physical playback target is the internal speaker path on SSP1/MAX98357A.
+Speaker enable requires:
 1. exact hardware identity;
-2. valid NHLT;
+2. valid NHLT with SSP1 render;
 3. SOF FW_READY;
 4. healthy IPC3;
-5. instantiated topology;
+5. instantiated speaker topology;
 6. working WaveRT audio core;
-7. proved headphone stream;
-8. explicit speaker policy enable.
+7. explicit speaker policy enable.
+
+Headphone/DA7219 proof is not a prerequisite for the speaker path.
 
 Any failure returns to fail-closed state.
