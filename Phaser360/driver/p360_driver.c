@@ -11,6 +11,12 @@ p360_fail(
     return status;
 }
 
+static BOOLEAN
+p360_runtime_boot_policy_enabled(VOID)
+{
+    return P360_RUNTIME_BOOT_ENABLED ? TRUE : FALSE;
+}
+
 static NTSTATUS
 p360_loader_status_to_ntstatus(
     _In_ int rc)
@@ -415,11 +421,10 @@ P360EvtD0Entry(
         return STATUS_INVALID_DEVICE_STATE;
     }
 
-#if P360_RUNTIME_BOOT_ENABLED
-    return p360_runtime_boot_start(ctx);
-#else
+    if (p360_runtime_boot_policy_enabled())
+        return p360_runtime_boot_start(ctx);
+
     return STATUS_SUCCESS;
-#endif
 }
 
 NTSTATUS
@@ -440,9 +445,8 @@ P360EvtD0Exit(
      * adapter's cancellation latch for ordinary D0 transitions; it is reserved
      * for removal/retirement.
      */
-#if P360_RUNTIME_BOOT_ENABLED
-    return p360_runtime_boot_stop(ctx);
-#else
+    if (p360_runtime_boot_policy_enabled())
+        return p360_runtime_boot_stop(ctx);
+
     return STATUS_SUCCESS;
-#endif
 }
