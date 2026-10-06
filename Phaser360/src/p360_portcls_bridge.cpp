@@ -1,6 +1,7 @@
 #include <ntifs.h>
-#include <portcls.h>
+#include <wdf.h>
 #include <wdfminiport.h>
+#include <portcls.h>
 
 #include "../include/p360_portcls_bridge.h"
 
