@@ -144,10 +144,11 @@ if "WdfFdoQueryForInterface(" not in bus_source:
 for token in (
     r"..\src\p360_portcls_bridge.cpp",
     r"..\src\p360_portcls_shell.cpp",
+    r"..\src\p360_safety.c",
     "PortCls.lib",
 ):
     if token not in project:
-        raise SystemExit(f"PortCls bridge build integration missing: {token}")
+        raise SystemExit(f"PortCls/safety build integration missing: {token}")
 
 for token in (
     "P360_RUNTIME_BOOT_ENABLED=$(P360RuntimeBootEnabled)",
@@ -174,9 +175,18 @@ for token in (
     "p360_portcls_create_wdf_miniport(",
     "p360_host_prepare(",
     "p360_host_d0_entry(",
+    "p360_host_d0_exit(",
+    "p360_host_release(",
+    "IRP_MN_STOP_DEVICE",
+    "IRP_MN_SURPRISE_REMOVAL",
+    "IRP_MN_REMOVE_DEVICE",
+    "PcDispatchIrp(",
+    "WdfDriverMiniportUnload(",
+    "MajorFunction[IRP_MJ_PNP]",
+    "DriverObject->DriverUnload=P360PortClsUnload",
 ):
     if token not in portcls_shell:
-        raise SystemExit(f"dormant PortCls shell contract missing: {token}")
+        raise SystemExit(f"PortCls lifecycle contract missing: {token}")
 
 for token in (
     "WDFDEVICE FrameworkDevice;",
@@ -185,6 +195,23 @@ for token in (
 ):
     if token not in driver_h:
         raise SystemExit(f"PortCls shell C ABI/lifetime contract missing: {token}")
+
+inf=(ROOT/"driver/P360SofAudio.inx").read_text()
+for token in (
+    "Class=System",
+    "ClassGuid={4D36E97D-E325-11CE-BFC1-08002BE10318}",
+    r"CSAUDIO\ADSP&CTLR_VEN_8086&CTLR_DEV_3198",
+):
+    if token not in inf:
+        raise SystemExit(f"proven Phaser360 System-class binding contract missing: {token}")
+for forbidden in (
+    "Class=MEDIA",
+    "ksthunk",
+    "KS.Registration",
+    "WDMAUDIO.Registration",
+):
+    if forbidden in inf:
+        raise SystemExit(f"known-bad Phaser360 class/stack regression reintroduced: {forbidden}")
 
 driver=(ROOT/"driver/p360_driver.c").read_text()
 driver_entry_i=driver.index("DriverEntry(")
