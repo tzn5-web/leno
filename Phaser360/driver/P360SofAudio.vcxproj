@@ -75,7 +75,14 @@
     <ClCompile Include="..\src\p360_cs_bus.c" />
     <ClCompile Include="..\src\p360_cs_boot.c" />
     <ClCompile Include="..\sof_core\p360_transport_core.c" />
-    <ClCompile Include="..\sof_core\loader\p360_loader.c" />
+    <ClCompile Include="..\sof_core\loader\p360_loader.c">
+      <!--
+        MSVC C4701 is a flow-analysis false positive here: every read of the
+        temporary value is guarded by NT-style rc==0 after read32(). Keep the
+        exact audited B4 source hash and suppress only this warning on this TU.
+      -->
+      <DisableSpecificWarnings>4701;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
     <ClCompile Include="..\sof_core\loader\p360_fw_image.c" />
     <ClCompile Include="..\sof_core\loader\p360_irq.c" />
     <ClCompile Include="..\sof_core\loader\p360_dispatch.c" />
