@@ -80,7 +80,7 @@ int p360_ipc3_tx_begin(
 
     result->generation=d->ipc.generation;
 
-    if (io->write_box(context,P360_REPLY_BOX,message,bytes) != 0) {
+    if (io->write_box(context,P360_HOST_DOWNBOX,message,bytes) != 0) {
         p360_dispatch_stop(d);
         result->status=P360_IPC3_TX_MAILBOX;
         return result->status;
