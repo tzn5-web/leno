@@ -2,6 +2,13 @@
 
 #define P360_BOOT_READY_OFFSET 0x81000u
 
+#define P360_HDA_GCAP_OFFSET       0x00u
+#define P360_HDA_GCAP_ISS_SHIFT    8u
+#define P360_HDA_GCAP_OSS_SHIFT    12u
+#define P360_HDA_GCAP_STREAM_MASK  0x0fu
+#define P360_PPCTL_OFFSET           0x04u
+#define P360_PPCTL_MAX_STREAM       29u
+
 #define P360_DSP_ADSPCS  0x04u
 #define P360_DSP_HIPCT   0x40u
 #define P360_DSP_HIPCTE  0x44u
@@ -116,7 +123,7 @@ p360_cs_boot_fill_bdl(
         ULONGLONG pa = ((ULONGLONG)pfns[i]) << PAGE_SHIFT;
 
         if (pa > MAXULONG32)
-            return STATUS_ADDRESS_NOT_ASSOCIATED;
+            return STATUS_CONFLICTING_ADDRESSES;
 
         bdl[i].AddressLow = (UINT32)pa;
         bdl[i].AddressHigh = 0;
@@ -129,6 +136,97 @@ p360_cs_boot_fill_bdl(
     }
 
     KeMemoryBarrier();
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS
+p360_cs_boot_stream_index(
+    _In_ P360_CS_BOOT_ADAPTER *a,
+    _Out_ ULONG *streamIndex,
+    _Out_ ULONG *processingMask
+    )
+{
+    USHORT gcap;
+    ULONG inputs;
+    ULONG outputs;
+    ULONG index;
+
+    if (!a || !a->Bus || !a->Bus->resources_valid ||
+        !a->Bus->hda.Base.baseptr || !a->Bus->ppcap ||
+        !streamIndex || !processingMask ||
+        a->StreamTag == 0) {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+
+    gcap = READ_REGISTER_USHORT(
+        (volatile USHORT *)(a->Bus->hda.Base.baseptr +
+                            P360_HDA_GCAP_OFFSET));
+
+    inputs = (gcap >> P360_HDA_GCAP_ISS_SHIFT) &
+             P360_HDA_GCAP_STREAM_MASK;
+    outputs = (gcap >> P360_HDA_GCAP_OSS_SHIFT) &
+              P360_HDA_GCAP_STREAM_MASK;
+
+    /*
+     * Pinned CoolStar commit 5477b93 assigns Intel stream tags sequentially
+     * within each direction group. Playback descriptors start at ISS, hence:
+     *
+     *     descriptor index = ISS + (render streamTag - 1)
+     *
+     * Refuse to infer anything outside that exact contract.
+     */
+    if (outputs == 0 ||
+        a->StreamTag > outputs) {
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+    }
+
+    index = inputs + ((ULONG)a->StreamTag - 1u);
+
+    if (index > P360_PPCTL_MAX_STREAM)
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+
+    *streamIndex = index;
+    *processingMask = 1u << index;
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS
+p360_cs_boot_set_processing(
+    _In_ P360_CS_BOOT_ADAPTER *a,
+    _In_ ULONG mask,
+    _In_ BOOLEAN enable
+    )
+{
+    volatile ULONG *ppctl;
+    ULONG before;
+    ULONG after;
+    ULONG wanted;
+
+    if (!a || !a->Bus || !a->Bus->ppcap ||
+        mask == 0) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    ppctl = (volatile ULONG *)(
+        (PUCHAR)a->Bus->ppcap + P360_PPCTL_OFFSET);
+
+    before = READ_REGISTER_ULONG(ppctl);
+    wanted = enable ? (before | mask) : (before & ~mask);
+
+    WRITE_REGISTER_ULONG(ppctl, wanted);
+    KeMemoryBarrier();
+
+    after = READ_REGISTER_ULONG(ppctl);
+
+    /*
+     * PPCTL is a control register. Preserve every unrelated stream/global bit
+     * and prove the requested bit reached the expected state.
+     */
+    if ((after & ~mask) != (before & ~mask) ||
+        (!!(after & mask) != !!enable)) {
+        return STATUS_DEVICE_HARDWARE_ERROR;
+    }
+
     return STATUS_SUCCESS;
 }
 
@@ -215,6 +313,11 @@ p360_cs_boot_prepare(
     P360_CS_BOOT_ADAPTER *a = (P360_CS_BOOT_ADAPTER *)context;
     HDAUDIO_STREAM_FORMAT format;
     NTSTATUS status;
+    NTSTATUS restoreStatus;
+    ULONG streamIndex;
+    ULONG processingMask;
+    volatile ULONG *ppctl;
+    ULONG ppctlBefore;
 
     if (stream_tag)
         *stream_tag = 0;
@@ -252,6 +355,27 @@ p360_cs_boot_prepare(
     a->StreamOwned = TRUE;
     a->DmaDetached = TRUE;
 
+    status = p360_cs_boot_stream_index(
+        a,
+        &streamIndex,
+        &processingMask);
+
+    if (!NT_SUCCESS(status))
+        return P360_L_IO;
+
+    UNREFERENCED_PARAMETER(streamIndex);
+
+    ppctl = (volatile ULONG *)(
+        (PUCHAR)a->Bus->ppcap + P360_PPCTL_OFFSET);
+    ppctlBefore = READ_REGISTER_ULONG(ppctl);
+
+    /*
+     * GetRenderStream() in the pinned bus must have coupled this exact stream.
+     * This is an ABI/invariant check, not a best-effort repair.
+     */
+    if ((ppctlBefore & processingMask) == 0)
+        return P360_L_IO;
+
     status = p360_cs_boot_alloc_pages(a);
     if (!NT_SUCCESS(status))
         return P360_L_IO;
@@ -264,12 +388,40 @@ p360_cs_boot_prepare(
 
     a->BdlEntries = P360_CS_BOOT_PAGE_COUNT;
 
+    /*
+     * Preserve B4's proven GLK ordering:
+     *   selected stream coupled by GetRenderStream()
+     *   -> decouple
+     *   -> reset/setup/FMT=0x40 by PrepareDSP()
+     *   -> recouple
+     *
+     * Only the selected PROCEN bit is changed; all unrelated PPCTL bits must
+     * remain byte-for-byte equivalent across each RMW.
+     */
+    status = p360_cs_boot_set_processing(
+        a,
+        processingMask,
+        FALSE);
+
+    if (!NT_SUCCESS(status))
+        return P360_L_IO;
+
     status = a->Bus->iface.PrepareDSP(
         a->Bus->iface.Context,
         a->Stream,
         P360_CS_BOOT_DMA_BYTES,
         (int)a->BdlEntries,
         &a->BusBdl);
+
+    restoreStatus = p360_cs_boot_set_processing(
+        a,
+        processingMask,
+        TRUE);
+
+    if (!NT_SUCCESS(restoreStatus)) {
+        a->Quarantined = TRUE;
+        return P360_L_QUARANTINE;
+    }
 
     if (!NT_SUCCESS(status) || !a->BusBdl)
         return P360_L_IO;
