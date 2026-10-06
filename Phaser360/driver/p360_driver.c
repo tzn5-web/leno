@@ -86,6 +86,7 @@ P360EvtPrepareHardware(
     RtlZeroMemory(&ctx->Nhlt,sizeof(ctx->Nhlt));
     RtlZeroMemory(&ctx->Identity,sizeof(ctx->Identity));
     ctx->BootInitialized=FALSE;
+    ctx->RuntimeInitialized=FALSE;
     InterlockedExchange(&ctx->Removing,0);
 
     status=p360_cs_bus_open(&ctx->Bus,Device);
@@ -123,8 +124,29 @@ P360EvtPrepareHardware(
         goto boot_init_fail;
 
     ctx->BootInitialized=TRUE;
+
+    status=p360_cs_runtime_create(
+        &ctx->Runtime,
+        Device,
+        &ctx->Bus,
+        &ctx->Boot);
+    if (!NT_SUCCESS(status))
+        goto runtime_init_fail;
+
+    ctx->RuntimeInitialized=TRUE;
     ctx->Prepared=TRUE;
     return STATUS_SUCCESS;
+
+runtime_init_fail:
+    p360_state_fail(&ctx->State,P360_FAIL_RESOURCES);
+    if (ctx->BootInitialized) {
+        NTSTATUS retireStatus=
+            p360_cs_boot_adapter_retire(&ctx->Boot);
+        if (!NT_SUCCESS(retireStatus))
+            status=retireStatus;
+        ctx->BootInitialized=FALSE;
+    }
+    goto cleanup;
 
 boot_init_fail:
     p360_state_fail(&ctx->State,P360_FAIL_RESOURCES);
@@ -160,6 +182,16 @@ P360EvtReleaseHardware(
         return STATUS_INVALID_DEVICE_STATE;
 
     InterlockedExchange(&ctx->Removing,1);
+
+    if (ctx->RuntimeInitialized) {
+        status=p360_cs_runtime_destroy(&ctx->Runtime);
+        if (!NT_SUCCESS(status)) {
+            p360_state_fail(&ctx->State,P360_FAIL_IRQ);
+            return status;
+        }
+
+        ctx->RuntimeInitialized=FALSE;
+    }
 
     if (ctx->BootInitialized) {
         p360_cs_boot_adapter_cancel(&ctx->Boot);
