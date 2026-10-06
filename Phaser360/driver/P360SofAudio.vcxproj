@@ -56,7 +56,7 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <BufferSecurityCheck>true</BufferSecurityCheck>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\include;$(ProjectDir)..\sof_core;$(ProjectDir)..\sof_core\loader;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)kernel_compat;$(ProjectDir);$(ProjectDir)..\include;$(ProjectDir)..\sof_core;$(ProjectDir)..\sof_core\loader;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>P360_RUNTIME_BUILD=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
