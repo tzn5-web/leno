@@ -10,6 +10,7 @@
 #include "../include/p360_cs_boot.h"
 #include "../include/p360_cs_runtime.h"
 #include "../include/p360_firmware.h"
+#include "../include/p360_csaudio.h"
 #include "../sof_core/loader/p360_loader.h"
 
 /*
@@ -42,6 +43,7 @@ typedef struct _P360_DEVICE_CONTEXT {
     P360_CS_BUS Bus;
     P360_CS_BOOT_ADAPTER Boot;
     P360_CS_RUNTIME Runtime;
+    P360_CSAUDIO_LINK CsAudio;
     struct p360_loader Loader;
     ULONGLONG BootEpoch;
 
@@ -51,6 +53,7 @@ typedef struct _P360_DEVICE_CONTEXT {
     BOOLEAN BusOpen;
     BOOLEAN BootInitialized;
     BOOLEAN RuntimeInitialized;
+    BOOLEAN CsAudioInitialized;
     BOOLEAN Prepared;
     volatile LONG Removing;
 } P360_DEVICE_CONTEXT;
