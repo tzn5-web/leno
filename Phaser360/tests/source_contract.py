@@ -164,17 +164,22 @@ if "#error P360_RUNTIME_BOOT_ENABLED" in driver:
     raise SystemExit("runtime handoff is still hidden behind a compile-time #error")
 
 policy_i=driver.index("p360_runtime_boot_policy_enabled(VOID)")
-entry_i=driver.index("P360EvtD0Entry(")
-boot_gate_i=driver.index("if (p360_runtime_boot_policy_enabled())", entry_i)
+host_entry_i=driver.index("p360_host_d0_entry(")
+boot_gate_i=driver.index("if (p360_runtime_boot_policy_enabled())", host_entry_i)
 boot_call_i=driver.index("return p360_runtime_boot_start(ctx);", boot_gate_i)
-exit_i=driver.index("P360EvtD0Exit(")
-stop_gate_i=driver.index("if (p360_runtime_boot_policy_enabled())", exit_i)
+entry_i=driver.index("P360EvtD0Entry(", boot_call_i)
+entry_forward_i=driver.index("return p360_host_d0_entry(", entry_i)
+host_exit_i=driver.index("p360_host_d0_exit(", entry_forward_i)
+stop_gate_i=driver.index("if (p360_runtime_boot_policy_enabled())", host_exit_i)
 stop_call_i=driver.index("return p360_runtime_boot_stop(ctx);", stop_gate_i)
+exit_i=driver.index("P360EvtD0Exit(", stop_call_i)
+exit_forward_i=driver.index("return p360_host_d0_exit(", exit_i)
 if not (
-    policy_i < entry_i < boot_gate_i < boot_call_i <
-    exit_i < stop_gate_i < stop_call_i
+    policy_i < host_entry_i < boot_gate_i < boot_call_i <
+    entry_i < entry_forward_i < host_exit_i < stop_gate_i <
+    stop_call_i < exit_i < exit_forward_i
 ):
-    raise SystemExit("D0 runtime activation policy gate ordering drifted")
+    raise SystemExit("shell-neutral D0 runtime policy ordering drifted")
 
 start_i=driver.index("p360_runtime_boot_start(")
 loader_i=driver.index("p360_loader_run(", start_i)
@@ -183,6 +188,26 @@ bind_live_i=driver.index("p360_cs_runtime_bind_live(", ready_i)
 ipc_state_i=driver.index("P360_STATE_IPC_READY", bind_live_i)
 if not (start_i < loader_i < ready_i < bind_live_i < ipc_state_i):
     raise SystemExit("SOF boot -> FW_READY -> IRQ handoff ordering drifted")
+
+for token in (
+    "p360_host_prepare(",
+    "p360_host_release(",
+    "p360_host_d0_entry(",
+    "p360_host_d0_exit(",
+):
+    if token not in driver_h:
+        raise SystemExit(f"shell-neutral host lifecycle declaration missing: {token}")
+
+release_i=driver.index("p360_host_release(")
+release_stop_i=driver.index("p360_cs_runtime_stop(&ctx->Runtime)", release_i)
+release_destroy_i=driver.index("p360_cs_runtime_destroy(&ctx->Runtime)", release_stop_i)
+release_retire_i=driver.index("p360_cs_boot_adapter_retire(&ctx->Boot)", release_destroy_i)
+release_bus_i=driver.index("p360_cs_bus_close(&ctx->Bus)", release_retire_i)
+if not (
+    release_i < release_stop_i < release_destroy_i <
+    release_retire_i < release_bus_i
+):
+    raise SystemExit("host release no longer proves runtime -> boot -> bus teardown ordering")
 
 print("Phaser360 runtime lifecycle contract: PASS")
 
