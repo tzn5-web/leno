@@ -9,7 +9,8 @@ const P360_BOARD_PROFILE g_p360_phaser360_profile = {
     P360_SAMPLE_RATE,
     P360_SPEAKER_CHANNELS,
     P360_SPEAKER_CONTAINER_BITS,
-    P360_SPEAKER_VALID_BITS,
+    P360_SPEAKER_PCM_VALID_BITS,
+    P360_SPEAKER_DAI_VALID_BITS,
     0  /* speaker disabled by default */
 };
 
