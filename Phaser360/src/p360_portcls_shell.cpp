@@ -5,6 +5,7 @@
 
 #include "../driver/p360_driver.h"
 #include "../include/p360_portcls_bridge.h"
+#include "../include/p360_speaker_endpoint.h"
 
 typedef struct _P360_PORTCLS_INSTANCE {
     KSPIN_LOCK Lock;
@@ -15,6 +16,12 @@ typedef struct _P360_PORTCLS_INSTANCE {
 
 static P360_PORTCLS_INSTANCE gP360PortClsInstance;
 static PDRIVER_UNLOAD gP360PortClsUnloadRoutine=NULL;
+
+static BOOLEAN
+p360_speaker_endpoint_policy_enabled(VOID)
+{
+    return P360_SPEAKER_ENDPOINT_ENABLED ? TRUE : FALSE;
+}
 
 extern "C"
 NTSTATUS
@@ -115,6 +122,7 @@ p360_portcls_cleanup_instance(
 {
     WDFDEVICE frameworkDevice=NULL;
     P360_DEVICE_CONTEXT *ctx=NULL;
+    NTSTATUS endpointStatus=STATUS_SUCCESS;
     NTSTATUS d0Status=STATUS_SUCCESS;
     NTSTATUS releaseStatus=STATUS_SUCCESS;
 
@@ -126,6 +134,14 @@ p360_portcls_cleanup_instance(
             &frameworkDevice,
             &ctx)) {
         return STATUS_SUCCESS;
+    }
+
+    if (ctx->SpeakerEndpointInstalled) {
+        endpointStatus=p360_speaker_endpoint_uninstall(
+            Fdo,
+            &ctx->SpeakerTopologyPort,
+            &ctx->SpeakerWavePort);
+        ctx->SpeakerEndpointInstalled=FALSE;
     }
 
     d0Status=p360_host_d0_exit(ctx);
@@ -145,6 +161,9 @@ p360_portcls_cleanup_instance(
     }
 
     p360_portcls_delete_wdf_miniport(&frameworkDevice);
+
+    if (!NT_SUCCESS(endpointStatus))
+        return endpointStatus;
 
     return NT_SUCCESS(d0Status) ?
         STATUS_SUCCESS :
@@ -188,9 +207,6 @@ P360PortClsStartDevice(
     NTSTATUS status;
     BOOLEAN d0Entered=FALSE;
 
-    UNREFERENCED_PARAMETER(Irp);
-    UNREFERENCED_PARAMETER(ResourceList);
-
     if (!DeviceObject || KeGetCurrentIrql()!=PASSIVE_LEVEL)
         return STATUS_INVALID_PARAMETER;
 
@@ -226,6 +242,19 @@ P360PortClsStartDevice(
 
     d0Entered=TRUE;
 
+    if (p360_speaker_endpoint_policy_enabled()) {
+        status=p360_speaker_endpoint_install(
+            DeviceObject,
+            Irp,
+            ResourceList,
+            &ctx->SpeakerTopologyPort,
+            &ctx->SpeakerWavePort);
+        if (!NT_SUCCESS(status))
+            goto fail;
+
+        ctx->SpeakerEndpointInstalled=TRUE;
+    }
+
     if (!p360_portcls_publish_instance(
             DeviceObject,
             frameworkDevice,
@@ -237,6 +266,14 @@ P360PortClsStartDevice(
     return STATUS_SUCCESS;
 
 fail:
+    if (ctx && ctx->SpeakerEndpointInstalled) {
+        (void)p360_speaker_endpoint_uninstall(
+            DeviceObject,
+            &ctx->SpeakerTopologyPort,
+            &ctx->SpeakerWavePort);
+        ctx->SpeakerEndpointInstalled=FALSE;
+    }
+
     if (d0Entered)
         (void)p360_host_d0_exit(ctx);
 
