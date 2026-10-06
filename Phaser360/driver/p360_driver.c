@@ -303,6 +303,7 @@ p360_host_prepare(
     RtlZeroMemory(&ctx->Identity,sizeof(ctx->Identity));
     ctx->BootInitialized=FALSE;
     ctx->RuntimeInitialized=FALSE;
+    ctx->CsAudioInitialized=FALSE;
     InterlockedExchange(&ctx->Removing,0);
 
     status=p360_cs_bus_open(&ctx->Bus,Device);
@@ -350,8 +351,24 @@ p360_host_prepare(
         goto runtime_init_fail;
 
     ctx->RuntimeInitialized=TRUE;
+
+    status=p360_csaudio_open(&ctx->CsAudio);
+    if (!NT_SUCCESS(status))
+        goto csaudio_init_fail;
+
+    ctx->CsAudioInitialized=TRUE;
     ctx->Prepared=TRUE;
     return STATUS_SUCCESS;
+
+csaudio_init_fail:
+    p360_state_fail(&ctx->State,P360_FAIL_RESOURCES);
+    if (ctx->RuntimeInitialized) {
+        NTSTATUS destroyStatus=
+            p360_cs_runtime_destroy(&ctx->Runtime);
+        if (!NT_SUCCESS(destroyStatus))
+            status=destroyStatus;
+        ctx->RuntimeInitialized=FALSE;
+    }
 
 runtime_init_fail:
     p360_state_fail(&ctx->State,P360_FAIL_RESOURCES);
@@ -409,6 +426,16 @@ p360_host_release(
         return STATUS_INVALID_DEVICE_STATE;
 
     InterlockedExchange(&ctx->Removing,1);
+
+    /*
+     * Speaker mute/endpoint callback teardown comes before DSP teardown.
+     * The MAX98357A driver remains the sole GPIO owner; this host only emits
+     * CSAudio endpoint requests.
+     */
+    if (ctx->CsAudioInitialized) {
+        p360_csaudio_close(&ctx->CsAudio);
+        ctx->CsAudioInitialized=FALSE;
+    }
 
     if (ctx->RuntimeInitialized &&
         (ctx->Runtime.Bound ||
