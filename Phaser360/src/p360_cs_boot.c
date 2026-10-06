@@ -233,36 +233,10 @@ p360_cs_boot_verify_prepared_stream(
 }
 
 static int
-p360_cs_boot_read_pci(
-    _In_ P360_CS_BOOT_ADAPTER *a,
-    _Out_writes_bytes_(256) UCHAR config[256]
-    )
-{
-    ULONG offset;
-
-    if (!a || !a->Bus || !a->Bus->resources_valid)
-        return P360_L_BUSY;
-
-    for (offset = 0; offset < 256; offset += sizeof(ULONG)) {
-        if (a->Bus->pci.GetBusData(
-                a->Bus->pci.Context,
-                PCI_WHICHSPACE_CONFIG,
-                config + offset,
-                offset,
-                sizeof(ULONG)) != sizeof(ULONG)) {
-            return P360_L_IO;
-        }
-    }
-
-    return 0;
-}
-
-static int
 p360_cs_boot_acquire(void *context)
 {
     P360_CS_BOOT_ADAPTER *a = (P360_CS_BOOT_ADAPTER *)context;
     struct p360_pci_identity identity;
-    UCHAR config[256];
     NTSTATUS status;
     int rc;
 
@@ -281,12 +255,8 @@ p360_cs_boot_acquire(void *context)
         a->PowerHeld = TRUE;
     }
 
-    rc = p360_cs_boot_read_pci(a, config);
-    if (rc)
-        goto fail;
-
-    if (p360_pci_validate(config, sizeof(config), &identity) ||
-        (identity.command & 6u) != 6u) {
+    status = p360_cs_bus_read_identity(a->Bus,&identity);
+    if (!NT_SUCCESS(status)) {
         rc = P360_L_BUSY;
         goto fail;
     }
