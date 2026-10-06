@@ -77,6 +77,37 @@ dispatch=(ROOT/"sof_core/loader/p360_dispatch.c").read_text()
 ipc3_tx_h=(ROOT/"sof_core/loader/p360_ipc3_tx.h").read_text()
 ipc3_tx=(ROOT/"sof_core/loader/p360_ipc3_tx.c").read_text()
 run_b4=(ROOT/"tests/run_b4_core.sh").read_text()
+csaudio_h=(ROOT/"include/p360_csaudio.h").read_text()
+csaudio=(ROOT/"src/p360_csaudio.c").read_text()
+
+for token in (
+    'L"\\\\CallBack\\\\CsAudioCallbackAPI"',
+    "P360_CSAUDIO_ENDPOINT_DSP",
+    "P360_CSAUDIO_ENDPOINT_SPEAKER",
+    "P360_CSAUDIO_ENDPOINT_REGISTER",
+    "P360_CSAUDIO_ENDPOINT_START",
+    "P360_CSAUDIO_ENDPOINT_STOP",
+    "ExCreateCallback(",
+    "ExRegisterCallback(",
+    "ExNotifyCallback(",
+    "C_ASSERT(sizeof(P360_CSAUDIO_ARG) == 24)",
+):
+    if token not in csaudio_h + "\n" + csaudio:
+        raise SystemExit(f"CoolStar CSAudio bridge contract missing: {token}")
+
+for p in ROOT.rglob("*"):
+    if p.suffix.lower() not in (".c",".h",".cpp"):
+        continue
+    text=p.read_text(errors="ignore")
+    for forbidden in (
+        "IOCTL_GPIO_WRITE_PINS",
+        "RESOURCE_HUB_CREATE_PATH_FROM_ID",
+        "GpioWriteDataSynchronously",
+    ):
+        if forbidden in text:
+            raise SystemExit(
+                f"direct MAX98357A GPIO ownership reintroduced in {p.relative_to(ROOT)}: {forbidden}")
+
 
 for token in (
     "#define P360_DSP_UPBOX           0x81000u",
@@ -172,6 +203,8 @@ for token in (
     r"..\src\p360_portcls_bridge.cpp",
     r"..\src\p360_portcls_shell.cpp",
     r"..\src\p360_safety.c",
+    r"..\src\p360_csaudio.c",
+    r"..\include\p360_csaudio.h",
     r"..\sof_core\loader\p360_ipc3_tx.c",
     r"..\sof_core\loader\p360_ipc3_tx.h",
     "PortCls.lib",
@@ -321,15 +354,19 @@ for token in (
         raise SystemExit(f"shell-neutral host lifecycle declaration missing: {token}")
 
 release_i=driver.index("p360_host_release(")
-release_stop_i=driver.index("p360_cs_runtime_stop(&ctx->Runtime)", release_i)
+release_amp_close_i=driver.index("p360_csaudio_close(&ctx->CsAudio)", release_i)
+release_stop_i=driver.index("p360_cs_runtime_stop(&ctx->Runtime)", release_amp_close_i)
 release_destroy_i=driver.index("p360_cs_runtime_destroy(&ctx->Runtime)", release_stop_i)
 release_retire_i=driver.index("p360_cs_boot_adapter_retire(&ctx->Boot)", release_destroy_i)
 release_bus_i=driver.index("p360_cs_bus_close(&ctx->Bus)", release_retire_i)
 if not (
-    release_i < release_stop_i < release_destroy_i <
+    release_i < release_amp_close_i < release_stop_i < release_destroy_i <
     release_retire_i < release_bus_i
 ):
     raise SystemExit("host release no longer proves runtime -> boot -> bus teardown ordering")
+
+if "p360_csaudio_speaker_start(" in driver:
+    raise SystemExit("speaker START wired before topology/audio-core activation gate")
 
 print("Phaser360 runtime lifecycle contract: PASS")
 
