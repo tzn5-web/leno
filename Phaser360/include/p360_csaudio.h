@@ -34,6 +34,9 @@ typedef struct P360_CSAUDIO_ARG {
     };
 } P360_CSAUDIO_ARG;
 
+C_ASSERT(sizeof(P360_CSAUDIO_FORMAT_OVERRIDE) == 12);
+C_ASSERT(sizeof(P360_CSAUDIO_ARG) == 24);
+
 typedef struct P360_CSAUDIO_LINK {
     PCALLBACK_OBJECT Callback;
     PVOID Registration;
