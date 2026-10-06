@@ -74,6 +74,7 @@
     <ClCompile Include="..\src\p360_nhlt.c" />
     <ClCompile Include="..\src\p360_cs_bus.c" />
     <ClCompile Include="..\src\p360_cs_boot.c" />
+    <ClCompile Include="..\src\p360_cs_runtime.c" />
     <ClCompile Include="..\sof_core\p360_transport_core.c" />
     <ClCompile Include="..\sof_core\loader\p360_loader.c">
       <DisableSpecificWarnings>4701;%(DisableSpecificWarnings)</DisableSpecificWarnings>
@@ -94,6 +95,7 @@
     <ClInclude Include="..\include\p360_coolstar_adsp.h" />
     <ClInclude Include="..\include\p360_cs_bus.h" />
     <ClInclude Include="..\include\p360_cs_boot.h" />
+    <ClInclude Include="..\include\p360_cs_runtime.h" />
     <ClInclude Include="..\sof_core\p360_transport_core.h" />
     <ClInclude Include="..\sof_core\loader\p360_loader.h" />
     <ClInclude Include="..\sof_core\loader\p360_irq.h" />
