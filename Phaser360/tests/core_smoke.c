@@ -44,6 +44,16 @@ static void test_state_machine(void)
     assert(p360_state_advance(&sm, P360_STATE_AUDIO_CORE_READY));
     assert(p360_safety_can_start_headphone(&sm));
 
+    /* Direct speaker is the target path: no DA7219/headphone proof required. */
+    sm.speaker_policy_enabled = 1;
+    assert(p360_speaker_may_arm(&sm));
+    assert(!p360_safety_can_start_speaker(&sm)); /* compile gate remains closed */
+    {
+        P360_STATE_MACHINE direct = sm;
+        assert(p360_state_advance(&direct, P360_STATE_SPEAKER_ARMED));
+    }
+    sm.speaker_policy_enabled = 0;
+
     sm.headphone_ready = 1;
     assert(p360_state_advance(&sm, P360_STATE_HEADPHONE_READY));
 
