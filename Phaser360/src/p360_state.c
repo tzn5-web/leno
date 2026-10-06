@@ -25,6 +25,11 @@ int p360_state_advance(P360_STATE_MACHINE *sm, P360_RUNTIME_STATE next)
 void p360_state_fail(P360_STATE_MACHINE *sm, P360_FAILURE_REASON why)
 {
     if (!sm) return;
+    sm->fw_ready = 0;
+    sm->ipc_ready = 0;
+    sm->topology_ready = 0;
+    sm->audio_core_ready = 0;
+    sm->headphone_ready = 0;
     sm->speaker_runtime_armed = 0;
     sm->failure = why;
     sm->state = P360_STATE_FAILED;
