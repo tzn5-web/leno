@@ -18,11 +18,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Fail-closed core smoke
+        run: sh Phaser360/tests/run_core_smoke.sh
+
       - name: Verify Phaser360 source contracts
         run: python3 Phaser360/tests/source_contract.py
 
       - name: Compile and run B4/IRQ regressions
         run: sh Phaser360/tests/run_b4_core.sh
+
+      - name: NHLT parser regression
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -pedantic \
+            -fsanitize=address,undefined -fno-omit-frame-pointer \
+            Phaser360/tests/nhlt_regression.c \
+            Phaser360/src/p360_nhlt.c \
+            Phaser360/src/p360_board.c \
+            -IPhaser360/include \
+            -o /tmp/p360_nhlt_regression
+          /tmp/p360_nhlt_regression
 
   build-x64:
     needs: audit-core
