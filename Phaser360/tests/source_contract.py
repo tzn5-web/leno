@@ -122,8 +122,38 @@ if not (
 if not re.search(r"#define\s+P360_RUNTIME_BOOT_ENABLED\s+0\b", driver_h):
     raise SystemExit("runtime boot barrier was enabled without reviewed activation")
 
-if "#error P360_RUNTIME_BOOT_ENABLED requires" not in (ROOT/"driver/p360_driver.c").read_text():
-    raise SystemExit("runtime boot compile barrier missing")
+driver=(ROOT/"driver/p360_driver.c").read_text()
+for token in (
+    "p360_runtime_boot_start(",
+    "p360_firmware_load(&firmware)",
+    "p360_cs_runtime_prepare_dispatcher(",
+    "p360_loader_run(",
+    "p360_cs_runtime_bind_live(",
+    "p360_runtime_boot_stop(",
+    "p360_cs_runtime_stop(&ctx->Runtime)",
+):
+    if token not in driver:
+        raise SystemExit(f"compiled dormant runtime handoff missing: {token}")
+
+if "#error P360_RUNTIME_BOOT_ENABLED" in driver:
+    raise SystemExit("runtime handoff is still hidden behind a compile-time #error")
+
+entry_i=driver.index("P360EvtD0Entry(")
+boot_gate_i=driver.index("#if P360_RUNTIME_BOOT_ENABLED", entry_i)
+boot_call_i=driver.index("return p360_runtime_boot_start(ctx);", boot_gate_i)
+exit_i=driver.index("P360EvtD0Exit(")
+stop_gate_i=driver.index("#if P360_RUNTIME_BOOT_ENABLED", exit_i)
+stop_call_i=driver.index("return p360_runtime_boot_stop(ctx);", stop_gate_i)
+if not (entry_i < boot_gate_i < boot_call_i < exit_i < stop_gate_i < stop_call_i):
+    raise SystemExit("D0 runtime activation gate ordering drifted")
+
+start_i=driver.index("p360_runtime_boot_start(")
+loader_i=driver.index("p360_loader_run(", start_i)
+ready_i=driver.index("result.ready_proved", loader_i)
+bind_live_i=driver.index("p360_cs_runtime_bind_live(", ready_i)
+ipc_state_i=driver.index("P360_STATE_IPC_READY", bind_live_i)
+if not (start_i < loader_i < ready_i < bind_live_i < ipc_state_i):
+    raise SystemExit("SOF boot -> FW_READY -> IRQ handoff ordering drifted")
 
 print("Phaser360 runtime lifecycle contract: PASS")
 
