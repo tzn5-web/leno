@@ -1,7 +1,7 @@
 [Version]
 Signature="$WINDOWS NT$"
-Class=System
-ClassGuid={4D36E97D-E325-11CE-BFC1-08002BE10318}
+Class=MEDIA
+ClassGuid={4D36E96C-E325-11CE-BFC1-08002BE10318}
 Provider=%ProviderName%
 DriverVer=10/06/2026,2.0.0.0
 CatalogFile=P360SofAudio.cat
@@ -23,10 +23,20 @@ P360SofAudio.sys=1
 %DeviceDesc%=P360_Install,CSAUDIO\ADSP&CTLR_VEN_8086&CTLR_DEV_3198
 
 [P360_Install.NT]
+Include=ks.inf,wdmaudio.inf
+Needs=KS.Registration,WDMAUDIO.Registration
 CopyFiles=P360_CopyFiles
+AddReg=P360_AudioRegistration
 
 [P360_CopyFiles]
 P360SofAudio.sys
+
+[P360_AudioRegistration]
+HKR,,AssociatedFilters,,"wdmaud"
+HKR,,Driver,,P360SofAudio.sys
+HKR,Drivers,SubClasses,,"wave,mixer"
+HKR,Drivers\wave\wdmaud.drv,Driver,,wdmaud.drv
+HKR,Drivers\mixer\wdmaud.drv,Driver,,wdmaud.drv
 
 [P360_Install.NT.Services]
 AddService=P360SofAudio,0x00000002,P360_Service
