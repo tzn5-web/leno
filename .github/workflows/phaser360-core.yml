@@ -16,7 +16,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Compile fail-closed core
+
+      - name: Fail-closed core smoke
         run: |
           chmod +x Phaser360/tests/run_core_smoke.sh
           Phaser360/tests/run_core_smoke.sh
+
+      - name: B4 provenance and architecture contract
+        run: |
+          python3 Phaser360/tests/source_contract.py
+
+      - name: Compile and exercise audited B4 core
+        run: |
+          chmod +x Phaser360/tests/run_b4_core.sh
+          Phaser360/tests/run_b4_core.sh
