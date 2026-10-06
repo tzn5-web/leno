@@ -45,3 +45,22 @@ int p360_speaker_may_arm(const P360_STATE_MACHINE *sm)
         sm->headphone_ready &&
         sm->speaker_policy_enabled;
 }
+
+int p360_state_runtime_reset(P360_STATE_MACHINE *sm, int quiesced)
+{
+    if (!sm || !quiesced ||
+        !sm->hardware_identity_ok ||
+        !sm->nhlt_ok)
+        return 0;
+
+    sm->fw_ready = 0;
+    sm->ipc_ready = 0;
+    sm->topology_ready = 0;
+    sm->audio_core_ready = 0;
+    sm->headphone_ready = 0;
+    sm->speaker_runtime_armed = 0;
+    sm->failure = P360_FAIL_NONE;
+    sm->state = P360_STATE_RESOURCES_OK;
+    sm->generation++;
+    return 1;
+}
