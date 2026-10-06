@@ -45,6 +45,16 @@ typedef struct _P360_DEVICE_CONTEXT {
 
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(P360_DEVICE_CONTEXT,P360GetContext)
 
+NTSTATUS p360_host_prepare(
+    _Inout_ P360_DEVICE_CONTEXT *ctx,
+    _In_ WDFDEVICE Device);
+NTSTATUS p360_host_release(
+    _Inout_ P360_DEVICE_CONTEXT *ctx);
+NTSTATUS p360_host_d0_entry(
+    _Inout_ P360_DEVICE_CONTEXT *ctx);
+NTSTATUS p360_host_d0_exit(
+    _Inout_ P360_DEVICE_CONTEXT *ctx);
+
 DRIVER_INITIALIZE DriverEntry;
 EVT_WDF_DRIVER_DEVICE_ADD P360EvtDeviceAdd;
 EVT_WDF_DEVICE_PREPARE_HARDWARE P360EvtPrepareHardware;
