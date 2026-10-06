@@ -204,6 +204,11 @@ DriverEntry(
     _In_ PDRIVER_OBJECT DriverObject,
     _In_ PUNICODE_STRING RegistryPath)
 {
+#if P360_PORTCLS_SHELL_ENABLED
+    return p360_portcls_driver_initialize(
+        DriverObject,
+        RegistryPath);
+#else
     WDF_DRIVER_CONFIG config;
 
     WDF_DRIVER_CONFIG_INIT(&config,P360EvtDeviceAdd);
@@ -214,6 +219,7 @@ DriverEntry(
         WDF_NO_OBJECT_ATTRIBUTES,
         &config,
         WDF_NO_HANDLE);
+#endif
 }
 
 NTSTATUS
