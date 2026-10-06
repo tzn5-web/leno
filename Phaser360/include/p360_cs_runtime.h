@@ -71,7 +71,7 @@ p360_cs_runtime_destroy(
     _Inout_ P360_CS_RUNTIME *Runtime
     );
 
-BOOL
+P360_CS_BOOL
 p360_cs_runtime_interrupt(
     _In_ PVOID Context
     );
