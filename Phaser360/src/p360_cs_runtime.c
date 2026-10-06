@@ -81,6 +81,35 @@ p360_rt_callback_close(
 }
 
 static NTSTATUS
+p360_rt_wait_callbacks_idle(
+    _Inout_ P360_CS_RUNTIME *rt
+    )
+{
+    ULONG i;
+    LARGE_INTEGER delay;
+
+    if (!rt || KeGetCurrentIrql() != PASSIVE_LEVEL)
+        return STATUS_INVALID_DEVICE_STATE;
+
+    delay.QuadPart = -10 * 1000; /* 1 ms */
+
+    for (i = 0; i < 1000u; ++i) {
+        LONG state = InterlockedCompareExchange(
+            &rt->CallbackState,0,0);
+
+        if (((ULONG)state & P360_RUNTIME_CALLBACK_COUNT) == 0)
+            return STATUS_SUCCESS;
+
+        (void)KeDelayExecutionThread(
+            KernelMode,
+            FALSE,
+            &delay);
+    }
+
+    return STATUS_IO_TIMEOUT;
+}
+
+static NTSTATUS
 p360_rt_wait_callbacks_closed(
     _Inout_ P360_CS_RUNTIME *rt
     )
@@ -602,8 +631,8 @@ p360_cs_runtime_interrupt(
         hipcte);
 
     if (captured != 1) {
-        if (captured < 0)
-            InterlockedExchange(&rt->Fault,1);
+        p360_irq_poison(&rt->Irq);
+        InterlockedExchange(&rt->Fault,1);
         goto done;
     }
 
@@ -625,6 +654,8 @@ p360_cs_runtime_interrupt(
     if (InterlockedCompareExchange(&rt->DpcState,1,0) == 0) {
         if (!WdfDpcEnqueue(rt->Dpc)) {
             InterlockedExchange(&rt->DpcState,0);
+            InterlockedExchange(&rt->EventValid,0);
+            p360_irq_poison(&rt->Irq);
             InterlockedExchange(&rt->Fault,1);
             (void)p360_rt_mask(rt);
         }
@@ -748,10 +779,16 @@ p360_cs_runtime_bind_live(
 
     if (p360_dispatch_bind(
             &rt->Dispatch,
-            BootEpoch) != 0 ||
-        p360_irq_bind_boot(
+            BootEpoch) != 0) {
+        WdfSpinLockRelease(rt->DispatchLock);
+        InterlockedExchange(&rt->Fault,1);
+        return STATUS_DEVICE_NOT_READY;
+    }
+
+    if (p360_irq_bind_boot(
             &rt->Irq,
             BootEpoch) != 0) {
+        p360_dispatch_stop(&rt->Dispatch);
         WdfSpinLockRelease(rt->DispatchLock);
         InterlockedExchange(&rt->Fault,1);
         return STATUS_DEVICE_NOT_READY;
@@ -774,6 +811,14 @@ p360_cs_runtime_bind_live(
         if (!NT_SUCCESS(status)) {
             InterlockedExchange(&rt->Active,0);
             InterlockedExchange(&rt->Fault,1);
+
+            WdfSpinLockAcquire(rt->DispatchLock);
+            p360_irq_close(&rt->Irq);
+            p360_dispatch_stop(&rt->Dispatch);
+            WdfSpinLockRelease(rt->DispatchLock);
+
+            rt->Bound = FALSE;
+            rt->Epoch = 0;
             return status;
         }
 
@@ -835,6 +880,12 @@ p360_cs_runtime_stop(
     status = p360_rt_mask(rt);
     if (!NT_SUCCESS(status))
         return status;
+
+    status = p360_rt_wait_callbacks_idle(rt);
+    if (!NT_SUCCESS(status)) {
+        InterlockedExchange(&rt->Fault,1);
+        return status;
+    }
 
     status = p360_rt_wait_dpc_idle(rt);
     if (!NT_SUCCESS(status)) {
