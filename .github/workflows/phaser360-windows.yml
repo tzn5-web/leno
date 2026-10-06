@@ -68,32 +68,49 @@ jobs:
             }
           }
 
-      - name: Build integrated KMDF driver shell
+      - name: Build integrated KMDF baseline
         shell: pwsh
         run: |
-          msbuild Phaser360\driver\P360SofAudio.vcxproj /m /t:Build /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /v:minimal
+          msbuild Phaser360\driver\P360SofAudio.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /p:P360PortClsShellEnabled=0 /p:P360RuntimeBootEnabled=0 /v:minimal
+          Copy-Item Phaser360\driver\out\Release\P360SofAudio.sys Phaser360\driver\out\Release\P360SofAudio-kmdf-baseline.sys -Force
+          Copy-Item Phaser360\driver\out\Release\P360SofAudio.pdb Phaser360\driver\out\Release\P360SofAudio-kmdf-baseline.pdb -Force
 
-      - name: Prove driver image exists
+      - name: Build active PortCls linkage shell
         shell: pwsh
         run: |
-          $sys = "Phaser360\driver\out\Release\P360SofAudio.sys"
-          if (-not (Test-Path $sys)) {
-            Get-ChildItem Phaser360\driver -Recurse | Select-Object FullName,Length
-            throw "P360SofAudio.sys missing"
+          msbuild Phaser360\driver\P360SofAudio.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /p:P360PortClsShellEnabled=1 /p:P360RuntimeBootEnabled=0 /v:minimal
+          Copy-Item Phaser360\driver\out\Release\P360SofAudio.sys Phaser360\driver\out\Release\P360SofAudio-portcls-shell.sys -Force
+          Copy-Item Phaser360\driver\out\Release\P360SofAudio.pdb Phaser360\driver\out\Release\P360SofAudio-portcls-shell.pdb -Force
+
+      - name: Prove driver images exist
+        shell: pwsh
+        run: |
+          $images = @(
+            "Phaser360\driver\out\Release\P360SofAudio-kmdf-baseline.sys",
+            "Phaser360\driver\out\Release\P360SofAudio-portcls-shell.sys"
+          )
+
+          foreach ($sys in $images) {
+            if (-not (Test-Path $sys)) {
+              Get-ChildItem Phaser360\driver -Recurse | Select-Object FullName,Length
+              throw "Missing driver image: $sys"
+            }
+
+            $f = Get-Item $sys
+            $h = Get-FileHash $sys -Algorithm SHA256
+            Write-Host "WINDOWS_DRIVER_BUILD=PASS"
+            Write-Host "SYS=$($f.FullName)"
+            Write-Host "BYTES=$($f.Length)"
+            Write-Host "SHA256=$($h.Hash)"
           }
-
-          $f = Get-Item $sys
-          $h = Get-FileHash $sys -Algorithm SHA256
-          Write-Host "WINDOWS_DRIVER_BUILD=PASS"
-          Write-Host "SYS=$($f.FullName)"
-          Write-Host "BYTES=$($f.Length)"
-          Write-Host "SHA256=$($h.Hash)"
 
       - name: Upload unsigned compile artifact
         uses: actions/upload-artifact@v4
         with:
           name: P360SofAudio-unsigned-build
           path: |
-            Phaser360/driver/out/Release/P360SofAudio.sys
-            Phaser360/driver/out/Release/P360SofAudio.pdb
+            Phaser360/driver/out/Release/P360SofAudio-kmdf-baseline.sys
+            Phaser360/driver/out/Release/P360SofAudio-kmdf-baseline.pdb
+            Phaser360/driver/out/Release/P360SofAudio-portcls-shell.sys
+            Phaser360/driver/out/Release/P360SofAudio-portcls-shell.pdb
           if-no-files-found: error
