@@ -11,8 +11,6 @@ PINNED={
     "sof_core/p360_transport_core.h":"e89e42e0ba5119dbd4670fa607f6e81d33f19c25eeb744df08e6713c661c41d5",
     "sof_core/loader/p360_loader.c":"476a53cab8901a891a53a76eddfdb1b5f64dbdf270bfe0cbb3211e0623c05379",
     "sof_core/loader/p360_loader.h":"358dac81c37edcda164c4f075b7ed7644e989570221f0c29be43ce56cdd3d1df",
-    "sof_core/loader/p360_dispatch.c":"397428e361f8bb8a18172cd5503f7e4450cdeea80ab4096f7e0a7b8b4c6f1fa8",
-    "sof_core/loader/p360_dispatch.h":"790472539798e630c444b16d7f3fde86d174e095e51a462d2764ff9d596133e1",
     "sof_core/loader/p360_fw_image.c":"3b370ae00596ff8ae3f3ca4c30e62a078a9c178af6a261c4d0009164854b6ab7",
     "sof_core/loader/p360_ipc_timer.c":"37148efb6a24877ae4379038eb1c108ab8b8f02824a5bfda1051b2d21454a0e9",
     "sof_core/loader/p360_ipc_timer.h":"2df15b4d9e0b16380d96503e83192e03e5d4685121f36a27e11af9b4e7e891d3",
@@ -74,9 +72,32 @@ print("Phaser360 source contract: PASS")
 runtime_h=(ROOT/"include/p360_cs_runtime.h").read_text()
 runtime=(ROOT/"src/p360_cs_runtime.c").read_text()
 driver_h=(ROOT/"driver/p360_driver.h").read_text()
+dispatch_h=(ROOT/"sof_core/loader/p360_dispatch.h").read_text()
+dispatch=(ROOT/"sof_core/loader/p360_dispatch.c").read_text()
 ipc3_tx_h=(ROOT/"sof_core/loader/p360_ipc3_tx.h").read_text()
 ipc3_tx=(ROOT/"sof_core/loader/p360_ipc3_tx.c").read_text()
 run_b4=(ROOT/"tests/run_b4_core.sh").read_text()
+
+for token in (
+    "#define P360_DSP_UPBOX           0x81000u",
+    "#define P360_HOST_DOWNBOX        0xa0000u",
+    "#define P360_STREAM_BOX          0xc1000u",
+    "#define P360_DISPATCH_MAP_BYTES  0xc2000u",
+):
+    if token not in dispatch_h:
+        raise SystemExit(f"SOF mailbox map contract missing: {token}")
+
+for token in (
+    "stream=image+0xa0",
+    "Stable(io,ctx,P360_DSP_UPBOX,reply,12)",
+    "Stable(io,ctx,P360_STREAM_BOX,position,76)",
+):
+    if token not in dispatch:
+        raise SystemExit(f"dispatcher mailbox routing contract missing: {token}")
+
+for forbidden in ("P360_REPLY_BOX", "P360_NOTIFY_BOX"):
+    if forbidden in dispatch_h + "\n" + dispatch + "\n" + ipc3_tx:
+        raise SystemExit(f"ambiguous legacy mailbox symbol reintroduced: {forbidden}")
 
 if "P360_CS_BOOL\np360_cs_runtime_interrupt" not in runtime_h:
     raise SystemExit("CoolStar interrupt callback ABI return type drifted")
@@ -228,7 +249,7 @@ for token in (
     "P360_IPC3_PROOF_COMMAND     0xe0000000u",
     "P360_IPC3_PROOF_ERROR       (-22)",
     "p360_dispatch_expect(d,io->now(context),timeout_ms)",
-    "io->write_box(context,P360_REPLY_BOX,message,bytes)",
+    "io->write_box(context,P360_HOST_DOWNBOX,message,bytes)",
     "io->write32(context,P360_DSP_HIPCI,P360_HIPCI_BUSY)",
 ):
     if token not in (ipc3_tx_h + "\n" + ipc3_tx):
