@@ -831,8 +831,24 @@ p360_cs_runtime_bind_live(
 
     status = p360_rt_arm(rt);
     if (!NT_SUCCESS(status)) {
+        /*
+         * A failed first arm invalidates this boot epoch.  Do not leave a
+         * half-bound dispatcher/IRQ pair behind: the callback can remain
+         * registered, but Active=0 makes it inert until normal teardown.
+         * Poisoning the IRQ queue deliberately forbids retrying the same
+         * runtime object after an unproved interrupt-enable transition.
+         */
         InterlockedExchange(&rt->Active,0);
         (void)p360_rt_mask(rt);
+        InterlockedExchange(&rt->Fault,1);
+
+        WdfSpinLockAcquire(rt->DispatchLock);
+        p360_irq_poison(&rt->Irq);
+        p360_dispatch_stop(&rt->Dispatch);
+        WdfSpinLockRelease(rt->DispatchLock);
+
+        rt->Bound = FALSE;
+        rt->Epoch = 0;
         return status;
     }
 
