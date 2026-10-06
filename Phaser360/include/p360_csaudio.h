@@ -22,7 +22,7 @@ typedef struct P360_CSAUDIO_FORMAT_OVERRIDE {
     UINT16 frequency;
     UINT16 bitsPerSample;
     UINT16 validBitsPerSample;
-    BOOL force32BitOutputContainer;
+    LONG force32BitOutputContainer; /* CoolStar BOOL ABI: 32-bit signed */
 } P360_CSAUDIO_FORMAT_OVERRIDE;
 
 typedef struct P360_CSAUDIO_ARG {
