@@ -450,6 +450,87 @@ p360_rt_now(void *context)
 }
 
 static int
+p360_rt_tx_write32(
+    void *context,
+    uint32_t offset,
+    uint32_t value
+    )
+{
+    P360_CS_RUNTIME *rt=(P360_CS_RUNTIME *)context;
+
+    if (!rt || !rt->Bound ||
+        !InterlockedCompareExchange(&rt->Active,0,0) ||
+        InterlockedCompareExchange(&rt->Stopping,0,0) ||
+        InterlockedCompareExchange(&rt->Fault,0,0) ||
+        offset!=P360_DSP_HIPCI ||
+        value!=P360_HIPCI_BUSY) {
+        return -1;
+    }
+
+    WRITE_REGISTER_ULONG(
+        (volatile ULONG *)(
+            rt->Bus->dsp.Base.baseptr + offset),
+        (ULONG)value);
+    KeMemoryBarrier();
+    return 0;
+}
+
+static int
+p360_rt_tx_write_box(
+    void *context,
+    uint32_t offset,
+    const uint8_t *data,
+    uint32_t bytes
+    )
+{
+    P360_CS_RUNTIME *rt=(P360_CS_RUNTIME *)context;
+    ULONG i;
+
+    if (!rt || !data || !rt->Bound ||
+        !InterlockedCompareExchange(&rt->Active,0,0) ||
+        InterlockedCompareExchange(&rt->Stopping,0,0) ||
+        InterlockedCompareExchange(&rt->Fault,0,0) ||
+        offset!=P360_REPLY_BOX ||
+        bytes<8u || bytes>P360_IPC3_MAX_MESSAGE_BYTES ||
+        (bytes&3u) ||
+        offset>rt->Bus->dsp.Len ||
+        bytes>rt->Bus->dsp.Len-offset) {
+        return -1;
+    }
+
+    for (i=0;i<bytes;i+=sizeof(ULONG)) {
+        ULONG value=
+            (ULONG)data[i] |
+            ((ULONG)data[i+1]<<8) |
+            ((ULONG)data[i+2]<<16) |
+            ((ULONG)data[i+3]<<24);
+
+        WRITE_REGISTER_ULONG(
+            (volatile ULONG *)(
+                rt->Bus->dsp.Base.baseptr + offset + i),
+            value);
+    }
+
+    KeMemoryBarrier();
+    return 0;
+}
+
+static void
+p360_rt_tx_barrier(void *context)
+{
+    UNREFERENCED_PARAMETER(context);
+    KeMemoryBarrier();
+}
+
+static const struct p360_ipc3_tx_io g_p360_rt_tx_io={
+    p360_rt_arm_read32,
+    p360_rt_tx_write32,
+    p360_rt_tx_write_box,
+    p360_rt_now,
+    p360_rt_tx_barrier
+};
+
+static int
 p360_rt_finish(
     void *context,
     const struct p360_irq_event *event
@@ -853,6 +934,126 @@ p360_cs_runtime_bind_live(
     }
 
     return STATUS_SUCCESS;
+}
+
+NTSTATUS
+p360_cs_runtime_probe_ipc(
+    P360_CS_RUNTIME *rt,
+    LONG *FirmwareError
+    )
+{
+    UCHAR message[8];
+    struct p360_ipc3_tx_result tx;
+    LARGE_INTEGER delay;
+    int32_t firmwareError=0;
+    uint32_t replyBytes=0;
+    NTSTATUS status=STATUS_DEVICE_NOT_READY;
+    int rc;
+    ULONG i;
+
+    if (FirmwareError)
+        *FirmwareError=0;
+
+    if (!rt || !rt->Created || !rt->Bound ||
+        !rt->DispatcherPrepared || !rt->Epoch ||
+        !rt->Boot || !rt->Boot->LiveDsp ||
+        !InterlockedCompareExchange(&rt->Active,0,0) ||
+        InterlockedCompareExchange(&rt->Stopping,0,0) ||
+        InterlockedCompareExchange(&rt->Fault,0,0) ||
+        KeGetCurrentIrql()!=PASSIVE_LEVEL) {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+
+    rc=p360_ipc3_build_proof(message);
+    if (rc!=P360_IPC3_TX_OK)
+        return STATUS_INVALID_PARAMETER;
+
+    WdfSpinLockAcquire(rt->DispatchLock);
+    rc=p360_ipc3_tx_begin(
+        &rt->Dispatch,
+        &g_p360_rt_tx_io,
+        rt,
+        message,
+        sizeof(message),
+        100u,
+        &tx);
+    WdfSpinLockRelease(rt->DispatchLock);
+
+    if (rc!=P360_IPC3_TX_OK) {
+        if (tx.poison_required)
+            InterlockedExchange(&rt->Fault,1);
+        return rc==P360_IPC3_TX_PENDING ?
+            STATUS_DEVICE_BUSY :
+            STATUS_DEVICE_NOT_READY;
+    }
+
+    delay.QuadPart=-10*1000; /* 1 ms */
+
+    for (i=0;i<150u;++i) {
+        int state;
+        int expired=0;
+
+        if (InterlockedCompareExchange(&rt->Fault,0,0))
+            break;
+
+        WdfSpinLockAcquire(rt->DispatchLock);
+        state=rt->Dispatch.ipc.state;
+
+        if (state==P360_IPC_COMPLETE) {
+            rc=p360_ipc_consume(
+                &rt->Dispatch.ipc,
+                &firmwareError,
+                &replyBytes);
+            WdfSpinLockRelease(rt->DispatchLock);
+
+            if (rc!=0)
+                break;
+
+            if (FirmwareError)
+                *FirmwareError=(LONG)firmwareError;
+
+            if (replyBytes==12u &&
+                firmwareError==P360_IPC3_PROOF_ERROR) {
+                return STATUS_SUCCESS;
+            }
+
+            InterlockedExchange(&rt->Fault,1);
+            status=STATUS_DATA_ERROR;
+            goto fail;
+        }
+
+        if (state==P360_IPC_PENDING) {
+            expired=p360_ipc_expire(
+                &rt->Dispatch.ipc,
+                p360_rt_now(rt));
+        }
+
+        WdfSpinLockRelease(rt->DispatchLock);
+
+        if (expired) {
+            InterlockedExchange(&rt->Fault,1);
+            status=STATUS_IO_TIMEOUT;
+            goto fail;
+        }
+
+        if (state==P360_IPC_POISONED ||
+            state==P360_IPC_OFFLINE)
+            break;
+
+        (void)KeDelayExecutionThread(
+            KernelMode,
+            FALSE,
+            &delay);
+    }
+
+    if (!InterlockedCompareExchange(&rt->Fault,0,0))
+        InterlockedExchange(&rt->Fault,1);
+
+    status=STATUS_IO_TIMEOUT;
+
+fail:
+    (void)p360_rt_mask(rt);
+    return status;
 }
 
 static NTSTATUS
