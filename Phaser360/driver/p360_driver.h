@@ -29,6 +29,11 @@
 #define P360_PORTCLS_SHELL_ENABLED 0
 #endif
 
+#ifndef P360_IPC_PROBE_ENABLED
+#define P360_IPC_PROBE_ENABLED 0
+#endif
+
+
 typedef struct _P360_DEVICE_CONTEXT {
     P360_STATE_MACHINE State;
     P360_NHLT_FACTS Nhlt;
