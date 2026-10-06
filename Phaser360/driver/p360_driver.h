@@ -18,6 +18,13 @@
  */
 #define P360_RUNTIME_BOOT_ENABLED 0
 
+/*
+ * Final endpoint shell gate. PortCls bridge code is compiled and audited, but
+ * the active DriverEntry remains the current KMDF host until the PortCls
+ * adapter lifecycle is complete.
+ */
+#define P360_PORTCLS_SHELL_ENABLED 0
+
 typedef struct _P360_DEVICE_CONTEXT {
     P360_STATE_MACHINE State;
     P360_NHLT_FACTS Nhlt;
