@@ -48,3 +48,9 @@ void p360_state_init(P360_STATE_MACHINE *sm);
 int p360_state_advance(P360_STATE_MACHINE *sm, P360_RUNTIME_STATE next);
 void p360_state_fail(P360_STATE_MACHINE *sm, P360_FAILURE_REASON why);
 int p360_speaker_may_arm(const P360_STATE_MACHINE *sm);
+/*
+ * Return to the durable RESOURCES_OK checkpoint only after the caller has
+ * proved all streams/IPC/IRQ/DSP activity quiesced. Hardware identity and
+ * NHLT proof survive; every volatile runtime proof is invalidated.
+ */
+int p360_state_runtime_reset(P360_STATE_MACHINE *sm, int quiesced);
