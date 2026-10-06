@@ -220,12 +220,19 @@ P360EvtD0Exit(
     if (!ctx)
         return STATUS_INVALID_DEVICE_STATE;
 
-    if (ctx->BootInitialized)
-        p360_cs_boot_adapter_cancel(&ctx->Boot);
-
     /*
-     * Runtime boot is intentionally disabled in this build. Once enabled,
-     * D0Exit must first stop IPC/streams/DSP and release the held D0 reference.
+     * Runtime boot is intentionally disabled in this build, so ordinary
+     * D0->Dx power transitions have no active SOF transaction to cancel.
+     * Do not latch Boot.Cancelled here: PrepareHardware is not guaranteed to
+     * rerun on a simple sleep/resume cycle.
+     *
+     * Once runtime boot is enabled, this callback will synchronously quiesce
+     * WaveRT -> topology -> IPC/IRQ -> DSP and release the held D0 reference,
+     * then re-arm a fresh boot epoch for the next D0Entry.
      */
+#if P360_RUNTIME_BOOT_ENABLED
+#error P360_RUNTIME_BOOT_ENABLED requires reviewed D0Exit runtime shutdown.
+#endif
+
     return STATUS_SUCCESS;
 }
