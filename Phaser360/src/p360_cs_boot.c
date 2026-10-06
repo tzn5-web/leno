@@ -1,4 +1,5 @@
 #include "../include/p360_cs_boot.h"
+#include "../sof_core/p360_transport_core.h"
 
 #define P360_BOOT_READY_OFFSET 0x81000u
 
@@ -6,7 +7,6 @@
 #define P360_HDA_GCAP_ISS_SHIFT    8u
 #define P360_HDA_GCAP_OSS_SHIFT    12u
 #define P360_HDA_GCAP_STREAM_MASK  0x0fu
-#define P360_PPCTL_OFFSET           0x04u
 #define P360_PPCTL_MAX_STREAM       29u
 
 #define P360_DSP_ADSPCS  0x04u
@@ -142,8 +142,7 @@ p360_cs_boot_fill_bdl(
 static NTSTATUS
 p360_cs_boot_stream_index(
     _In_ P360_CS_BOOT_ADAPTER *a,
-    _Out_ ULONG *streamIndex,
-    _Out_ ULONG *processingMask
+    _Out_ ULONG *streamIndex
     )
 {
     USHORT gcap;
@@ -152,8 +151,8 @@ p360_cs_boot_stream_index(
     ULONG index;
 
     if (!a || !a->Bus || !a->Bus->resources_valid ||
-        !a->Bus->hda.Base.baseptr || !a->Bus->ppcap ||
-        !streamIndex || !processingMask ||
+        !a->Bus->hda.Base.baseptr ||
+        !streamIndex ||
         a->StreamTag == 0) {
         return STATUS_INVALID_DEVICE_STATE;
     }
@@ -168,17 +167,12 @@ p360_cs_boot_stream_index(
               P360_HDA_GCAP_STREAM_MASK;
 
     /*
-     * Pinned CoolStar commit 5477b93 assigns Intel stream tags sequentially
-     * within each direction group. Playback descriptors start at ISS, hence:
-     *
-     *     descriptor index = ISS + (render streamTag - 1)
-     *
-     * Refuse to infer anything outside that exact contract.
+     * Pinned CoolStar commit 5477b93 assigns render tags 1..OSS while
+     * render descriptors begin at ISS. The stream is already exclusively
+     * reserved by GetRenderStream(), so this mapping is read-only validation.
      */
-    if (outputs == 0 ||
-        a->StreamTag > outputs) {
+    if (outputs == 0 || a->StreamTag > outputs)
         return STATUS_DEVICE_CONFIGURATION_ERROR;
-    }
 
     index = inputs + ((ULONG)a->StreamTag - 1u);
 
@@ -186,45 +180,53 @@ p360_cs_boot_stream_index(
         return STATUS_DEVICE_CONFIGURATION_ERROR;
 
     *streamIndex = index;
-    *processingMask = 1u << index;
     return STATUS_SUCCESS;
 }
 
 static NTSTATUS
-p360_cs_boot_set_processing(
-    _In_ P360_CS_BOOT_ADAPTER *a,
-    _In_ ULONG mask,
-    _In_ BOOLEAN enable
+p360_cs_boot_verify_prepared_stream(
+    _In_ P360_CS_BOOT_ADAPTER *a
     )
 {
-    volatile ULONG *ppctl;
-    ULONG before;
-    ULONG after;
-    ULONG wanted;
+    ULONG index;
+    PUCHAR sd;
+    ULONG ctl;
+    ULONG cbl;
+    ULONG bdlLow;
+    ULONG bdlHigh;
+    USHORT lvi;
+    USHORT fmt;
+    NTSTATUS status;
 
-    if (!a || !a->Bus || !a->Bus->ppcap ||
-        mask == 0) {
-        return STATUS_INVALID_PARAMETER;
-    }
+    if (!a || !a->StreamPrepared || !a->StreamOwned ||
+        !a->Bus || !a->Bus->resources_valid)
+        return STATUS_INVALID_DEVICE_STATE;
 
-    ppctl = (volatile ULONG *)(
-        (PUCHAR)a->Bus->ppcap + P360_PPCTL_OFFSET);
+    status = p360_cs_boot_stream_index(a, &index);
+    if (!NT_SUCCESS(status))
+        return status;
 
-    before = READ_REGISTER_ULONG(ppctl);
-    wanted = enable ? (before | mask) : (before & ~mask);
+    sd = a->Bus->hda.Base.baseptr + 0x80u + index * 0x20u;
 
-    WRITE_REGISTER_ULONG(ppctl, wanted);
-    KeMemoryBarrier();
-
-    after = READ_REGISTER_ULONG(ppctl);
+    ctl = READ_REGISTER_ULONG((volatile ULONG *)(sd + 0x00u));
+    cbl = READ_REGISTER_ULONG((volatile ULONG *)(sd + 0x08u));
+    lvi = READ_REGISTER_USHORT((volatile USHORT *)(sd + 0x0cu));
+    fmt = READ_REGISTER_USHORT((volatile USHORT *)(sd + 0x12u));
+    bdlLow = READ_REGISTER_ULONG((volatile ULONG *)(sd + 0x18u));
+    bdlHigh = READ_REGISTER_ULONG((volatile ULONG *)(sd + 0x1cu));
 
     /*
-     * PPCTL is a control register. Preserve every unrelated stream/global bit
-     * and prove the requested bit reached the expected state.
+     * Read-only proof that the pinned CoolStar PrepareDSP() produced the
+     * same firmware-download descriptor contract used by audited B4.
+     * No direct HDA/PPCTL writes are performed by P360.
      */
-    if ((after & ~mask) != (before & ~mask) ||
-        (!!(after & mask) != !!enable)) {
-        return STATUS_DEVICE_HARDWARE_ERROR;
+    if ((ctl & 0x2u) != 0 ||
+        ((ctl >> 20) & 0x0fu) != a->StreamTag ||
+        cbl != P360_CS_BOOT_DMA_BYTES ||
+        lvi != (USHORT)(P360_CS_BOOT_PAGE_COUNT - 1u) ||
+        fmt != 0x0040u ||
+        (bdlLow == 0 && bdlHigh == 0)) {
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
     }
 
     return STATUS_SUCCESS;
@@ -313,11 +315,6 @@ p360_cs_boot_prepare(
     P360_CS_BOOT_ADAPTER *a = (P360_CS_BOOT_ADAPTER *)context;
     HDAUDIO_STREAM_FORMAT format;
     NTSTATUS status;
-    NTSTATUS restoreStatus;
-    ULONG streamIndex;
-    ULONG processingMask;
-    volatile ULONG *ppctl;
-    ULONG ppctlBefore;
 
     if (stream_tag)
         *stream_tag = 0;
@@ -355,27 +352,6 @@ p360_cs_boot_prepare(
     a->StreamOwned = TRUE;
     a->DmaDetached = TRUE;
 
-    status = p360_cs_boot_stream_index(
-        a,
-        &streamIndex,
-        &processingMask);
-
-    if (!NT_SUCCESS(status))
-        return P360_L_IO;
-
-    UNREFERENCED_PARAMETER(streamIndex);
-
-    ppctl = (volatile ULONG *)(
-        (PUCHAR)a->Bus->ppcap + P360_PPCTL_OFFSET);
-    ppctlBefore = READ_REGISTER_ULONG(ppctl);
-
-    /*
-     * GetRenderStream() in the pinned bus must have coupled this exact stream.
-     * This is an ABI/invariant check, not a best-effort repair.
-     */
-    if ((ppctlBefore & processingMask) == 0)
-        return P360_L_IO;
-
     status = p360_cs_boot_alloc_pages(a);
     if (!NT_SUCCESS(status))
         return P360_L_IO;
@@ -389,39 +365,15 @@ p360_cs_boot_prepare(
     a->BdlEntries = P360_CS_BOOT_PAGE_COUNT;
 
     /*
-     * Preserve B4's proven GLK ordering:
-     *   selected stream coupled by GetRenderStream()
-     *   -> decouple
-     *   -> reset/setup/FMT=0x40 by PrepareDSP()
-     *   -> recouple
-     *
-     * Only the selected PROCEN bit is changed; all unrelated PPCTL bits must
-     * remain byte-for-byte equivalent across each RMW.
+     * Let the pinned CoolStar bus own descriptor reset/setup and PPCTL.
+     * P360 never performs an unsynchronized PPCTL write.
      */
-    status = p360_cs_boot_set_processing(
-        a,
-        processingMask,
-        FALSE);
-
-    if (!NT_SUCCESS(status))
-        return P360_L_IO;
-
     status = a->Bus->iface.PrepareDSP(
         a->Bus->iface.Context,
         a->Stream,
         P360_CS_BOOT_DMA_BYTES,
         (int)a->BdlEntries,
         &a->BusBdl);
-
-    restoreStatus = p360_cs_boot_set_processing(
-        a,
-        processingMask,
-        TRUE);
-
-    if (!NT_SUCCESS(restoreStatus)) {
-        a->Quarantined = TRUE;
-        return P360_L_QUARANTINE;
-    }
 
     if (!NT_SUCCESS(status) || !a->BusBdl)
         return P360_L_IO;
@@ -430,6 +382,10 @@ p360_cs_boot_prepare(
     a->DmaDetached = FALSE;
 
     status = p360_cs_boot_fill_bdl(a);
+    if (!NT_SUCCESS(status))
+        return P360_L_IO;
+
+    status = p360_cs_boot_verify_prepared_stream(a);
     if (!NT_SUCCESS(status))
         return P360_L_IO;
 
@@ -816,6 +772,14 @@ p360_cs_boot_adapter_retire(
         !a->DmaDetached) {
         return STATUS_DEVICE_HARDWARE_ERROR;
     }
+
+    /*
+     * A successful SOF boot leaves the DSP live and the bus D0 reference
+     * owned by the future runtime layer. Until that explicit handoff exists,
+     * retirement must fail rather than report a false clean shutdown.
+     */
+    if (a->LiveDsp)
+        return STATUS_DEVICE_BUSY;
 
     if (a->StreamOwned) {
         if (p360_cs_boot_release_dma(a) != 0)
