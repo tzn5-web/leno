@@ -31,7 +31,7 @@ typedef struct P360_CSAUDIO_ARG {
     P360_CSAUDIO_ENDPOINT_REQUEST endpointRequest;
     union {
         P360_CSAUDIO_FORMAT_OVERRIDE formatOverride;
-    };
+    } Payload;
 } P360_CSAUDIO_ARG;
 
 C_ASSERT(sizeof(P360_CSAUDIO_FORMAT_OVERRIDE) == 12);
