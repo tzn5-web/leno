@@ -141,7 +141,7 @@ if "WdfFdoQueryForInterface(" not in bus_source:
     raise SystemExit("CoolStar bus query no longer uses the permitted WDF miniport FDO interface path")
 
 for token in (
-    r"..\src\p360_portcls_bridge.c",
+    r"..\src\p360_portcls_bridge.cpp",
     "PortCls.lib",
 ):
     if token not in project:
