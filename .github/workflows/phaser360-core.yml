@@ -1,0 +1,22 @@
+name: Phaser360 core
+
+on:
+  push:
+    branches:
+      - phaser360-sof-windows-port
+    paths:
+      - "Phaser360/**"
+      - ".github/workflows/phaser360-core.yml"
+  pull_request:
+    paths:
+      - "Phaser360/**"
+
+jobs:
+  core-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile fail-closed core
+        run: |
+          chmod +x Phaser360/tests/run_core_smoke.sh
+          Phaser360/tests/run_core_smoke.sh
