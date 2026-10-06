@@ -586,6 +586,10 @@ p360_cs_runtime_interrupt(
     int taken;
     P360_CS_BOOL handled = FALSE;
 
+    if (!rt ||
+        !InterlockedCompareExchange(&rt->Active,0,0))
+        return FALSE;
+
     if (!p360_rt_callback_acquire(rt))
         return FALSE;
 
@@ -959,6 +963,17 @@ p360_cs_runtime_destroy(
     status = p360_rt_wait_callbacks_closed(rt);
     if (!NT_SUCCESS(status))
         return status;
+
+    if (rt->Dpc) {
+        (void)WdfDpcCancel(rt->Dpc,TRUE);
+        WdfObjectDelete(rt->Dpc);
+        rt->Dpc = NULL;
+    }
+
+    if (rt->DispatchLock) {
+        WdfObjectDelete(rt->DispatchLock);
+        rt->DispatchLock = NULL;
+    }
 
     rt->Created = FALSE;
     return STATUS_SUCCESS;
