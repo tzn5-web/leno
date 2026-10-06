@@ -74,6 +74,9 @@ print("Phaser360 source contract: PASS")
 runtime_h=(ROOT/"include/p360_cs_runtime.h").read_text()
 runtime=(ROOT/"src/p360_cs_runtime.c").read_text()
 driver_h=(ROOT/"driver/p360_driver.h").read_text()
+ipc3_tx_h=(ROOT/"sof_core/loader/p360_ipc3_tx.h").read_text()
+ipc3_tx=(ROOT/"sof_core/loader/p360_ipc3_tx.c").read_text()
+run_b4=(ROOT/"tests/run_b4_core.sh").read_text()
 
 if "P360_CS_BOOL\np360_cs_runtime_interrupt" not in runtime_h:
     raise SystemExit("CoolStar interrupt callback ABI return type drifted")
@@ -125,6 +128,9 @@ if not re.search(r"#define\s+P360_RUNTIME_BOOT_ENABLED\s+0\b", driver_h):
 if not re.search(r"#define\s+P360_PORTCLS_SHELL_ENABLED\s+0\b", driver_h):
     raise SystemExit("PortCls shell barrier was enabled before lifecycle migration completed")
 
+if not re.search(r"#define\s+P360_IPC_PROBE_ENABLED\s+0\b", driver_h):
+    raise SystemExit("IPC3 proof barrier was enabled in the default driver")
+
 portcls=(ROOT/"src/p360_portcls_bridge.cpp").read_text()
 project=(ROOT/"driver/P360SofAudio.vcxproj").read_text()
 portcls_shell=(ROOT/"src/p360_portcls_shell.cpp").read_text()
@@ -145,6 +151,8 @@ for token in (
     r"..\src\p360_portcls_bridge.cpp",
     r"..\src\p360_portcls_shell.cpp",
     r"..\src\p360_safety.c",
+    r"..\sof_core\loader\p360_ipc3_tx.c",
+    r"..\sof_core\loader\p360_ipc3_tx.h",
     "PortCls.lib",
 ):
     if token not in project:
@@ -153,6 +161,7 @@ for token in (
 for token in (
     "P360_RUNTIME_BOOT_ENABLED=$(P360RuntimeBootEnabled)",
     "P360_PORTCLS_SHELL_ENABLED=$(P360PortClsShellEnabled)",
+    "P360_IPC_PROBE_ENABLED=$(P360IpcProbeEnabled)",
 ):
     if token not in project:
         raise SystemExit(f"staged audio build gate is not parameterized: {token}")
@@ -162,8 +171,10 @@ for token in (
     "/p:P360PortClsShellEnabled=1",
     "/p:P360RuntimeBootEnabled=0",
     "/p:P360RuntimeBootEnabled=1",
+    "/p:P360IpcProbeEnabled=1",
     "P360SofAudio-portcls-shell.sys",
     "PORTCLS_SOF_BOOT_COMPILE=PASS",
+    "PORTCLS_SOF_IPC3_PROOF_COMPILE=PASS",
 ):
     if token not in workflow:
         raise SystemExit(f"active PortCls linkage CI build missing: {token}")
@@ -213,6 +224,19 @@ for forbidden in (
     if forbidden in inf:
         raise SystemExit(f"known-bad Phaser360 class/stack regression reintroduced: {forbidden}")
 
+for token in (
+    "P360_IPC3_PROOF_COMMAND     0xe0000000u",
+    "P360_IPC3_PROOF_ERROR       (-22)",
+    "p360_dispatch_expect(d,io->now(context),timeout_ms)",
+    "io->write_box(context,P360_REPLY_BOX,message,bytes)",
+    "io->write32(context,P360_DSP_HIPCI,P360_HIPCI_BUSY)",
+):
+    if token not in (ipc3_tx_h + "\n" + ipc3_tx):
+        raise SystemExit(f"IPC3 bounded TX contract missing: {token}")
+
+if "tests/ipc3_tx_regression.c" not in run_b4:
+    raise SystemExit("IPC3 TX regression is not in the B4 gate")
+
 driver=(ROOT/"driver/p360_driver.c").read_text()
 driver_entry_i=driver.index("DriverEntry(")
 shell_gate_i=driver.index("#if P360_PORTCLS_SHELL_ENABLED", driver_entry_i)
@@ -258,9 +282,13 @@ start_i=driver.index("p360_runtime_boot_start(")
 loader_i=driver.index("p360_loader_run(", start_i)
 ready_i=driver.index("result.ready_proved", loader_i)
 bind_live_i=driver.index("p360_cs_runtime_bind_live(", ready_i)
-ipc_state_i=driver.index("P360_STATE_IPC_READY", bind_live_i)
-if not (start_i < loader_i < ready_i < bind_live_i < ipc_state_i):
-    raise SystemExit("SOF boot -> FW_READY -> IRQ handoff ordering drifted")
+probe_gate_i=driver.index("if (p360_ipc_probe_policy_enabled())", bind_live_i)
+probe_call_i=driver.index("p360_cs_runtime_probe_ipc(", probe_gate_i)
+ipc_flag_i=driver.index("ctx->State.ipc_ready=1;", probe_call_i)
+ipc_state_i=driver.index("P360_STATE_IPC_READY", ipc_flag_i)
+if not (start_i < loader_i < ready_i < bind_live_i < probe_gate_i <
+        probe_call_i < ipc_flag_i < ipc_state_i):
+    raise SystemExit("SOF boot -> FW_READY -> IRQ -> real IPC3 proof ordering drifted")
 
 for token in (
     "p360_host_prepare(",
