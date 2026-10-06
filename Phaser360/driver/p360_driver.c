@@ -256,18 +256,13 @@ P360EvtDeviceAdd(
 }
 
 NTSTATUS
-P360EvtPrepareHardware(
-    _In_ WDFDEVICE Device,
-    _In_ WDFCMRESLIST ResourcesRaw,
-    _In_ WDFCMRESLIST ResourcesTranslated)
+p360_host_prepare(
+    _Inout_ P360_DEVICE_CONTEXT *ctx,
+    _In_ WDFDEVICE Device)
 {
-    P360_DEVICE_CONTEXT *ctx=P360GetContext(Device);
     NTSTATUS status;
 
-    UNREFERENCED_PARAMETER(ResourcesRaw);
-    UNREFERENCED_PARAMETER(ResourcesTranslated);
-
-    if (!ctx || ctx->Prepared || ctx->BusOpen)
+    if (!ctx || !Device || ctx->Prepared || ctx->BusOpen)
         return STATUS_INVALID_DEVICE_STATE;
 
     p360_state_init(&ctx->State);
@@ -357,19 +352,50 @@ cleanup:
 }
 
 NTSTATUS
-P360EvtReleaseHardware(
+P360EvtPrepareHardware(
     _In_ WDFDEVICE Device,
+    _In_ WDFCMRESLIST ResourcesRaw,
     _In_ WDFCMRESLIST ResourcesTranslated)
 {
-    P360_DEVICE_CONTEXT *ctx=P360GetContext(Device);
-    NTSTATUS status=STATUS_SUCCESS;
-
+    UNREFERENCED_PARAMETER(ResourcesRaw);
     UNREFERENCED_PARAMETER(ResourcesTranslated);
+
+    return p360_host_prepare(
+        P360GetContext(Device),
+        Device);
+}
+
+NTSTATUS
+p360_host_release(
+    _Inout_ P360_DEVICE_CONTEXT *ctx)
+{
+    NTSTATUS status=STATUS_SUCCESS;
+    NTSTATUS stopStatus=STATUS_SUCCESS;
 
     if (!ctx)
         return STATUS_INVALID_DEVICE_STATE;
 
     InterlockedExchange(&ctx->Removing,1);
+
+    if (ctx->RuntimeInitialized &&
+        (ctx->Runtime.Bound ||
+         InterlockedCompareExchange(&ctx->Runtime.Active,0,0) ||
+         InterlockedCompareExchange(&ctx->Runtime.DpcState,0,0) ||
+         InterlockedCompareExchange(&ctx->Runtime.EventValid,0,0) ||
+         (ctx->BootInitialized && ctx->Boot.LiveDsp))) {
+        stopStatus=p360_cs_runtime_stop(&ctx->Runtime);
+        if (!NT_SUCCESS(stopStatus)) {
+            p360_state_fail(&ctx->State,P360_FAIL_IRQ);
+
+            /*
+             * A latched runtime fault may be reported after a proved shutdown.
+             * Only refuse teardown when the DSP is still live; otherwise let
+             * destroy/retire provide the remaining quiescence proofs.
+             */
+            if (ctx->BootInitialized && ctx->Boot.LiveDsp)
+                return stopStatus;
+        }
+    }
 
     if (ctx->RuntimeInitialized) {
         status=p360_cs_runtime_destroy(&ctx->Runtime);
@@ -407,14 +433,20 @@ P360EvtReleaseHardware(
 }
 
 NTSTATUS
-P360EvtD0Entry(
+P360EvtReleaseHardware(
     _In_ WDFDEVICE Device,
-    _In_ WDF_POWER_DEVICE_STATE PreviousState)
+    _In_ WDFCMRESLIST ResourcesTranslated)
 {
-    P360_DEVICE_CONTEXT *ctx=P360GetContext(Device);
+    UNREFERENCED_PARAMETER(ResourcesTranslated);
 
-    UNREFERENCED_PARAMETER(PreviousState);
+    return p360_host_release(
+        P360GetContext(Device));
+}
 
+NTSTATUS
+p360_host_d0_entry(
+    _Inout_ P360_DEVICE_CONTEXT *ctx)
+{
     if (!ctx || !ctx->Prepared || !ctx->BusOpen ||
         ctx->State.state!=P360_STATE_RESOURCES_OK ||
         InterlockedCompareExchange(&ctx->Removing,0,0)!=0) {
@@ -428,14 +460,20 @@ P360EvtD0Entry(
 }
 
 NTSTATUS
-P360EvtD0Exit(
+P360EvtD0Entry(
     _In_ WDFDEVICE Device,
-    _In_ WDF_POWER_DEVICE_STATE TargetState)
+    _In_ WDF_POWER_DEVICE_STATE PreviousState)
 {
-    P360_DEVICE_CONTEXT *ctx=P360GetContext(Device);
+    UNREFERENCED_PARAMETER(PreviousState);
 
-    UNREFERENCED_PARAMETER(TargetState);
+    return p360_host_d0_entry(
+        P360GetContext(Device));
+}
 
+NTSTATUS
+p360_host_d0_exit(
+    _Inout_ P360_DEVICE_CONTEXT *ctx)
+{
     if (!ctx)
         return STATUS_INVALID_DEVICE_STATE;
 
@@ -449,4 +487,15 @@ P360EvtD0Exit(
         return p360_runtime_boot_stop(ctx);
 
     return STATUS_SUCCESS;
+}
+
+NTSTATUS
+P360EvtD0Exit(
+    _In_ WDFDEVICE Device,
+    _In_ WDF_POWER_DEVICE_STATE TargetState)
+{
+    UNREFERENCED_PARAMETER(TargetState);
+
+    return p360_host_d0_exit(
+        P360GetContext(Device));
 }
