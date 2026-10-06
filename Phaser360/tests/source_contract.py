@@ -138,14 +138,18 @@ for token in (
 if "#error P360_RUNTIME_BOOT_ENABLED" in driver:
     raise SystemExit("runtime handoff is still hidden behind a compile-time #error")
 
+policy_i=driver.index("p360_runtime_boot_policy_enabled(VOID)")
 entry_i=driver.index("P360EvtD0Entry(")
-boot_gate_i=driver.index("#if P360_RUNTIME_BOOT_ENABLED", entry_i)
+boot_gate_i=driver.index("if (p360_runtime_boot_policy_enabled())", entry_i)
 boot_call_i=driver.index("return p360_runtime_boot_start(ctx);", boot_gate_i)
 exit_i=driver.index("P360EvtD0Exit(")
-stop_gate_i=driver.index("#if P360_RUNTIME_BOOT_ENABLED", exit_i)
+stop_gate_i=driver.index("if (p360_runtime_boot_policy_enabled())", exit_i)
 stop_call_i=driver.index("return p360_runtime_boot_stop(ctx);", stop_gate_i)
-if not (entry_i < boot_gate_i < boot_call_i < exit_i < stop_gate_i < stop_call_i):
-    raise SystemExit("D0 runtime activation gate ordering drifted")
+if not (
+    policy_i < entry_i < boot_gate_i < boot_call_i <
+    exit_i < stop_gate_i < stop_call_i
+):
+    raise SystemExit("D0 runtime activation policy gate ordering drifted")
 
 start_i=driver.index("p360_runtime_boot_start(")
 loader_i=driver.index("p360_loader_run(", start_i)
