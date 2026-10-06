@@ -89,6 +89,7 @@
     <ClCompile Include="..\sof_core\loader\p360_fw_image.c" />
     <ClCompile Include="..\sof_core\loader\p360_irq.c" />
     <ClCompile Include="..\sof_core\loader\p360_dispatch.c" />
+    <ClCompile Include="..\sof_core\loader\p360_ipc3_tx.c" />
     <ClCompile Include="..\sof_core\loader\p360_ipc_timer.c" />
     <ClCompile Include="..\sof_core\loader\p360_irq_arm.c" />
     <ClCompile Include="..\sof_core\adapter\p360_irq_arm_adapter.c" />
@@ -109,6 +110,7 @@
     <ClInclude Include="..\sof_core\loader\p360_loader.h" />
     <ClInclude Include="..\sof_core\loader\p360_irq.h" />
     <ClInclude Include="..\sof_core\loader\p360_dispatch.h" />
+    <ClInclude Include="..\sof_core\loader\p360_ipc3_tx.h" />
     <ClInclude Include="..\sof_core\loader\p360_ipc_timer.h" />
     <ClInclude Include="..\sof_core\loader\p360_irq_arm.h" />
     <ClInclude Include="..\sof_core\adapter\p360_irq_arm_adapter.h" />
