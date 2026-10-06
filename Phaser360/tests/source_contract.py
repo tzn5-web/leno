@@ -195,7 +195,6 @@ for token in (
     "IID_IUnregisterSubdevice",
     "IID_IUnregisterPhysicalConnection",
     "P360_SPEAKER_PCM_VALID_BITS",
-    "P360_SPEAKER_DAI_VALID_BITS",
     "case KSSTATE_RUN:",
     "return STATUS_DEVICE_NOT_READY;",
 ):
@@ -204,6 +203,16 @@ for token in (
 
 if "p360_csaudio_speaker_start(" in speaker_endpoint:
     raise SystemExit("speaker amplifier START is wired before SOF stream backend exists")
+
+board_h=(ROOT/"include/p360_board.h").read_text()
+for token in (
+    "#define P360_SPEAKER_CHANNELS 2u",
+    "#define P360_SPEAKER_CONTAINER_BITS 32u",
+    "#define P360_SPEAKER_PCM_VALID_BITS 16u",
+    "#define P360_SPEAKER_DAI_VALID_BITS 24u",
+):
+    if token not in board_h:
+        raise SystemExit(f"Phaser360 PCM/SSP1 width contract missing: {token}")
 
 
 portcls=(ROOT/"src/p360_portcls_bridge.cpp").read_text()
