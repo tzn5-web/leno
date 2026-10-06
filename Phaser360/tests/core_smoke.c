@@ -77,7 +77,11 @@ static void test_state_machine(void)
     p360_state_fail(&sm, P360_FAIL_STREAM);
     assert(sm.state == P360_STATE_FAILED);
     assert(sm.failure == P360_FAIL_STREAM);
-    assert(!sm.speaker_runtime_armed);
+    assert(!sm.fw_ready && !sm.ipc_ready && !sm.topology_ready &&
+           !sm.audio_core_ready && !sm.headphone_ready &&
+           !sm.speaker_runtime_armed);
+    assert(!p360_safety_can_start_headphone(&sm));
+    assert(!p360_safety_can_start_speaker(&sm));
 }
 
 int main(void)
