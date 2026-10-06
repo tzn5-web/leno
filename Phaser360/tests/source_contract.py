@@ -160,7 +160,9 @@ workflow=(ROOT.parent/".github/workflows/phaser360-windows.yml").read_text()
 for token in (
     "/p:P360PortClsShellEnabled=1",
     "/p:P360RuntimeBootEnabled=0",
+    "/p:P360RuntimeBootEnabled=1",
     "P360SofAudio-portcls-shell.sys",
+    "PORTCLS_SOF_BOOT_COMPILE=PASS",
 ):
     if token not in workflow:
         raise SystemExit(f"active PortCls linkage CI build missing: {token}")
