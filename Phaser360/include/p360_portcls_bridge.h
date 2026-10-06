@@ -12,6 +12,7 @@
 NTSTATUS
 p360_portcls_create_wdf_miniport(
     _In_ PDEVICE_OBJECT PortClsFdo,
+    _In_opt_ PWDF_OBJECT_ATTRIBUTES Attributes,
     _Out_ WDFDEVICE *Device
     );
 
