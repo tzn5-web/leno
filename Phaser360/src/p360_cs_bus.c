@@ -86,6 +86,14 @@ NTSTATUS p360_cs_bus_validate_resources(P360_CS_BUS *bus)
     if (!bus->dsp.Base.Base || bus->dsp.Len < 0xA2000u)
         return STATUS_DEVICE_CONFIGURATION_ERROR;
 
+    /*
+     * Pinned CoolStar GetRenderStream() accesses PPCTL through ppcap.
+     * Treat a missing PP capability as a hard configuration failure rather
+     * than allowing a later NULL MMIO dereference.
+     */
+    if (!bus->ppcap)
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+
     if (!bus->nhlt.nhlt || bus->nhlt.nhltSz < 36u || bus->nhlt.nhltSz > 0x10000u)
         return STATUS_DEVICE_CONFIGURATION_ERROR;
 
