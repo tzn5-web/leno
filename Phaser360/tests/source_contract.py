@@ -183,6 +183,29 @@ if not re.search(r"#define\s+P360_PORTCLS_SHELL_ENABLED\s+0\b", driver_h):
 if not re.search(r"#define\s+P360_IPC_PROBE_ENABLED\s+0\b", driver_h):
     raise SystemExit("IPC3 proof barrier was enabled in the default driver")
 
+if not re.search(r"#define\s+P360_SPEAKER_ENDPOINT_ENABLED\s+0\b", driver_h):
+    raise SystemExit("speaker endpoint barrier was enabled in the default driver")
+
+speaker_endpoint=(ROOT/"src/p360_speaker_endpoint.cpp").read_text()
+for token in (
+    "CLSID_PortTopology",
+    "CLSID_PortWaveRT",
+    "PcRegisterSubdevice(",
+    "PcRegisterPhysicalConnection(",
+    "IID_IUnregisterSubdevice",
+    "IID_IUnregisterPhysicalConnection",
+    "P360_SPEAKER_PCM_VALID_BITS",
+    "P360_SPEAKER_DAI_VALID_BITS",
+    "case KSSTATE_RUN:",
+    "return STATUS_DEVICE_NOT_READY;",
+):
+    if token not in speaker_endpoint:
+        raise SystemExit(f"speaker WaveRT shell contract missing: {token}")
+
+if "p360_csaudio_speaker_start(" in speaker_endpoint:
+    raise SystemExit("speaker amplifier START is wired before SOF stream backend exists")
+
+
 portcls=(ROOT/"src/p360_portcls_bridge.cpp").read_text()
 project=(ROOT/"driver/P360SofAudio.vcxproj").read_text()
 portcls_shell=(ROOT/"src/p360_portcls_shell.cpp").read_text()
@@ -202,6 +225,8 @@ if "WdfFdoQueryForInterface(" not in bus_source:
 for token in (
     r"..\src\p360_portcls_bridge.cpp",
     r"..\src\p360_portcls_shell.cpp",
+    r"..\src\p360_speaker_endpoint.cpp",
+    r"..\include\p360_speaker_endpoint.h",
     r"..\src\p360_safety.c",
     r"..\src\p360_csaudio.c",
     r"..\include\p360_csaudio.h",
@@ -216,6 +241,7 @@ for token in (
     "P360_RUNTIME_BOOT_ENABLED=$(P360RuntimeBootEnabled)",
     "P360_PORTCLS_SHELL_ENABLED=$(P360PortClsShellEnabled)",
     "P360_IPC_PROBE_ENABLED=$(P360IpcProbeEnabled)",
+    "P360_SPEAKER_ENDPOINT_ENABLED=$(P360SpeakerEndpointEnabled)",
 ):
     if token not in project:
         raise SystemExit(f"staged audio build gate is not parameterized: {token}")
@@ -226,7 +252,9 @@ for token in (
     "/p:P360RuntimeBootEnabled=0",
     "/p:P360RuntimeBootEnabled=1",
     "/p:P360IpcProbeEnabled=1",
+    "/p:P360SpeakerEndpointEnabled=1",
     "P360SofAudio-portcls-shell.sys",
+    "PORTCLS_SPEAKER_ENDPOINT_COMPILE=PASS",
     "PORTCLS_SOF_BOOT_COMPILE=PASS",
     "PORTCLS_SOF_IPC3_PROOF_COMPILE=PASS",
 ):
@@ -242,6 +270,8 @@ for token in (
     "p360_host_d0_entry(",
     "p360_host_d0_exit(",
     "p360_host_release(",
+    "p360_speaker_endpoint_install(",
+    "p360_speaker_endpoint_uninstall(",
     "IRP_MN_STOP_DEVICE",
     "IRP_MN_SURPRISE_REMOVAL",
     "IRP_MN_REMOVE_DEVICE",
@@ -256,6 +286,9 @@ for token in (
 for token in (
     "WDFDEVICE FrameworkDevice;",
     "PDEVICE_OBJECT PortClsFdo;",
+    "PVOID SpeakerTopologyPort;",
+    "PVOID SpeakerWavePort;",
+    "BOOLEAN SpeakerEndpointInstalled;",
     "extern \"C\" {",
 ):
     if token not in driver_h:
@@ -367,6 +400,11 @@ if not (
 
 if "p360_csaudio_speaker_start(" in driver:
     raise SystemExit("speaker START wired before topology/audio-core activation gate")
+
+endpoint_uninstall_i=portcls_shell.index("p360_speaker_endpoint_uninstall(")
+endpoint_d0_exit_i=portcls_shell.index("p360_host_d0_exit(ctx);", endpoint_uninstall_i)
+if not endpoint_uninstall_i < endpoint_d0_exit_i:
+    raise SystemExit("speaker endpoint teardown must precede DSP D0 exit")
 
 print("Phaser360 runtime lifecycle contract: PASS")
 
