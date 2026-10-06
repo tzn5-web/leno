@@ -51,6 +51,7 @@
     <P360RuntimeBootEnabled Condition="'$(P360RuntimeBootEnabled)'==''">0</P360RuntimeBootEnabled>
     <P360PortClsShellEnabled Condition="'$(P360PortClsShellEnabled)'==''">0</P360PortClsShellEnabled>
     <P360IpcProbeEnabled Condition="'$(P360IpcProbeEnabled)'==''">0</P360IpcProbeEnabled>
+    <P360SpeakerEndpointEnabled Condition="'$(P360SpeakerEndpointEnabled)'==''">0</P360SpeakerEndpointEnabled>
   </PropertyGroup>
 
   <ItemDefinitionGroup>
@@ -60,7 +61,7 @@
       <BufferSecurityCheck>true</BufferSecurityCheck>
       <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>$(ProjectDir)kernel_compat;$(ProjectDir);$(ProjectDir)..\include;$(ProjectDir)..\sof_core;$(ProjectDir)..\sof_core\loader;$(ProjectDir)..\sof_core\adapter;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>P360_RUNTIME_BUILD=1;P360_RUNTIME_BOOT_ENABLED=$(P360RuntimeBootEnabled);P360_PORTCLS_SHELL_ENABLED=$(P360PortClsShellEnabled);P360_IPC_PROBE_ENABLED=$(P360IpcProbeEnabled);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>P360_RUNTIME_BUILD=1;P360_RUNTIME_BOOT_ENABLED=$(P360RuntimeBootEnabled);P360_PORTCLS_SHELL_ENABLED=$(P360PortClsShellEnabled);P360_IPC_PROBE_ENABLED=$(P360IpcProbeEnabled);P360_SPEAKER_ENDPOINT_ENABLED=$(P360SpeakerEndpointEnabled);%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -84,6 +85,7 @@
     <ClCompile Include="..\src\p360_firmware.c" />
     <ClCompile Include="..\src\p360_portcls_bridge.cpp" />
     <ClCompile Include="..\src\p360_portcls_shell.cpp" />
+    <ClCompile Include="..\src\p360_speaker_endpoint.cpp" />
     <ClCompile Include="..\sof_core\p360_transport_core.c" />
     <ClCompile Include="..\sof_core\loader\p360_loader.c">
       <DisableSpecificWarnings>4701;%(DisableSpecificWarnings)</DisableSpecificWarnings>
@@ -109,6 +111,7 @@
     <ClInclude Include="..\include\p360_csaudio.h" />
     <ClInclude Include="..\include\p360_firmware.h" />
     <ClInclude Include="..\include\p360_portcls_bridge.h" />
+    <ClInclude Include="..\include\p360_speaker_endpoint.h" />
     <ClInclude Include="..\sof_core\p360_transport_core.h" />
     <ClInclude Include="..\sof_core\loader\p360_loader.h" />
     <ClInclude Include="..\sof_core\loader\p360_irq.h" />
