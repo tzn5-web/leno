@@ -570,7 +570,7 @@ P360RuntimeDpc(
     p360_rt_process_dpc(link->Owner);
 }
 
-BOOL
+P360_CS_BOOL
 p360_cs_runtime_interrupt(
     PVOID Context
     )
@@ -584,7 +584,7 @@ p360_cs_runtime_interrupt(
     struct p360_irq_event event;
     int captured;
     int taken;
-    BOOL handled = FALSE;
+    P360_CS_BOOL handled = FALSE;
 
     if (!p360_rt_callback_acquire(rt))
         return FALSE;
