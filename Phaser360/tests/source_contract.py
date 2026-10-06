@@ -36,6 +36,15 @@ for name in (
     if (ROOT/"sof_core"/name).exists():
         raise SystemExit(f"duplicate B4 source reintroduced: sof_core/{name}")
 
+for rel in (
+    "sof_core/runtime/p360_irq_arm.c",
+    "sof_core/runtime/p360_irq_arm.h",
+    "sof_core/runtime/p360_irq_arm_adapter.c",
+    "sof_core/runtime/p360_irq_arm_adapter.h",
+):
+    if (ROOT/rel).exists():
+        raise SystemExit(f"stale duplicate IRQ arm source reintroduced: {rel}")
+
 safety=(ROOT/"include/p360_safety.h").read_text()
 if not re.search(r"#define\s+P360_ENABLE_INTERNAL_SPEAKER\s+0\b",safety):
     raise SystemExit("internal speaker compile-time barrier is not zero")
@@ -92,6 +101,23 @@ dpc_idle_i=runtime.index("p360_rt_wait_dpc_idle(rt);", cb_idle_i)
 shutdown_i=runtime.index("p360_cs_boot_adapter_shutdown_live", dpc_idle_i)
 if not (active_i < cb_idle_i < dpc_idle_i < shutdown_i):
     raise SystemExit("runtime stop ordering drifted")
+
+bind_i=runtime.index("p360_cs_runtime_bind_live(")
+arm_i=runtime.index("status = p360_rt_arm(rt);", bind_i)
+arm_fail_i=runtime.index("if (!NT_SUCCESS(status)) {", arm_i)
+bind_active_off_i=runtime.index("InterlockedExchange(&rt->Active,0);", arm_fail_i)
+bind_mask_i=runtime.index("(void)p360_rt_mask(rt);", bind_active_off_i)
+bind_fault_i=runtime.index("InterlockedExchange(&rt->Fault,1);", bind_mask_i)
+bind_poison_i=runtime.index("p360_irq_poison(&rt->Irq);", bind_fault_i)
+bind_dispatch_stop_i=runtime.index("p360_dispatch_stop(&rt->Dispatch);", bind_poison_i)
+bind_unbound_i=runtime.index("rt->Bound = FALSE;", bind_dispatch_stop_i)
+bind_epoch_i=runtime.index("rt->Epoch = 0;", bind_unbound_i)
+if not (
+    arm_i < arm_fail_i < bind_active_off_i < bind_mask_i <
+    bind_fault_i < bind_poison_i < bind_dispatch_stop_i <
+    bind_unbound_i < bind_epoch_i
+):
+    raise SystemExit("initial IRQ arm failure does not unwind fail-closed")
 
 if not re.search(r"#define\s+P360_RUNTIME_BOOT_ENABLED\s+0\b", driver_h):
     raise SystemExit("runtime boot barrier was enabled without reviewed activation")
