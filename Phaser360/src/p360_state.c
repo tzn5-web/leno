@@ -10,6 +10,9 @@ void p360_state_init(P360_STATE_MACHINE *sm)
 static int p360_transition_allowed(P360_RUNTIME_STATE from, P360_RUNTIME_STATE to)
 {
     if (to == P360_STATE_FAILED) return 1;
+    if (from == P360_STATE_AUDIO_CORE_READY &&
+        to == P360_STATE_SPEAKER_ARMED)
+        return 1;
     return (int)to == ((int)from + 1);
 }
 
@@ -40,15 +43,16 @@ int p360_speaker_may_arm(const P360_STATE_MACHINE *sm)
 {
     if (!sm) return 0;
     return
-        sm->state == P360_STATE_HEADPHONE_READY &&
+        (sm->state == P360_STATE_AUDIO_CORE_READY ||
+         sm->state == P360_STATE_HEADPHONE_READY) &&
         sm->hardware_identity_ok &&
         sm->nhlt_ok &&
         sm->fw_ready &&
         sm->ipc_ready &&
         sm->topology_ready &&
         sm->audio_core_ready &&
-        sm->headphone_ready &&
-        sm->speaker_policy_enabled;
+        sm->speaker_policy_enabled &&
+        !sm->speaker_runtime_armed;
 }
 
 int p360_state_runtime_reset(P360_STATE_MACHINE *sm, int quiesced)
