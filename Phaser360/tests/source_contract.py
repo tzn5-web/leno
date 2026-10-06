@@ -100,3 +100,29 @@ if "#error P360_RUNTIME_BOOT_ENABLED requires" not in (ROOT/"driver/p360_driver.
     raise SystemExit("runtime boot compile barrier missing")
 
 print("Phaser360 runtime lifecycle contract: PASS")
+
+
+firmware_h=(ROOT/"include/p360_firmware.h").read_text()
+firmware=(ROOT/"src/p360_firmware.c").read_text()
+
+for token in (
+    r"\\SystemRoot\\System32\\drivers\\P360\\p360-f686.ri",
+    "P360_FW_FILE_BYTES",
+):
+    if token not in firmware_h:
+        raise SystemExit(f"firmware provider contract missing: {token}")
+
+for token in (
+    "ZwCreateFile(",
+    "ZwQueryInformationFile(",
+    "ZwReadFile(",
+    "p360_fw_validate(",
+    "STATUS_INVALID_IMAGE_HASH",
+):
+    if token not in firmware:
+        raise SystemExit(f"validated firmware load gate missing: {token}")
+
+if "P360_RUNTIME_BOOT_ENABLED 0" not in driver_h:
+    raise SystemExit("firmware provider was added but runtime boot barrier is not closed")
+
+print("Phaser360 firmware-provider contract: PASS")
