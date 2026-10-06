@@ -17,6 +17,12 @@ p360_runtime_boot_policy_enabled(VOID)
     return P360_RUNTIME_BOOT_ENABLED ? TRUE : FALSE;
 }
 
+static BOOLEAN
+p360_ipc_probe_policy_enabled(VOID)
+{
+    return P360_IPC_PROBE_ENABLED ? TRUE : FALSE;
+}
+
 static NTSTATUS
 p360_loader_status_to_ntstatus(
     _In_ int rc)
@@ -134,12 +140,33 @@ p360_runtime_boot_start(
     if (!NT_SUCCESS(status))
         goto fail_live;
 
-    ctx->State.ipc_ready=1;
-    if (!p360_state_advance(
-            &ctx->State,
-            P360_STATE_IPC_READY)) {
-        status=STATUS_INVALID_DEVICE_STATE;
-        goto fail_live;
+    /*
+     * IRQ routing alone is not an IPC proof. Keep the state at SOF_READY
+     * unless the explicit non-audio IPC3 transport probe is enabled and its
+     * deterministic generic reply is observed.
+     */
+    if (p360_ipc_probe_policy_enabled()) {
+        LONG firmwareError=0;
+
+        failure=P360_FAIL_IPC;
+        status=p360_cs_runtime_probe_ipc(
+            &ctx->Runtime,
+            &firmwareError);
+        if (!NT_SUCCESS(status))
+            goto fail_live;
+
+        if (firmwareError!=P360_IPC3_PROOF_ERROR) {
+            status=STATUS_DATA_ERROR;
+            goto fail_live;
+        }
+
+        ctx->State.ipc_ready=1;
+        if (!p360_state_advance(
+                &ctx->State,
+                P360_STATE_IPC_READY)) {
+            status=STATUS_INVALID_DEVICE_STATE;
+            goto fail_live;
+        }
     }
 
     p360_firmware_release(&firmware);
