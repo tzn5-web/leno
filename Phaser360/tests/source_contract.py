@@ -105,12 +105,12 @@ print("Phaser360 runtime lifecycle contract: PASS")
 firmware_h=(ROOT/"include/p360_firmware.h").read_text()
 firmware=(ROOT/"src/p360_firmware.c").read_text()
 
-for token in (
-    r"\\SystemRoot\\System32\\drivers\\P360\\p360-f686.ri",
-    "P360_FW_FILE_BYTES",
-):
-    if token not in firmware_h:
-        raise SystemExit(f"firmware provider contract missing: {token}")
+if r"\\SystemRoot\\System32\\drivers\\P360\\p360-f686.ri" not in firmware_h:
+    raise SystemExit("firmware provider fixed path missing")
+
+loader_h=(ROOT/"sof_core/loader/p360_loader.h").read_text()
+if "P360_FW_FILE_BYTES 246528u" not in loader_h:
+    raise SystemExit("firmware provider exact size contract missing")
 
 for token in (
     "ZwCreateFile(",
