@@ -30,3 +30,14 @@ jobs:
         run: |
           chmod +x Phaser360/tests/run_b4_core.sh
           Phaser360/tests/run_b4_core.sh
+
+      - name: NHLT parser regression
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -pedantic \
+            -fsanitize=address,undefined -fno-omit-frame-pointer \
+            Phaser360/tests/nhlt_regression.c \
+            Phaser360/src/p360_nhlt.c \
+            Phaser360/src/p360_board.c \
+            -IPhaser360/include \
+            -o /tmp/p360_nhlt_regression
+          /tmp/p360_nhlt_regression
