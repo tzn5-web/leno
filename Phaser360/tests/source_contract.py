@@ -125,7 +125,7 @@ if not re.search(r"#define\s+P360_RUNTIME_BOOT_ENABLED\s+0\b", driver_h):
 if not re.search(r"#define\s+P360_PORTCLS_SHELL_ENABLED\s+0\b", driver_h):
     raise SystemExit("PortCls shell barrier was enabled before lifecycle migration completed")
 
-portcls=(ROOT/"src/p360_portcls_bridge.c").read_text()
+portcls=(ROOT/"src/p360_portcls_bridge.cpp").read_text()
 project=(ROOT/"driver/P360SofAudio.vcxproj").read_text()
 for token in (
     "PcGetPhysicalDeviceObject(",
