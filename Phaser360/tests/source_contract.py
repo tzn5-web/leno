@@ -150,6 +150,22 @@ for token in (
         raise SystemExit(f"PortCls bridge build integration missing: {token}")
 
 for token in (
+    "P360_RUNTIME_BOOT_ENABLED=$(P360RuntimeBootEnabled)",
+    "P360_PORTCLS_SHELL_ENABLED=$(P360PortClsShellEnabled)",
+):
+    if token not in project:
+        raise SystemExit(f"staged audio build gate is not parameterized: {token}")
+
+workflow=(ROOT.parent/".github/workflows/phaser360-windows.yml").read_text()
+for token in (
+    "/p:P360PortClsShellEnabled=1",
+    "/p:P360RuntimeBootEnabled=0",
+    "P360SofAudio-portcls-shell.sys",
+):
+    if token not in workflow:
+        raise SystemExit(f"active PortCls linkage CI build missing: {token}")
+
+for token in (
     "WdfDriverInitNoDispatchOverride",
     "PcInitializeAdapterDriver(",
     "PcAddAdapterDevice(",
