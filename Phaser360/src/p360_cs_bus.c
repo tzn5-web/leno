@@ -26,6 +26,12 @@ NTSTATUS p360_cs_bus_open(P360_CS_BUS *bus, WDFDEVICE device)
     if (!NT_SUCCESS(status))
         return status;
 
+    /*
+     * WdfFdoQueryForInterface has completed the query-interface lifetime
+     * handshake. Track that independently from our stricter ABI validation.
+     */
+    bus->interface_acquired = TRUE;
+
     if (bus->iface.Size != sizeof(bus->iface) ||
         bus->iface.Version != P360_CS_ADSP_INTERFACE_VERSION ||
         bus->iface.CtlrDevId != P360_CS_GLK_DEVICE_ID ||
@@ -152,9 +158,8 @@ void p360_cs_bus_close(P360_CS_BUS *bus)
      * Current audited CoolStar v1 exposes no-op interface reference handlers,
      * but honor the standard INTERFACE lifetime contract anyway.
      */
-    if (bus->interface_valid &&
-        bus->iface.InterfaceDereference &&
-        bus->iface.Context) {
+    if (bus->interface_acquired &&
+        bus->iface.InterfaceDereference) {
         bus->iface.InterfaceDereference(bus->iface.Context);
     }
 
