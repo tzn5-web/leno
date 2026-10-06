@@ -89,6 +89,10 @@ static int p360_endpoint_has_format(
          * channels@2, samples/sec@4, container bits@14, valid bits@18.
          */
         specific=p360_le32(w+P360_NHLT_WAVE_EXT_BYTES);
+        off+=P360_NHLT_WAVE_EXT_BYTES+P360_NHLT_FORMAT_CFG_HEADER;
+
+        if (!p360_span(off,specific,ep_bytes))
+            return 0;
 
         if (p360_le16(w+2)==channels &&
             p360_le32(w+4)==rate &&
@@ -96,9 +100,6 @@ static int p360_endpoint_has_format(
             p360_le16(w+18)==valid_bits)
             return 1;
 
-        off+=P360_NHLT_WAVE_EXT_BYTES+P360_NHLT_FORMAT_CFG_HEADER;
-        if (!p360_span(off,specific,ep_bytes))
-            return 0;
         off+=specific;
     }
 
