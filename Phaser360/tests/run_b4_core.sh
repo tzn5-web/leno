@@ -5,9 +5,9 @@ cd "$(dirname "$0")/.."
 OBJ="$(mktemp -d)"
 trap 'rm -rf "$OBJ"' EXIT INT TERM
 
-CFLAGS="-std=c11 -Wall -Wextra -Werror -pedantic -Isof_core -Isof_core/loader"
+CFLAGS="-std=c11 -Wall -Wextra -Werror -pedantic -Isof_core -Isof_core/loader -Isof_core/adapter"
 
-for src in   sof_core/p360_transport_core.c   sof_core/loader/p360_loader.c   sof_core/loader/p360_fw_image.c   sof_core/loader/p360_irq.c   sof_core/loader/p360_dispatch.c   sof_core/loader/p360_ipc_timer.c
+for src in   sof_core/p360_transport_core.c   sof_core/loader/p360_loader.c   sof_core/loader/p360_fw_image.c   sof_core/loader/p360_irq.c   sof_core/loader/p360_dispatch.c   sof_core/loader/p360_ipc_timer.c   sof_core/loader/p360_irq_arm.c   sof_core/adapter/p360_irq_arm_adapter.c
 do
   cc $CFLAGS -c "$src" -o "$OBJ/$(basename "$src" .c).o"
 done
@@ -22,5 +22,8 @@ cc $CFLAGS $SAN tests/b4_irq_regression.c   sof_core/loader/p360_irq.c   -o "$OB
 
 cc $CFLAGS $SAN tests/b4_ipc_timer_regression.c   sof_core/p360_transport_core.c   sof_core/loader/p360_ipc_timer.c   -o "$OBJ/ipc_timer"
 "$OBJ/ipc_timer"
+
+cc $CFLAGS $SAN tests/irq_arm_adapter_regression.c   sof_core/loader/p360_irq_arm.c   sof_core/adapter/p360_irq_arm_adapter.c   -o "$OBJ/irq_arm"
+"$OBJ/irq_arm"
 
 echo "B4 core compile/regressions: PASS"
