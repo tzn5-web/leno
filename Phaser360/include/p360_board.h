@@ -5,6 +5,9 @@
 #define P360_INTEL_VENDOR_ID 0x8086u
 #define P360_GLK_AUDIO_DEVICE_ID 0x3198u
 #define P360_SAMPLE_RATE 48000u
+#define P360_SPEAKER_CHANNELS 2u
+#define P360_SPEAKER_CONTAINER_BITS 32u
+#define P360_SPEAKER_VALID_BITS 24u
 
 typedef enum P360_ENDPOINT {
     P360_ENDPOINT_HEADPHONE = 0,
@@ -20,6 +23,9 @@ typedef struct P360_BOARD_PROFILE {
     uint8_t ssp_codec;
     uint8_t dmic_index;
     uint32_t sample_rate;
+    uint8_t speaker_channels;
+    uint8_t speaker_container_bits;
+    uint8_t speaker_valid_bits;
     uint8_t speaker_enabled_by_default;
 } P360_BOARD_PROFILE;
 
