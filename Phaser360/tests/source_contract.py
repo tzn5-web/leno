@@ -122,6 +122,31 @@ if not (
 if not re.search(r"#define\s+P360_RUNTIME_BOOT_ENABLED\s+0\b", driver_h):
     raise SystemExit("runtime boot barrier was enabled without reviewed activation")
 
+if not re.search(r"#define\s+P360_PORTCLS_SHELL_ENABLED\s+0\b", driver_h):
+    raise SystemExit("PortCls shell barrier was enabled before lifecycle migration completed")
+
+portcls=(ROOT/"src/p360_portcls_bridge.c").read_text()
+project=(ROOT/"driver/P360SofAudio.vcxproj").read_text()
+for token in (
+    "PcGetPhysicalDeviceObject(",
+    "IoGetLowerDeviceObject(",
+    "WdfDeviceMiniportCreate(",
+    "ObDereferenceObject(lower)",
+):
+    if token not in portcls:
+        raise SystemExit(f"PortCls/WDF miniport bridge contract missing: {token}")
+
+bus_source=(ROOT/"src/p360_cs_bus.c").read_text()
+if "WdfFdoQueryForInterface(" not in bus_source:
+    raise SystemExit("CoolStar bus query no longer uses the permitted WDF miniport FDO interface path")
+
+for token in (
+    r"..\src\p360_portcls_bridge.c",
+    "PortCls.lib",
+):
+    if token not in project:
+        raise SystemExit(f"PortCls bridge build integration missing: {token}")
+
 driver=(ROOT/"driver/p360_driver.c").read_text()
 for token in (
     "p360_runtime_boot_start(",
