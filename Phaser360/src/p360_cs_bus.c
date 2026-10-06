@@ -103,6 +103,46 @@ NTSTATUS p360_cs_bus_validate_resources(P360_CS_BUS *bus)
     return STATUS_SUCCESS;
 }
 
+NTSTATUS p360_cs_bus_read_identity(
+    P360_CS_BUS *bus,
+    struct p360_pci_identity *identity)
+{
+    UCHAR config[256];
+    ULONG offset;
+
+    if (!bus || !identity || !bus->resources_valid ||
+        !bus->pci.GetBusData)
+        return STATUS_INVALID_DEVICE_STATE;
+
+    RtlZeroMemory(config,sizeof(config));
+    RtlZeroMemory(identity,sizeof(*identity));
+
+    for (offset=0;offset<sizeof(config);offset+=sizeof(ULONG)) {
+        ULONG got=bus->pci.GetBusData(
+            bus->pci.Context,
+            PCI_WHICHSPACE_CONFIG,
+            config+offset,
+            offset,
+            sizeof(ULONG));
+
+        if (got!=sizeof(ULONG))
+            return STATUS_DEVICE_DATA_ERROR;
+    }
+
+    if (p360_pci_validate(config,sizeof(config),identity)!=0)
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+
+    /*
+     * B4 additionally requires bus mastering before any firmware DMA.
+     * Do not alter PCI COMMAND here; fail closed if firmware/BIOS/bus did not
+     * leave both Memory Space and Bus Master enabled.
+     */
+    if ((identity->command & 6u)!=6u)
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+
+    return STATUS_SUCCESS;
+}
+
 void p360_cs_bus_close(P360_CS_BUS *bus)
 {
     if (!bus)
