@@ -43,14 +43,15 @@ typedef NTSTATUS (*P360_CS_GET_RESOURCES)(
     BUS_INTERFACE_STANDARD *pciConfig);
 
 typedef NTSTATUS (*P360_CS_SET_POWER_STATE)(PVOID context, DEVICE_POWER_STATE state);
-typedef BOOL (*P360_CS_INTERRUPT_CALLBACK)(PVOID context);
+typedef LONG P360_CS_BOOL;
+typedef P360_CS_BOOL (*P360_CS_INTERRUPT_CALLBACK)(PVOID context);
 typedef NTSTATUS (*P360_CS_REGISTER_INTERRUPT)(PVOID context, P360_CS_INTERRUPT_CALLBACK callback, PVOID callbackContext);
 typedef NTSTATUS (*P360_CS_UNREGISTER_INTERRUPT)(PVOID context);
 typedef NTSTATUS (*P360_CS_GET_STREAM)(PVOID context, HDAUDIO_STREAM_FORMAT format, PHANDLE handle, UINT8 *streamTag);
 typedef NTSTATUS (*P360_CS_FREE_STREAM)(PVOID context, HANDLE handle);
 typedef NTSTATUS (*P360_CS_PREPARE_STREAM)(PVOID context, HANDLE handle, unsigned int byteSize, int fragments, PVOID *bdlBuf);
 typedef NTSTATUS (*P360_CS_CLEANUP_STREAM)(PVOID context, HANDLE handle);
-typedef void (*P360_CS_TRIGGER_STREAM)(PVOID context, HANDLE handle, BOOL startStop);
+typedef void (*P360_CS_TRIGGER_STREAM)(PVOID context, HANDLE handle, P360_CS_BOOL startStop);
 typedef UINT32 (*P360_CS_STREAM_POSITION)(PVOID context, HANDLE handle);
 typedef void (*P360_CS_ENABLE_SPIB)(PVOID context, HANDLE handle, UINT32 value);
 typedef void (*P360_CS_DISABLE_SPIB)(PVOID context, HANDLE handle);
@@ -79,6 +80,7 @@ typedef struct P360_CS_ADSP_BUS_INTERFACE {
 } P360_CS_ADSP_BUS_INTERFACE;
 
 #if defined(_WIN64)
+C_ASSERT(sizeof(P360_CS_BOOL) == 4);
 C_ASSERT(sizeof(P360_CS_BASEADDR) == 8);
 C_ASSERT(sizeof(P360_CS_PCI_BAR) == 16);
 C_ASSERT(FIELD_OFFSET(P360_CS_PCI_BAR, Base) == 0);
