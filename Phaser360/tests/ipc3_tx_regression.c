@@ -90,6 +90,11 @@ int main(void)
     struct mock m;
     uint8_t msg[8];
 
+    assert(P360_DSP_UPBOX==0x81000u);
+    assert(P360_HOST_DOWNBOX==0xa0000u);
+    assert(P360_STREAM_BOX==0xc1000u);
+    assert(P360_DISPATCH_MAP_BYTES==0xc2000u);
+
     assert(p360_ipc3_build_proof(msg)==P360_IPC3_TX_OK);
     assert(msg[0]==8 && msg[1]==0 && msg[2]==0 && msg[3]==0);
     assert(msg[4]==0 && msg[5]==0 && msg[6]==0 && msg[7]==0xe0);
@@ -101,7 +106,7 @@ int main(void)
     assert(out.generation==1);
     assert(out.mailbox_written && out.doorbell_written && !out.poison_required);
     assert(d.ipc.state==P360_IPC_PENDING);
-    assert(m.box_offset==P360_REPLY_BOX && m.box_bytes==sizeof(msg));
+    assert(m.box_offset==P360_HOST_DOWNBOX && m.box_bytes==sizeof(msg));
     assert(memcmp(m.box,msg,sizeof(msg))==0);
     assert(m.reg_offset==P360_DSP_HIPCI && m.reg_value==P360_HIPCI_BUSY);
     assert(strcmp(m.order,"rrrnmbdb")==0);
