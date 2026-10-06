@@ -48,6 +48,10 @@ typedef struct _P360_DEVICE_CONTEXT {
 
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(P360_DEVICE_CONTEXT,P360GetContext)
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 NTSTATUS p360_host_prepare(
     _Inout_ P360_DEVICE_CONTEXT *ctx,
     _In_ WDFDEVICE Device);
@@ -68,3 +72,7 @@ EVT_WDF_DEVICE_PREPARE_HARDWARE P360EvtPrepareHardware;
 EVT_WDF_DEVICE_RELEASE_HARDWARE P360EvtReleaseHardware;
 EVT_WDF_DEVICE_D0_ENTRY P360EvtD0Entry;
 EVT_WDF_DEVICE_D0_EXIT P360EvtD0Exit;
+
+#ifdef __cplusplus
+}
+#endif
