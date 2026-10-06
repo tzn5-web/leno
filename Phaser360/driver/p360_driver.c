@@ -11,6 +11,188 @@ p360_fail(
     return status;
 }
 
+static NTSTATUS
+p360_loader_status_to_ntstatus(
+    _In_ int rc)
+{
+    switch (rc) {
+    case P360_L_IMAGE:
+        return STATUS_INVALID_IMAGE_HASH;
+    case P360_L_BUSY:
+        return STATUS_DEVICE_BUSY;
+    case P360_L_TIMEOUT:
+        return STATUS_IO_TIMEOUT;
+    case P360_L_CANCEL:
+        return STATUS_CANCELLED;
+    case P360_L_READY:
+        return STATUS_DEVICE_NOT_READY;
+    case P360_L_ARGUMENT:
+        return STATUS_INVALID_PARAMETER;
+    case P360_L_ROM_ERROR:
+    case P360_L_IO:
+    case P360_L_QUARANTINE:
+    default:
+        return STATUS_DEVICE_HARDWARE_ERROR;
+    }
+}
+
+static NTSTATUS
+p360_runtime_boot_start(
+    _Inout_ P360_DEVICE_CONTEXT *ctx)
+{
+    P360_FIRMWARE_BLOB firmware;
+    struct p360_loader_result result;
+    P360_FAILURE_REASON failure=P360_FAIL_FIRMWARE;
+    ULONGLONG epoch;
+    NTSTATUS status;
+    NTSTATUS cleanupStatus;
+    int rc;
+
+    if (!ctx || !ctx->Prepared || !ctx->BusOpen ||
+        !ctx->BootInitialized || !ctx->RuntimeInitialized ||
+        ctx->State.state!=P360_STATE_RESOURCES_OK ||
+        InterlockedCompareExchange(&ctx->Removing,0,0)!=0) {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+
+    RtlZeroMemory(&firmware,sizeof(firmware));
+    RtlZeroMemory(&result,sizeof(result));
+
+    status=p360_firmware_load(&firmware);
+    if (!NT_SUCCESS(status))
+        return p360_fail(ctx,P360_FAIL_FIRMWARE,status);
+
+    /*
+     * Dispatcher preparation is immutable host-side validation of the same
+     * pinned image used by the loader. It is performed once per runtime
+     * object and does not touch DSP registers.
+     */
+    if (!ctx->Runtime.DispatcherPrepared) {
+        status=p360_cs_runtime_prepare_dispatcher(
+            &ctx->Runtime,
+            firmware.Data,
+            firmware.Bytes);
+        if (!NT_SUCCESS(status))
+            goto fail;
+    }
+
+    if (ctx->BootEpoch==MAXULONGLONG) {
+        status=STATUS_INTEGER_OVERFLOW;
+        goto fail;
+    }
+
+    epoch=++ctx->BootEpoch;
+    if (!epoch ||
+        !p360_state_advance(
+            &ctx->State,
+            P360_STATE_SOF_BOOTING)) {
+        status=STATUS_INVALID_DEVICE_STATE;
+        goto fail;
+    }
+
+    rc=p360_loader_run(
+        &ctx->Loader,
+        p360_cs_boot_loader_ops(),
+        &ctx->Boot,
+        firmware.Data,
+        firmware.Bytes,
+        epoch,
+        &result);
+
+    if (rc!=P360_L_OK) {
+        status=p360_loader_status_to_ntstatus(rc);
+        goto fail;
+    }
+
+    if (!result.ready_proved ||
+        result.boot_epoch!=epoch ||
+        !ctx->Boot.LiveDsp ||
+        !ctx->Boot.PowerHeld ||
+        ctx->Boot.Quarantined) {
+        status=STATUS_DEVICE_NOT_READY;
+        goto fail_live;
+    }
+
+    ctx->State.fw_ready=1;
+    if (!p360_state_advance(
+            &ctx->State,
+            P360_STATE_SOF_READY)) {
+        status=STATUS_INVALID_DEVICE_STATE;
+        goto fail_live;
+    }
+
+    failure=P360_FAIL_IRQ;
+    status=p360_cs_runtime_bind_live(
+        &ctx->Runtime,
+        epoch);
+    if (!NT_SUCCESS(status))
+        goto fail_live;
+
+    ctx->State.ipc_ready=1;
+    if (!p360_state_advance(
+            &ctx->State,
+            P360_STATE_IPC_READY)) {
+        status=STATUS_INVALID_DEVICE_STATE;
+        goto fail_live;
+    }
+
+    p360_firmware_release(&firmware);
+    return STATUS_SUCCESS;
+
+fail_live:
+    /*
+     * A successful loader owns a live DSP and D0 reference. Any handoff
+     * failure must synchronously quiesce that DSP before D0Entry returns.
+     */
+    cleanupStatus=p360_cs_runtime_stop(&ctx->Runtime);
+    if (!NT_SUCCESS(cleanupStatus) && ctx->Boot.LiveDsp) {
+        status=cleanupStatus;
+        failure=P360_FAIL_FIRMWARE;
+    }
+
+fail:
+    p360_firmware_release(&firmware);
+    return p360_fail(ctx,failure,status);
+}
+
+static NTSTATUS
+p360_runtime_boot_stop(
+    _Inout_ P360_DEVICE_CONTEXT *ctx)
+{
+    NTSTATUS status;
+
+    if (!ctx || !ctx->RuntimeInitialized || !ctx->BootInitialized)
+        return STATUS_INVALID_DEVICE_STATE;
+
+    if (!ctx->Boot.LiveDsp &&
+        !ctx->Runtime.Bound &&
+        !InterlockedCompareExchange(&ctx->Runtime.Active,0,0) &&
+        !InterlockedCompareExchange(&ctx->Runtime.DpcState,0,0) &&
+        !InterlockedCompareExchange(&ctx->Runtime.EventValid,0,0)) {
+        return STATUS_SUCCESS;
+    }
+
+    status=p360_cs_runtime_stop(&ctx->Runtime);
+
+    /*
+     * If shutdown reported a latched software fault but proved the DSP and
+     * D0 lease are gone, allow the power transition while keeping the state
+     * failed so a later D0Entry cannot silently reuse the poisoned runtime.
+     */
+    if (!NT_SUCCESS(status)) {
+        p360_state_fail(&ctx->State,P360_FAIL_IRQ);
+        return ctx->Boot.LiveDsp ? status : STATUS_SUCCESS;
+    }
+
+    if (!p360_state_runtime_reset(&ctx->State,1))
+        return p360_fail(
+            ctx,
+            P360_FAIL_IRQ,
+            STATUS_INVALID_DEVICE_STATE);
+
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS
 DriverEntry(
     _In_ PDRIVER_OBJECT DriverObject,
@@ -234,10 +416,10 @@ P360EvtD0Entry(
     }
 
 #if P360_RUNTIME_BOOT_ENABLED
-#error P360_RUNTIME_BOOT_ENABLED requires the reviewed firmware provider and runtime handoff path.
-#endif
-
+    return p360_runtime_boot_start(ctx);
+#else
     return STATUS_SUCCESS;
+#endif
 }
 
 NTSTATUS
@@ -253,18 +435,14 @@ P360EvtD0Exit(
         return STATUS_INVALID_DEVICE_STATE;
 
     /*
-     * Runtime boot is intentionally disabled in this build, so ordinary
-     * D0->Dx power transitions have no active SOF transaction to cancel.
-     * Do not latch Boot.Cancelled here: PrepareHardware is not guaranteed to
-     * rerun on a simple sleep/resume cycle.
-     *
-     * Once runtime boot is enabled, this callback will synchronously quiesce
-     * WaveRT -> topology -> IPC/IRQ -> DSP and release the held D0 reference,
-     * then re-arm a fresh boot epoch for the next D0Entry.
+     * Boot remains disabled by policy in the shipping test build, but the
+     * complete shutdown path is compiled and audited now. Do not use the boot
+     * adapter's cancellation latch for ordinary D0 transitions; it is reserved
+     * for removal/retirement.
      */
 #if P360_RUNTIME_BOOT_ENABLED
-#error P360_RUNTIME_BOOT_ENABLED requires reviewed D0Exit runtime shutdown.
-#endif
-
+    return p360_runtime_boot_stop(ctx);
+#else
     return STATUS_SUCCESS;
+#endif
 }
