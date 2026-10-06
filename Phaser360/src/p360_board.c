@@ -7,6 +7,9 @@ const P360_BOARD_PROFILE g_p360_phaser360_profile = {
     2, /* SSP2 -> DA7219 */
     0, /* DMIC0 */
     P360_SAMPLE_RATE,
+    P360_SPEAKER_CHANNELS,
+    P360_SPEAKER_CONTAINER_BITS,
+    P360_SPEAKER_VALID_BITS,
     0  /* speaker disabled by default */
 };
 
