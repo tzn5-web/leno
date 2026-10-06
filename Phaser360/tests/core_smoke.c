@@ -16,7 +16,7 @@ static void test_board(void)
     assert(g_p360_phaser360_profile.sample_rate == 48000u);
     assert(g_p360_phaser360_profile.speaker_channels == 2u);
     assert(g_p360_phaser360_profile.speaker_container_bits == 32u);
-    assert(g_p360_phaser360_profile.speaker_valid_bits == 24u);
+    assert(g_p360_phaser360_profile.speaker_valid_bits == 16u);
 
     bad.ssp2_capture = 0;
     assert(!p360_board_validate_nhlt(&bad));
