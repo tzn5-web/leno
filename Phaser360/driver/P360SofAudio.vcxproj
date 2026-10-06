@@ -56,7 +56,7 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <BufferSecurityCheck>true</BufferSecurityCheck>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(ProjectDir)kernel_compat;$(ProjectDir);$(ProjectDir)..\include;$(ProjectDir)..\sof_core;$(ProjectDir)..\sof_core\loader;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)kernel_compat;$(ProjectDir);$(ProjectDir)..\include;$(ProjectDir)..\sof_core;$(ProjectDir)..\sof_core\loader;$(ProjectDir)..\sof_core\adapter;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>P360_RUNTIME_BUILD=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
@@ -76,17 +76,14 @@
     <ClCompile Include="..\src\p360_cs_boot.c" />
     <ClCompile Include="..\sof_core\p360_transport_core.c" />
     <ClCompile Include="..\sof_core\loader\p360_loader.c">
-      <!--
-        MSVC C4701 is a flow-analysis false positive here: every read of the
-        temporary value is guarded by NT-style rc==0 after read32(). Keep the
-        exact audited B4 source hash and suppress only this warning on this TU.
-      -->
       <DisableSpecificWarnings>4701;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
     <ClCompile Include="..\sof_core\loader\p360_fw_image.c" />
     <ClCompile Include="..\sof_core\loader\p360_irq.c" />
     <ClCompile Include="..\sof_core\loader\p360_dispatch.c" />
     <ClCompile Include="..\sof_core\loader\p360_ipc_timer.c" />
+    <ClCompile Include="..\sof_core\loader\p360_irq_arm.c" />
+    <ClCompile Include="..\sof_core\adapter\p360_irq_arm_adapter.c" />
   </ItemGroup>
 
   <ItemGroup>
@@ -102,9 +99,10 @@
     <ClInclude Include="..\sof_core\loader\p360_irq.h" />
     <ClInclude Include="..\sof_core\loader\p360_dispatch.h" />
     <ClInclude Include="..\sof_core\loader\p360_ipc_timer.h" />
+    <ClInclude Include="..\sof_core\loader\p360_irq_arm.h" />
+    <ClInclude Include="..\sof_core\adapter\p360_irq_arm_adapter.h" />
   </ItemGroup>
 
-  <!-- INX stays source-only during the compile/link gate. Packaging/signing is a later transaction. -->
   <ItemGroup>
     <None Include="P360SofAudio.inx" />
   </ItemGroup>
