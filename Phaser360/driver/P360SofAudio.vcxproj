@@ -61,6 +61,7 @@
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>PortCls.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <DriverSign>
       <FileDigestAlgorithm>sha256</FileDigestAlgorithm>
@@ -76,6 +77,7 @@
     <ClCompile Include="..\src\p360_cs_boot.c" />
     <ClCompile Include="..\src\p360_cs_runtime.c" />
     <ClCompile Include="..\src\p360_firmware.c" />
+    <ClCompile Include="..\src\p360_portcls_bridge.c" />
     <ClCompile Include="..\sof_core\p360_transport_core.c" />
     <ClCompile Include="..\sof_core\loader\p360_loader.c">
       <DisableSpecificWarnings>4701;%(DisableSpecificWarnings)</DisableSpecificWarnings>
@@ -98,6 +100,7 @@
     <ClInclude Include="..\include\p360_cs_boot.h" />
     <ClInclude Include="..\include\p360_cs_runtime.h" />
     <ClInclude Include="..\include\p360_firmware.h" />
+    <ClInclude Include="..\include\p360_portcls_bridge.h" />
     <ClInclude Include="..\sof_core\p360_transport_core.h" />
     <ClInclude Include="..\sof_core\loader\p360_loader.h" />
     <ClInclude Include="..\sof_core\loader\p360_irq.h" />
