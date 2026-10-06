@@ -12,7 +12,20 @@ on:
       - "Phaser360/**"
 
 jobs:
+  audit-core:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify Phaser360 source contracts
+        run: python3 Phaser360/tests/source_contract.py
+
+      - name: Compile and run B4/IRQ regressions
+        run: sh Phaser360/tests/run_b4_core.sh
+
   build-x64:
+    needs: audit-core
     runs-on: windows-2022
 
     steps:
