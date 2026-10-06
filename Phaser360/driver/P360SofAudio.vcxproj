@@ -77,7 +77,7 @@
     <ClCompile Include="..\src\p360_cs_boot.c" />
     <ClCompile Include="..\src\p360_cs_runtime.c" />
     <ClCompile Include="..\src\p360_firmware.c" />
-    <ClCompile Include="..\src\p360_portcls_bridge.c" />
+    <ClCompile Include="..\src\p360_portcls_bridge.cpp" />
     <ClCompile Include="..\sof_core\p360_transport_core.c" />
     <ClCompile Include="..\sof_core\loader\p360_loader.c">
       <DisableSpecificWarnings>4701;%(DisableSpecificWarnings)</DisableSpecificWarnings>
