@@ -60,3 +60,43 @@ for token in (
         raise SystemExit(f"CoolStar ABI pin missing: {token}")
 
 print("Phaser360 source contract: PASS")
+
+
+runtime_h=(ROOT/"include/p360_cs_runtime.h").read_text()
+runtime=(ROOT/"src/p360_cs_runtime.c").read_text()
+driver_h=(ROOT/"driver/p360_driver.h").read_text()
+
+if "P360_CS_BOOL\np360_cs_runtime_interrupt" not in runtime_h:
+    raise SystemExit("CoolStar interrupt callback ABI return type drifted")
+
+for token in (
+    "p360_rt_callback_close(rt);",
+    "UnregisterInterrupt(",
+    "p360_rt_wait_callbacks_closed(rt);",
+    "WdfDpcCancel(rt->Dpc,TRUE)",
+):
+    if token not in runtime:
+        raise SystemExit(f"runtime teardown proof missing: {token}")
+
+close_i=runtime.index("p360_rt_callback_close(rt);")
+unreg_i=runtime.index("UnregisterInterrupt(", close_i)
+drain_i=runtime.index("p360_rt_wait_callbacks_closed(rt);", unreg_i)
+cancel_i=runtime.index("WdfDpcCancel(rt->Dpc,TRUE)", drain_i)
+if not (close_i < unreg_i < drain_i < cancel_i):
+    raise SystemExit("runtime callback teardown ordering drifted")
+
+stop_i=runtime.index("p360_cs_runtime_stop(")
+active_i=runtime.index("InterlockedExchange(&rt->Active,0);", stop_i)
+cb_idle_i=runtime.index("p360_rt_wait_callbacks_idle(rt);", active_i)
+dpc_idle_i=runtime.index("p360_rt_wait_dpc_idle(rt);", cb_idle_i)
+shutdown_i=runtime.index("p360_cs_boot_adapter_shutdown_live", dpc_idle_i)
+if not (active_i < cb_idle_i < dpc_idle_i < shutdown_i):
+    raise SystemExit("runtime stop ordering drifted")
+
+if not re.search(r"#define\s+P360_RUNTIME_BOOT_ENABLED\s+0\b", driver_h):
+    raise SystemExit("runtime boot barrier was enabled without reviewed activation")
+
+if "#error P360_RUNTIME_BOOT_ENABLED requires" not in (ROOT/"driver/p360_driver.c").read_text():
+    raise SystemExit("runtime boot compile barrier missing")
+
+print("Phaser360 runtime lifecycle contract: PASS")
