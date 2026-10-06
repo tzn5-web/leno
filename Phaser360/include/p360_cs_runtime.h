@@ -7,6 +7,7 @@
 #include "p360_cs_boot.h"
 #include "../sof_core/loader/p360_irq.h"
 #include "../sof_core/loader/p360_dispatch.h"
+#include "../sof_core/loader/p360_ipc3_tx.h"
 #include "../sof_core/adapter/p360_irq_arm_adapter.h"
 
 #define P360_RUNTIME_CALLBACK_CLOSING 0x80000000u
@@ -59,6 +60,12 @@ NTSTATUS
 p360_cs_runtime_bind_live(
     _Inout_ P360_CS_RUNTIME *Runtime,
     _In_ ULONGLONG BootEpoch
+    );
+
+NTSTATUS
+p360_cs_runtime_probe_ipc(
+    _Inout_ P360_CS_RUNTIME *Runtime,
+    _Out_opt_ LONG *FirmwareError
     );
 
 NTSTATUS
