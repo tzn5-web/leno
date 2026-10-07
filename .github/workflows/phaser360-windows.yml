@@ -176,6 +176,25 @@ jobs:
           $pdb = "Phaser360\driver\out\Release\P360SofAudio.pdb"
           if (Test-Path $pdb) { Remove-Item $pdb -Force }
 
+      - name: Compile real HOST WaveRT speaker path
+        shell: pwsh
+        run: |
+          msbuild Phaser360\driver\P360SofAudio.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /p:P360PortClsShellEnabled=1 /p:P360RuntimeBootEnabled=1 /p:P360IpcProbeEnabled=1 /p:P360SpeakerEndpointEnabled=1 /p:P360HostPlaybackEnabled=1 /p:P360InternalSpeakerEnabled=1 /v:minimal
+          $sys = "Phaser360\driver\out\Release\P360SofAudio.sys"
+          if (-not (Test-Path $sys)) {
+            throw "Real WaveRT HOST playback build did not produce P360SofAudio.sys"
+          }
+          $h = Get-FileHash $sys -Algorithm SHA256
+          Write-Host "PORTCLS_HOST_WAVERT_PLAYBACK_COMPILE=PASS"
+          Write-Host "SHA256=$($h.Hash)"
+          Copy-Item $sys "Phaser360\driver\out\Release\P360SofAudio-host-playback.sys" -Force
+          $pdb = "Phaser360\driver\out\Release\P360SofAudio.pdb"
+          if (Test-Path $pdb) {
+            Copy-Item $pdb "Phaser360\driver\out\Release\P360SofAudio-host-playback.pdb" -Force
+          }
+          Remove-Item $sys -Force
+          if (Test-Path $pdb) { Remove-Item $pdb -Force }
+
       - name: Locate WDK signing tools
         shell: pwsh
         timeout-minutes: 2
