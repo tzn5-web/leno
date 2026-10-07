@@ -510,8 +510,21 @@ for token in (
         raise SystemExit(f"real WaveRT final-runner contract missing: {token}")
         raise SystemExit(f"hardware gate runner safety contract missing: {token}")
 
-if '"/install"' in runner:
-    raise SystemExit("hardware gate runner must stage packages without pnputil /install")
+install_test_begin=runner.index("function Install-TestPackage")
+install_test_end=runner.index("function ",install_test_begin+1)
+install_test_body=runner[install_test_begin:install_test_end]
+if '"/install"' in install_test_body:
+    raise SystemExit("P360 ADSP test packages must be staged without pnputil /install")
+
+for token in (
+    'function Install-SafeAmpPackage',
+    '@("/add-driver",$inf,"/install")',
+    'function Restore-OriginalAmpDriver',
+    '[string]$script:State.AmpOriginalExportedInf,',
+    '"/install") -AllowFailure',
+):
+    if token not in runner:
+        raise SystemExit(f"safe MAX98357A bind/restore transaction missing: {token}")
 
 for forbidden in (
     "preaudio-proof.json",
