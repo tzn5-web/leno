@@ -430,11 +430,13 @@ function Wait-TargetPresent([string]$InstanceId,[int]$Seconds=12) {
 function Wait-TargetHealthy([string]$InstanceId,[int]$Seconds=12) {
     $deadline = (Get-Date).AddSeconds($Seconds)
     do {
-        $dev = Wait-TargetPresent $InstanceId 2
-        if ([int]$dev.ConfigManagerErrorCode -eq 0) {
+        Start-Sleep -Milliseconds 500
+        $dev = Get-CimInstance Win32_PnPEntity | Where-Object {
+            $_.PNPDeviceID -eq $InstanceId
+        } | Select-Object -First 1
+        if ($dev -and [int]$dev.ConfigManagerErrorCode -eq 0) {
             return $dev
         }
-        Start-Sleep -Milliseconds 250
     } while ((Get-Date) -lt $deadline)
     throw "Target did not return healthy within $Seconds seconds."
 }
