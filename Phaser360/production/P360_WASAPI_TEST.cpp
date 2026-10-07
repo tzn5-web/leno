@@ -234,6 +234,11 @@ int wmain(int argc,wchar_t **argv)
 
     print_format(L"MIX",mix);
     wprintf(L"MIX_EXACT_P360=%ls\n",exact_expected(mix)?L"YES":L"NO");
+    if (!exact_expected(mix)) {
+        wprintf(L"WASAPI_TEST=FAIL stage=MixFormat expected=48000_stereo_s32container_s16valid\n");
+        rc=61;
+        goto done;
+    }
 
     init_expected(&expected);
     hr=client->IsFormatSupported(AUDCLNT_SHAREMODE_SHARED,
