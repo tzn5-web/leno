@@ -10,9 +10,13 @@ void p360_state_init(P360_STATE_MACHINE *sm)
 static int p360_transition_allowed(P360_RUNTIME_STATE from, P360_RUNTIME_STATE to)
 {
     if (to == P360_STATE_FAILED) return 1;
-    if (from == P360_STATE_AUDIO_CORE_READY &&
-        to == P360_STATE_SPEAKER_ARMED)
-        return 1;
+    /*
+     * SPEAKER_ARMED is intentionally excluded from generic transitions.
+     * It must pass p360_speaker_may_arm() and update the runtime-armed bit
+     * atomically via p360_state_speaker_arm().
+     */
+    if (to == P360_STATE_SPEAKER_ARMED)
+        return 0;
     return (int)to == ((int)from + 1);
 }
 
@@ -53,6 +57,17 @@ int p360_speaker_may_arm(const P360_STATE_MACHINE *sm)
         sm->audio_core_ready &&
         sm->speaker_policy_enabled &&
         !sm->speaker_runtime_armed;
+}
+
+int p360_state_speaker_arm(P360_STATE_MACHINE *sm)
+{
+    if (!p360_speaker_may_arm(sm))
+        return 0;
+
+    sm->speaker_runtime_armed = 1;
+    sm->state = P360_STATE_SPEAKER_ARMED;
+    sm->generation++;
+    return 1;
 }
 
 int p360_state_speaker_disarm(P360_STATE_MACHINE *sm)
