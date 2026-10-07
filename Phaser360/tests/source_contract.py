@@ -861,62 +861,41 @@ for launcher_name, launcher in (
 
 for token in (
     "/p:P360PortClsShellEnabled=1",
-    "/p:P360RuntimeBootEnabled=0",
     "/p:P360RuntimeBootEnabled=1",
     "/p:P360IpcProbeEnabled=1",
     "/p:P360SpeakerEndpointEnabled=1",
-    "/p:P360ToneTopologyProofEnabled=1",
-    "/p:P360InternalSpeakerEnabled=1",
-    "/p:P360BoundedToneTestEnabled=1",
-    "P360SofAudio-portcls-shell.sys",
-    "P360SofAudio-preaudio-ipc3.sys",
-    "P360SofAudio-preaudio-ipc3.pdb",
-    "P360_AUDIO_GATE_PARSE=PASS",
-    "inf2cat.exe",
-    "signtool.exe",
-    "10_VB_X64",
-    "CertificateRequest]::new(",
-    "1.3.6.1.5.5.7.3.3",
-    "P360_CERT_PFX",
-    "CERT_PFX_EXPORT=PASS",
-    "CERT_TRUST_DEFERRED_TO_TARGET=YES",
-    "Get-AuthenticodeSignature",
-    "VERIFY_SIGNER_PASS=",
-    "P360_AUDIO_GATE_PACKAGE=PASS",
-    "P360_ONE_CLICK_PACKAGE_CONTENT=PASS",
-    "START_AUDIO_TEST.cmd",
-    "RESTORE_LAST_SESSION.cmd",
-    "P360_AUDIO_GATE.zip",
-    "P360-AUDIO-GATE-${{ github.sha }}",
-    "PORTCLS_TONE_TOPOLOGY_PROOF_COMPILE=PASS",
-    "PORTCLS_BOUNDED_TONE_TEST_COMPILE=PASS",
-    "P360SofAudio-bounded-tone-test.sys",
-    "P360SofAudio-bounded-tone-test.pdb",
-    "FinalSpeakerDriverVersion = \"3.0.100.1\"",
-    "FinalSpeakerProvider = \"PHASER360 Project\"",
-    "FinalSpeakerService = \"P360SofAudio\"",
-    "FinalSpeakerSysSha256",
-    'FinalArchitecture = "WaveRT->CoolStar HDA DMA->SOF HOST->SSP1->MAX98357A"',
-    "FinalWaveRtContainerBits = 32",
-    "FinalWaveRtValidBits = 16",
-    "FinalSampleRate = 48000",
-    "FinalChannels = 2",
-    "LegacyBoundedToneDiagnosticRetained = $false",
-    "final\\P360SofAudio.sys",
-    "P360SofAudio.inx",
-    "P360_FIRMWARE_MANIFEST.txt",
-    "PORTCLS_SPEAKER_ENDPOINT_COMPILE=PASS",
-    "PORTCLS_HOST_WAVERT_PLAYBACK_COMPILE=PASS",
-    "P360_WAVERT_TEST_COMPILE=PASS",
-    "P360_WAVERT_TEST.exe",
-    "P360SofAudio-host-playback.sys",
-    "P360SofAudio-host-playback.pdb",
     "/p:P360HostPlaybackEnabled=1",
-    "PORTCLS_SOF_BOOT_COMPILE=PASS",
-    "PORTCLS_SOF_IPC3_PROOF_COMPILE=PASS",
+    "/p:P360InternalSpeakerEnabled=1",
+    "PORTCLS_HOST_WAVERT_PLAYBACK_COMPILE=PASS",
+    "P360SofAudio-host-playback.sys",
+    "Compile WASAPI shared acceptance utility",
+    "P360_WASAPI_SHARED_TEST_COMPILE=PASS",
+    "P360_WASAPI_TEST.cpp",
+    "Prepare single production package inputs",
+    "P360_PRODUCTION_INSTALL.ps1",
+    "START_P360_PRODUCTION.cmd",
+    "RESTORE_P360_PRODUCTION.cmd",
+    "Build and audit single production package",
+    "PKEY_AudioEngine_OEMFormat",
+    "KSNODETYPE_SPEAKER",
+    "P360_PRODUCTION_PACKAGE=PASS",
+    "P360_SINGLE_INSTALLABLE_VERSION=PASS",
+    "P360_FINAL_ACCEPTANCE=WASAPI_SHARED",
+    "P360_PRODUCTION_AUDIO.zip",
+    "Upload production audio package",
+    "P360-PRODUCTION-AUDIO-${{ github.sha }}",
 ):
     if token not in workflow:
-        raise SystemExit(f"active PortCls linkage CI build missing: {token}")
+        raise SystemExit(f"single production audio CI contract missing: {token}")
+
+for forbidden in (
+    "P360-AUDIO-GATE-${{ github.sha }}",
+    "Upload hardware gate package",
+    "Upload unsigned compile artifact",
+    "P360_AUDIO_GATE.zip",
+):
+    if forbidden in workflow:
+        raise SystemExit(f"legacy install/debug artifact is still public: {forbidden}")
 
 pre_step_begin=workflow.index("- name: Compile pre-audio IPC3 proof path")
 pre_step_end=workflow.index("- name: Compile hostless Tone topology proof",pre_step_begin)
@@ -927,7 +906,7 @@ for token in (
     "/p:P360IpcProbeEnabled=1",
 ):
     if token not in pre_step:
-        raise SystemExit(f"PRE-AUDIO build missing required gate: {token}")
+        raise SystemExit(f"PRE-AUDIO compile regression missing required gate: {token}")
 for forbidden in (
     "/p:P360ToneTopologyProofEnabled=1",
     "/p:P360InternalSpeakerEnabled=1",
@@ -935,7 +914,7 @@ for forbidden in (
     "/p:P360SpeakerEndpointEnabled=1",
 ):
     if forbidden in pre_step:
-        raise SystemExit(f"PRE-AUDIO build accidentally enables audio path: {forbidden}")
+        raise SystemExit(f"PRE-AUDIO compile regression accidentally enables audio path: {forbidden}")
 
 bounded_step_begin=workflow.index("- name: Compile bounded internal speaker proof")
 bounded_step_end=workflow.index("- name: Compile speaker endpoint shell",bounded_step_begin)
@@ -949,13 +928,12 @@ for token in (
     "/p:P360BoundedToneTestEnabled=1",
 ):
     if token not in bounded_step:
-        raise SystemExit(f"bounded speaker build missing required gate: {token}")
+        raise SystemExit(f"bounded speaker compile regression missing required gate: {token}")
 if "/p:P360SpeakerEndpointEnabled=1" in bounded_step:
     raise SystemExit("bounded speaker proof must not expose normal Windows speaker endpoint")
 
-
 host_step_begin=workflow.index("- name: Compile real HOST WaveRT speaker path")
-host_step_end=workflow.index("- name: Locate WDK signing tools",host_step_begin)
+host_step_end=workflow.index("- name: Compile bounded WaveRT test utility",host_step_begin)
 host_step=workflow[host_step_begin:host_step_end]
 for token in (
     "/p:P360PortClsShellEnabled=1",
@@ -976,11 +954,84 @@ for forbidden in (
     if forbidden in host_step:
         raise SystemExit(f"real HOST WaveRT final build depends on legacy Tone path: {forbidden}")
 
-final_catalog_i=workflow.index('"Phaser360\\driver\\out\\Release\\P360SofAudio-host-playback.sys"')
-final_dir_i=workflow.index("$finalDir",final_catalog_i)
-final_ver_i=workflow.index('"3.0.100.1"',final_dir_i)
-if not final_catalog_i < final_dir_i < final_ver_i:
-    raise SystemExit("final catalog is not built from the HOST WaveRT image")
+production_inf=(ROOT/"production/P360AudioBundle.inx").read_text()
+production_runner=(ROOT/"production/P360_PRODUCTION_INSTALL.ps1").read_text()
+wasapi_shared=(ROOT/"production/P360_WASAPI_TEST.cpp").read_text()
+
+for token in (
+    "DriverVer=10/07/2026,4.2.0.0",
+    "PKEY_AudioEngine_OEMFormat",
+    "KSNODETYPE_SPEAKER",
+    "FE,FF,02,00,80,BB,00,00,00,DC,05,00,08,00,20,00,16,00,10,00",
+):
+    if token not in production_inf:
+        raise SystemExit(f"production shared-mode INF contract missing: {token}")
+if "PKEY_AudioEndpoint_Supports_EventDriven_Mode" in production_inf:
+    raise SystemExit("production INF advertises unsupported event-driven WaveRT")
+if "PKEY_AudioEndpoint_Association%,,%KSNODETYPE_ANY%" in production_inf:
+    raise SystemExit("production speaker endpoint is still classified as KSNODETYPE_ANY")
+
+for token in (
+    "MIX_EXACT_P360=",
+    "WASAPI_TEST=FAIL stage=MixFormat",
+    "AUDCLNT_SHAREMODE_SHARED",
+    "IAudioRenderClient",
+    "IAudioClock",
+    "WASAPI_SHARED_PREFLIGHT=PASS",
+    "WASAPI_SHARED_PLAYBACK=PASS",
+):
+    if token not in wasapi_shared:
+        raise SystemExit(f"WASAPI shared acceptance contract missing: {token}")
+
+for token in (
+    "Report-NonAudioBoot0000",
+    "NOT_AUDIO_BLOCKER=YES",
+    "Remove-StaleProjectPackages",
+    "PREFLIGHT_REPAIR_ROUND=",
+    "PHYSICAL_WASAPI_ATTEMPTS_MAX=1",
+    "PHYSICAL_WASAPI_ATTEMPT=1",
+    "One-shot WASAPI shared playback failed. No automatic physical replay is permitted.",
+    "AUTOMATIC_ROLLBACK=NO",
+    "ALTERNATE_DRIVER_SWAP=NO",
+):
+    if token not in production_runner:
+        raise SystemExit(f"production self-healing runner contract missing: {token}")
+
+preflight_loop_i=production_runner.index("for($round=1;$round -le 3;$round++)")
+preflight_call_i=production_runner.index("Run-Wasapi -Preflight",preflight_loop_i)
+physical_i=production_runner.index('Log "PHYSICAL_WASAPI_ATTEMPT=1"',preflight_call_i)
+physical_call_i=production_runner.index("Run-Wasapi)",physical_i)
+if not preflight_loop_i < preflight_call_i < physical_i < physical_call_i:
+    raise SystemExit("physical WASAPI playback is not strictly after all preflight repair rounds")
+if "Run-Wasapi)" in production_runner[preflight_loop_i:physical_i]:
+    raise SystemExit("physical WASAPI playback can still occur inside a repair loop")
+
+prod_prepare_begin=workflow.index("- name: Prepare single production package inputs")
+prod_build_begin=workflow.index("- name: Build and audit single production package",prod_prepare_begin)
+prod_prepare=workflow[prod_prepare_begin:prod_build_begin]
+for token in (
+    'P360SofAudio-host-playback.sys" = "P360SofAudio.sys"',
+    '"P360_WASAPI_TEST.exe"',
+    '"P360_PRODUCTION_INSTALL.ps1"',
+    '"START_P360_PRODUCTION.cmd"',
+    '"RESTORE_P360_PRODUCTION.cmd"',
+    "p360-f686.ri",
+):
+    if token not in prod_prepare:
+        raise SystemExit(f"production input assembly missing: {token}")
+
+prod_upload_begin=workflow.index("- name: Upload production audio package",prod_build_begin)
+prod_build=workflow[prod_build_begin:prod_upload_begin]
+for token in (
+    "DriverVersion = $driverVersion",
+    "PhysicalWasapiAttemptsMax = 1",
+    'Boot0000Role = "coreboot-table/non-audio"',
+    "P360SofAudioSha256",
+    "WasapiTestSha256",
+    "P360_SINGLE_INSTALLABLE_VERSION=PASS",
+):
+    if token not in prod_build:
+        raise SystemExit(f"production package manifest/audit missing: {token}")
 
 for token in (
     "WdfDriverInitNoDispatchOverride",
