@@ -1678,13 +1678,16 @@ function Invoke-PhysicalPlaybackRepairLoop([string]$WaveTest,$Info,[string]$Inst
         if ($wave.ExitCode -eq 0 -and
             $wave.Output -match "(?im)^PHYSICAL_COMPLETE=YES\s*$" -and
             $wave.Output -match "(?im)^TEST=PASS\s*$") {
-            $t=Wait-Telemetry -ExpectedFlags 47 -MinimumStage 120 -Seconds 6
-            if ($t.Stage -ne 120) {
-                throw "Physical playback passed but clean STOP/mute telemetry is missing."
+            try {
+                $t=Wait-Telemetry -ExpectedFlags 47 -MinimumStage 120 -Seconds 6
+                if ($t.Stage -eq 120) {
+                    $script:State.PhysicalCommitted=$false
+                    Save-State
+                    return $t
+                }
+            } catch {
+                Add-RepairHistory "POST_PLAYBACK_STOP" "QUIESCE_AND_REPAIR" "RETRY" ([string]$_.Exception.Message)
             }
-            $script:State.PhysicalCommitted=$false
-            Save-State
-            return $t
         }
 
         if (-not $committed) {
