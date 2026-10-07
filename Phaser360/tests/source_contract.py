@@ -455,6 +455,12 @@ for token in (
     if token not in runtime_h + "\n" + runtime:
         raise SystemExit(f"generic serialized IPC3 runtime path missing: {token}")
 
+bounded_call=driver.find(
+    "if (p360_bounded_tone_policy_enabled() &&\n"
+    "        !ctx->BoundedToneConsumed)")
+if bounded_call < 0:
+    raise SystemExit("bounded Tone one-shot is not skipped after first D0 lifetime run")
+
 bounded_begin=driver.find("#if P360_BOUNDED_TONE_TEST_ENABLED")
 bounded_end=driver.find(
     "#endif\n\nstatic NTSTATUS\np360_loader_status_to_ntstatus",
