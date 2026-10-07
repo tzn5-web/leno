@@ -93,10 +93,10 @@ function Get-AmpDevice {
     $targets = @(Get-CimInstance Win32_PnPEntity | Where-Object {
         $_.PNPDeviceID -and $_.PNPDeviceID.StartsWith($ExpectedAmpPrefix,[StringComparison]::OrdinalIgnoreCase)
     })
-    if ($targets.Count -lt 1) {
-        throw "MAX98357A ACPI device was not found."
+    if ($targets.Count -ne 1) {
+        throw "Expected exactly one MAX98357A ACPI device; found $($targets.Count)."
     }
-    $amp = $targets | Select-Object -First 1
+    $amp = $targets[0]
     if ([int]$amp.ConfigManagerErrorCode -ne 0) {
         throw "MAX98357A is not healthy; ConfigManagerErrorCode=$($amp.ConfigManagerErrorCode), Service=$($amp.Service)."
     }
@@ -293,6 +293,34 @@ function Assert-Package([string]$RunMode,$Info) {
     return $folder
 }
 
+function Assert-SafeAmpPackage($Info) {
+    $folder=Join-Path $PackageRoot "amp"
+    foreach ($name in @("P360Max98357Safe.inf","P360Max98357Safe.cat","P360Max98357Safe.sys")) {
+        if (-not (Test-Path -LiteralPath (Join-Path $folder $name) -PathType Leaf)) {
+            throw "Signed safe-amp package file missing: $folder\$name"
+        }
+    }
+
+    if (-not $Info.SafeAmpSysSha256 -or
+        -not $Info.SafeAmpDriverVersion -or
+        -not $Info.SafeAmpProvider -or
+        -not $Info.SafeAmpService) {
+        throw "PACKAGE_INFO.json is missing safe MAX98357A identity."
+    }
+
+    $sysHash=(Get-FileHash -LiteralPath (Join-Path $folder "P360Max98357Safe.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($sysHash -ne ([string]$Info.SafeAmpSysSha256).ToLowerInvariant()) {
+        throw "Safe MAX98357A SYS hash mismatch."
+    }
+
+    $infVersion=Get-InfVersion (Join-Path $folder "P360Max98357Safe.inf")
+    if ($infVersion -ne [string]$Info.SafeAmpDriverVersion) {
+        throw "Safe MAX98357A INF version mismatch: $infVersion != $($Info.SafeAmpDriverVersion)"
+    }
+
+    return $folder
+}
+
 function Import-TestCertificate($Info) {
     $cer = Join-Path $PackageRoot "cert\P360_TEST.cer"
     if (-not (Test-Path -LiteralPath $cer -PathType Leaf)) {
@@ -325,12 +353,15 @@ function Remove-TestCertificate([string]$Thumbprint) {
     }
 }
 
-function Assert-CatalogSignature([string]$Folder) {
-    $cat = Join-Path $Folder "P360SofAudio.cat"
-    $sig = Get-AuthenticodeSignature -LiteralPath $cat
+function Assert-CatalogSignatureFile([string]$CatalogPath) {
+    $sig = Get-AuthenticodeSignature -LiteralPath $CatalogPath
     if ($sig.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
-        throw "Catalog signature is not valid after certificate import: $($sig.Status)"
+        throw "Catalog signature is not valid after certificate import: $CatalogPath status=$($sig.Status)"
     }
+}
+
+function Assert-CatalogSignature([string]$Folder) {
+    Assert-CatalogSignatureFile (Join-Path $Folder "P360SofAudio.cat")
 }
 
 function Backup-OriginalDriver([string]$InstanceId) {
