@@ -521,6 +521,7 @@ private:
     PMDL m_Mdl;
     ULONG m_BufferBytes;
     P360_DEVICE_CONTEXT *m_Context;
+    WDFDEVICE m_FrameworkDevice;
     P360_PLAYBACK_STREAM m_Playback;
 };
 
@@ -753,9 +754,12 @@ P360WaveStream::P360WaveStream(
     m_State(KSSTATE_STOP),
     m_Mdl(NULL),
     m_BufferBytes(0),
-    m_Context(Context)
+    m_Context(Context),
+    m_FrameworkDevice(Context ? Context->FrameworkDevice : NULL)
 {
     RtlZeroMemory(&m_Playback,sizeof(m_Playback));
+    if (m_FrameworkDevice)
+        WdfObjectReference(m_FrameworkDevice);
     m_Owner->AddRef();
     m_PortStream->AddRef();
 }
@@ -787,6 +791,12 @@ P360WaveStream::~P360WaveStream()
         m_Owner->Release();
         m_Owner=NULL;
     }
+
+    if (m_FrameworkDevice) {
+        WdfObjectDereference(m_FrameworkDevice);
+        m_FrameworkDevice=NULL;
+    }
+    m_Context=NULL;
 }
 
 STDMETHODIMP
