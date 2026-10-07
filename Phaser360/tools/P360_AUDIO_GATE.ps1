@@ -703,7 +703,7 @@ function Get-P360StoreEntries {
 }
 
 function Test-IsReservedGateVersion([string]$Version) {
-    return $Version -in @("2.0.100.1","2.0.101.1","2.0.200.1","2.0.201.1")
+    return $Version -in @("2.0.100.1","2.0.101.1","2.0.200.1","2.0.201.1","2.0.202.1")
 }
 
 function Assert-NoStaleTestPackage {
