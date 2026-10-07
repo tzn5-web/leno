@@ -1106,7 +1106,31 @@ P360WaveStream::AllocateAudioBuffer(
             RequestedSize,
             RequestedSize / 4u);
         if (!NT_SUCCESS(status)) {
-            m_PortStream->FreePagesFromMdl(mdl);
+            /*
+             * Do not free PortCls pages merely because prepare failed.
+             * Cleanup/IPC failure can leave HDA or firmware with a live
+             * reference to this MDL. Make one last emergency-quiesce attempt;
+             * if ownership still cannot be proved gone, retain the MDL on the
+             * WaveRT object so Release() quarantines the entire object.
+             */
+            if (!p360_playback_memory_released(&m_Playback) &&
+                m_Context) {
+                (void)p360_host_playback_force_quiesce(
+                    m_Context,
+                    &m_Playback);
+            }
+
+            if (p360_playback_memory_released(&m_Playback)) {
+                m_PortStream->FreePagesFromMdl(mdl);
+            } else {
+                m_Mdl=mdl;
+                m_BufferBytes=RequestedSize;
+                if (m_Context)
+                    p360_state_fail(
+                        &m_Context->State,
+                        P360_FAIL_STREAM);
+            }
+
             return status;
         }
     }
