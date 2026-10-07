@@ -1721,7 +1721,9 @@ function Copy-ResumeBaselineState {
         "AdspBackupComplete","AmpInstanceId","AmpOriginalService","AmpOriginalProblemCode",
         "AmpOriginalInfName","AmpOriginalDriverVersion","AmpOriginalProvider",
         "AmpOriginalExportedInf","AmpBackupComplete","FirmwareHadOriginal",
-        "FirmwareBackup","FirmwareDestination","CertificateThumbprint"
+        "FirmwareBackup","FirmwareDestination","CertificateThumbprint",
+        "PhysicalCommitted","HardStop","NeedsDriverPatch","NeedsManualRestart",
+        "RepairHistory","LastRepairClass","LastRepairAction","PhysicalAttempts"
     )) {
         if ($script:ResumeState.PSObject.Properties[$name]) {
             $script:State.$name=$script:ResumeState.$name
@@ -2357,6 +2359,24 @@ $ampId=""
 
 try {
     Assert-TestSigning
+
+    if ($script:State.ResumedRepairState -and
+        ($script:State.PhysicalCommitted -or $script:State.HardStop)) {
+        $ampId=[string]$script:State.AmpInstanceId
+        if (-not $ampId) {
+            throw "HARD_STOP_RESUME_MISSING_AMP_ID"
+        }
+        Write-RunLog "RESUME_SAFETY_RECOVERY=BEGIN"
+        if (-not (Ensure-PhysicalQuiesced $targetId $ampId $info)) {
+            throw "HARD_STOP_RESUME_QUIESCE_NOT_PROVED"
+        }
+        $script:State.HardStop=$false
+        $script:State.PhysicalCommitted=$false
+        Save-State
+        Add-RepairHistory "RESUME_SAFETY" "PROVE_MUTE_AND_QUIESCE" "PASS" "Previous ambiguous physical ownership was cleared before repair continued."
+        Write-RunLog "RESUME_SAFETY_RECOVERY=PASS"
+    }
+
     if ($script:State.ResumedRepairState) {
         Assert-PersistentRepairState $targetId
     } else {
