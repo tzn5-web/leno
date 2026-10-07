@@ -5,9 +5,9 @@
 #include <stdint.h>
 #define P360_LOADER_API_VERSION 3u
 
-#define P360_FW_FILE_BYTES 246528u
+#define P360_FW_FILE_BYTES 287488u
 #define P360_FW_MANIFEST_BYTES 768u
-#define P360_FW_PAYLOAD_BYTES 245760u
+#define P360_FW_PAYLOAD_BYTES 286720u
 #define P360_FW_READY_BYTES 108u
 #define P360_BDL_MAX 256u
 #define P360_ROM_STATUS_MASK 0x00ffffffu
@@ -27,8 +27,10 @@ enum p360_loader_phase {
 };
 struct p360_fw_view { const uint8_t *payload; uint32_t bytes; };
 /* Image bytes must be a private resident immutable copy throughout run().
- * Only the already-built diagnostic v2 image is admitted, by full-file SHA256.
- * This is an identity check, not a replacement for DSP ROM signature validation.
+ * Only the official SOF 1.9.3 Intel-signed Apollo Lake image from sof-bin is
+ * admitted, by full-file SHA256. Gemini Lake's sof-glk.ri is a link to the
+ * same Apollo Lake payload for this release. This host identity check is not
+ * a replacement for DSP ROM signature validation.
  */
 int p360_fw_validate(const uint8_t *image, size_t bytes, struct p360_fw_view *view);
 int p360_fw_ready_validate(const uint8_t *first, const uint8_t *second, size_t bytes);
