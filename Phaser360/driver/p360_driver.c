@@ -758,13 +758,18 @@ p360_host_playback_start(
         goto fail_dma;
     }
 
+    /*
+     * A transport failure after STREAM_START submission is ambiguous: the
+     * firmware may already be running even if its reply was lost. Latch
+     * ownership before sending so failure enters the STOP rollback path.
+     */
+    playback->SofRunning=TRUE;
     status=p360_runtime_send_zero_error(
         ctx,
         &message,
         12u);
     if (!NT_SUCCESS(status))
-        goto fail_dma;
-    playback->SofRunning=TRUE;
+        goto fail_sof;
 
     status=p360_telemetry_stage(
         P360_TELEM_STAGE_STREAM_STARTED);
@@ -783,8 +788,33 @@ p360_host_playback_start(
         goto fail_arm;
 
     status=p360_csaudio_speaker_start(&ctx->CsAudio);
-    if (!NT_SUCCESS(status))
-        goto fail_arm;
+    if (!NT_SUCCESS(status)) {
+        NTSTATUS stopStatus;
+
+        /*
+         * If MAX START could not be acknowledged, the CSAudio layer performs
+         * an immediate STOP rollback. If that STOP is also unproved it keeps
+         * its SpeakerStarted latch set; mirror that ambiguity here before the
+         * common fail-quiet STOP path runs.
+         */
+        playback->SpeakerStarted=
+            InterlockedCompareExchange(
+                &ctx->CsAudio.SpeakerStarted,
+                0,
+                0) ? TRUE : FALSE;
+
+        stopStatus=p360_host_playback_stop(
+            ctx,
+            playback);
+        if (!NT_SUCCESS(stopStatus)) {
+            p360_state_fail(
+                &ctx->State,
+                P360_FAIL_SPEAKER_GUARD);
+            return stopStatus;
+        }
+
+        return status;
+    }
     playback->SpeakerStarted=TRUE;
 
     status=p360_telemetry_stage(
