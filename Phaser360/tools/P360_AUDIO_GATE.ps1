@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("Audit","PreAudio","BoundedSpeaker","Restore")]
+    [ValidateSet("Audit","PreAudio","BoundedSpeaker","Audio","Restore")]
     [string]$Mode = "Audit",
     [string]$FirmwarePath = "",
     [string]$SessionPath = ""
@@ -832,9 +832,11 @@ if ($Mode -eq "Audit") {
     exit 0
 }
 
-if ($Mode -eq "BoundedSpeaker") {
+if ($Mode -eq "BoundedSpeaker" -or $Mode -eq "Audio") {
     $amp=Get-AmpDevice
     Write-RunLog "AMP=$($amp.PNPDeviceID) SERVICE=$($amp.Service)"
+}
+if ($Mode -eq "BoundedSpeaker") {
     Assert-PreAudioProof $info $targetId $firmware (Join-Path $preFolder "P360SofAudio.sys")
     Write-RunLog "PREAUDIO_PROOF=PASS"
 }
@@ -846,7 +848,7 @@ try {
     Install-Firmware $firmware
     Import-TestCertificate $info | Out-Null
 
-    if ($Mode -eq "PreAudio") {
+    if ($Mode -eq "PreAudio" -or $Mode -eq "Audio") {
         Install-TestPackage "PreAudio" $info $targetId
         $telemetry=Wait-Telemetry -ExpectedFlags 3 -MinimumStage 50
         if ($telemetry.FirmwareError -ne -22 -or $telemetry.ReplyBytes -ne 12) {
@@ -854,8 +856,31 @@ try {
         }
         Write-RunLog "FW_READY_IRQ_IPC_PROOF=PASS"
         $stopTelemetry=Disable-TargetAndProveStop $targetId 3
-        Write-RunLog "STOP_PROOF=PASS"
-        $success=$true
+        Write-RunLog "PREAUDIO_STOP_PROOF=PASS"
+
+        if ($Mode -eq "PreAudio") {
+            $success=$true
+        } else {
+            Write-PreAudioProof $info $targetId $firmware (Join-Path $preFolder "P360SofAudio.sys") $telemetry
+            Write-RunLog "PREAUDIO_GATE=PASS"
+            Write-RunLog "AUDIO_PHASE_SWITCH=BEGIN"
+
+            Restore-OriginalDriver $targetId
+            Write-RunLog "PREAUDIO_DRIVER_RESTORE=PASS"
+            $script:State.RestoreVerified=$false
+            $script:State.StopProved=$false
+            Save-State
+
+            Install-TestPackage "BoundedSpeaker" $info $targetId
+            $telemetry=Wait-Telemetry -ExpectedFlags 31 -MinimumStage 110
+            if ($telemetry.Stage -ne 110) {
+                throw "Bounded tone did not terminate at TONE_COMPLETE."
+            }
+            Write-RunLog "BOUNDED_TONE_250MS=PASS"
+            $stopTelemetry=Disable-TargetAndProveStop $targetId 31
+            Write-RunLog "AUDIO_STOP_PROOF=PASS"
+            $success=$true
+        }
     } elseif ($Mode -eq "BoundedSpeaker") {
         Install-TestPackage "BoundedSpeaker" $info $targetId
         $telemetry=Wait-Telemetry -ExpectedFlags 31 -MinimumStage 110
@@ -899,6 +924,9 @@ if ($success -and $Mode -eq "PreAudio") {
 }
 if ($success -and $Mode -eq "BoundedSpeaker") {
     Write-RunLog "SPEAKER_GATE=PASS"
+}
+if ($success -and $Mode -eq "Audio") {
+    Write-RunLog "AUDIO_GATE=PASS"
 }
 
 Write-Report $(if ($success) {"PASS"} else {"FAIL"}) $telemetry
