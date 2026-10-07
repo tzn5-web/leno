@@ -25,6 +25,26 @@ p360_csaudio_callback(
     if (local.endpointType!=P360_CSAUDIO_ENDPOINT_SPEAKER)
         return;
 
+    if ((local.endpointRequest==P360_CSAUDIO_ENDPOINT_START_ACK ||
+         local.endpointRequest==P360_CSAUDIO_ENDPOINT_STOP_ACK) &&
+        local.argSz>=sizeof(P360_CSAUDIO_ARG) &&
+        local.Payload.transition.generation) {
+        InterlockedExchange(
+            &link->AckRequest,
+            (LONG)local.endpointRequest);
+        InterlockedExchange(
+            &link->AckStatus,
+            local.Payload.transition.status);
+        InterlockedExchange(
+            &link->AckPoweredOn,
+            (LONG)local.Payload.transition.poweredOn);
+        KeMemoryBarrier();
+        InterlockedExchange(
+            &link->AckGeneration,
+            (LONG)local.Payload.transition.generation);
+        return;
+    }
+
     if (local.endpointRequest==P360_CSAUDIO_ENDPOINT_REGISTER) {
         InterlockedExchange(&link->SpeakerRegistered,1);
         return;
@@ -69,7 +89,8 @@ static VOID
 p360_csaudio_notify(
     _Inout_ P360_CSAUDIO_LINK *link,
     _In_ P360_CSAUDIO_ENDPOINT_TYPE endpoint,
-    _In_ P360_CSAUDIO_ENDPOINT_REQUEST request
+    _In_ P360_CSAUDIO_ENDPOINT_REQUEST request,
+    _In_ UINT32 generation
     )
 {
     P360_CSAUDIO_ARG arg;
@@ -78,11 +99,73 @@ p360_csaudio_notify(
     arg.argSz=sizeof(arg);
     arg.endpointType=endpoint;
     arg.endpointRequest=request;
+    arg.Payload.transition.generation=generation;
 
     ExNotifyCallback(
         link->Callback,
         &arg,
         &link->SenderCookie);
+}
+
+static UINT32
+p360_csaudio_next_generation(
+    _Inout_ P360_CSAUDIO_LINK *link)
+{
+    LONG generation;
+
+    generation=InterlockedIncrement(
+        &link->SpeakerGeneration);
+    if (!generation)
+        generation=InterlockedIncrement(
+            &link->SpeakerGeneration);
+
+    return (UINT32)generation;
+}
+
+static VOID
+p360_csaudio_reset_ack(
+    _Inout_ P360_CSAUDIO_LINK *link)
+{
+    InterlockedExchange(&link->AckGeneration,0);
+    InterlockedExchange(&link->AckRequest,0);
+    InterlockedExchange(&link->AckStatus,STATUS_PENDING);
+    InterlockedExchange(&link->AckPoweredOn,-1);
+    KeMemoryBarrier();
+}
+
+static NTSTATUS
+p360_csaudio_require_ack(
+    _Inout_ P360_CSAUDIO_LINK *link,
+    _In_ UINT32 generation,
+    _In_ P360_CSAUDIO_ENDPOINT_REQUEST expectedRequest,
+    _In_ BOOLEAN expectedPoweredOn)
+{
+    LONG ackGeneration;
+    LONG ackRequest;
+    LONG ackStatus;
+    LONG ackPoweredOn;
+
+    KeMemoryBarrier();
+    ackGeneration=InterlockedCompareExchange(
+        &link->AckGeneration,0,0);
+    ackRequest=InterlockedCompareExchange(
+        &link->AckRequest,0,0);
+    ackStatus=InterlockedCompareExchange(
+        &link->AckStatus,0,0);
+    ackPoweredOn=InterlockedCompareExchange(
+        &link->AckPoweredOn,0,0);
+
+    if ((UINT32)ackGeneration!=generation ||
+        ackRequest!=(LONG)expectedRequest)
+        return STATUS_IO_TIMEOUT;
+
+    if (!NT_SUCCESS((NTSTATUS)ackStatus))
+        return (NTSTATUS)ackStatus;
+
+    if (!!ackPoweredOn!=!!expectedPoweredOn)
+        return STATUS_DEVICE_HARDWARE_ERROR;
+
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -139,7 +222,8 @@ p360_csaudio_open(
     p360_csaudio_notify(
         link,
         P360_CSAUDIO_ENDPOINT_DSP,
-        P360_CSAUDIO_ENDPOINT_REGISTER);
+        P360_CSAUDIO_ENDPOINT_REGISTER,
+        0u);
 
     /*
      * If the amplifier answered, force its callback state to STOP while the
@@ -151,7 +235,26 @@ p360_csaudio_open(
         p360_csaudio_notify(
             link,
             P360_CSAUDIO_ENDPOINT_SPEAKER,
-            P360_CSAUDIO_ENDPOINT_STOP);
+            P360_CSAUDIO_ENDPOINT_STOP,
+            0u);
+    }
+
+    /*
+     * A legacy CoolStar amplifier can register but cannot prove SDMODE low.
+     * The final Phaser360 driver requires the generation-tagged safe MAX
+     * protocol before it will accept the speaker dependency.
+     */
+    if (InterlockedCompareExchange(
+            &link->SpeakerRegistered,0,0)) {
+        status=p360_csaudio_speaker_stop(link);
+        if (!NT_SUCCESS(status)) {
+            ExUnregisterCallback(link->Registration);
+            link->Registration=NULL;
+            ObfDereferenceObject(link->Callback);
+            link->Callback=NULL;
+            link->Open=FALSE;
+            return status;
+        }
     }
 
     return STATUS_SUCCESS;
@@ -162,6 +265,9 @@ p360_csaudio_speaker_start(
     P360_CSAUDIO_LINK *link
     )
 {
+    UINT32 generation;
+    NTSTATUS status;
+
     if (!link || !link->Open || !link->Callback ||
         KeGetCurrentIrql()!=PASSIVE_LEVEL)
         return STATUS_INVALID_DEVICE_STATE;
@@ -185,10 +291,24 @@ p360_csaudio_speaker_start(
             &link->SpeakerStarted,1,0)!=0)
         return STATUS_DEVICE_BUSY;
 
+    generation=p360_csaudio_next_generation(link);
+    p360_csaudio_reset_ack(link);
+
     p360_csaudio_notify(
         link,
         P360_CSAUDIO_ENDPOINT_SPEAKER,
-        P360_CSAUDIO_ENDPOINT_START);
+        P360_CSAUDIO_ENDPOINT_START,
+        generation);
+
+    status=p360_csaudio_require_ack(
+        link,
+        generation,
+        P360_CSAUDIO_ENDPOINT_START_ACK,
+        TRUE);
+    if (!NT_SUCCESS(status)) {
+        InterlockedExchange(&link->SpeakerStarted,0);
+        return status;
+    }
 
     return STATUS_SUCCESS;
 }
@@ -198,22 +318,35 @@ p360_csaudio_speaker_stop(
     P360_CSAUDIO_LINK *link
     )
 {
+    UINT32 generation;
+    NTSTATUS status;
+
     if (!link || !link->Open || !link->Callback ||
         KeGetCurrentIrql()!=PASSIVE_LEVEL)
         return STATUS_INVALID_DEVICE_STATE;
 
     if (!InterlockedCompareExchange(
-            &link->SpeakerRegistered,0,0)) {
-        InterlockedExchange(&link->SpeakerStarted,0);
+            &link->SpeakerRegistered,0,0))
         return STATUS_NOT_FOUND;
-    }
+
+    generation=p360_csaudio_next_generation(link);
+    p360_csaudio_reset_ack(link);
 
     p360_csaudio_notify(
         link,
         P360_CSAUDIO_ENDPOINT_SPEAKER,
-        P360_CSAUDIO_ENDPOINT_STOP);
-    InterlockedExchange(&link->SpeakerStarted,0);
+        P360_CSAUDIO_ENDPOINT_STOP,
+        generation);
 
+    status=p360_csaudio_require_ack(
+        link,
+        generation,
+        P360_CSAUDIO_ENDPOINT_STOP_ACK,
+        FALSE);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    InterlockedExchange(&link->SpeakerStarted,0);
     return STATUS_SUCCESS;
 }
 
@@ -231,7 +364,8 @@ p360_csaudio_close(
         p360_csaudio_notify(
             link,
             P360_CSAUDIO_ENDPOINT_SPEAKER,
-            P360_CSAUDIO_ENDPOINT_STOP);
+            P360_CSAUDIO_ENDPOINT_STOP,
+            p360_csaudio_next_generation(link));
     }
 
     InterlockedExchange(&link->SpeakerStarted,0);
