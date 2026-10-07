@@ -454,6 +454,8 @@ public:
     }
 
 private:
+    NTSTATUS EnsurePlaybackPrepared();
+
     volatile LONG m_Refs;
 };
 
@@ -850,6 +852,30 @@ P360WaveStream::SetFormat(
         STATUS_NO_MATCH;
 }
 
+NTSTATUS
+P360WaveStream::EnsurePlaybackPrepared()
+{
+    if (!m_Context || !m_Mdl || !m_BufferBytes)
+        return STATUS_DEVICE_NOT_READY;
+
+    if (m_Playback.SofParamsPrepared)
+        return STATUS_SUCCESS;
+
+    /*
+     * Normal D0Exit releases HOST/HDA ownership while PortCls may retain the
+     * WaveRT pin and its MDL. After D0Entry rebuilds the SOF topology, bind
+     * that same WaveRT buffer to a fresh CoolStar HDA stream/tag and resend
+     * PCM_PARAMS. This is also harmless on the initial STOP->ACQUIRE path
+     * because AllocateAudioBuffer has already prepared it.
+     */
+    return p360_host_playback_prepare(
+        m_Context,
+        &m_Playback,
+        m_Mdl,
+        m_BufferBytes,
+        m_BufferBytes / 4u);
+}
+
 STDMETHODIMP
 P360WaveStream::SetState(
     KSSTATE State
@@ -870,8 +896,9 @@ P360WaveStream::SetState(
         return status;
 
     case KSSTATE_ACQUIRE:
-        if (!m_Mdl || !m_Playback.SofParamsPrepared)
-            return STATUS_DEVICE_NOT_READY;
+        status=EnsurePlaybackPrepared();
+        if (!NT_SUCCESS(status))
+            return status;
         m_State=KSSTATE_ACQUIRE;
         return STATUS_SUCCESS;
 
@@ -882,15 +909,21 @@ P360WaveStream::SetState(
                 &m_Playback);
             if (!NT_SUCCESS(status))
                 return status;
+        } else {
+            status=EnsurePlaybackPrepared();
+            if (!NT_SUCCESS(status))
+                return status;
         }
         m_State=KSSTATE_PAUSE;
         return STATUS_SUCCESS;
 
     case KSSTATE_RUN:
-        if (!m_Mdl || !m_Playback.SofParamsPrepared)
-            return STATUS_DEVICE_NOT_READY;
         if (m_State==KSSTATE_RUN)
             return STATUS_SUCCESS;
+
+        status=EnsurePlaybackPrepared();
+        if (!NT_SUCCESS(status))
+            return status;
 
         status=p360_host_playback_start(
             m_Context,
