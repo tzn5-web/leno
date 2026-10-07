@@ -188,6 +188,9 @@ if not re.search(r"#define\s+P360_IPC_PROBE_ENABLED\s+0\b", driver_h):
 if not re.search(r"#define\s+P360_SPEAKER_ENDPOINT_ENABLED\s+0\b", driver_h):
     raise SystemExit("speaker endpoint barrier was enabled in the default driver")
 
+if not re.search(r"#define\s+P360_TONE_TOPOLOGY_PROOF_ENABLED\s+0\b", driver_h):
+    raise SystemExit("hostless Tone topology proof barrier is not closed by default")
+
 speaker_endpoint=(ROOT/"src/p360_speaker_endpoint.cpp").read_text()
 for token in (
     "CLSID_PortTopology",
@@ -259,6 +262,7 @@ for token in (
     "P360_PORTCLS_SHELL_ENABLED=$(P360PortClsShellEnabled)",
     "P360_IPC_PROBE_ENABLED=$(P360IpcProbeEnabled)",
     "P360_SPEAKER_ENDPOINT_ENABLED=$(P360SpeakerEndpointEnabled)",
+    "P360_TONE_TOPOLOGY_PROOF_ENABLED=$(P360ToneTopologyProofEnabled)",
 ):
     if token not in project:
         raise SystemExit(f"staged audio build gate is not parameterized: {token}")
@@ -270,7 +274,9 @@ for token in (
     "/p:P360RuntimeBootEnabled=1",
     "/p:P360IpcProbeEnabled=1",
     "/p:P360SpeakerEndpointEnabled=1",
+    "/p:P360ToneTopologyProofEnabled=1",
     "P360SofAudio-portcls-shell.sys",
+    "PORTCLS_TONE_TOPOLOGY_PROOF_COMPILE=PASS",
     "PORTCLS_SPEAKER_ENDPOINT_COMPILE=PASS",
     "PORTCLS_SOF_BOOT_COMPILE=PASS",
     "PORTCLS_SOF_IPC3_PROOF_COMPILE=PASS",
@@ -360,6 +366,15 @@ for token in (
     if token not in dispatch:
         raise SystemExit(f"structured IPC3 reply validation missing: {token}")
 
+for token in (
+    "command==0x30010000u",
+    "command==0x30100000u",
+    "command==0x30200000u",
+    "command==0x60010000u",
+):
+    if token not in dispatch:
+        raise SystemExit(f"SOF IPC3 structured-reply whitelist missing: {token}")
+
 if "tests/ipc3_reply_regression.c" not in run_b4:
     raise SystemExit("structured IPC3 reply regression is not in the B4 gate")
 
@@ -390,6 +405,8 @@ for token in (
     "put32(d+28,28u)",
     "put16(d+76,4u)",
     "put16(d+78,4u)",
+    "P360_IPC3_MEM_RAM|P360_IPC3_MEM_HP|",
+    "P360_IPC3_MEM_DMA|P360_IPC3_MEM_CACHE",
 ):
     if token not in ipc3_topology:
         raise SystemExit(f"corrected IPC3 speaker runtime contract missing: {token}")
@@ -405,6 +422,21 @@ for forbidden in (
 
 
 driver=(ROOT/"driver/p360_driver.c").read_text()
+
+for token in (
+    "p360_cs_runtime_send_ipc(",
+    "p360_ipc3_tx_begin(",
+    "p360_ipc_consume(",
+):
+    if token not in runtime_h + "\n" + runtime:
+        raise SystemExit(f"generic serialized IPC3 runtime path missing: {token}")
+
+for forbidden in (
+    "p360_ipc3_build_stream_trigger(",
+    "p360_csaudio_speaker_start(",
+):
+    if forbidden in driver:
+        raise SystemExit(f"pre-audio topology proof crossed the audio-start barrier: {forbidden}")
 driver_entry_i=driver.index("DriverEntry(")
 shell_gate_i=driver.index("#if P360_PORTCLS_SHELL_ENABLED", driver_entry_i)
 shell_init_i=driver.index("p360_portcls_driver_initialize(", shell_gate_i)
@@ -456,6 +488,31 @@ ipc_state_i=driver.index("P360_STATE_IPC_READY", ipc_flag_i)
 if not (start_i < loader_i < ready_i < bind_live_i < probe_gate_i <
         probe_call_i < ipc_flag_i < ipc_state_i):
     raise SystemExit("SOF boot -> FW_READY -> IRQ -> real IPC3 proof ordering drifted")
+
+tone_policy_i=driver.index("if (p360_tone_topology_policy_enabled())", ipc_state_i)
+tone_prepare_call_i=driver.index("p360_runtime_prepare_tone_topology(", tone_policy_i)
+helper_i=driver.index("p360_runtime_prepare_tone_topology(")
+helper_body_i=driver.index("{", helper_i)
+tone_new_i=driver.index("p360_ipc3_build_tone_new(", helper_body_i)
+buffer_new_i=driver.index("p360_ipc3_build_buffer_new(", tone_new_i)
+dai_new_i=driver.index("p360_ipc3_build_dai_new(", buffer_new_i)
+dai_cfg_i=driver.index("p360_ipc3_build_ssp1_config(", dai_new_i)
+connect1_i=driver.index("p360_ipc3_build_connect(", dai_cfg_i)
+connect2_i=driver.index("p360_ipc3_build_connect(", connect1_i + 1)
+pipe_new_i=driver.index("p360_ipc3_build_pipe_new(", connect2_i)
+pipe_done_i=driver.index("p360_ipc3_build_pipe_complete(", pipe_new_i)
+top_flag_i=driver.index("ctx->State.topology_ready=1;", pipe_done_i)
+top_state_i=driver.index("P360_STATE_TOPOLOGY_READY", top_flag_i)
+pcm_i=driver.index("p360_ipc3_build_pcm_params(", top_state_i)
+core_flag_i=driver.index("ctx->State.audio_core_ready=1;", pcm_i)
+core_state_i=driver.index("P360_STATE_AUDIO_CORE_READY", core_flag_i)
+if not (
+    ipc_state_i < tone_policy_i < tone_prepare_call_i and
+    helper_body_i < tone_new_i < buffer_new_i < dai_new_i < dai_cfg_i <
+    connect1_i < connect2_i < pipe_new_i < pipe_done_i <
+    top_flag_i < top_state_i < pcm_i < core_flag_i < core_state_i
+):
+    raise SystemExit("hostless Tone -> SSP1 topology/prepare ordering drifted")
 
 for token in (
     "p360_host_prepare(",
