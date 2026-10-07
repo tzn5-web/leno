@@ -855,24 +855,25 @@ for launcher_name, launcher in (
                 f"{launcher_name} gained forbidden reboot/BCD mutation: {forbidden}")
 
 for token in (
+    "Build complete MAX98357A amplifier driver",
+    "P360_MAX98357A_BUILD=PASS",
+    "Build complete P360SofAudio driver",
     "/p:P360PortClsShellEnabled=1",
     "/p:P360RuntimeBootEnabled=1",
     "/p:P360IpcProbeEnabled=1",
     "/p:P360SpeakerEndpointEnabled=1",
     "/p:P360HostPlaybackEnabled=1",
     "/p:P360InternalSpeakerEnabled=1",
-    "PORTCLS_HOST_WAVERT_PLAYBACK_COMPILE=PASS",
-    "P360SofAudio-host-playback.sys",
-    "Compile WASAPI shared acceptance utility",
-    "P360_WASAPI_SHARED_TEST_COMPILE=PASS",
-    "Compile forced full-driver installer helper",
-    "P360_FORCE_INSTALL_COMPILE=PASS",
-    "P360_FORCE_INSTALL.cpp",
-    "Prepare full-install audio package",
-    "P360_FULL_INSTALL.ps1",
-    "INSTALL_PHASER360_AUDIO.cmd",
-    "RESTORE_PHASER360_AUDIO.cmd",
-    "Build and audit full-install driver package",
+    "/p:P360ToneTopologyProofEnabled=0",
+    "/p:P360BoundedToneTestEnabled=0",
+    "P360_FULL_AUDIO_DRIVER_BUILD=PASS",
+    "Compile WASAPI endpoint verifier",
+    "P360_WASAPI_VERIFIER_BUILD=PASS",
+    "Compile forced driver-binding helper",
+    "P360_FORCE_INSTALL_BUILD=PASS",
+    "Assemble full-install driver",
+    "P360_FULL_INSTALL_PARSE=PASS",
+    "Catalog sign audit and package",
     "P360_FULL_INSTALL_PACKAGE=PASS",
     "P360_FORCE_BINDING=PASS",
     "P360_FULL_INSTALL.zip",
@@ -880,56 +881,25 @@ for token in (
     "P360-FULL-INSTALL-${{ github.sha }}",
 ):
     if token not in workflow:
-        raise SystemExit(f"full-install audio CI contract missing: {token}")
+        raise SystemExit(f"full-install workflow contract missing: {token}")
 
 for forbidden in (
+    "Compile pre-audio IPC3 proof path",
+    "Compile hostless Tone topology proof",
+    "Compile bounded internal speaker proof",
+    "Compile speaker endpoint shell",
+    "Compile bounded WaveRT test utility",
     "P360-AUDIO-GATE-${{ github.sha }}",
     "P360-PRODUCTION-AUDIO-${{ github.sha }}",
-    "Upload hardware gate package",
     "Upload production audio package",
     "Upload unsigned compile artifact",
 ):
     if forbidden in workflow:
-        raise SystemExit(f"obsolete install/debug artifact is still public: {forbidden}")
+        raise SystemExit(f"obsolete staged/test workflow path remains: {forbidden}")
 
-pre_step_begin=workflow.index("- name: Compile pre-audio IPC3 proof path")
-pre_step_end=workflow.index("- name: Compile hostless Tone topology proof",pre_step_begin)
-pre_step=workflow[pre_step_begin:pre_step_end]
-for token in (
-    "/p:P360PortClsShellEnabled=1",
-    "/p:P360RuntimeBootEnabled=1",
-    "/p:P360IpcProbeEnabled=1",
-):
-    if token not in pre_step:
-        raise SystemExit(f"PRE-AUDIO compile regression missing required gate: {token}")
-for forbidden in (
-    "/p:P360ToneTopologyProofEnabled=1",
-    "/p:P360InternalSpeakerEnabled=1",
-    "/p:P360BoundedToneTestEnabled=1",
-    "/p:P360SpeakerEndpointEnabled=1",
-):
-    if forbidden in pre_step:
-        raise SystemExit(f"PRE-AUDIO compile regression accidentally enables audio path: {forbidden}")
-
-bounded_step_begin=workflow.index("- name: Compile bounded internal speaker proof")
-bounded_step_end=workflow.index("- name: Compile speaker endpoint shell",bounded_step_begin)
-bounded_step=workflow[bounded_step_begin:bounded_step_end]
-for token in (
-    "/p:P360PortClsShellEnabled=1",
-    "/p:P360RuntimeBootEnabled=1",
-    "/p:P360IpcProbeEnabled=1",
-    "/p:P360ToneTopologyProofEnabled=1",
-    "/p:P360InternalSpeakerEnabled=1",
-    "/p:P360BoundedToneTestEnabled=1",
-):
-    if token not in bounded_step:
-        raise SystemExit(f"bounded speaker compile regression missing required gate: {token}")
-if "/p:P360SpeakerEndpointEnabled=1" in bounded_step:
-    raise SystemExit("bounded speaker proof must not expose normal Windows speaker endpoint")
-
-host_step_begin=workflow.index("- name: Compile real HOST WaveRT speaker path")
-host_step_end=workflow.index("- name: Compile bounded WaveRT test utility",host_step_begin)
-host_step=workflow[host_step_begin:host_step_end]
+final_build_begin=workflow.index("- name: Build complete P360SofAudio driver")
+final_build_end=workflow.index("- name: Compile WASAPI endpoint verifier",final_build_begin)
+final_build=workflow[final_build_begin:final_build_end]
 for token in (
     "/p:P360PortClsShellEnabled=1",
     "/p:P360RuntimeBootEnabled=1",
@@ -937,17 +907,11 @@ for token in (
     "/p:P360SpeakerEndpointEnabled=1",
     "/p:P360HostPlaybackEnabled=1",
     "/p:P360InternalSpeakerEnabled=1",
-    "P360SofAudio-host-playback.sys",
-    "PORTCLS_HOST_WAVERT_PLAYBACK_COMPILE=PASS",
+    "/p:P360ToneTopologyProofEnabled=0",
+    "/p:P360BoundedToneTestEnabled=0",
 ):
-    if token not in host_step:
-        raise SystemExit(f"real HOST WaveRT build missing required gate/output: {token}")
-for forbidden in (
-    "/p:P360ToneTopologyProofEnabled=1",
-    "/p:P360BoundedToneTestEnabled=1",
-):
-    if forbidden in host_step:
-        raise SystemExit(f"real HOST WaveRT final build depends on legacy Tone path: {forbidden}")
+    if token not in final_build:
+        raise SystemExit(f"full driver build flag missing: {token}")
 
 production_inf=(ROOT/"production/P360AudioBundle.inx").read_text()
 full_installer=(ROOT/"full_install/P360_FULL_INSTALL.ps1").read_text()
@@ -1060,11 +1024,11 @@ for forbidden in (
     if forbidden in full_installer:
         raise SystemExit(f"legacy waveOut test leaked into full installer: {forbidden}")
 
-full_prepare_begin=workflow.index("- name: Prepare full-install audio package")
-full_build_begin=workflow.index("- name: Build and audit full-install driver package",full_prepare_begin)
+full_prepare_begin=workflow.index("- name: Assemble full-install driver")
+full_build_begin=workflow.index("- name: Catalog sign audit and package",full_prepare_begin)
 full_prepare=workflow[full_prepare_begin:full_build_begin]
 for token in (
-    'P360SofAudio-host-playback.sys" = "P360SofAudio.sys"',
+    'P360SofAudio.sys" = "P360SofAudio.sys"',
     'P360Max98357Safe.sys" = "P360Max98357Safe.sys"',
     '"P360_WASAPI_TEST.exe"',
     '"P360_FORCE_INSTALL.exe"',
@@ -1072,6 +1036,7 @@ for token in (
     '"INSTALL_PHASER360_AUDIO.cmd"',
     '"RESTORE_PHASER360_AUDIO.cmd"',
     "p360-f686.ri",
+    "P360_FULL_INSTALL_PARSE=PASS",
 ):
     if token not in full_prepare:
         raise SystemExit(f"full-install input assembly missing: {token}")
@@ -1079,18 +1044,14 @@ for token in (
 full_upload_begin=workflow.index("- name: Upload full-install audio driver",full_build_begin)
 full_build=workflow[full_build_begin:full_upload_begin]
 for token in (
-    'InstallerMode = "FullInstall"',
-    'ForceBindingApi = "UpdateDriverForPlugAndPlayDevices/INSTALLFLAG_FORCE"',
-    "PhysicalAudioTest = $true",
-    "PhysicalWasapiAttemptsMax = 1",
-    'FinalAcceptance = "WASAPI_SHARED_ENDPOINT_FUNCTIONAL"',
-    "P360SofAudioSha256",
-    "P360Max98357SafeSha256",
-    "WasapiTestSha256",
-    "ForceInstallSha256",
+    'InstallerMode="FullInstall"',
+    'ForceBindingApi="UpdateDriverForPlugAndPlayDevices/INSTALLFLAG_FORCE"',
+    "PhysicalAudioTest=$false",
+    "P360SofAudioSha256=",
+    "P360Max98357SafeSha256=",
+    "WasapiTestSha256=",
+    "ForceInstallSha256=",
     "P360_FULL_INSTALL_PACKAGE=PASS",
-    "P360_FINAL_ACCEPTANCE=WASAPI_SHARED_ONE_SHOT",
-    "P360_PHYSICAL_WASAPI_ATTEMPTS_MAX=1",
 ):
     if token not in full_build:
         raise SystemExit(f"full-install manifest/audit missing: {token}")
