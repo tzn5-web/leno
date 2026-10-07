@@ -389,18 +389,16 @@ for token in (
     'cd /d "%~dp0"',
     "net session >nul 2>&1",
     "Start-Process -FilePath '%~f0' -Verb RunAs",
-    'P360_AUDIO_GATE.ps1" -Mode Restore -SessionPath',
-    "PREVIOUS_SESSION_RECOVERY=PASS",
     'P360_AUDIO_GATE.ps1" -Mode Audio',
+    "PRE-AUDIO proof first",
+    "Return code: %RC%",
     "pause",
 ):
     if token not in start_cmd:
         raise SystemExit(f"one-click audio launcher contract missing: {token}")
 
-start_restore_i=start_cmd.index('P360_AUDIO_GATE.ps1" -Mode Restore -SessionPath')
-start_audio_i=start_cmd.index('P360_AUDIO_GATE.ps1" -Mode Audio')
-if not start_restore_i < start_audio_i:
-    raise SystemExit("one-click launcher no longer proves recovery before audio")
+if 'P360_AUDIO_GATE.ps1" -Mode Restore -SessionPath' in start_cmd:
+    raise SystemExit("one-click launcher must use the single Audio transaction only")
 
 for token in (
     'cd /d "%~dp0"',
@@ -468,6 +466,41 @@ for token in (
 ):
     if token not in workflow:
         raise SystemExit(f"active PortCls linkage CI build missing: {token}")
+
+pre_step_begin=workflow.index("- name: Compile pre-audio IPC3 proof path")
+pre_step_end=workflow.index("- name: Compile hostless Tone topology proof",pre_step_begin)
+pre_step=workflow[pre_step_begin:pre_step_end]
+for token in (
+    "/p:P360PortClsShellEnabled=1",
+    "/p:P360RuntimeBootEnabled=1",
+    "/p:P360IpcProbeEnabled=1",
+):
+    if token not in pre_step:
+        raise SystemExit(f"PRE-AUDIO build missing required gate: {token}")
+for forbidden in (
+    "/p:P360ToneTopologyProofEnabled=1",
+    "/p:P360InternalSpeakerEnabled=1",
+    "/p:P360BoundedToneTestEnabled=1",
+    "/p:P360SpeakerEndpointEnabled=1",
+):
+    if forbidden in pre_step:
+        raise SystemExit(f"PRE-AUDIO build accidentally enables audio path: {forbidden}")
+
+bounded_step_begin=workflow.index("- name: Compile bounded internal speaker proof")
+bounded_step_end=workflow.index("- name: Compile speaker endpoint shell",bounded_step_begin)
+bounded_step=workflow[bounded_step_begin:bounded_step_end]
+for token in (
+    "/p:P360PortClsShellEnabled=1",
+    "/p:P360RuntimeBootEnabled=1",
+    "/p:P360IpcProbeEnabled=1",
+    "/p:P360ToneTopologyProofEnabled=1",
+    "/p:P360InternalSpeakerEnabled=1",
+    "/p:P360BoundedToneTestEnabled=1",
+):
+    if token not in bounded_step:
+        raise SystemExit(f"bounded speaker build missing required gate: {token}")
+if "/p:P360SpeakerEndpointEnabled=1" in bounded_step:
+    raise SystemExit("bounded speaker proof must not expose normal Windows speaker endpoint")
 
 for token in (
     "WdfDriverInitNoDispatchOverride",
