@@ -316,6 +316,7 @@ for token in (
     "ExpectedFlags 31 -MinimumStage 110",
     "FirmwareError -ne -22",
     "ReplyBytes -ne 12",
+    "[BitConverter]::ToInt32([BitConverter]::GetBytes($fwRaw),0)",
     "Disable-TargetAndProveStop",
     "Get-WindowsDriver -Online -All",
     "Assert-NoStaleTestPackage",
