@@ -617,6 +617,13 @@ p360_host_playback_prepare(
         return STATUS_INVALID_DEVICE_STATE;
     }
 
+    if (InterlockedCompareExchangePointer(
+            (PVOID volatile *)&ctx->ActivePlayback,
+            playback,
+            NULL)!=NULL) {
+        return STATUS_DEVICE_BUSY;
+    }
+
     status=p360_playback_stream_init(
         playback,
         &ctx->Bus);
@@ -666,6 +673,10 @@ p360_host_playback_prepare(
 
 fail:
     (void)p360_playback_stream_retire(playback);
+    (void)InterlockedCompareExchangePointer(
+        (PVOID volatile *)&ctx->ActivePlayback,
+        NULL,
+        playback);
     return status;
 }
 
@@ -685,6 +696,10 @@ p360_host_playback_start(
         playback->SofRunning ||
         playback->SpeakerArmed ||
         playback->SpeakerStarted ||
+        InterlockedCompareExchangePointer(
+            (PVOID volatile *)&ctx->ActivePlayback,
+            NULL,
+            NULL)!=playback ||
         ctx->State.state!=P360_STATE_AUDIO_CORE_READY ||
         !p360_safety_can_start_speaker(&ctx->State) ||
         InterlockedCompareExchange(&ctx->Removing,0,0)!=0) {
@@ -897,7 +912,43 @@ p360_host_playback_release(
     if (!NT_SUCCESS(status) && NT_SUCCESS(firstStatus))
         firstStatus=status;
 
+    if (!playback->SpeakerStarted &&
+        !playback->SpeakerArmed &&
+        !playback->SofRunning &&
+        !playback->SofParamsPrepared &&
+        !playback->StreamOwned &&
+        !playback->StreamPrepared &&
+        !playback->PageTable) {
+        (void)InterlockedCompareExchangePointer(
+            (PVOID volatile *)&ctx->ActivePlayback,
+            NULL,
+            playback);
+    }
+
     return firstStatus;
+}
+
+static NTSTATUS
+p360_host_force_release_active_playback(
+    _Inout_ P360_DEVICE_CONTEXT *ctx)
+{
+    P360_PLAYBACK_STREAM *playback;
+
+    if (!ctx)
+        return STATUS_INVALID_PARAMETER;
+
+    playback=(P360_PLAYBACK_STREAM *)
+        InterlockedCompareExchangePointer(
+            (PVOID volatile *)&ctx->ActivePlayback,
+            NULL,
+            NULL);
+
+    if (!playback)
+        return STATUS_SUCCESS;
+
+    return p360_host_playback_release(
+        ctx,
+        playback);
 }
 
 static NTSTATUS
@@ -1287,6 +1338,9 @@ p360_host_prepare(
     ctx->RuntimeInitialized=FALSE;
     ctx->CsAudioInitialized=FALSE;
     ctx->BoundedToneConsumed=FALSE;
+    InterlockedExchangePointer(
+        (PVOID volatile *)&ctx->ActivePlayback,
+        NULL);
     InterlockedExchange(&ctx->Removing,0);
 
     status=p360_telemetry_reset(
@@ -1440,6 +1494,16 @@ p360_host_release(
     InterlockedExchange(&ctx->Removing,1);
 
     /*
+     * A PortCls pin may still exist during STOP/SURPRISE_REMOVE. Quiesce the
+     * registered WaveRT playback while CSAudio, IPC and HDA ownership are all
+     * still valid. If MAX mute or stream cleanup cannot be proved, preserve
+     * the device resources and fail teardown rather than freeing underneath it.
+     */
+    status=p360_host_force_release_active_playback(ctx);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    /*
      * Speaker mute/endpoint callback teardown comes before DSP teardown.
      * The MAX98357A driver remains the sole GPIO owner; this host only emits
      * CSAudio endpoint requests.
@@ -1546,8 +1610,20 @@ NTSTATUS
 p360_host_d0_exit(
     _Inout_ P360_DEVICE_CONTEXT *ctx)
 {
+    NTSTATUS status;
+
     if (!ctx)
         return STATUS_INVALID_DEVICE_STATE;
+
+    /*
+     * PortCls normally pauses the pin first, but do not depend on that for
+     * surprise removal or a failing client. Release HOST PCM/HDA ownership
+     * before the DSP is reset. A later RUN after D0Entry will re-prepare the
+     * existing WaveRT MDL against the new SOF epoch.
+     */
+    status=p360_host_force_release_active_playback(ctx);
+    if (!NT_SUCCESS(status))
+        return status;
 
     /*
      * Boot remains disabled by policy in the shipping test build, but the
