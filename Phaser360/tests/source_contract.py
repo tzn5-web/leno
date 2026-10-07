@@ -504,6 +504,23 @@ start_cmd=(ROOT/"tools/START_AUDIO_TEST.cmd").read_text()
 restore_cmd=(ROOT/"tools/RESTORE_LAST_SESSION.cmd").read_text()
 
 for token in (
+    "successful run ends with working PHASER360 audio installed",
+    "leave the final stack installed",
+    "one physical 2-second test only",
+    "failure rolls back; success remains installed",
+    "RESTORE_LAST_SESSION.cmd",
+):
+    if token not in runner_readme:
+        raise SystemExit(f"persistent audio README contract missing: {token}")
+
+for forbidden in (
+    "Restore the original ADSP driver, the exact original MAX98357A driver, firmware state and temporary test certificate.",
+    "both ADSP and MAX98357A baselines are restored and verified at the end",
+):
+    if forbidden in runner_readme:
+        raise SystemExit(f"README still documents restore-on-success behavior: {forbidden}")
+
+for token in (
     'ValidateSet("Audio","Restore")',
     "ExpectedFirmwareBytes = 246528",
     "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab",
@@ -790,6 +807,13 @@ for token in (
     "/p:P360HostPlaybackEnabled=1",
     "PORTCLS_SOF_BOOT_COMPILE=PASS",
     "PORTCLS_SOF_IPC3_PROOF_COMPILE=PASS",
+    "Acquire pinned SOF 1.9.3 firmware",
+    "fcd5ae85ead7ecd67ff199335b61fac825843ca0",
+    "v1.9.x/sof-v1.9.3/sof-apl.ri",
+    "P360_PINNED_FIRMWARE=PASS",
+    "firmware\\p360-f686.ri",
+    "firmware\\LICENCE.Intel",
+    'FirmwareSourceCommit = "fcd5ae85ead7ecd67ff199335b61fac825843ca0"',
 ):
     if token not in workflow:
         raise SystemExit(f"active PortCls linkage CI build missing: {token}")
