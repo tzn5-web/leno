@@ -331,7 +331,7 @@ for forbidden in (
 for token in (
     "P360_IPC3_PROOF_COMMAND     0xe0000000u",
     "P360_IPC3_PROOF_ERROR       (-22)",
-    "p360_dispatch_expect(d,io->now(context),timeout_ms)",
+    "p360_dispatch_expect_message(",
     "io->write_box(context,P360_HOST_DOWNBOX,message,bytes)",
     "io->write32(context,P360_DSP_HIPCI,P360_HIPCI_BUSY)",
 ):
@@ -340,6 +340,28 @@ for token in (
 
 if "tests/ipc3_tx_regression.c" not in run_b4:
     raise SystemExit("IPC3 TX regression is not in the B4 gate")
+
+for token in (
+    "expected_reply_bytes",
+    "expected_reply_cmd",
+    "expected_comp_id",
+    "p360_dispatch_expect_message(",
+):
+    if token not in dispatch_h:
+        raise SystemExit(f"structured IPC3 reply contract missing from header: {token}")
+
+for token in (
+    "d->expected_reply_bytes=20u",
+    "d->expected_reply_cmd=command",
+    "d->expected_comp_id=comp_id",
+    "U32(reply+12)!=d->expected_comp_id",
+    "CompleteStructured(&next,reply,d->expected_reply_bytes)",
+):
+    if token not in dispatch:
+        raise SystemExit(f"structured IPC3 reply validation missing: {token}")
+
+if "tests/ipc3_reply_regression.c" not in run_b4:
+    raise SystemExit("structured IPC3 reply regression is not in the B4 gate")
 
 for token in (
     "P360_IPC3_TONE_NEW_BYTES       100u",
