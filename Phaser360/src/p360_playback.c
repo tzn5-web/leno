@@ -5,6 +5,7 @@
 #define P360_HDA_SD_BASE           0x80u
 #define P360_HDA_SD_INTERVAL       0x20u
 #define P360_HDA_SD_CTL_OFFSET     0x00u
+#define P360_HDA_SD_FIFOSIZE_OFFSET 0x10u
 #define P360_HDA_SD_CTL_RUN        0x02u
 #define P360_HDA_RUN_POLL_US       10u
 #define P360_HDA_RUN_POLL_COUNT    1000u
@@ -465,6 +466,59 @@ p360_playback_stream_position(
     return p->Bus->iface.StreamPosition(
         p->Bus->iface.Context,
         p->Stream);
+}
+
+UINT32
+p360_playback_stream_fifo_size(
+    const P360_PLAYBACK_STREAM *p
+    )
+{
+    UINT8 *hda;
+    USHORT gcap;
+    ULONG captureStreams;
+    ULONG playbackStreams;
+    ULONG streamIndex;
+    ULONG fifoOffset;
+    USHORT fifo;
+
+    if (!p || !p->Bus || !p->Bus->resources_valid ||
+        !p->Bus->hda.Base.baseptr ||
+        p->Bus->hda.Len<sizeof(USHORT) ||
+        !p->StreamOwned ||
+        p->StreamTag<1u) {
+        return 0u;
+    }
+
+    hda=p->Bus->hda.Base.baseptr;
+    gcap=READ_REGISTER_USHORT(
+        (volatile USHORT *)(hda+P360_HDA_GCAP_OFFSET));
+
+    captureStreams=(gcap >> 8) & 0x0fu;
+    playbackStreams=(gcap >> 12) & 0x0fu;
+    if (!playbackStreams ||
+        (ULONG)p->StreamTag>playbackStreams) {
+        return 0u;
+    }
+
+    streamIndex=captureStreams+(ULONG)p->StreamTag-1u;
+    fifoOffset=P360_HDA_SD_BASE+
+        P360_HDA_SD_INTERVAL*streamIndex+
+        P360_HDA_SD_FIFOSIZE_OFFSET;
+    if (fifoOffset+sizeof(USHORT)>p->Bus->hda.Len)
+        return 0u;
+
+    fifo=READ_REGISTER_USHORT(
+        (volatile USHORT *)(hda+fifoOffset));
+
+    /*
+     * Intel HDA SDxFIFOS encodes FIFO bytes minus one. Linux SOF uses the
+     * same register and converts it to bytes with +1. Treat all-ones as an
+     * invalid/dead MMIO read instead of reporting a fictitious 64 KiB FIFO.
+     */
+    if (fifo==0xffffu)
+        return 0u;
+
+    return (UINT32)fifo+1u;
 }
 
 UINT32
