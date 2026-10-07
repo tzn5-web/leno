@@ -596,6 +596,9 @@ for token in (
     "command==0x30100000u",
     "command==0x30200000u",
     "command==0x60010000u",
+    "command==0x50030000u",
+    "d->expected_reply_bytes=140u",
+    "d->expected_reply_bytes!=140u",
 ):
     if token not in dispatch:
         raise SystemExit(f"SOF IPC3 structured-reply whitelist missing: {token}")
@@ -622,6 +625,26 @@ for token in (
 
 if "tests/ipc3_topology_regression.c" not in run_b4:
     raise SystemExit("IPC3 speaker topology regression is not in the B4 gate")
+
+for token in (
+    "#define P360_IPC3_TONE_CONTROL_BYTES   140u",
+    "put32(d+16,3u); /* SOF_CTRL_TYPE_VALUE_COMP_SET */",
+    "put32(d+20,1u); /* SOF_CTRL_CMD_ENUM */",
+    "put32(d+24,1u); /* SOF_TONE_IDX_AMPLITUDE */",
+    "put32(d+56,2u); /* two stereo elements */",
+    "put32(d+100,16u)",
+    "put32(d+104,0x03014000u)",
+):
+    if token not in (ipc3_topology_h + "\n" + ipc3_topology):
+        raise SystemExit(f"SOF 1.9.3 low-volume Tone control ABI missing: {token}")
+
+for forbidden in (
+    "P360_IPC3_CTRL_TYPE_DATA_SET",
+    "p360_ipc3_build_tone_amplitude(struct",
+):
+    if forbidden in ipc3_topology_h + "\n" + ipc3_topology:
+        raise SystemExit(f"wrong duplicate Tone control path present: {forbidden}")
+
 
 for token in (
     "put_config(d+28,2u,0u,P360_IPC3_FRAME_S32_LE)",
@@ -668,6 +691,13 @@ for token in (
 ):
     if token not in driver:
         raise SystemExit(f"hardware proof telemetry milestone missing: {token}")
+
+for token in (
+    "expectedReplyBytes!=P360_IPC3_TONE_CONTROL_BYTES",
+    "P360_IPC3_TONE_CONTROL_BYTES);",
+):
+    if token not in driver:
+        raise SystemExit(f"final Tone control reply-size contract missing: {token}")
 
 for token in (
     "p360_cs_runtime_send_ipc(",
