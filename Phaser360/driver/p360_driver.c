@@ -73,7 +73,8 @@ p360_runtime_send_zero_error(
 
     if (!ctx || !message || !message->bytes ||
         message->bytes>sizeof(message->data) ||
-        (expectedReplyBytes!=12u && expectedReplyBytes!=20u)) {
+        (expectedReplyBytes!=12u && expectedReplyBytes!=20u &&
+         expectedReplyBytes!=P360_IPC3_TONE_CONTROL_BYTES)) {
         return STATUS_INVALID_PARAMETER;
     }
 
@@ -241,7 +242,7 @@ p360_runtime_prepare_tone_topology(
     status=p360_runtime_send_zero_error(
         ctx,
         &message,
-        12u);
+        P360_IPC3_TONE_CONTROL_BYTES);
     if (!NT_SUCCESS(status))
         return status;
 
