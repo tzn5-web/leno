@@ -107,6 +107,7 @@ int p360_loader_run(struct p360_loader *loader,const struct p360_loader_ops *ops
     if (!result) return P360_L_ARGUMENT;
     result->phase=P360_L_VALIDATE;result->error=0;result->cleanup_error=0;
     result->rom_status=0;result->rom_error=0;result->adspcs=0;
+    result->entry_adspcs=0;result->normalized_adspcs=0;
     result->boot_epoch=0;result->ready_proved=0;result->resources_retained=0;
     if (!loader || !ops || !ops->acquire || !ops->release_platform || !ops->prepare ||
         !ops->start || !ops->stop || !ops->release_dma || !ops->read32 || !ops->write32 ||
@@ -129,8 +130,32 @@ int p360_loader_run(struct p360_loader *loader,const struct p360_loader_ops *ops
     if (ops->acquire(context)) { rc=P360_L_BUSY;goto finish; }
     rc=read32(&e,ADSPCS,&baseline);
     if (rc) goto finish;
-    /* Never take over a powered/running DSP or pretend to restore old firmware. */
-    if (baseline&(CORES_SPA|CORES_CPA)) {rc=P360_L_BUSY;goto finish;}
+    result->entry_adspcs=baseline;
+
+    /*
+     * Linux Intel HDA/SOF does not require ADSPCS to be cold on entry.
+     * The ADSP PDO is exclusively bound to this driver at this point, so a
+     * stale powered-core state is normalized before any HDA DMA allocation:
+     * stall -> reset -> prove reset -> clear SPA -> prove CPA=0.
+     *
+     * This is deliberately stricter than merely clearing the old BUSY guard:
+     * if hardware cannot prove OFF, boot aborts without preparing DMA.
+     * The pre-normalization state is diagnostic only and is never restored as
+     * unknown firmware state during cleanup.
+     */
+    if (baseline&(CORES_SPA|CORES_CPA)) {
+        touched=1;
+        rc=power_down(&e);
+        if (rc) goto finish;
+
+        rc=read32(&e,ADSPCS,&baseline);
+        if (rc) goto finish;
+        if (baseline&(CORES_SPA|CORES_CPA)) {
+            rc=P360_L_BUSY;
+            goto finish;
+        }
+    }
+    result->normalized_adspcs=baseline;
 
     result->phase=P360_L_DMA_PREPARE;
     dma_attempted=1;stopped=0;
@@ -212,6 +237,10 @@ finish:
         int down=power_down(&e);
         if (down && !cleanup) cleanup=down;
         if (!down) {
+            /*
+             * baseline is the proved post-normalization OFF state, never the
+             * unknown powered state observed when the ADSP PDO was attached.
+             */
             int restore=update(&e,ADSPCS,CONTROL_MASK,baseline&CONTROL_MASK);
             if (restore && !cleanup) cleanup=restore;
         }
