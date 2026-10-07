@@ -189,6 +189,17 @@ for token in (
 if "gpio_data = 1" in max_safe or "gpio_data=1" in max_safe:
     raise SystemExit("legacy D0-on MAX98357A behavior was reintroduced")
 
+max_release_i=max_safe.index("P360MaxReleaseHardware(")
+max_release_mute_i=max_safe.index("muteStatus=p360_max_force_low(ctx);",max_release_i)
+max_release_unreg_i=max_safe.index("ExUnregisterCallback(",max_release_i)
+max_release_gpio_i=max_safe.index("p360_max_gpio_deinit(",max_release_unreg_i)
+max_release_lock_i=max_safe.index("WdfObjectDelete(ctx->TransitionLock)",max_release_gpio_i)
+if not (
+    max_release_i < max_release_mute_i < max_release_unreg_i <
+    max_release_gpio_i < max_release_lock_i
+):
+    raise SystemExit("MAX98357A ReleaseHardware no longer proves mute before teardown")
+
 
 for token in (
     "#define P360_DSP_UPBOX           0x81000u",
