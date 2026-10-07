@@ -14,8 +14,6 @@ $ExpectedAmpPrefix = "ACPI\MX98357A"
 $ExpectedFirmwareBytes = 246528
 $ExpectedFirmwareSha256 = "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab"
 $TelemetryPath = "HKLM:\SYSTEM\CurrentControlSet\Services\P360SofAudio\Parameters"
-$ProofRoot = Join-Path $env:ProgramData "P360AudioGate"
-$ProofPath = Join-Path $ProofRoot "preaudio-proof.json"
 $PackageRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $PackageInfoPath = Join-Path $PackageRoot "PACKAGE_INFO.json"
 $LogPath = $null
@@ -970,47 +968,6 @@ function Recover-PreviousBaselineIfNeeded([string]$InstanceId) {
     }
 
     Assert-SafeBaselineBeforeNewTest $InstanceId
-}
-
-function Assert-PreAudioProof($Info,[string]$InstanceId,[string]$Firmware,[string]$PreAudioSys) {
-    if (-not (Test-Path -LiteralPath $ProofPath -PathType Leaf)) {
-        throw "No PRE-AUDIO PASS proof exists. Run -Mode PreAudio first."
-    }
-    $proof=Get-Content -LiteralPath $ProofPath -Raw | ConvertFrom-Json
-    $age=(Get-Date).ToUniversalTime() - [DateTime]::Parse([string]$proof.TimestampUtc).ToUniversalTime()
-    if ($age.TotalDays -gt 7) {
-        throw "PRE-AUDIO proof is older than 7 days; rerun PreAudio."
-    }
-    $fwHash=(Get-FileHash -LiteralPath $Firmware -Algorithm SHA256).Hash.ToLowerInvariant()
-    $preHash=(Get-FileHash -LiteralPath $PreAudioSys -Algorithm SHA256).Hash.ToLowerInvariant()
-    foreach ($check in @(
-        @([string]$proof.TargetInstanceId,$InstanceId,"target"),
-        @(([string]$proof.FirmwareSha256).ToLowerInvariant(),$fwHash,"firmware"),
-        @(([string]$proof.PreAudioSysSha256).ToLowerInvariant(),$preHash,"pre-audio image"),
-        @([string]$proof.HeadSha,[string]$Info.HeadSha,"build commit")
-    )) {
-        if ($check[0] -ne $check[1]) {
-            throw "PRE-AUDIO proof mismatch for $($check[2])."
-        }
-    }
-    if (-not [bool]$proof.Stopped -or [int]$proof.FirmwareError -ne -22 -or [int]$proof.ReplyBytes -ne 12) {
-        throw "PRE-AUDIO proof is incomplete."
-    }
-}
-
-function Write-PreAudioProof($Info,[string]$InstanceId,[string]$Firmware,[string]$PreAudioSys,$Telemetry) {
-    New-Item -ItemType Directory -Path $ProofRoot -Force | Out-Null
-    $proof=[ordered]@{
-        TimestampUtc=(Get-Date).ToUniversalTime().ToString("o")
-        HeadSha=[string]$Info.HeadSha
-        TargetInstanceId=$InstanceId
-        FirmwareSha256=(Get-FileHash -LiteralPath $Firmware -Algorithm SHA256).Hash.ToLowerInvariant()
-        PreAudioSysSha256=(Get-FileHash -LiteralPath $PreAudioSys -Algorithm SHA256).Hash.ToLowerInvariant()
-        FirmwareError=[int]$Telemetry.FirmwareError
-        ReplyBytes=[int]$Telemetry.ReplyBytes
-        Stopped=$true
-    }
-    $proof | ConvertTo-Json | Set-Content -LiteralPath $ProofPath -Encoding UTF8
 }
 
 function Load-RestoreState([string]$RequestedSession) {
