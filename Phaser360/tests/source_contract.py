@@ -372,17 +372,26 @@ for token in (
     'cd /d "%~dp0"',
     "net session >nul 2>&1",
     "Start-Process -FilePath '%~f0' -Verb RunAs",
+    'P360_AUDIO_GATE.ps1" -Mode Restore -SessionPath',
+    "PREVIOUS_SESSION_RECOVERY=PASS",
     'P360_AUDIO_GATE.ps1" -Mode Audio',
     "pause",
 ):
     if token not in start_cmd:
         raise SystemExit(f"one-click audio launcher contract missing: {token}")
 
+start_restore_i=start_cmd.index('P360_AUDIO_GATE.ps1" -Mode Restore -SessionPath')
+start_audio_i=start_cmd.index('P360_AUDIO_GATE.ps1" -Mode Audio')
+if not start_restore_i < start_audio_i:
+    raise SystemExit("one-click launcher no longer proves recovery before audio")
+
 for token in (
     'cd /d "%~dp0"',
     "net session >nul 2>&1",
     "Start-Process -FilePath '%~f0' -Verb RunAs",
-    'P360_AUDIO_GATE.ps1" -Mode Restore',
+    'P360_AUDIO_GATE.ps1" -Mode Restore -SessionPath',
+    "P360_AUDIO_*",
+    "P360_PREAUDIO_*",
     "pause",
 ):
     if token not in restore_cmd:
