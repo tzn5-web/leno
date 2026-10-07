@@ -195,6 +195,20 @@ jobs:
           Remove-Item $sys -Force
           if (Test-Path $pdb) { Remove-Item $pdb -Force }
 
+      - name: Compile bounded WaveRT test utility
+        shell: pwsh
+        run: |
+          $vcvars = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          if (-not (Test-Path $vcvars)) { throw "vcvars64.bat not found" }
+          $out = "Phaser360\driver\out\Release\P360_WAVERT_TEST.exe"
+          $cmd = ('call "{0}" && cl.exe /nologo /O2 /MT /W3 /DUNICODE /D_UNICODE /Fe:"{1}" Phaser360\tools\P360_WAVERT_TEST.c winmm.lib' -f $vcvars,$out)
+          & cmd.exe /d /s /c $cmd
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $out)) {
+            throw "P360_WAVERT_TEST.exe compile failed"
+          }
+          Write-Host "P360_WAVERT_TEST_COMPILE=PASS"
+          Write-Host "SHA256=$((Get-FileHash $out -Algorithm SHA256).Hash)"
+
       - name: Locate WDK signing tools
         shell: pwsh
         timeout-minutes: 2
@@ -247,6 +261,7 @@ jobs:
           Copy-Item Phaser360\tools\START_AUDIO_TEST.cmd (Join-Path $root "START_AUDIO_TEST.cmd") -Force
           Copy-Item Phaser360\tools\RESTORE_LAST_SESSION.cmd (Join-Path $root "RESTORE_LAST_SESSION.cmd") -Force
           Copy-Item Phaser360\tools\P360_AUDIO_GATE_README.txt (Join-Path $root "README.txt") -Force
+          Copy-Item Phaser360\driver\out\Release\P360_WAVERT_TEST.exe (Join-Path $root "P360_WAVERT_TEST.exe") -Force
           Copy-Item Phaser360\firmware\P360_FIRMWARE_MANIFEST.txt (Join-Path $root "P360_FIRMWARE_MANIFEST.txt") -Force
 
           Write-Host "CERT_CREATE=BEGIN"
@@ -415,6 +430,7 @@ jobs:
             "START_AUDIO_TEST.cmd",
             "RESTORE_LAST_SESSION.cmd",
             "P360_AUDIO_GATE.ps1",
+            "P360_WAVERT_TEST.exe",
             "PACKAGE_INFO.json",
             "README.txt",
             "cert\P360_TEST.cer",
@@ -484,6 +500,7 @@ jobs:
             Phaser360/driver/out/Release/P360SofAudio-bounded-tone-test.pdb
             Phaser360/driver/out/Release/P360SofAudio-host-playback.sys
             Phaser360/driver/out/Release/P360SofAudio-host-playback.pdb
+            Phaser360/driver/out/Release/P360_WAVERT_TEST.exe
             Phaser360/driver/P360SofAudio.inx
             Phaser360/firmware/P360_FIRMWARE_MANIFEST.txt
           if-no-files-found: error
