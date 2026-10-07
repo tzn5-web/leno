@@ -23,10 +23,16 @@ int p360_board_validate_identity(uint16_t vendor, uint16_t device)
 int p360_board_validate_nhlt(const P360_NHLT_FACTS *facts)
 {
     if (!facts) return 0;
+
+    /*
+     * The current Windows package exposes only the internal-speaker render
+     * path.  Do not make unrelated future endpoints (SSP2 headset/codec or
+     * DMIC capture) prerequisites for bringing up SSP1 -> MAX98357A.
+     *
+     * We still require a structurally valid/checksummed NHLT table and the
+     * exact SSP1 render descriptor used to validate the speaker wiring.
+     */
     return facts->checksum_ok &&
            facts->table_length >= 36 &&
-           facts->ssp1_render &&
-           facts->ssp2_render &&
-           facts->ssp2_capture &&
-           facts->dmic_capture;
+           facts->ssp1_render;
 }
