@@ -217,8 +217,10 @@ if not re.search(r"#define\s+P360_BOUNDED_TONE_TEST_ENABLED\s+0\b", driver_h):
 
 if "#define P360_BOUNDED_TONE_DURATION_MS 2000u" not in driver_h:
     raise SystemExit("final Tone duration is not the requested 2000 ms")
-if "#define P360_DIAGNOSTIC_TONE_Q1_31 0x01000000" not in driver_h:
-    raise SystemExit("final Tone amplitude is not pinned below 1% full-scale")
+if "#define P360_DIAGNOSTIC_TONE_Q1_31 P360_IPC3_TONE_HALF_PERCENT_Q1_31" not in driver_h:
+    raise SystemExit("final Tone amplitude is not pinned to 0.5% full-scale")
+if "#define P360_DIAGNOSTIC_TONE_BLOCKS P360_IPC3_TONE_TWO_SECONDS_BLOCKS" not in driver_h:
+    raise SystemExit("DSP-side final Tone duration is not pinned to 2 seconds")
 
 for token in (
     "#ifndef P360_ENABLE_INTERNAL_SPEAKER",
@@ -344,7 +346,7 @@ for token in (
     "MANUAL_WINDOWS_RESTART_REQUIRED=YES",
     "DIRECT_FINAL_SPEAKER_TEST=YES",
     "FINAL_SPEAKER_PHASE=BEGIN",
-    "FINAL_TONE_2000MS_MAX_0P78125PCT=PASS",
+    "FINAL_TONE_2000MS_MAX_0P5PCT=PASS",
     "FINAL_SPEAKER_STOP_MUTE=PASS",
     "FINAL_DRIVER_RESTORE=PASS",
     "AUDIO_GATE=PASS",
@@ -617,7 +619,8 @@ for token in (
     "p360_ipc3_build_dai_new(",
     "p360_ipc3_build_ssp1_config(",
     "p360_ipc3_build_pcm_params(",
-    "p360_ipc3_build_tone_amplitude_control(",
+    "p360_ipc3_build_tone_amplitude(",
+    "p360_ipc3_build_tone_length(",
     "p360_ipc3_build_stream_trigger(",
 ):
     if token not in (ipc3_topology_h + "\n" + ipc3_topology):
@@ -628,19 +631,23 @@ if "tests/ipc3_topology_regression.c" not in run_b4:
 
 for token in (
     "#define P360_IPC3_TONE_CONTROL_BYTES   140u",
-    "put32(d+16,3u); /* SOF_CTRL_TYPE_VALUE_COMP_SET */",
-    "put32(d+20,1u); /* SOF_CTRL_CMD_ENUM */",
-    "put32(d+24,1u); /* SOF_TONE_IDX_AMPLITUDE */",
-    "put32(d+56,2u); /* two stereo elements */",
-    "put32(d+100,16u)",
-    "put32(d+104,0x03014000u)",
+    "#define P360_IPC3_CTRL_TYPE_VALUE_COMP_SET 3u",
+    "#define P360_IPC3_TONE_HALF_PERCENT_Q1_31  10737418u",
+    "#define P360_IPC3_TONE_TWO_SECONDS_BLOCKS   16000u",
+    "put32(d+16,P360_IPC3_CTRL_TYPE_VALUE_COMP_SET);",
+    "put32(d+20,P360_IPC3_CTRL_CMD_ENUM);",
+    "P360_IPC3_TONE_IDX_AMPLITUDE",
+    "P360_IPC3_TONE_IDX_LENGTH",
+    "put32(d+56,channels);",
+    "put32(d+100,(uint32_t)channels * 8u)",
+    "put32(d+104,P360_IPC3_SOF_ABI_3_20_0)",
 ):
     if token not in (ipc3_topology_h + "\n" + ipc3_topology):
         raise SystemExit(f"SOF 1.9.3 low-volume Tone control ABI missing: {token}")
 
 for forbidden in (
     "P360_IPC3_CTRL_TYPE_DATA_SET",
-    "p360_ipc3_build_tone_amplitude(struct",
+    "p360_ipc3_build_tone_amplitude_control(",
 ):
     if forbidden in ipc3_topology_h + "\n" + ipc3_topology:
         raise SystemExit(f"wrong duplicate Tone control path present: {forbidden}")
@@ -839,15 +846,16 @@ pipe_new_i=driver.index("p360_ipc3_build_pipe_new(", connect2_i)
 pipe_done_i=driver.index("p360_ipc3_build_pipe_complete(", pipe_new_i)
 top_flag_i=driver.index("ctx->State.topology_ready=1;", pipe_done_i)
 top_state_i=driver.index("P360_STATE_TOPOLOGY_READY", top_flag_i)
-ampl_i=driver.index("p360_ipc3_build_tone_amplitude_control(", top_state_i)
-pcm_i=driver.index("p360_ipc3_build_pcm_params(", ampl_i)
+ampl_i=driver.index("p360_ipc3_build_tone_amplitude(", top_state_i)
+length_i=driver.index("p360_ipc3_build_tone_length(", ampl_i)
+pcm_i=driver.index("p360_ipc3_build_pcm_params(", length_i)
 core_flag_i=driver.index("ctx->State.audio_core_ready=1;", pcm_i)
 core_state_i=driver.index("P360_STATE_AUDIO_CORE_READY", core_flag_i)
 if not (
     ipc_state_i < tone_policy_i < tone_prepare_call_i and
     helper_body_i < tone_new_i < buffer_new_i < dai_new_i < dai_cfg_i <
     connect1_i < connect2_i < pipe_new_i < pipe_done_i <
-    top_flag_i < top_state_i < pcm_i < core_flag_i < core_state_i
+    top_flag_i < top_state_i < ampl_i < length_i < pcm_i < core_flag_i < core_state_i
 ):
     raise SystemExit("hostless Tone -> SSP1 topology/prepare ordering drifted")
 
