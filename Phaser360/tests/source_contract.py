@@ -287,6 +287,23 @@ if run_i >= run_call_i:
 if "Hard barrier: the endpoint may enumerate" in speaker_endpoint:
     raise SystemExit("old enumerate-only WaveRT barrier was reintroduced")
 
+for token in (
+    "p360_playback_memory_released(",
+    "*CacheType=MmWriteCombined;",
+    "RequestedSize+=delta;",
+    "return STATUS_NOT_SUPPORTED;",
+):
+    if token not in speaker_endpoint:
+        raise SystemExit(f"WaveRT ownership/cache contract missing: {token}")
+
+for forbidden in (
+    "*CacheType=MmCached;",
+    "return STATUS_NOT_IMPLEMENTED;",
+    "RequestedSize-=RequestedSize %",
+):
+    if forbidden in speaker_endpoint:
+        raise SystemExit(f"unsafe legacy WaveRT contract reintroduced: {forbidden}")
+
 
 for token in (
     "P360_SPEAKER_CONTAINER_BITS",
@@ -939,6 +956,21 @@ host_pcm_i=driver.index("p360_ipc3_build_host_pcm_params(",bind_buffer_i)
 host_prepare_done_i=driver.index("playback->SofParamsPrepared=TRUE;",host_pcm_i)
 if not host_prepare_i < bind_buffer_i < host_pcm_i < host_prepare_done_i:
     raise SystemExit("WaveRT MDL -> CoolStar stream -> SOF PCM_PARAMS ordering drifted")
+
+fail_sof_i=driver.index("fail_sof:",host_prepare_done_i)
+rollback_success_i=driver.index("if (NT_SUCCESS(cleanupStatus)) {",fail_sof_i)
+rollback_clear_i=driver.index("playback->SofRunning=FALSE;",rollback_success_i)
+rollback_fail_i=driver.index("p360_state_fail(&ctx->State,P360_FAIL_STREAM);",rollback_clear_i)
+if not fail_sof_i < rollback_success_i < rollback_clear_i < rollback_fail_i:
+    raise SystemExit("failed STREAM_STOP rollback can still discard SOF ownership")
+
+release_playback_i=driver.index("p360_host_playback_release(",fail_sof_i)
+pcm_free_i=driver.index("p360_ipc3_build_pcm_free(",release_playback_i)
+pcm_free_fail_i=driver.index("if (!NT_SUCCESS(status)) {",pcm_free_i)
+pcm_free_return_i=driver.index("return firstStatus;",pcm_free_fail_i)
+pcm_params_clear_i=driver.index("playback->SofParamsPrepared=FALSE;",pcm_free_return_i)
+if not pcm_free_i < pcm_free_fail_i < pcm_free_return_i < pcm_params_clear_i:
+    raise SystemExit("failed PCM_FREE can still release firmware-owned host metadata")
 
 host_start_i=driver.index("p360_host_playback_start(")
 dma_start_i=driver.index("p360_playback_stream_start(playback)",host_start_i)
