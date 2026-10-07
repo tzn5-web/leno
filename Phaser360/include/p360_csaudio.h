@@ -82,7 +82,7 @@ p360_csaudio_speaker_stop(
     _Inout_ P360_CSAUDIO_LINK *Link
     );
 
-VOID
+NTSTATUS
 p360_csaudio_close(
     _Inout_ P360_CSAUDIO_LINK *Link
     );
