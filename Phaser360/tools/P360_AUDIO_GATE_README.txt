@@ -3,14 +3,19 @@ PHASER360 AUDIO GATE
 
 This package is intentionally fail-closed.
 
-Fast path:
-  Open PowerShell as Administrator and run one transaction:
-       powershell -ExecutionPolicy Bypass -File .\P360_AUDIO_GATE.ps1 -Mode Audio -FirmwarePath "C:\path\to\sof-apl.ri"
+ONE-CLICK PATH:
+  Double-click START_AUDIO_TEST.cmd.
+
+The CMD launcher requests Administrator rights automatically, starts the Audio
+transaction, and keeps the window open at the end so the result is visible.
+No PowerShell command needs to be typed manually.
 
 Audio mode performs PRE-AUDIO proof first and reaches the 250 ms speaker tone
 only when FW_READY + IRQ + IPC3 -22/12 bytes + STOP are all proved in the same run.
 
-The separate Audit / PreAudio / BoundedSpeaker modes remain available for diagnosis.
+If a prior run was interrupted, double-click RESTORE_LAST_SESSION.cmd.
+
+The separate Audit / PreAudio / BoundedSpeaker modes remain available only for diagnosis.
 
 The runner:
 - never changes BIOS/UEFI;
@@ -34,9 +39,10 @@ The runner:
 If an interrupted run prevents automatic rollback:
   powershell -ExecutionPolicy Bypass -File .\P360_AUDIO_GATE.ps1 -Mode Restore
 
-You may specify an exact firmware binary or the audited v10.11B ZIP:
-  -FirmwarePath "C:\path\to\p360-f686.ri"
-  -FirmwarePath "C:\path\to\PHASER360_v10_11B_FULL_LINK_AUDIT_ONLY.zip"
+Firmware discovery is automatic. The runner checks the audited known
+D:\PHASER360_WORK locations first, then the package folder, Desktop, Downloads
+and D:\PHASER360_WORK recursively. Every candidate is accepted only if it is
+exactly 246528 bytes with the pinned f686 SHA256.
 
 Results are written under:
   Desktop\P360_AUDIO_SAFE\
