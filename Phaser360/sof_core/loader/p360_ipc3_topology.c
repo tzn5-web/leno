@@ -145,6 +145,8 @@ int p360_ipc3_build_buffer_new(struct p360_ipc3_message *out,
     d=out->data;
     put_comp(d,P360_IPC3_BUFFER_NEW_BYTES,ids->buffer_id,
         P360_IPC3_COMP_BUFFER,ids->pipeline_id);
+    /* Buffers have their own IPC3 allocation handler, not COMP_NEW. */
+    put32(d+4,P360_IPC3_GLB_TPLG_MSG|P360_IPC3_TPLG_BUFFER_NEW);
     put32(d+28,bytes);
     put32(d+32,P360_IPC3_MEM_RAM|P360_IPC3_MEM_CACHE);
     put32(d+36,0u);

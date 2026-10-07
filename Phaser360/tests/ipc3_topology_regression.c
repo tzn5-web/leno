@@ -50,6 +50,8 @@ int main(void)
 
     assert(p360_ipc3_build_buffer_new(&m,&ids,768u)==0);
     assert(m.bytes==44u && u32(m.data+12)==12u);
+    assert(u32(m.data+4)==0x30200000u);
+    assert(u32(m.data+8)==ids.buffer_id);
     assert(u32(m.data+28)==768u && u32(m.data+32)==65u);
 
     assert(p360_ipc3_build_dai_new(&m,&ids,1u)==0);

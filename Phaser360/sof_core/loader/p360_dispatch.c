@@ -5,6 +5,12 @@ static uint32_t U32(const uint8_t *p)
 {return (uint32_t)p[0]|((uint32_t)p[1]<<8)|((uint32_t)p[2]<<16)|((uint32_t)p[3]<<24);}
 static int Fail(struct p360_dispatch *d)
 {d->poisoned=1;d->active=0;d->ipc.state=P360_IPC_POISONED;return -1;}
+static int TopologyNewCommand(uint32_t command)
+{
+    return command==0x30010000u || /* COMP_NEW */
+        command==0x30100000u ||    /* PIPE_NEW */
+        command==0x30200000u;      /* BUFFER_NEW */
+}
 int p360_dispatch_prepare(struct p360_dispatch *d,const uint8_t *image,
     size_t bytes,uint32_t mapped_bytes)
 {
@@ -68,13 +74,15 @@ int p360_dispatch_expect_message(struct p360_dispatch *d,uint64_t now,
         return -1;
 
     command=U32(message+4);
-    if(command==0x60010000u) {
+    if(command==0x60010000u || TopologyNewCommand(command)) {
         if(bytes<12u) return -1;
         comp_id=U32(message+8);
         if(!comp_id) return -1;
         d->expected_reply_bytes=20u;
         d->expected_reply_cmd=command;
-        d->expected_comp_id=comp_id;
+        /* SOF 1.9.3 topology handlers zero-initialize id/offset in their
+         * sof_ipc_comp_reply. PCM_PARAMS instead echoes comp_id. */
+        d->expected_comp_id=command==0x60010000u ? comp_id : 0u;
         d->expected_generic=0;
     } else {
         d->expected_reply_bytes=12u;
@@ -99,6 +107,21 @@ static int Stable(const struct p360_dispatch_io *io,void *ctx,uint32_t offset,
     for(i=0;i<size;++i) if(out[i]!=other[i]) return -1;
     return U32(out)==size?0:-1;
 }
+static int ReadReply(const struct p360_dispatch_io *io,void *ctx,
+    uint8_t reply[20],uint32_t *bytes)
+{
+    uint8_t header[12],other[12];uint32_t i,size;
+    /* SOF 1.9.3 writes command replies back into the host request mailbox.
+     * DSP_UPBOX contains FW_READY and unsolicited DSP messages instead. */
+    if(io->copy(ctx,P360_HOST_DOWNBOX,header,sizeof(header)) ||
+       io->copy(ctx,P360_HOST_DOWNBOX,other,sizeof(other))) return -1;
+    for(i=0;i<sizeof(header);++i) if(header[i]!=other[i]) return -1;
+    size=U32(header);
+    if(size!=12u && size!=20u) return -1;
+    if(Stable(io,ctx,P360_HOST_DOWNBOX,reply,size)) return -1;
+    for(i=0;i<sizeof(header);++i) if(header[i]!=reply[i]) return -1;
+    *bytes=size;return 0;
+}
 static int32_t Signed32(uint32_t value)
 {
     return value<=INT32_MAX ? (int32_t)value :
@@ -119,7 +142,8 @@ int p360_dispatch_process(struct p360_dispatch *d,const struct p360_irq_event *e
     const struct p360_dispatch_io *io,void *ctx)
 {
     uint8_t reply[20],position[76];struct p360_ipc next;uint64_t now;uint32_t i;
-    struct p360_irq_event captured;uint32_t causes;uint64_t sequence;
+    struct p360_irq_event captured;uint32_t causes,reply_bytes=0;
+    uint64_t sequence;int generic_reply=0;
     if(!d || !e || !io || !io->copy || !io->finish || !io->now) return -1;
     if(!d->active || d->poisoned) return -1;
     /* Keep validated event metadata stable across external callbacks. In
@@ -136,16 +160,24 @@ int p360_dispatch_process(struct p360_dispatch *d,const struct p360_irq_event *e
     if(causes&1) {
         if(next.state!=P360_IPC_PENDING ||
            (d->expected_reply_bytes!=12u && d->expected_reply_bytes!=20u) ||
-           !d->expected_reply_cmd ||
-           Stable(io,ctx,P360_DSP_UPBOX,reply,d->expected_reply_bytes) ||
-           U32(reply+4)!=d->expected_reply_cmd)
+           !d->expected_reply_cmd || ReadReply(io,ctx,reply,&reply_bytes))
             return Fail(d);
 
-        if(!d->expected_generic) {
-            if(d->expected_reply_bytes!=20u ||
-               d->expected_reply_cmd!=0x60010000u ||
-               !d->expected_comp_id ||
-               U32(reply+12)!=d->expected_comp_id)
+        generic_reply=reply_bytes==12u && U32(reply+4)==0x10000000u;
+        if(generic_reply) {
+            /* Structured commands still return a generic negative reply on
+             * firmware failure. A generic success cannot replace payload. */
+            if(!d->expected_generic && Signed32(U32(reply+8))>=0)
+                return Fail(d);
+        } else {
+            if(d->expected_generic || reply_bytes!=20u ||
+               d->expected_reply_bytes!=20u ||
+               U32(reply+4)!=d->expected_reply_cmd ||
+               (d->expected_reply_cmd!=0x60010000u &&
+                !TopologyNewCommand(d->expected_reply_cmd)) ||
+               U32(reply+8)!=0 || U32(reply+12)!=d->expected_comp_id)
+                return Fail(d);
+            if(TopologyNewCommand(d->expected_reply_cmd) && U32(reply+16)!=0)
                 return Fail(d);
         }
     }
@@ -163,12 +195,12 @@ int p360_dispatch_process(struct p360_dispatch *d,const struct p360_irq_event *e
     now=io->now(ctx);
     if(p360_ipc_expire(&next,now)) return Fail(d);
     if(causes&1) {
-        if(d->expected_generic) {
+        if(generic_reply) {
             if(p360_ipc_complete(&next,e->epoch,next.generation,now,
-                    reply,d->expected_reply_bytes))
+                    reply,reply_bytes))
                 return Fail(d);
         } else {
-            if(CompleteStructured(&next,reply,d->expected_reply_bytes))
+            if(CompleteStructured(&next,reply,reply_bytes))
                 return Fail(d);
         }
     }
