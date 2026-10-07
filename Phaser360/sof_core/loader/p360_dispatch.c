@@ -10,6 +10,10 @@ static int Structured20(uint32_t command)
         command==0x30200000u ||    /* TPLG_BUFFER_NEW */
         command==0x60010000u;      /* STREAM_PCM_PARAMS */
 }
+static int Structured140(uint32_t command)
+{
+    return command==0x50030000u;   /* COMP_SET_DATA control echo */
+}
 static int Fail(struct p360_dispatch *d)
 {d->poisoned=1;d->active=0;d->ipc.state=P360_IPC_POISONED;return -1;}
 int p360_dispatch_prepare(struct p360_dispatch *d,const uint8_t *image,
@@ -83,6 +87,14 @@ int p360_dispatch_expect_message(struct p360_dispatch *d,uint64_t now,
         d->expected_reply_cmd=command;
         d->expected_comp_id=comp_id;
         d->expected_generic=0;
+    } else if(Structured140(command)) {
+        if(bytes<16u) return -1;
+        comp_id=U32(message+12);
+        if(!comp_id) return -1;
+        d->expected_reply_bytes=140u;
+        d->expected_reply_cmd=command;
+        d->expected_comp_id=comp_id;
+        d->expected_generic=0;
     } else {
         d->expected_reply_bytes=12u;
         d->expected_reply_cmd=0x10000000u;
@@ -101,7 +113,7 @@ int p360_dispatch_expect_message(struct p360_dispatch *d,uint64_t now,
 static int Stable(const struct p360_dispatch_io *io,void *ctx,uint32_t offset,
     uint8_t *out,uint32_t size)
 {
-    uint8_t other[76];uint32_t i;
+    uint8_t other[216];uint32_t i;
     if(io->copy(ctx,offset,out,size) || io->copy(ctx,offset,other,size)) return -1;
     for(i=0;i<size;++i) if(out[i]!=other[i]) return -1;
     return U32(out)==size?0:-1;
@@ -125,7 +137,7 @@ static int CompleteStructured(struct p360_ipc *ipc,const uint8_t *reply,
 int p360_dispatch_process(struct p360_dispatch *d,const struct p360_irq_event *e,
     const struct p360_dispatch_io *io,void *ctx)
 {
-    uint8_t reply[20],position[76];struct p360_ipc next;uint64_t now;uint32_t i;
+    uint8_t reply[216],position[76];struct p360_ipc next;uint64_t now;uint32_t i;
     struct p360_irq_event captured;uint32_t causes;uint64_t sequence;
     if(!d || !e || !io || !io->copy || !io->finish || !io->now) return -1;
     if(!d->active || d->poisoned) return -1;
@@ -142,18 +154,27 @@ int p360_dispatch_process(struct p360_dispatch *d,const struct p360_irq_event *e
     if(p360_ipc_expire(&next,now)) return Fail(d);
     if(causes&1) {
         if(next.state!=P360_IPC_PENDING ||
-           (d->expected_reply_bytes!=12u && d->expected_reply_bytes!=20u) ||
+           (d->expected_reply_bytes!=12u && d->expected_reply_bytes!=20u &&
+            d->expected_reply_bytes!=140u) ||
            !d->expected_reply_cmd ||
            Stable(io,ctx,P360_DSP_UPBOX,reply,d->expected_reply_bytes) ||
            U32(reply+4)!=d->expected_reply_cmd)
             return Fail(d);
 
         if(!d->expected_generic) {
-            if(d->expected_reply_bytes!=20u ||
-               !Structured20(d->expected_reply_cmd) ||
-               !d->expected_comp_id ||
+            if(!d->expected_comp_id ||
                U32(reply+12)!=d->expected_comp_id)
                 return Fail(d);
+
+            if(d->expected_reply_bytes==20u) {
+                if(!Structured20(d->expected_reply_cmd))
+                    return Fail(d);
+            } else if(d->expected_reply_bytes==140u) {
+                if(!Structured140(d->expected_reply_cmd))
+                    return Fail(d);
+            } else {
+                return Fail(d);
+            }
         }
     }
     if(causes&2) {
