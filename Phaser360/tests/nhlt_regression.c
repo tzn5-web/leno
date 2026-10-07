@@ -51,6 +51,16 @@ static size_t endpoint(
     return n;
 }
 
+static void checksum(uint8_t *b,size_t n)
+{
+    unsigned i;
+    uint8_t sum=0;
+    b[9]=0;
+    for(i=0;i<n;i++)
+        sum=(uint8_t)(sum+b[i]);
+    b[9]=(uint8_t)(0u-sum);
+}
+
 static size_t fixture(uint8_t *b,size_t cap)
 {
     size_t off=37;
@@ -88,19 +98,26 @@ int main(void)
     assert(f.checksum_ok && f.ssp1_render && f.ssp2_render &&
            f.ssp2_capture && f.dmic_capture);
 
-    b[37+17]=0;
-    assert(!p360_nhlt_parse(b,n,&f));
-    b[37+17]=1;
+    /*
+     * Speaker-only policy: DMIC and SSP2 may be absent/mismatched without
+     * blocking SSP1 speaker render.
+     */
+    n=fixture(b,sizeof(b));
+    b[37+17]=0; /* DMIC endpoint no longer matches capture */
+    checksum(b,n);
+    assert(p360_nhlt_parse(b,n,&f));
+    assert(f.ssp1_render && !f.dmic_capture);
 
-    /* Rebuild checksum after restoring and then break SSP1's rate. */
+    n=fixture(b,sizeof(b));
+    put32(b+37+68+28,44100); /* SSP2 render format mismatch */
+    checksum(b,n);
+    assert(p360_nhlt_parse(b,n,&f));
+    assert(f.ssp1_render && !f.ssp2_render);
+
+    /* SSP1 itself remains mandatory and exact. */
     n=fixture(b,sizeof(b));
     put32(b+37+68*3+28,44100);
-    {
-        unsigned i;uint8_t sum=0;
-        b[9]=0;
-        for(i=0;i<n;i++)sum=(uint8_t)(sum+b[i]);
-        b[9]=(uint8_t)(0u-sum);
-    }
+    checksum(b,n);
     assert(!p360_nhlt_parse(b,n,&f));
 
     n=fixture(b,sizeof(b));
@@ -110,12 +127,7 @@ int main(void)
     /* Matching format may not bypass bounds checking of its specific blob. */
     n=fixture(b,sizeof(b));
     put32(b+37+68*3+64,0x1000u);
-    {
-        unsigned i;uint8_t sum=0;
-        b[9]=0;
-        for(i=0;i<n;i++)sum=(uint8_t)(sum+b[i]);
-        b[9]=(uint8_t)(0u-sum);
-    }
+    checksum(b,n);
     assert(!p360_nhlt_parse(b,n,&f));
 
     puts("Phaser360 NHLT regression: PASS");
