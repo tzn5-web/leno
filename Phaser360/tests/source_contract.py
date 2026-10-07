@@ -307,6 +307,8 @@ for token in (
 workflow=(ROOT.parent/".github/workflows/phaser360-windows.yml").read_text()
 runner=(ROOT/"tools/P360_AUDIO_GATE.ps1").read_text()
 runner_readme=(ROOT/"tools/P360_AUDIO_GATE_README.txt").read_text()
+start_cmd=(ROOT/"tools/START_AUDIO_TEST.cmd").read_text()
+restore_cmd=(ROOT/"tools/RESTORE_LAST_SESSION.cmd").read_text()
 
 for token in (
     'ValidateSet("Audit","PreAudio","BoundedSpeaker","Audio","Restore")',
@@ -344,6 +346,8 @@ for token in (
     "AUDIO_STOP_PROOF=PASS",
     "AUDIO_GATE=PASS",
     "NO_AUTO_REBOOT=YES",
+    r"D:\PHASER360_WORK\continuation_20261005\v10_17R_original\firmware\sof-apl.ri",
+    '"D:\\PHASER360_WORK"',
 ):
     if token not in runner:
         raise SystemExit(f"hardware gate runner safety contract missing: {token}")
@@ -357,6 +361,39 @@ for forbidden in (
 ):
     if forbidden.lower() in runner.lower():
         raise SystemExit(f"hardware gate runner gained forbidden reboot/BCD mutation: {forbidden}")
+
+for token in (
+    'cd /d "%~dp0"',
+    "net session >nul 2>&1",
+    "Start-Process -FilePath '%~f0' -Verb RunAs",
+    'P360_AUDIO_GATE.ps1" -Mode Audio',
+    "pause",
+):
+    if token not in start_cmd:
+        raise SystemExit(f"one-click audio launcher contract missing: {token}")
+
+for token in (
+    'cd /d "%~dp0"',
+    "net session >nul 2>&1",
+    "Start-Process -FilePath '%~f0' -Verb RunAs",
+    'P360_AUDIO_GATE.ps1" -Mode Restore',
+    "pause",
+):
+    if token not in restore_cmd:
+        raise SystemExit(f"one-click restore launcher contract missing: {token}")
+
+for launcher_name, launcher in (
+    ("START_AUDIO_TEST.cmd",start_cmd),
+    ("RESTORE_LAST_SESSION.cmd",restore_cmd),
+):
+    for forbidden in (
+        "shutdown",
+        "bcdedit",
+        "Restart-Computer",
+    ):
+        if forbidden.lower() in launcher.lower():
+            raise SystemExit(
+                f"{launcher_name} gained forbidden reboot/BCD mutation: {forbidden}")
 
 for token in (
     "/p:P360PortClsShellEnabled=1",
@@ -382,6 +419,9 @@ for token in (
     "Get-AuthenticodeSignature",
     "VERIFY_SIGNER_PASS=",
     "P360_AUDIO_GATE_PACKAGE=PASS",
+    "P360_ONE_CLICK_PACKAGE_CONTENT=PASS",
+    "START_AUDIO_TEST.cmd",
+    "RESTORE_LAST_SESSION.cmd",
     "P360_AUDIO_GATE.zip",
     "P360-AUDIO-GATE-${{ github.sha }}",
     "PORTCLS_TONE_TOPOLOGY_PROOF_COMPILE=PASS",
