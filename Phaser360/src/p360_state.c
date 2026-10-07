@@ -55,6 +55,19 @@ int p360_speaker_may_arm(const P360_STATE_MACHINE *sm)
         !sm->speaker_runtime_armed;
 }
 
+int p360_state_speaker_disarm(P360_STATE_MACHINE *sm)
+{
+    if (!sm ||
+        sm->state != P360_STATE_SPEAKER_ARMED ||
+        !sm->speaker_runtime_armed)
+        return 0;
+
+    sm->speaker_runtime_armed = 0;
+    sm->state = P360_STATE_AUDIO_CORE_READY;
+    sm->generation++;
+    return 1;
+}
+
 int p360_state_runtime_reset(P360_STATE_MACHINE *sm, int quiesced)
 {
     if (!sm || !quiesced ||
