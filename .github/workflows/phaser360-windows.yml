@@ -85,16 +85,16 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          msbuild Phaser360\driver\P360SofAudio.vcxproj /m /t:Rebuild \
-            /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off \
-            /p:P360PortClsShellEnabled=1 \
-            /p:P360RuntimeBootEnabled=1 \
-            /p:P360IpcProbeEnabled=1 \
-            /p:P360SpeakerEndpointEnabled=1 \
-            /p:P360HostPlaybackEnabled=1 \
-            /p:P360InternalSpeakerEnabled=1 \
-            /p:P360ToneTopologyProofEnabled=0 \
-            /p:P360BoundedToneTestEnabled=0 \
+          msbuild Phaser360\driver\P360SofAudio.vcxproj /m /t:Rebuild `
+            /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off `
+            /p:P360PortClsShellEnabled=1 `
+            /p:P360RuntimeBootEnabled=1 `
+            /p:P360IpcProbeEnabled=1 `
+            /p:P360SpeakerEndpointEnabled=1 `
+            /p:P360HostPlaybackEnabled=1 `
+            /p:P360InternalSpeakerEnabled=1 `
+            /p:P360ToneTopologyProofEnabled=0 `
+            /p:P360BoundedToneTestEnabled=0 `
             /v:minimal
 
           $sys="Phaser360\driver\out\Release\P360SofAudio.sys"
