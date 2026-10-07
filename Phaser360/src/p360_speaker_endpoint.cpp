@@ -6,6 +6,7 @@
 
 #include "../include/p360_board.h"
 #include "../include/p360_speaker_endpoint.h"
+#include "../driver/p360_driver.h"
 
 /*
  * WDK /kernel does not support the CRT <new> header because that header
@@ -57,7 +58,6 @@ operator delete(
 #define P360_WAVE_BRIDGE_PIN 1u
 #define P360_TOPO_BRIDGE_PIN 0u
 #define P360_TOPO_SPEAKER_PIN 1u
-#define P360_MAX_WAVERT_BUFFER (4u * 1024u * 1024u)
 
 static KSDATAFORMAT_WAVEFORMATEXTENSIBLE gP360SpeakerFormat = {
     {
@@ -457,7 +457,8 @@ class P360WaveStream final : public IMiniportWaveRTStream
 public:
     P360WaveStream(
         _In_ P360WaveMiniport *Owner,
-        _In_ PPORTWAVERTSTREAM PortStream
+        _In_ PPORTWAVERTSTREAM PortStream,
+        _Inout_ P360_DEVICE_CONTEXT *Context
         );
 
     ~P360WaveStream();
@@ -501,6 +502,7 @@ public:
     static NTSTATUS Create(
         _In_ P360WaveMiniport *Owner,
         _In_ PPORTWAVERTSTREAM PortStream,
+        _Inout_ P360_DEVICE_CONTEXT *Context,
         _Outptr_ PMINIPORTWAVERTSTREAM *Stream
         );
 
@@ -511,12 +513,16 @@ private:
     KSSTATE m_State;
     PMDL m_Mdl;
     ULONG m_BufferBytes;
+    P360_DEVICE_CONTEXT *m_Context;
+    P360_PLAYBACK_STREAM m_Playback;
 };
 
 class P360WaveMiniport final : public IMiniportWaveRT
 {
 public:
-    P360WaveMiniport() : m_Refs(1),m_StreamOpen(0) {}
+    explicit P360WaveMiniport(
+        _Inout_ P360_DEVICE_CONTEXT *Context
+        ) : m_Refs(1),m_StreamOpen(0),m_Context(Context) {}
 
     STDMETHODIMP QueryInterface(
         _In_ REFIID InterfaceId,
@@ -667,6 +673,7 @@ public:
         status=P360WaveStream::Create(
             this,
             PortStream,
+            m_Context,
             Stream);
         if (!NT_SUCCESS(status))
             InterlockedExchange(&m_StreamOpen,0);
@@ -694,12 +701,14 @@ public:
         return STATUS_SUCCESS;
     }
 
-    static NTSTATUS Create(_Outptr_ PUNKNOWN *Unknown)
+    static NTSTATUS Create(
+        _Inout_ P360_DEVICE_CONTEXT *Context,
+        _Outptr_ PUNKNOWN *Unknown)
     {
         PVOID memory;
         P360WaveMiniport *object;
 
-        if (!Unknown)
+        if (!Context || !Unknown)
             return STATUS_INVALID_PARAMETER;
         *Unknown=NULL;
 
@@ -710,7 +719,7 @@ public:
         if (!memory)
             return STATUS_INSUFFICIENT_RESOURCES;
 
-        object=new(memory) P360WaveMiniport();
+        object=new(memory) P360WaveMiniport(Context);
         *Unknown=static_cast<IMiniportWaveRT *>(object);
         return STATUS_SUCCESS;
     }
@@ -723,25 +732,38 @@ public:
 private:
     volatile LONG m_Refs;
     volatile LONG m_StreamOpen;
+    P360_DEVICE_CONTEXT *m_Context;
 };
 
 P360WaveStream::P360WaveStream(
     P360WaveMiniport *Owner,
-    PPORTWAVERTSTREAM PortStream
+    PPORTWAVERTSTREAM PortStream,
+    P360_DEVICE_CONTEXT *Context
     ) :
     m_Refs(1),
     m_Owner(Owner),
     m_PortStream(PortStream),
     m_State(KSSTATE_STOP),
     m_Mdl(NULL),
-    m_BufferBytes(0)
+    m_BufferBytes(0),
+    m_Context(Context)
 {
+    RtlZeroMemory(&m_Playback,sizeof(m_Playback));
     m_Owner->AddRef();
     m_PortStream->AddRef();
 }
 
 P360WaveStream::~P360WaveStream()
 {
+    if (m_Context &&
+        (m_Playback.StreamOwned ||
+         m_Playback.SofParamsPrepared ||
+         m_Playback.PageTable)) {
+        (void)p360_host_playback_release(
+            m_Context,
+            &m_Playback);
+    }
+
     if (m_Mdl) {
         m_PortStream->FreePagesFromMdl(m_Mdl);
         m_Mdl=NULL;
@@ -816,24 +838,49 @@ P360WaveStream::SetState(
     KSSTATE State
     )
 {
+    NTSTATUS status;
+
+    if (!m_Context)
+        return STATUS_INVALID_DEVICE_STATE;
+
     switch (State) {
     case KSSTATE_STOP:
-        m_State=KSSTATE_STOP;
-        return STATUS_SUCCESS;
+        status=p360_host_playback_stop(
+            m_Context,
+            &m_Playback);
+        if (NT_SUCCESS(status))
+            m_State=KSSTATE_STOP;
+        return status;
 
     case KSSTATE_ACQUIRE:
+        if (!m_Mdl || !m_Playback.SofParamsPrepared)
+            return STATUS_DEVICE_NOT_READY;
+        m_State=KSSTATE_ACQUIRE;
+        return STATUS_SUCCESS;
+
     case KSSTATE_PAUSE:
-        m_State=State;
+        if (m_State==KSSTATE_RUN) {
+            status=p360_host_playback_stop(
+                m_Context,
+                &m_Playback);
+            if (!NT_SUCCESS(status))
+                return status;
+        }
+        m_State=KSSTATE_PAUSE;
         return STATUS_SUCCESS;
 
     case KSSTATE_RUN:
-        /*
-         * Hard barrier: the endpoint may enumerate and negotiate its fixed
-         * PCM16 format, but playback cannot start until the SOF speaker
-         * pipeline, SSP1 DAI and CoolStar render DMA are all bound to this
-         * stream in a separately audited change.
-         */
-        return STATUS_DEVICE_NOT_READY;
+        if (!m_Mdl || !m_Playback.SofParamsPrepared)
+            return STATUS_DEVICE_NOT_READY;
+        if (m_State==KSSTATE_RUN)
+            return STATUS_SUCCESS;
+
+        status=p360_host_playback_start(
+            m_Context,
+            &m_Playback);
+        if (NT_SUCCESS(status))
+            m_State=KSSTATE_RUN;
+        return status;
 
     default:
         return STATUS_INVALID_PARAMETER;
@@ -845,11 +892,22 @@ P360WaveStream::GetPosition(
     PKSAUDIO_POSITION Position
     )
 {
+    ULONGLONG position;
+
     if (!Position)
         return STATUS_INVALID_PARAMETER;
 
-    Position->PlayOffset=0;
-    Position->WriteOffset=0;
+    if (!m_BufferBytes || !m_Playback.StreamOwned) {
+        Position->PlayOffset=0;
+        Position->WriteOffset=0;
+        return STATUS_SUCCESS;
+    }
+
+    position=(ULONGLONG)p360_playback_stream_position(
+        &m_Playback) % (ULONGLONG)m_BufferBytes;
+
+    Position->PlayOffset=position;
+    Position->WriteOffset=position;
     return STATUS_SUCCESS;
 }
 
@@ -868,12 +926,17 @@ P360WaveStream::AllocateAudioBuffer(
     if (!AudioBufferMdl || !ActualSize ||
         !OffsetFromFirstPage || !CacheType ||
         m_Mdl || !RequestedSize ||
-        RequestedSize>P360_MAX_WAVERT_BUFFER) {
+        RequestedSize>P360_PLAYBACK_MAX_BUFFER_BYTES ||
+        !m_Context) {
         return STATUS_INVALID_PARAMETER;
     }
 
+    /*
+     * Four periods keep SOF's host-period contract integral while preserving
+     * frame alignment for stereo S16 WaveRT buffers.
+     */
     RequestedSize-=RequestedSize %
-        (P360_SPEAKER_CHANNELS * 2u);
+        (P360_SPEAKER_CHANNELS * 2u * 4u);
     if (!RequestedSize)
         return STATUS_INVALID_BUFFER_SIZE;
 
@@ -884,6 +947,19 @@ P360WaveStream::AllocateAudioBuffer(
         RequestedSize);
     if (!mdl)
         return STATUS_INSUFFICIENT_RESOURCES;
+
+    {
+        NTSTATUS status=p360_host_playback_prepare(
+            m_Context,
+            &m_Playback,
+            mdl,
+            RequestedSize,
+            RequestedSize / 4u);
+        if (!NT_SUCCESS(status)) {
+            m_PortStream->FreePagesFromMdl(mdl);
+            return status;
+        }
+    }
 
     m_Mdl=mdl;
     m_BufferBytes=RequestedSize;
@@ -904,9 +980,16 @@ P360WaveStream::FreeAudioBuffer(
     UNREFERENCED_PARAMETER(BufferSize);
 
     if (AudioBufferMdl && AudioBufferMdl==m_Mdl) {
+        if (m_Context)
+            (void)p360_host_playback_release(
+                m_Context,
+                &m_Playback);
+
         m_PortStream->FreePagesFromMdl(m_Mdl);
         m_Mdl=NULL;
         m_BufferBytes=0;
+        m_State=KSSTATE_STOP;
+        RtlZeroMemory(&m_Playback,sizeof(m_Playback));
     }
 }
 
@@ -941,13 +1024,14 @@ NTSTATUS
 P360WaveStream::Create(
     P360WaveMiniport *Owner,
     PPORTWAVERTSTREAM PortStream,
+    P360_DEVICE_CONTEXT *Context,
     PMINIPORTWAVERTSTREAM *Stream
     )
 {
     PVOID memory;
     P360WaveStream *object;
 
-    if (!Owner || !PortStream || !Stream)
+    if (!Owner || !PortStream || !Context || !Stream)
         return STATUS_INVALID_PARAMETER;
     *Stream=NULL;
 
@@ -960,7 +1044,8 @@ P360WaveStream::Create(
 
     object=new(memory) P360WaveStream(
         Owner,
-        PortStream);
+        PortStream,
+        Context);
     *Stream=static_cast<IMiniportWaveRTStream *>(object);
     return STATUS_SUCCESS;
 }
@@ -1022,6 +1107,7 @@ p360_register_wave(
     _In_ PDEVICE_OBJECT DeviceObject,
     _In_opt_ PIRP Irp,
     _In_ PRESOURCELIST ResourceList,
+    _Inout_ P360_DEVICE_CONTEXT *Context,
     _Outptr_ PUNKNOWN *UnknownPort
     )
 {
@@ -1040,7 +1126,9 @@ p360_register_wave(
     if (!NT_SUCCESS(status))
         return status;
 
-    status=P360WaveMiniport::Create(&miniport);
+    status=P360WaveMiniport::Create(
+        Context,
+        &miniport);
     if (!NT_SUCCESS(status))
         goto done;
 
@@ -1102,6 +1190,7 @@ p360_speaker_endpoint_install(
     PDEVICE_OBJECT DeviceObject,
     PIRP Irp,
     PRESOURCELIST ResourceList,
+    P360_DEVICE_CONTEXT *Context,
     PVOID *TopologyPort,
     PVOID *WavePort
     )
@@ -1110,7 +1199,7 @@ p360_speaker_endpoint_install(
     PUNKNOWN wave=NULL;
     NTSTATUS status;
 
-    if (!DeviceObject || !ResourceList ||
+    if (!DeviceObject || !ResourceList || !Context ||
         !TopologyPort || !WavePort ||
         KeGetCurrentIrql()!=PASSIVE_LEVEL) {
         return STATUS_INVALID_PARAMETER;
@@ -1131,6 +1220,7 @@ p360_speaker_endpoint_install(
         DeviceObject,
         Irp,
         ResourceList,
+        Context,
         &wave);
     if (!NT_SUCCESS(status))
         goto done;
