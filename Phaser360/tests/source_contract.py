@@ -918,6 +918,13 @@ for token in (
     if token not in final_build:
         raise SystemExit(f"full driver build flag missing: {token}")
 
+board_c=(ROOT/"src/p360_board.c").read_text()
+if "facts->ssp1_render" not in board_c:
+    raise SystemExit("speaker NHLT policy lost SSP1 render requirement")
+for forbidden in ("facts->ssp2_render &&","facts->ssp2_capture &&","facts->dmic_capture;"):
+    if forbidden in board_c:
+        raise SystemExit(f"speaker NHLT policy regained unrelated endpoint gate: {forbidden}")
+
 production_inf=(ROOT/"production/P360AudioBundle.inx").read_text()
 full_installer=(ROOT/"full_install/P360_FULL_INSTALL.ps1").read_text()
 force_installer=(ROOT/"full_install/P360_FORCE_INSTALL.cpp").read_text()
@@ -972,6 +979,7 @@ for token in (
 
 for function_name in (
     "Assert-Package",
+    "Assert-PlatformPrerequisites",
     "Ensure-OriginalBackup",
     "Report-NonAudioBoot0000",
     "Force-FullDriverBinding",
@@ -1000,6 +1008,8 @@ for token in (
     "FULL_INSTALL_ROUND=",
     "WINDOWS_AUDIO_ENDPOINT=PASS",
     "WASAPI_DEVICE_FORMAT_RESET=PASS",
+    "COOLSTAR_BUS=PASS",
+    "AMP_GPIO_RESOURCE=PASS_BY_DEVICE_START",
     "NOT_AUDIO_BLOCKER=YES",
     "FULL_DRIVER_INSTALL=PASS",
     "AUTOMATIC_ROLLBACK=NO",
@@ -1072,6 +1082,20 @@ for forbidden in (
 ):
     if forbidden in full_build:
         raise SystemExit(f"physical playback manifest gate reintroduced: {forbidden}")
+
+cs_bus=(ROOT/"src/p360_cs_bus.c").read_text()
+if "!bus->iface.GetCaptureStream" in cs_bus:
+    raise SystemExit("speaker-only startup still hard-requires unused capture ABI")
+for token in (
+    "!bus->iface.GetRenderStream",
+    "!bus->iface.FreeStream",
+    "!bus->iface.PrepareDSP",
+    "!bus->iface.CleanupDSP",
+    "!bus->iface.TriggerDSP",
+    "!bus->iface.StreamPosition",
+):
+    if token not in cs_bus:
+        raise SystemExit(f"speaker CoolStar ABI requirement missing: {token}")
 
 for token in (
     "WdfDriverInitNoDispatchOverride",
