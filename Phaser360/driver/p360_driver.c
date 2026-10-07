@@ -738,8 +738,19 @@ p360_host_playback_start(
         goto fail_arm;
     playback->SpeakerStarted=TRUE;
 
-    return p360_telemetry_stage(
+    status=p360_telemetry_stage(
         P360_TELEM_STAGE_AMP_STARTED);
+    if (!NT_SUCCESS(status)) {
+        NTSTATUS stopStatus=
+            p360_host_playback_stop(ctx,playback);
+        if (!NT_SUCCESS(stopStatus))
+            p360_state_fail(
+                &ctx->State,
+                P360_FAIL_SPEAKER_GUARD);
+        return status;
+    }
+
+    return STATUS_SUCCESS;
 
 fail_arm:
     if (playback->SpeakerArmed) {
@@ -788,17 +799,27 @@ p360_host_playback_stop(
      */
     if (playback->SpeakerStarted) {
         status=p360_csaudio_speaker_stop(&ctx->CsAudio);
-        if (!NT_SUCCESS(status) && NT_SUCCESS(firstStatus))
-            firstStatus=status;
-        playback->SpeakerStarted=FALSE;
+        if (!NT_SUCCESS(status)) {
+            /*
+             * Keep both local and state-machine ownership latched if MAX98357A
+             * STOP could not be delivered. We still stop SOF/HDA below to
+             * remove sample flow, but a later release can retry the mute and a
+             * new speaker RUN cannot silently proceed.
+             */
+            if (NT_SUCCESS(firstStatus))
+                firstStatus=status;
+        } else {
+            playback->SpeakerStarted=FALSE;
+        }
     }
 
-    if (playback->SpeakerArmed) {
+    if (playback->SpeakerArmed && !playback->SpeakerStarted) {
         if (!p360_state_speaker_disarm(&ctx->State) &&
             NT_SUCCESS(firstStatus)) {
             firstStatus=STATUS_INVALID_DEVICE_STATE;
+        } else {
+            playback->SpeakerArmed=FALSE;
         }
-        playback->SpeakerArmed=FALSE;
     }
 
     if (playback->SofRunning) {
