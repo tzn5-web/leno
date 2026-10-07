@@ -282,14 +282,14 @@ int p360_ipc3_build_playback_pipe_new(struct p360_ipc3_message *out,
     put32(d+4,P360_IPC3_GLB_TPLG_MSG|P360_IPC3_TPLG_PIPE_NEW);
     put32(d+8,ids->pipe_comp_id);
     put32(d+12,ids->pipeline_id);
-    put32(d+16,ids->host_id);
+    put32(d+16,ids->dai_id);
     put32(d+20,0u);
     put32(d+24,period_us);
     put32(d+28,0u);
     put32(d+32,0u);
     put32(d+36,frames_per_sched);
     put32(d+40,0u);
-    put32(d+44,P360_IPC3_TIME_DMA);
+    put32(d+44,P360_IPC3_TIME_TIMER);
     out->bytes=P360_IPC3_PIPE_NEW_BYTES;
     return P360_IPC3_TOPOLOGY_OK;
 }
