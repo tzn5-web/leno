@@ -23,7 +23,15 @@ static void test_board(void)
     assert(P360_SPEAKER_SSP1_MCLK_HZ == 19200000u);
     assert(P360_SPEAKER_SSP1_MCLK_ID == 1u);
 
+    /* Unimplemented capture/headset endpoints are not speaker prerequisites. */
     bad.ssp2_capture = 0;
+    bad.ssp2_render = 0;
+    bad.dmic_capture = 0;
+    assert(p360_board_validate_nhlt(&bad));
+
+    /* SSP1 speaker render remains mandatory. */
+    bad = ok;
+    bad.ssp1_render = 0;
     assert(!p360_board_validate_nhlt(&bad));
 }
 
