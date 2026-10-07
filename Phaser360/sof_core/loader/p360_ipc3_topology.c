@@ -198,7 +198,7 @@ int p360_ipc3_build_playback_dai_new(struct p360_ipc3_message *out,
     d=out->data;
     put_comp(d,P360_IPC3_DAI_NEW_BYTES,ids->dai_id,
         P360_IPC3_COMP_DAI,ids->pipeline_id);
-    put_config(d+28,0u,2u,P360_IPC3_FRAME_S32_LE);
+    put_config(d+28,0u,2u,P360_IPC3_FRAME_S16_LE);
     put32(d+64,P360_IPC3_STREAM_PLAYBACK);
     put32(d+68,dai_index);
     put32(d+72,P360_IPC3_DAI_INTEL_SSP);
