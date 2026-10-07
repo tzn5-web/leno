@@ -307,11 +307,12 @@ static int p360_ipc3_build_tone_enum_control(
     put32(d+4,P360_IPC3_GLB_COMP_MSG|P360_IPC3_COMP_SET_DATA);
     put32(d+8,0u);
     put32(d+12,comp_id);
-    put32(d+16,P360_IPC3_CTRL_TYPE_VALUE_COMP_SET);
+    put32(d+16,P360_IPC3_CTRL_TYPE_DATA_SET);
     put32(d+20,P360_IPC3_CTRL_CMD_ENUM);
     put32(d+24,control_index);
 
-    /* Host buffer is unused for component enum controls and remains zero. */
+    /* Empty host buffer still carries its ABI struct size. */
+    put32(d+28,28u);
     put32(d+56,channels);
     put32(d+60,0u);
     put32(d+64,0u);

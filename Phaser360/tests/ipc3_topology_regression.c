@@ -98,7 +98,7 @@ int main(void)
     assert(m.bytes==140u && u32(m.data)==140u);
     assert(u32(m.data+4)==0x50030000u);
     assert(u32(m.data+12)==ids.tone_id);
-    assert(u32(m.data+16)==P360_IPC3_CTRL_TYPE_VALUE_COMP_SET);
+    assert(u32(m.data+16)==P360_IPC3_CTRL_TYPE_DATA_SET);
     assert(u32(m.data+20)==P360_IPC3_CTRL_CMD_ENUM);
     assert(u32(m.data+24)==P360_IPC3_TONE_IDX_AMPLITUDE);
     assert(u32(m.data+28)==0u && u32(m.data+56)==2u);
