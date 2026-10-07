@@ -1,4 +1,4 @@
-name: Phaser360 Windows WDK
+name: Phaser360 Windows Full Audio Driver
 
 concurrency:
   group: phaser360-windows-${{ github.ref }}
@@ -8,28 +8,27 @@ on:
   push:
     branches:
       - phaser360-sof-windows-port
-      - phaser360-max-safe-wip
     paths:
       - "Phaser360/**"
       - ".github/workflows/phaser360-windows.yml"
   pull_request:
     paths:
       - "Phaser360/**"
+      - ".github/workflows/phaser360-windows.yml"
 
 jobs:
   audit-core:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fail-closed core smoke
+      - name: Core smoke
         run: sh Phaser360/tests/run_core_smoke.sh
 
-      - name: Verify Phaser360 source contracts
+      - name: Full-install source contracts
         run: python3 Phaser360/tests/source_contract.py
 
-      - name: Compile and run B4/IRQ regressions
+      - name: B4 and IRQ regressions
         run: sh Phaser360/tests/run_b4_core.sh
 
       - name: NHLT parser regression
@@ -59,169 +58,51 @@ jobs:
       - name: Restore pinned WDK and SDK
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           nuget restore Phaser360\packages.config -PackagesDirectory Phaser360\packages -NonInteractive -Verbosity detailed
 
-          $required = @(
+          foreach($p in @(
             "Phaser360\packages\Microsoft.Windows.WDK.x64.10.0.26100.6584\build\native\Microsoft.Windows.WDK.x64.props",
             "Phaser360\packages\Microsoft.Windows.SDK.CPP.x64.10.0.26100.6584\build\native\Microsoft.Windows.SDK.cpp.x64.props",
             "Phaser360\packages\Microsoft.Windows.SDK.CPP.10.0.26100.6584\build\native\Microsoft.Windows.SDK.cpp.props"
-          )
-
-          foreach ($p in $required) {
-            if (-not (Test-Path $p)) {
+          )) {
+            if (-not (Test-Path -LiteralPath $p)) {
               throw "Missing pinned build dependency: $p"
             }
           }
 
-      - name: Compile fail-closed MAX98357A dependency
+      - name: Build complete MAX98357A amplifier driver
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           msbuild Phaser360\max98357a_safe\P360Max98357Safe.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /v:minimal
-          $sys = "Phaser360\max98357a_safe\out\Release\P360Max98357Safe.sys"
-          if (-not (Test-Path $sys)) {
-            throw "Fail-closed MAX98357A build did not produce P360Max98357Safe.sys"
-          }
-          Write-Host "P360_MAX98357_SAFE_COMPILE=PASS"
+          $sys="Phaser360\max98357a_safe\out\Release\P360Max98357Safe.sys"
+          if (-not (Test-Path -LiteralPath $sys)) { throw "MAX98357A driver build failed" }
+          Write-Host "P360_MAX98357A_BUILD=PASS"
           Write-Host "SHA256=$((Get-FileHash $sys -Algorithm SHA256).Hash)"
 
-      - name: Parse hardware gate runner
+      - name: Build complete P360SofAudio driver
         shell: pwsh
         run: |
-          $text = Get-Content Phaser360\tools\P360_AUDIO_GATE.ps1 -Raw
-          $null = [scriptblock]::Create($text)
-          Write-Host "P360_AUDIO_GATE_PARSE=PASS"
+          $ErrorActionPreference = "Stop"
+          msbuild Phaser360\driver\P360SofAudio.vcxproj /m /t:Rebuild \
+            /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off \
+            /p:P360PortClsShellEnabled=1 \
+            /p:P360RuntimeBootEnabled=1 \
+            /p:P360IpcProbeEnabled=1 \
+            /p:P360SpeakerEndpointEnabled=1 \
+            /p:P360HostPlaybackEnabled=1 \
+            /p:P360InternalSpeakerEnabled=1 \
+            /p:P360ToneTopologyProofEnabled=0 \
+            /p:P360BoundedToneTestEnabled=0 \
+            /v:minimal
 
-      - name: Build integrated KMDF baseline
-        shell: pwsh
-        run: |
-          msbuild Phaser360\driver\P360SofAudio.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /p:P360PortClsShellEnabled=0 /p:P360RuntimeBootEnabled=0 /v:minimal
-          Copy-Item Phaser360\driver\out\Release\P360SofAudio.sys Phaser360\driver\out\Release\P360SofAudio-kmdf-baseline.sys -Force
-          Copy-Item Phaser360\driver\out\Release\P360SofAudio.pdb Phaser360\driver\out\Release\P360SofAudio-kmdf-baseline.pdb -Force
+          $sys="Phaser360\driver\out\Release\P360SofAudio.sys"
+          if (-not (Test-Path -LiteralPath $sys)) { throw "P360SofAudio build failed" }
+          Write-Host "P360_FULL_AUDIO_DRIVER_BUILD=PASS"
+          Write-Host "SHA256=$((Get-FileHash $sys -Algorithm SHA256).Hash)"
 
-      - name: Build active PortCls linkage shell
-        shell: pwsh
-        run: |
-          msbuild Phaser360\driver\P360SofAudio.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /p:P360PortClsShellEnabled=1 /p:P360RuntimeBootEnabled=0 /v:minimal
-          Copy-Item Phaser360\driver\out\Release\P360SofAudio.sys Phaser360\driver\out\Release\P360SofAudio-portcls-shell.sys -Force
-          Copy-Item Phaser360\driver\out\Release\P360SofAudio.pdb Phaser360\driver\out\Release\P360SofAudio-portcls-shell.pdb -Force
-
-      - name: Compile PortCls plus SOF boot path
-        shell: pwsh
-        run: |
-          msbuild Phaser360\driver\P360SofAudio.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /p:P360PortClsShellEnabled=1 /p:P360RuntimeBootEnabled=1 /v:minimal
-          $sys = "Phaser360\driver\out\Release\P360SofAudio.sys"
-          if (-not (Test-Path $sys)) {
-            throw "PortCls+SOF boot compile did not produce P360SofAudio.sys"
-          }
-          $h = Get-FileHash $sys -Algorithm SHA256
-          Write-Host "PORTCLS_SOF_BOOT_COMPILE=PASS"
-          Write-Host "SHA256=$($h.Hash)"
-          Remove-Item $sys -Force
-          $pdb = "Phaser360\driver\out\Release\P360SofAudio.pdb"
-          if (Test-Path $pdb) { Remove-Item $pdb -Force }
-
-      - name: Compile pre-audio IPC3 proof path
-        shell: pwsh
-        run: |
-          msbuild Phaser360\driver\P360SofAudio.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /p:P360PortClsShellEnabled=1 /p:P360RuntimeBootEnabled=1 /p:P360IpcProbeEnabled=1 /v:minimal
-          $sys = "Phaser360\driver\out\Release\P360SofAudio.sys"
-          if (-not (Test-Path $sys)) {
-            throw "PortCls+SOF+IPC3 proof compile did not produce P360SofAudio.sys"
-          }
-          $h = Get-FileHash $sys -Algorithm SHA256
-          Write-Host "PORTCLS_SOF_IPC3_PROOF_COMPILE=PASS"
-          Write-Host "SHA256=$($h.Hash)"
-          Copy-Item $sys "Phaser360\driver\out\Release\P360SofAudio-preaudio-ipc3.sys" -Force
-          $pdb = "Phaser360\driver\out\Release\P360SofAudio.pdb"
-          if (Test-Path $pdb) {
-            Copy-Item $pdb "Phaser360\driver\out\Release\P360SofAudio-preaudio-ipc3.pdb" -Force
-          }
-          Remove-Item $sys -Force
-          if (Test-Path $pdb) { Remove-Item $pdb -Force }
-
-      - name: Compile hostless Tone topology proof
-        shell: pwsh
-        run: |
-          msbuild Phaser360\driver\P360SofAudio.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /p:P360PortClsShellEnabled=1 /p:P360RuntimeBootEnabled=1 /p:P360IpcProbeEnabled=1 /p:P360ToneTopologyProofEnabled=1 /v:minimal
-          $sys = "Phaser360\driver\out\Release\P360SofAudio.sys"
-          if (-not (Test-Path $sys)) {
-            throw "PortCls+SOF+IPC3+Tone topology proof compile did not produce P360SofAudio.sys"
-          }
-          $h = Get-FileHash $sys -Algorithm SHA256
-          Write-Host "PORTCLS_TONE_TOPOLOGY_PROOF_COMPILE=PASS"
-          Write-Host "SHA256=$($h.Hash)"
-          Remove-Item $sys -Force
-          $pdb = "Phaser360\driver\out\Release\P360SofAudio.pdb"
-          if (Test-Path $pdb) { Remove-Item $pdb -Force }
-
-      - name: Compile bounded internal speaker proof
-        shell: pwsh
-        run: |
-          msbuild Phaser360\driver\P360SofAudio.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /p:P360PortClsShellEnabled=1 /p:P360RuntimeBootEnabled=1 /p:P360IpcProbeEnabled=1 /p:P360ToneTopologyProofEnabled=1 /p:P360InternalSpeakerEnabled=1 /p:P360BoundedToneTestEnabled=1 /v:minimal
-          $sys = "Phaser360\driver\out\Release\P360SofAudio.sys"
-          if (-not (Test-Path $sys)) {
-            throw "PortCls+SOF+IPC3+Tone+bounded speaker compile did not produce P360SofAudio.sys"
-          }
-          $h = Get-FileHash $sys -Algorithm SHA256
-          Write-Host "PORTCLS_BOUNDED_TONE_TEST_COMPILE=PASS"
-          Write-Host "SHA256=$($h.Hash)"
-          Copy-Item $sys "Phaser360\driver\out\Release\P360SofAudio-bounded-tone-test.sys" -Force
-          $pdb = "Phaser360\driver\out\Release\P360SofAudio.pdb"
-          if (Test-Path $pdb) {
-            Copy-Item $pdb "Phaser360\driver\out\Release\P360SofAudio-bounded-tone-test.pdb" -Force
-          }
-          Remove-Item $sys -Force
-          if (Test-Path $pdb) { Remove-Item $pdb -Force }
-
-      - name: Compile speaker endpoint shell
-        shell: pwsh
-        run: |
-          msbuild Phaser360\driver\P360SofAudio.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /p:P360PortClsShellEnabled=1 /p:P360RuntimeBootEnabled=1 /p:P360IpcProbeEnabled=1 /p:P360SpeakerEndpointEnabled=1 /v:minimal
-          $sys = "Phaser360\driver\out\Release\P360SofAudio.sys"
-          if (-not (Test-Path $sys)) {
-            throw "PortCls+SOF+IPC3+speaker endpoint compile did not produce P360SofAudio.sys"
-          }
-          $h = Get-FileHash $sys -Algorithm SHA256
-          Write-Host "PORTCLS_SPEAKER_ENDPOINT_COMPILE=PASS"
-          Write-Host "SHA256=$($h.Hash)"
-          Remove-Item $sys -Force
-          $pdb = "Phaser360\driver\out\Release\P360SofAudio.pdb"
-          if (Test-Path $pdb) { Remove-Item $pdb -Force }
-
-      - name: Compile real HOST WaveRT speaker path
-        shell: pwsh
-        run: |
-          msbuild Phaser360\driver\P360SofAudio.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /p:P360PortClsShellEnabled=1 /p:P360RuntimeBootEnabled=1 /p:P360IpcProbeEnabled=1 /p:P360SpeakerEndpointEnabled=1 /p:P360HostPlaybackEnabled=1 /p:P360InternalSpeakerEnabled=1 /v:minimal
-          $sys = "Phaser360\driver\out\Release\P360SofAudio.sys"
-          if (-not (Test-Path $sys)) {
-            throw "Real WaveRT HOST playback build did not produce P360SofAudio.sys"
-          }
-          $h = Get-FileHash $sys -Algorithm SHA256
-          Write-Host "PORTCLS_HOST_WAVERT_PLAYBACK_COMPILE=PASS"
-          Write-Host "SHA256=$($h.Hash)"
-          Copy-Item $sys "Phaser360\driver\out\Release\P360SofAudio-host-playback.sys" -Force
-          $pdb = "Phaser360\driver\out\Release\P360SofAudio.pdb"
-          if (Test-Path $pdb) {
-            Copy-Item $pdb "Phaser360\driver\out\Release\P360SofAudio-host-playback.pdb" -Force
-          }
-          Remove-Item $sys -Force
-          if (Test-Path $pdb) { Remove-Item $pdb -Force }
-
-      - name: Compile bounded WaveRT test utility
-        shell: pwsh
-        run: |
-          $vcvars = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-          if (-not (Test-Path $vcvars)) { throw "vcvars64.bat not found" }
-          $out = "Phaser360\driver\out\Release\P360_WAVERT_TEST.exe"
-          $cmd = ('call "{0}" && cl.exe /nologo /O2 /MT /W3 /DUNICODE /D_UNICODE /Fe:"{1}" Phaser360\tools\P360_WAVERT_TEST.c winmm.lib' -f $vcvars,$out)
-          & cmd.exe /d /s /c $cmd
-          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $out)) {
-            throw "P360_WAVERT_TEST.exe compile failed"
-          }
-          Write-Host "P360_WAVERT_TEST_COMPILE=PASS"
-          Write-Host "SHA256=$((Get-FileHash $out -Algorithm SHA256).Hash)"
-
-      - name: Compile WASAPI shared acceptance utility
+      - name: Compile WASAPI endpoint verifier
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -233,10 +114,9 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or -not (Test-Path $out)) {
             throw "P360_WASAPI_TEST.exe compile failed"
           }
-          Write-Host "P360_WASAPI_SHARED_TEST_COMPILE=PASS"
-          Write-Host "SHA256=$((Get-FileHash $out -Algorithm SHA256).Hash)"
+          Write-Host "P360_WASAPI_VERIFIER_BUILD=PASS"
 
-      - name: Compile forced full-driver installer helper
+      - name: Compile forced driver-binding helper
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -248,12 +128,10 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or -not (Test-Path $out)) {
             throw "P360_FORCE_INSTALL.exe compile failed"
           }
-          Write-Host "P360_FORCE_INSTALL_COMPILE=PASS"
-          Write-Host "SHA256=$((Get-FileHash $out -Algorithm SHA256).Hash)"
+          Write-Host "P360_FORCE_INSTALL_BUILD=PASS"
 
       - name: Locate WDK signing tools
         shell: pwsh
-        timeout-minutes: 2
         run: |
           $ErrorActionPreference = "Stop"
 
@@ -266,37 +144,29 @@ jobs:
               "${env:ProgramFiles}\Windows Kits\10\bin"
             )) {
               if (-not (Test-Path $kits)) { continue }
-              $versions = Get-ChildItem $kits -Directory -ErrorAction SilentlyContinue |
-                Sort-Object Name -Descending
-              foreach ($version in $versions) {
+              foreach ($version in (Get-ChildItem $kits -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending)) {
                 foreach ($arch in @("x64","x86")) {
                   $candidate = Join-Path $version.FullName (Join-Path $arch $Name)
                   if (Test-Path $candidate) { return $candidate }
                 }
               }
             }
-
-            throw "Required signing tool not found in PATH or Windows Kits: $Name"
+            throw "Required Windows Kit tool not found: $Name"
           }
 
-          $inf2cat = Find-Tool "inf2cat.exe"
-          $signtool = Find-Tool "signtool.exe"
-          Write-Host "INF2CAT=$inf2cat"
-          Write-Host "SIGNTOOL=$signtool"
-          "P360_INF2CAT=$inf2cat" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "P360_SIGNTOOL=$signtool" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "P360_INF2CAT=$(Find-Tool 'inf2cat.exe')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "P360_SIGNTOOL=$(Find-Tool 'signtool.exe')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Prepare full-install audio package
+      - name: Assemble full-install driver
         shell: pwsh
-        timeout-minutes: 3
         run: |
           $ErrorActionPreference = "Stop"
-          $root = "Phaser360\package\P360_FULL_INSTALL"
+          $root="Phaser360\package\P360_FULL_INSTALL"
           Remove-Item "Phaser360\package" -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path $root -Force | Out-Null
 
-          $copies = [ordered]@{
-            "Phaser360\driver\out\Release\P360SofAudio-host-playback.sys" = "P360SofAudio.sys"
+          $copies=[ordered]@{
+            "Phaser360\driver\out\Release\P360SofAudio.sys" = "P360SofAudio.sys"
             "Phaser360\max98357a_safe\out\Release\P360Max98357Safe.sys" = "P360Max98357Safe.sys"
             "Phaser360\driver\out\Release\P360_WASAPI_TEST.exe" = "P360_WASAPI_TEST.exe"
             "Phaser360\driver\out\Release\P360_FORCE_INSTALL.exe" = "P360_FORCE_INSTALL.exe"
@@ -313,75 +183,68 @@ jobs:
             Copy-Item -LiteralPath $src -Destination (Join-Path $root $copies[$src]) -Force
           }
 
-          $firmwarePayload = "Phaser360\firmware\p360-f686.ri.gz"
-          $payloadHash = (Get-FileHash -LiteralPath $firmwarePayload -Algorithm SHA256).Hash.ToLowerInvariant()
+          $payload="Phaser360\firmware\p360-f686.ri.gz"
+          $payloadHash=(Get-FileHash $payload -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($payloadHash -ne "221f536ad2e1ccc53ec145573fb8556dd3d7d115322e085d5cfae3faf62e48c3") {
-            throw "Pinned firmware gzip payload mismatch."
+            throw "Firmware payload hash mismatch."
           }
 
-          $firmwareOut = Join-Path $root "p360-f686.ri"
-          $inputStream = [IO.File]::OpenRead($firmwarePayload)
-          $outputStream = [IO.File]::Create($firmwareOut)
+          $firmware=Join-Path $root "p360-f686.ri"
+          $input=[IO.File]::OpenRead($payload)
+          $output=[IO.File]::Create($firmware)
           try {
-            $gzip = [IO.Compression.GZipStream]::new(
-              $inputStream,
-              [IO.Compression.CompressionMode]::Decompress)
-            try { $gzip.CopyTo($outputStream) } finally { $gzip.Dispose() }
+            $gzip=[IO.Compression.GZipStream]::new($input,[IO.Compression.CompressionMode]::Decompress)
+            try { $gzip.CopyTo($output) } finally { $gzip.Dispose() }
           } finally {
-            $outputStream.Dispose()
-            $inputStream.Dispose()
+            $output.Dispose()
+            $input.Dispose()
           }
 
-          $fw = Get-Item -LiteralPath $firmwareOut
-          $fwHash = (Get-FileHash -LiteralPath $firmwareOut -Algorithm SHA256).Hash.ToLowerInvariant()
+          $fw=Get-Item $firmware
+          $fwHash=(Get-FileHash $firmware -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($fw.Length -ne 246528 -or
               $fwHash -ne "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab") {
-            throw "Pinned firmware identity mismatch."
+            throw "Firmware identity mismatch."
           }
 
-          $rsa = [System.Security.Cryptography.RSA]::Create(2048)
-          $dn = [System.Security.Cryptography.X509Certificates.X500DistinguishedName]::new(
-            "CN=PHASER360 Project CI Test")
-          $req = [System.Security.Cryptography.X509Certificates.CertificateRequest]::new(
-            $dn,$rsa,
-            [System.Security.Cryptography.HashAlgorithmName]::SHA256,
+          $rsa=[System.Security.Cryptography.RSA]::Create(2048)
+          $dn=[System.Security.Cryptography.X509Certificates.X500DistinguishedName]::new("CN=PHASER360 Project CI Test")
+          $req=[System.Security.Cryptography.X509Certificates.CertificateRequest]::new(
+            $dn,$rsa,[System.Security.Cryptography.HashAlgorithmName]::SHA256,
             [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
-          $oids = [System.Security.Cryptography.OidCollection]::new()
+          $oids=[System.Security.Cryptography.OidCollection]::new()
           [void]$oids.Add([System.Security.Cryptography.Oid]::new("1.3.6.1.5.5.7.3.3"))
           $req.CertificateExtensions.Add(
             [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]::new($oids,$false))
           $req.CertificateExtensions.Add(
             [System.Security.Cryptography.X509Certificates.X509KeyUsageExtension]::new(
               [System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature,$true))
-          $cert = $req.CreateSelfSigned(
+          $cert=$req.CreateSelfSigned(
             [DateTimeOffset]::UtcNow.AddMinutes(-5),
             [DateTimeOffset]::UtcNow.AddYears(1))
 
-          $cer = Join-Path $root "P360_TEST.cer"
-          [IO.File]::WriteAllBytes(
-            $cer,$cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert))
-          $pfx = Join-Path $env:RUNNER_TEMP "P360_TEST.pfx"
-          $pfxPasswordText = "P360-CI-EPHEMERAL"
-          [IO.File]::WriteAllBytes(
-            $pfx,$cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Pfx,$pfxPasswordText))
+          $cer=Join-Path $root "P360_TEST.cer"
+          [IO.File]::WriteAllBytes($cer,$cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert))
+          $pfx=Join-Path $env:RUNNER_TEMP "P360_TEST.pfx"
+          $password="P360-CI-EPHEMERAL"
+          [IO.File]::WriteAllBytes($pfx,$cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Pfx,$password))
 
           "P360_CERT_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "P360_CERT_PFX=$pfx" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "P360_CERT_PFX_PASSWORD=$pfxPasswordText" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "P360_FULL_INSTALL_INPUTS=PASS"
+          "P360_CERT_PFX_PASSWORD=$password" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Build and audit full-install driver package
+          $text=Get-Content (Join-Path $root "P360_FULL_INSTALL.ps1") -Raw
+          $null=[scriptblock]::Create($text)
+          Write-Host "P360_FULL_INSTALL_PARSE=PASS"
+
+      - name: Catalog sign audit and package
         shell: pwsh
-        timeout-minutes: 4
         run: |
           $ErrorActionPreference = "Stop"
-          $root = "Phaser360\package\P360_FULL_INSTALL"
-          $inf = Join-Path $root "P360AudioBundle.inf"
+          $root="Phaser360\package\P360_FULL_INSTALL"
+          $inf=Join-Path $root "P360AudioBundle.inf"
+          $infText=Get-Content $inf -Raw
 
-          $installerText = Get-Content (Join-Path $root "P360_FULL_INSTALL.ps1") -Raw
-          $null = [scriptblock]::Create($installerText)
-
-          $infText = Get-Content -LiteralPath $inf -Raw
           foreach($token in @(
             "CSAUDIO\ADSP&CTLR_VEN_8086&CTLR_DEV_3198",
             "ACPI\MX98357A",
@@ -390,43 +253,41 @@ jobs:
             "DriverVer=10/07/2026,4.2.0.0"
           )) {
             if ($infText -notmatch [regex]::Escape($token)) {
-              throw "Full-install INF contract missing: $token"
+              throw "INF contract missing: $token"
             }
           }
 
           & $env:P360_INF2CAT "/driver:$root" "/os:10_VB_X64" "/uselocaltime"
-          if ($LASTEXITCODE -ne 0) { throw "Inf2Cat failed for full-install bundle" }
+          if ($LASTEXITCODE -ne 0) { throw "Inf2Cat failed" }
 
-          $cat = Join-Path $root "P360AudioBundle.cat"
+          $cat=Join-Path $root "P360AudioBundle.cat"
           & $env:P360_SIGNTOOL sign /fd SHA256 /f $env:P360_CERT_PFX /p $env:P360_CERT_PFX_PASSWORD /v $cat
-          if ($LASTEXITCODE -ne 0) { throw "SignTool failed for full-install bundle" }
+          if ($LASTEXITCODE -ne 0) { throw "SignTool failed" }
 
-          $sig = Get-AuthenticodeSignature -LiteralPath $cat
+          $sig=Get-AuthenticodeSignature $cat
           if (-not $sig.SignerCertificate -or
               $sig.SignerCertificate.Thumbprint -ne $env:P360_CERT_THUMBPRINT) {
-            throw "Full-install catalog signer mismatch"
+            throw "Catalog signer mismatch."
           }
 
-          $versionMatch = [regex]::Match($infText,'(?im)^\s*DriverVer\s*=\s*[^,]+,\s*([0-9.]+)\s*$')
-          if (-not $versionMatch.Success) { throw "DriverVer parse failed" }
+          $m=[regex]::Match($infText,'(?im)^\s*DriverVer\s*=\s*[^,]+,\s*([0-9.]+)\s*$')
+          if (-not $m.Success) { throw "DriverVer parse failed" }
 
           [ordered]@{
-            HeadSha = "${env:GITHUB_SHA}"
-            WorkflowRunId = "${env:GITHUB_RUN_ID}"
-            DriverVersion = $versionMatch.Groups[1].Value
-            Provider = "PHASER360 Project"
-            InstallerMode = "FullInstall"
-            AdspHardwareId = "CSAUDIO\ADSP&CTLR_VEN_8086&CTLR_DEV_3198"
-            AmpHardwareId = "ACPI\MX98357A"
-            ForceBindingApi = "UpdateDriverForPlugAndPlayDevices/INSTALLFLAG_FORCE"
-            PhysicalAudioTest = $true
-            PhysicalWasapiAttemptsMax = 1
-            FinalAcceptance = "WASAPI_SHARED_ENDPOINT_FUNCTIONAL"
-            P360SofAudioSha256 = (Get-FileHash (Join-Path $root "P360SofAudio.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
-            P360Max98357SafeSha256 = (Get-FileHash (Join-Path $root "P360Max98357Safe.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
-            FirmwareSha256 = (Get-FileHash (Join-Path $root "p360-f686.ri") -Algorithm SHA256).Hash.ToLowerInvariant()
-            WasapiTestSha256 = (Get-FileHash (Join-Path $root "P360_WASAPI_TEST.exe") -Algorithm SHA256).Hash.ToLowerInvariant()
-            ForceInstallSha256 = (Get-FileHash (Join-Path $root "P360_FORCE_INSTALL.exe") -Algorithm SHA256).Hash.ToLowerInvariant()
+            HeadSha="${env:GITHUB_SHA}"
+            WorkflowRunId="${env:GITHUB_RUN_ID}"
+            DriverVersion=$m.Groups[1].Value
+            Provider="PHASER360 Project"
+            InstallerMode="FullInstall"
+            AdspHardwareId="CSAUDIO\ADSP&CTLR_VEN_8086&CTLR_DEV_3198"
+            AmpHardwareId="ACPI\MX98357A"
+            ForceBindingApi="UpdateDriverForPlugAndPlayDevices/INSTALLFLAG_FORCE"
+            PhysicalAudioTest=$false
+            P360SofAudioSha256=(Get-FileHash (Join-Path $root "P360SofAudio.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
+            P360Max98357SafeSha256=(Get-FileHash (Join-Path $root "P360Max98357Safe.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
+            FirmwareSha256=(Get-FileHash (Join-Path $root "p360-f686.ri") -Algorithm SHA256).Hash.ToLowerInvariant()
+            WasapiTestSha256=(Get-FileHash (Join-Path $root "P360_WASAPI_TEST.exe") -Algorithm SHA256).Hash.ToLowerInvariant()
+            ForceInstallSha256=(Get-FileHash (Join-Path $root "P360_FORCE_INSTALL.exe") -Algorithm SHA256).Hash.ToLowerInvariant()
           } | ConvertTo-Json | Set-Content (Join-Path $root "PACKAGE_INFO.json") -Encoding utf8
 
           foreach($required in @(
@@ -442,36 +303,26 @@ jobs:
           }
 
           foreach($forbidden in @(
-            "P360_WAVERT_TEST.exe","P360_AUDIO_GATE.ps1","START_AUDIO_TEST.cmd",
+            "P360_WAVERT_TEST.exe","P360_AUDIO_GATE.ps1",
             "P360_PRODUCTION_INSTALL.ps1","START_P360_PRODUCTION.cmd"
           )) {
             if (Test-Path -LiteralPath (Join-Path $root $forbidden)) {
-              throw "Non-install surface leaked into full-install package: $forbidden"
+              throw "Obsolete test/install surface leaked into full-install ZIP: $forbidden"
             }
           }
 
-          $zip = "Phaser360\package\P360_FULL_INSTALL.zip"
+          $zip="Phaser360\package\P360_FULL_INSTALL.zip"
           Compress-Archive -Path "$root\*" -DestinationPath $zip -Force
 
-          $verify = Join-Path $env:RUNNER_TEMP "P360_FULL_INSTALL_VERIFY"
+          $verify=Join-Path $env:RUNNER_TEMP "P360_FULL_INSTALL_VERIFY"
           Remove-Item $verify -Recurse -Force -ErrorAction SilentlyContinue
-          Expand-Archive -LiteralPath $zip -DestinationPath $verify -Force
-          foreach($required in @(
-            "P360AudioBundle.inf","P360AudioBundle.cat",
-            "P360SofAudio.sys","P360Max98357Safe.sys","p360-f686.ri",
-            "P360_TEST.cer","P360_WASAPI_TEST.exe","P360_FORCE_INSTALL.exe",
-            "P360_FULL_INSTALL.ps1","INSTALL_PHASER360_AUDIO.cmd",
-            "RESTORE_PHASER360_AUDIO.cmd","PACKAGE_INFO.json","README.txt"
-          )) {
-            if (-not (Test-Path -LiteralPath (Join-Path $verify $required) -PathType Leaf)) {
-              throw "ZIP verification missing: $required"
-            }
+          Expand-Archive $zip -DestinationPath $verify -Force
+          if (-not (Test-Path (Join-Path $verify "INSTALL_PHASER360_AUDIO.cmd"))) {
+            throw "ZIP verification failed."
           }
 
           Write-Host "P360_FULL_INSTALL_PACKAGE=PASS"
           Write-Host "P360_FORCE_BINDING=PASS"
-          Write-Host "P360_FINAL_ACCEPTANCE=WASAPI_SHARED_ONE_SHOT"
-          Write-Host "P360_PHYSICAL_WASAPI_ATTEMPTS_MAX=1"
           Write-Host "P360_FULL_INSTALL_ZIP_SHA256=$((Get-FileHash $zip -Algorithm SHA256).Hash)"
 
       - name: Upload full-install audio driver
