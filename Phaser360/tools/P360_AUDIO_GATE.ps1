@@ -446,11 +446,13 @@ function Get-Telemetry {
         return $null
     }
     $p = Get-ItemProperty -Path $TelemetryPath
+    $fwRaw = [uint32]$p.FirmwareError
+    $fwSigned = [BitConverter]::ToInt32([BitConverter]::GetBytes($fwRaw),0)
     return [pscustomobject]@{
         BuildFlags = [uint32]$p.BuildFlags
         Stage = [uint32]$p.Stage
         BootEpoch = [uint64]$p.BootEpoch
-        FirmwareError = [int32]([uint32]$p.FirmwareError)
+        FirmwareError = $fwSigned
         ReplyBytes = [uint32]$p.ReplyBytes
         FailureReason = [uint32]$p.FailureReason
         LastNtStatus = [uint32]$p.LastNtStatus
