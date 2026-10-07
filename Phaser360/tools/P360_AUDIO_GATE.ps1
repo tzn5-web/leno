@@ -479,6 +479,13 @@ function Wait-AmpBinding(
     return $null
 }
 
+function Get-SafeAmpStoreEntries($Info) {
+    return @(Get-WindowsDriver -Online -All | Where-Object {
+        [string]$_.ProviderName -eq [string]$Info.SafeAmpProvider -and
+        [string]$_.Version -eq [string]$Info.SafeAmpDriverVersion
+    })
+}
+
 function Install-SafeAmpPackage($Info,[string]$InstanceId) {
     $folder=Assert-SafeAmpPackage $Info
     Assert-CatalogSignatureFile (Join-Path $folder "P360Max98357Safe.cat")
@@ -495,37 +502,47 @@ function Install-SafeAmpPackage($Info,[string]$InstanceId) {
     $script:State.AmpDisabledByRunner=$true
     Save-State
 
-    $add=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/add-driver",$inf,"/install") -AllowFailure
+    $add=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/add-driver",$inf) -AllowFailure
     if ($add.ExitCode -ne 0) {
-        throw "Safe MAX98357A staging/install failed with exit code $($add.ExitCode)."
+        throw "Safe MAX98357A staging failed with exit code $($add.ExitCode)."
     }
     if ($add.Output -match "(?i)reboot is needed|restart is needed") {
-        throw "Safe MAX98357A installation requested reboot; refusing audio execution."
+        throw "Safe MAX98357A staging requested reboot; refusing audio execution."
     }
 
-    $enable=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/enable-device",$InstanceId) -AllowFailure
-    Write-RunLog "AMP_ENABLE_AFTER_STAGE_EXIT=$($enable.ExitCode)"
-    $null=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/restart-device",$InstanceId) -AllowFailure
+    $store=Get-SafeAmpStoreEntries $Info
+    if ($store.Count -ne 1 -or -not $store[0].Driver) {
+        throw "Could not identify exactly one staged safe MAX98357A package."
+    }
+    $script:State.SafeAmpInfName=[string]$store[0].Driver
+    Save-State
 
-    $bound=Wait-AmpBinding $InstanceId $version $provider $service 8
-    if (-not $bound) {
-        $null=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/disable-device",$InstanceId) -AllowFailure
-        $remove=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/remove-device",$InstanceId) -AllowFailure
-        if ($remove.ExitCode -ne 0) {
-            throw "Safe MAX98357A could not be selected and exact amp removal failed."
-        }
-        $scan=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure
-        if ($scan.ExitCode -ne 0) {
-            throw "PnP rescan failed while selecting safe MAX98357A."
-        }
-        $bound=Wait-AmpBinding $InstanceId $version $provider $service 15
+    # Old CoolStar is already in D0Exit (SDMODE low). Remove only the exact
+    # amplifier devnode, then let a clean scan select the pinned newer package.
+    $remove=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/remove-device",$InstanceId) -AllowFailure
+    if ($remove.ExitCode -ne 0) {
+        throw "Exact MAX98357A devnode removal failed."
     }
 
+    $deadline=(Get-Date).AddSeconds(8)
+    do {
+        Start-Sleep -Milliseconds 250
+        if (-not (Get-TargetByIdOrNull $InstanceId)) { break }
+    } while ((Get-Date) -lt $deadline)
+    if (Get-TargetByIdOrNull $InstanceId) {
+        throw "MAX98357A devnode did not disappear after exact removal."
+    }
+
+    $scan=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure
+    if ($scan.ExitCode -ne 0) {
+        throw "PnP rescan failed while selecting safe MAX98357A."
+    }
+
+    $bound=Wait-AmpBinding $InstanceId $version $provider $service 15
     if (-not $bound) {
         throw "MAX98357A did not bind to the pinned fail-closed driver."
     }
 
-    $script:State.SafeAmpInfName=[string]$bound.Driver.InfName
     $script:State.SafeAmpInstalled=$true
     $script:State.AmpDisabledByRunner=$false
     Save-State
@@ -545,14 +562,31 @@ function Restore-OriginalAmpDriver {
     }
 
     $instance=[string]$script:State.AmpInstanceId
+
+    # D0Exit of either safe MAX or upstream CoolStar drives SDMODE low.
     $null=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/disable-device",$instance) -AllowFailure
+
+    $dev=Get-TargetByIdOrNull $instance
+    if ($dev) {
+        $remove=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/remove-device",$instance) -AllowFailure
+        if ($remove.ExitCode -ne 0) {
+            throw "Could not remove exact MAX98357A devnode during restore."
+        }
+        $deadline=(Get-Date).AddSeconds(8)
+        do {
+            Start-Sleep -Milliseconds 250
+            if (-not (Get-TargetByIdOrNull $instance)) { break }
+        } while ((Get-Date) -lt $deadline)
+        if (Get-TargetByIdOrNull $instance) {
+            throw "MAX98357A devnode did not disappear during restore."
+        }
+    }
 
     if ($script:State.PSObject.Properties["SafeAmpInfName"] -and
         [string]$script:State.SafeAmpInfName) {
         $delete=Invoke-Tool -Exe "pnputil.exe" -Arguments @(
             "/delete-driver",
             [string]$script:State.SafeAmpInfName,
-            "/uninstall",
             "/force") -AllowFailure
         Write-RunLog "AMP_SAFE_DELETE_EXIT=$($delete.ExitCode)"
     }
@@ -564,25 +598,18 @@ function Restore-OriginalAmpDriver {
 
     $restore=Invoke-Tool -Exe "pnputil.exe" -Arguments @(
         "/add-driver",
-        [string]$script:State.AmpOriginalExportedInf,
-        "/install") -AllowFailure
+        [string]$script:State.AmpOriginalExportedInf) -AllowFailure
+    if ($restore.ExitCode -ne 0) {
+        throw "Original MAX98357A staging failed with exit code $($restore.ExitCode)."
+    }
     Write-RunLog "AMP_RESTORE_STAGE_EXIT=$($restore.ExitCode)"
 
-    $null=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/enable-device",$instance) -AllowFailure
-    $null=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/restart-device",$instance) -AllowFailure
-
-    $bound=Wait-AmpBinding $instance ([string]$script:State.AmpOriginalDriverVersion) ([string]$script:State.AmpOriginalProvider) ([string]$script:State.AmpOriginalService) 10
-
-    if (-not $bound) {
-        $null=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/disable-device",$instance) -AllowFailure
-        $null=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/remove-device",$instance) -AllowFailure
-        $scan=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure
-        if ($scan.ExitCode -ne 0) {
-            throw "MAX98357A baseline rescan failed."
-        }
-        $bound=Wait-AmpBinding $instance ([string]$script:State.AmpOriginalDriverVersion) ([string]$script:State.AmpOriginalProvider) ([string]$script:State.AmpOriginalService) 15
+    $scan=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure
+    if ($scan.ExitCode -ne 0) {
+        throw "MAX98357A baseline rescan failed."
     }
 
+    $bound=Wait-AmpBinding $instance ([string]$script:State.AmpOriginalDriverVersion) ([string]$script:State.AmpOriginalProvider) ([string]$script:State.AmpOriginalService) 15
     if (-not $bound) {
         throw "Original MAX98357A driver was not restored exactly."
     }
@@ -591,6 +618,7 @@ function Restore-OriginalAmpDriver {
     $script:State.AmpDisabledByRunner=$false
     $script:State.AmpRestoreVerified=$true
     Save-State
+
     Write-RunLog ("AMP_RESTORE=PASS SERVICE={0} VERSION={1} PROVIDER={2}" -f
         [string]$bound.Device.Service,
         [string]$bound.Driver.DriverVersion,
