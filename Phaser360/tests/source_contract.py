@@ -317,6 +317,8 @@ for token in (
     "FirmwareError -ne -22",
     "ReplyBytes -ne 12",
     "Disable-TargetAndProveStop",
+    "Get-WindowsDriver -Online -All",
+    "Assert-NoStaleTestPackage",
     "Restore-OriginalDriver",
     "Restore-Firmware",
     "Remove-TestCertificate",
