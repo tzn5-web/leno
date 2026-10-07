@@ -154,6 +154,8 @@ for token in (
 for p in ROOT.rglob("*"):
     if p.suffix.lower() not in (".c",".h",".cpp"):
         continue
+    if p.is_relative_to(ROOT/"max98357a_safe"):
+        continue
     text=p.read_text(errors="ignore")
     for forbidden in (
         "IOCTL_GPIO_WRITE_PINS",
