@@ -288,6 +288,34 @@ if run_i >= run_call_i:
 if "Hard barrier: the endpoint may enumerate" in speaker_endpoint:
     raise SystemExit("old enumerate-only WaveRT barrier was reintroduced")
 
+
+for token in (
+    "P360_SPEAKER_CONTAINER_BITS",
+    "WAVE_FORMAT_EXTENSIBLE",
+    "P360_SPEAKER_PCM_VALID_BITS",
+):
+    if token not in speaker_endpoint:
+        raise SystemExit(f"32-container/16-valid WaveRT contract missing: {token}")
+
+if "if (wave->wFormatTag==WAVE_FORMAT_PCM)" in speaker_endpoint:
+    raise SystemExit("plain PCM was reintroduced; it cannot express 16 valid bits in a 32-bit container")
+
+host_pcm_begin=ipc3_topology.index("int p360_ipc3_build_host_pcm_params")
+host_pcm_end=ipc3_topology.index("int p360_ipc3_build_pcm_free",host_pcm_begin)
+host_pcm=ipc3_topology[host_pcm_begin:host_pcm_end]
+for token in (
+    "put32(d+60,P360_IPC3_FRAME_S32_LE);",
+    "put16(d+76,2u); /* 16 valid bits */",
+    "put16(d+78,4u); /* forced 32-bit Windows/HDA container */",
+):
+    if token not in host_pcm:
+        raise SystemExit(f"SOF HOST container contract missing: {token}")
+
+playback_dai_begin=ipc3_topology.index("int p360_ipc3_build_playback_dai_new")
+playback_dai_end=ipc3_topology.index("int p360_ipc3_build_tone_new",playback_dai_begin)
+if "P360_IPC3_FRAME_S32_LE" not in ipc3_topology[playback_dai_begin:playback_dai_end]:
+    raise SystemExit("SOF DAI DMA container is not forced to S32 before SSP1 s16 backend")
+
 board_h=(ROOT/"include/p360_board.h").read_text()
 for token in (
     "#define P360_SPEAKER_CHANNELS 2u",
@@ -593,20 +621,27 @@ for token in (
 
 inf=(ROOT/"driver/P360SofAudio.inx").read_text()
 for token in (
-    "Class=System",
-    "ClassGuid={4D36E97D-E325-11CE-BFC1-08002BE10318}",
+    "Class=MEDIA",
+    "ClassGuid={4D36E96C-E325-11CE-BFC1-08002BE10318}",
     r"CSAUDIO\ADSP&CTLR_VEN_8086&CTLR_DEV_3198",
+    "Include=ks.inf,wdmaudio.inf",
+    "Needs=KS.Registration,WDMAUDIO.Registration",
+    "AddInterface=%KSCATEGORY_AUDIO%,%KSNAME_WaveSpeaker%,P360.I.WaveSpeaker",
+    "AddInterface=%KSCATEGORY_RENDER%,%KSNAME_WaveSpeaker%,P360.I.WaveSpeaker",
+    "AddInterface=%KSCATEGORY_REALTIME%,%KSNAME_WaveSpeaker%,P360.I.WaveSpeaker",
+    "AddInterface=%KSCATEGORY_TOPOLOGY%,%KSNAME_TopologySpeaker%,P360.I.TopologySpeaker",
+    'KSNAME_WaveSpeaker="WaveSpeaker"',
+    'KSNAME_TopologySpeaker="TopologySpeaker"',
+    "HKR,,DeviceType,0x10001,0x0000001D",
 ):
     if token not in inf:
-        raise SystemExit(f"proven Phaser360 System-class binding contract missing: {token}")
+        raise SystemExit(f"real PortCls media binding contract missing: {token}")
 for forbidden in (
-    "Class=MEDIA",
-    "ksthunk",
-    "KS.Registration",
-    "WDMAUDIO.Registration",
+    "Class=System",
+    "ClassGuid={4D36E97D-E325-11CE-BFC1-08002BE10318}",
 ):
     if forbidden in inf:
-        raise SystemExit(f"known-bad Phaser360 class/stack regression reintroduced: {forbidden}")
+        raise SystemExit(f"diagnostic System-class INF was reintroduced: {forbidden}")
 
 for token in (
     "P360_IPC3_PROOF_COMMAND     0xe0000000u",
