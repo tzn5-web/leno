@@ -953,6 +953,28 @@ for token in (
 if "DSPEnableSPIB" in playback:
     raise SystemExit("static SPIB was reintroduced into cyclic WaveRT playback")
 
+for token in (
+    "p360_playback_read_run_state(",
+    "p360_playback_wait_run_state(",
+    "READ_REGISTER_USHORT(",
+    "READ_REGISTER_ULONG(",
+    "P360_HDA_SD_CTL_RUN",
+    "P360_HDA_SD_CTL_TAG_MASK",
+    "P360_HDA_STREAM_BASE",
+    "P360_HDA_STREAM_STRIDE",
+):
+    if token not in playback:
+        raise SystemExit(f"read-only HDA RUN/STOP proof missing: {token}")
+
+if "WRITE_REGISTER_" in playback:
+    raise SystemExit("WaveRT HDA proof must remain read-only; direct HDA MMIO write found")
+
+start_readback_i=playback.index("p360_playback_wait_run_state(", playback.index("p360_playback_stream_start("))
+stop_readback_i=playback.index("p360_playback_wait_run_state(", playback.index("p360_playback_stream_stop("))
+stop_latch_i=playback.index("p->Running=TRUE;", stop_readback_i)
+if not start_readback_i < stop_readback_i < stop_latch_i:
+    raise SystemExit("HDA TriggerDSP calls are no longer guarded by conservative RUN-state proof")
+
 # The compressed SOF page table must be created from the WaveRT MDL and the
 # audio MDL must remain owned by PortCls; the bridge may not allocate a second
 # hidden audio buffer.
