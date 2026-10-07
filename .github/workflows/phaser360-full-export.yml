@@ -1,0 +1,90 @@
+name: Phaser360 full repository export
+
+permissions:
+  contents: read
+  actions: read
+
+on:
+  push:
+    branches:
+      - phaser360-full-export-62c5ef45
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact source snapshot
+        uses: actions/checkout@v4
+        with:
+          ref: 62c5ef454e108c7c6ad8c7e1e0a428cad1a3334d
+          fetch-depth: 0
+          persist-credentials: false
+          path: repo
+
+      - name: Verify exact repository tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd repo
+          test "$(git rev-parse HEAD)" = "62c5ef454e108c7c6ad8c7e1e0a428cad1a3334d"
+          test "$(git ls-files | wc -l | tr -d ' ')" = "102"
+          echo "SOURCE_HEAD=$(git rev-parse HEAD)"
+          echo "TRACKED_FILES=$(git ls-files | wc -l | tr -d ' ')"
+
+      - name: Build complete export payload
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p payload/CI_ARTIFACTS
+
+          cd repo
+          git archive \
+            --format=zip \
+            --prefix="leno-62c5ef454e108c7c6ad8c7e1e0a428cad1a3334d/" \
+            -o "../payload/REPO_1TO1_62c5ef454e108c7c6ad8c7e1e0a428cad1a3334d.zip" \
+            HEAD
+          git bundle create \
+            "../payload/GIT_HISTORY_phaser360-sof-windows-port_62c5ef45.bundle" \
+            HEAD
+          cd ..
+
+          gh run download 37663574577 \
+            --repo tzn5-web/leno \
+            --dir payload/CI_ARTIFACTS
+
+          gh run view 37663574577 \
+            --repo tzn5-web/leno \
+            --log > payload/CI_RUN_37663574577.log
+
+          cat > payload/EXPORT_INFO.txt <<'EOF'
+Repository: tzn5-web/leno
+Source branch: phaser360-sof-windows-port
+Exact source commit: 62c5ef454e108c7c6ad8c7e1e0a428cad1a3334d
+Exact source tree: bcc58c87b6ddc4439458d2f08f7f81583c13ab91
+Tracked files in source snapshot: 102
+Included:
+- REPO_1TO1_*.zip: exact tracked repository tree at the source commit; nothing removed.
+- GIT_HISTORY_*.bundle: Git history reachable from the exact source commit.
+- CI_ARTIFACTS/: every artifact from successful workflow run 37663574577.
+- CI_RUN_37663574577.log: complete log from that successful build.
+EOF
+
+          (
+            cd payload
+            find . -type f ! -name SHA256SUMS.txt -print0 |
+              sort -z |
+              xargs -0 sha256sum > SHA256SUMS.txt
+          )
+
+          zip -r -9 LENO_PHASER360_FULL_PROJECT_62c5ef45.zip payload
+          sha256sum LENO_PHASER360_FULL_PROJECT_62c5ef45.zip
+
+      - name: Upload complete project archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: LENO-PHASER360-FULL-PROJECT-62c5ef45
+          path: LENO_PHASER360_FULL_PROJECT_62c5ef45.zip
+          if-no-files-found: error
+          compression-level: 0
