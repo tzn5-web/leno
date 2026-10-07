@@ -81,6 +81,8 @@ ipc3_topology=(ROOT/"sof_core/loader/p360_ipc3_topology.c").read_text()
 run_b4=(ROOT/"tests/run_b4_core.sh").read_text()
 csaudio_h=(ROOT/"include/p360_csaudio.h").read_text()
 csaudio=(ROOT/"src/p360_csaudio.c").read_text()
+state_h=(ROOT/"include/p360_state.h").read_text()
+state=(ROOT/"src/p360_state.c").read_text()
 
 for token in (
     'L"\\\\CallBack\\\\CsAudioCallbackAPI"',
@@ -191,6 +193,13 @@ if not re.search(r"#define\s+P360_SPEAKER_ENDPOINT_ENABLED\s+0\b", driver_h):
 if not re.search(r"#define\s+P360_TONE_TOPOLOGY_PROOF_ENABLED\s+0\b", driver_h):
     raise SystemExit("hostless Tone topology proof barrier is not closed by default")
 
+for token in (
+    "#ifndef P360_ENABLE_INTERNAL_SPEAKER",
+    "#define P360_ENABLE_INTERNAL_SPEAKER 0",
+):
+    if token not in safety:
+        raise SystemExit(f"speaker safety override contract missing: {token}")
+
 speaker_endpoint=(ROOT/"src/p360_speaker_endpoint.cpp").read_text()
 for token in (
     "CLSID_PortTopology",
@@ -263,6 +272,7 @@ for token in (
     "P360_IPC_PROBE_ENABLED=$(P360IpcProbeEnabled)",
     "P360_SPEAKER_ENDPOINT_ENABLED=$(P360SpeakerEndpointEnabled)",
     "P360_TONE_TOPOLOGY_PROOF_ENABLED=$(P360ToneTopologyProofEnabled)",
+    "P360_ENABLE_INTERNAL_SPEAKER=$(P360InternalSpeakerEnabled)",
 ):
     if token not in project:
         raise SystemExit(f"staged audio build gate is not parameterized: {token}")
@@ -437,6 +447,19 @@ for forbidden in (
 ):
     if forbidden in driver:
         raise SystemExit(f"pre-audio topology proof crossed the audio-start barrier: {forbidden}")
+
+if "ctx->State.speaker_policy_enabled=" not in driver or    "P360_ENABLE_INTERNAL_SPEAKER ? 1u : 0u" not in driver:
+    raise SystemExit("speaker policy state is not bound to the explicit compile barrier")
+
+for token in (
+    "p360_state_speaker_arm(",
+    "p360_state_speaker_disarm(",
+):
+    if token not in state_h or token not in state:
+        raise SystemExit(f"atomic speaker state transition missing: {token}")
+
+if "to == P360_STATE_SPEAKER_ARMED" not in state or    "return 0;" not in state[state.index("to == P360_STATE_SPEAKER_ARMED"):]:
+    raise SystemExit("generic state transition can still bypass speaker arm policy")
 driver_entry_i=driver.index("DriverEntry(")
 shell_gate_i=driver.index("#if P360_PORTCLS_SHELL_ENABLED", driver_entry_i)
 shell_init_i=driver.index("p360_portcls_driver_initialize(", shell_gate_i)
