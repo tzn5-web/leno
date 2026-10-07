@@ -9,7 +9,7 @@ ROOT=Path(__file__).resolve().parents[1]
 PINNED={
     "sof_core/p360_transport_core.c":"fe593c280b7d66a152fe28997b9e76ed5eecc59105ffddc1cc1acccdb642fbee",
     "sof_core/p360_transport_core.h":"e89e42e0ba5119dbd4670fa607f6e81d33f19c25eeb744df08e6713c661c41d5",
-    "sof_core/loader/p360_loader.c":"476a53cab8901a891a53a76eddfdb1b5f64dbdf270bfe0cbb3211e0623c05379",
+    "sof_core/loader/p360_loader.c":"b0bb47b151eba7dd1b0a149fa649e661f39aabb306c1ea70192b285307414148",
     "sof_core/loader/p360_loader.h":"358dac81c37edcda164c4f075b7ed7644e989570221f0c29be43ce56cdd3d1df",
     "sof_core/loader/p360_fw_image.c":"3b370ae00596ff8ae3f3ca4c30e62a078a9c178af6a261c4d0009164854b6ab7",
     "sof_core/loader/p360_ipc_timer.c":"37148efb6a24877ae4379038eb1c108ab8b8f02824a5bfda1051b2d21454a0e9",
@@ -18,6 +18,11 @@ PINNED={
     "sof_core/loader/p360_irq.h":"0afd7c95168b4bb27db871e48c4acd10f92ff808394ad66c733f83fb2164e42d",
 }
 
+# p360_loader.c/.h remain byte-pinned, but are now the audited B4-derived
+# GLK loader rather than untouched B4 originals. The only admitted semantic
+# delta is Linux-compatible stale-core normalization plus exact diagnostics.
+
+
 for rel,want in PINNED.items():
     p=ROOT/rel
     if not p.is_file():
@@ -25,6 +30,23 @@ for rel,want in PINNED.items():
     got=hashlib.sha256(p.read_bytes()).hexdigest()
     if got!=want:
         raise SystemExit(f"B4 provenance drift: {rel}: {got} != {want}")
+
+loader_source=(ROOT/"sof_core/loader/p360_loader.c").read_text()
+loader_header=(ROOT/"sof_core/loader/p360_loader.h").read_text()
+for token in (
+    "result->entry_adspcs=baseline;",
+    "if (baseline&(CORES_SPA|CORES_CPA))",
+    "rc=power_down(&e);",
+    "if (baseline&(CORES_SPA|CORES_CPA)) {",
+    "result->normalized_adspcs=baseline;",
+    "stall -> reset -> prove reset -> clear SPA -> prove CPA=0",
+):
+    if token not in loader_source + "\n" + loader_header:
+        raise SystemExit(f"Linux-compatible stale-core normalization missing: {token}")
+
+if "if (baseline&(CORES_SPA|CORES_CPA)) {rc=P360_L_BUSY;goto finish;}" in loader_source:
+    raise SystemExit("old powered-core hard BUSY guard was reintroduced")
+
 
 for name in (
     "p360_loader.c","p360_loader.h","p360_dispatch.c","p360_dispatch.h",
