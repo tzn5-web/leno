@@ -63,6 +63,16 @@ p360_cs_runtime_bind_live(
     );
 
 NTSTATUS
+p360_cs_runtime_send_ipc(
+    _Inout_ P360_CS_RUNTIME *Runtime,
+    _In_reads_bytes_(MessageBytes) const UCHAR *Message,
+    _In_ ULONG MessageBytes,
+    _In_ ULONG TimeoutMs,
+    _Out_opt_ LONG *FirmwareError,
+    _Out_opt_ ULONG *ReplyBytes
+    );
+
+NTSTATUS
 p360_cs_runtime_probe_ipc(
     _Inout_ P360_CS_RUNTIME *Runtime,
     _Out_opt_ LONG *FirmwareError
