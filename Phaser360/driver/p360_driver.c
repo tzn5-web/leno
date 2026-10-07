@@ -69,11 +69,11 @@ p360_runtime_prepare_tone_topology(
     )
 {
     const struct p360_ipc3_speaker_ids ids={
-        1u,   /* pipeline_id */
-        100u, /* tone_id */
-        101u, /* buffer_id */
-        102u, /* dai_id */
-        103u  /* pipe_comp_id */
+        P360_IPC3_SPEAKER_PIPELINE_ID,
+        P360_IPC3_SPEAKER_TONE_ID,
+        P360_IPC3_SPEAKER_BUFFER_ID,
+        P360_IPC3_SPEAKER_DAI_ID,
+        P360_IPC3_SPEAKER_SCHED_ID
     };
     const struct p360_ipc3_ssp1_profile ssp={
         P360_IPC3_DAI_FMT_I2S |
