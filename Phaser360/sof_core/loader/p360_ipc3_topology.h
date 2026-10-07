@@ -53,6 +53,8 @@
 #define P360_IPC3_DAI_FMT_CBC_CFC  0x4000u
 
 #define P360_IPC3_MEM_RAM   (1u << 0)
+#define P360_IPC3_MEM_HP    (1u << 4)
+#define P360_IPC3_MEM_DMA   (1u << 5)
 #define P360_IPC3_MEM_CACHE (1u << 6)
 
 enum p360_ipc3_topology_status {
