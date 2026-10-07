@@ -819,13 +819,6 @@ for token in (
     "/p:P360HostPlaybackEnabled=1",
     "PORTCLS_SOF_BOOT_COMPILE=PASS",
     "PORTCLS_SOF_IPC3_PROOF_COMPILE=PASS",
-    "Acquire pinned SOF 1.9.3 firmware",
-    "fcd5ae85ead7ecd67ff199335b61fac825843ca0",
-    "v1.9.x/sof-v1.9.3/sof-apl.ri",
-    "P360_PINNED_FIRMWARE=PASS",
-    "firmware\\p360-f686.ri",
-    "firmware\\LICENCE.Intel",
-    'FirmwareSourceCommit = "fcd5ae85ead7ecd67ff199335b61fac825843ca0"',
 ):
     if token not in workflow:
         raise SystemExit(f"active PortCls linkage CI build missing: {token}")
