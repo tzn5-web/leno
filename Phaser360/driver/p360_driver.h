@@ -12,6 +12,7 @@
 #include "../include/p360_firmware.h"
 #include "../include/p360_csaudio.h"
 #include "../sof_core/loader/p360_loader.h"
+#include "../sof_core/loader/p360_ipc3_topology.h"
 
 /*
  * Same final driver, staged safely. This switch controls only whether D0Entry
@@ -36,6 +37,14 @@
 
 #ifndef P360_SPEAKER_ENDPOINT_ENABLED
 #define P360_SPEAKER_ENDPOINT_ENABLED 0
+#endif
+
+/*
+ * Hostless Tone -> SSP1 topology/prepare proof. This can program the DSP/SSP
+ * when explicitly enabled, but it never starts the stream or speaker amp.
+ */
+#ifndef P360_TONE_TOPOLOGY_PROOF_ENABLED
+#define P360_TONE_TOPOLOGY_PROOF_ENABLED 0
 #endif
 
 
