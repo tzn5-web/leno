@@ -297,6 +297,16 @@ function Run-Wasapi([switch]$Preflight) {
     return $false
 }
 
+function Reset-WasapiEndpointFormat {
+    $r=Invoke-Tool $Wasapi @("--reset-default") -AllowFailure
+    if ($r.ExitCode -eq 0) {
+        Log "WASAPI_DEVICE_FORMAT_RESET=PASS"
+        return $true
+    }
+    Log ("WASAPI_DEVICE_FORMAT_RESET=FAIL EXIT="+$r.ExitCode)
+    return $false
+}
+
 function Write-ResultZip {
     try {
         if (Test-Path -LiteralPath $StatePath) {
@@ -387,12 +397,14 @@ try {
             } catch {
                 Log ("PREFLIGHT_ROUND_FAIL="+$_.Exception.Message)
                 if ($round -eq 1) {
-                    Restart-ExactProductionDevices
+                    [void](Reset-WasapiEndpointFormat)
                     Restart-WindowsAudio
+                    Restart-ExactProductionDevices
                     Install-Bundle $info
                 } elseif ($round -eq 2) {
                     [void](Reenumerate-Adsp)
                     Install-Bundle $info
+                    [void](Reset-WasapiEndpointFormat)
                     Restart-WindowsAudio
                 }
             }
