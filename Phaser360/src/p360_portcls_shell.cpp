@@ -7,6 +7,27 @@
 #include "../include/p360_portcls_bridge.h"
 #include "../include/p360_speaker_endpoint.h"
 
+/*
+ * Kernel builds do not use the CRT <new> header. This translation unit only
+ * needs placement construction into ExAllocatePool2 memory.
+ */
+__forceinline void * __cdecl
+operator new(
+    size_t,
+    void *memory
+    ) noexcept
+{
+    return memory;
+}
+
+__forceinline void __cdecl
+operator delete(
+    void *,
+    void *
+    ) noexcept
+{
+}
+
 typedef struct _P360_PORTCLS_INSTANCE {
     KSPIN_LOCK Lock;
     PDEVICE_OBJECT Fdo;
