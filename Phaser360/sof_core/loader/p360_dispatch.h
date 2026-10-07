@@ -22,6 +22,10 @@ struct p360_dispatch {
     uint32_t stream_id;
     uint8_t position[76];
     unsigned positions;
+    uint32_t expected_reply_bytes;
+    uint32_t expected_reply_cmd;
+    uint32_t expected_comp_id;
+    int expected_generic;
     int prepared,active,poisoned;
 };
 /* NEW zeroed object only; immutable resident pinned full image, no hardware IO.
@@ -35,11 +39,14 @@ int p360_dispatch_prepare(struct p360_dispatch *d,const uint8_t *image,
  */
 int p360_dispatch_bind(struct p360_dispatch *d,uint64_t epoch);
 int p360_dispatch_stream(struct p360_dispatch *d,uint32_t id);
-/* Metadata only, BEFORE a future allowed command send. No hardware send here.
- * Only exact 12-byte generic replies and 76-byte POSITION notifications supported.
- * No timeout retry: delayed IPC3 replies have no host generation on the wire.
+/* Metadata only, BEFORE an allowed command send. No hardware send here.
+ * Most IPC3 commands use the 12-byte generic reply. STREAM_PCM_PARAMS is the
+ * one explicitly supported structured reply (20 bytes) and is correlated by
+ * request command + component id. No timeout retry: IPC3 has no wire generation.
  */
 int p360_dispatch_expect(struct p360_dispatch *d,uint64_t now,uint32_t timeout_ms);
+int p360_dispatch_expect_message(struct p360_dispatch *d,uint64_t now,
+    uint32_t timeout_ms,const uint8_t *message,uint32_t bytes);
 int p360_dispatch_process(struct p360_dispatch *d,const struct p360_irq_event *event,
     const struct p360_dispatch_io *io,void *context);
 void p360_dispatch_stop(struct p360_dispatch *d);
