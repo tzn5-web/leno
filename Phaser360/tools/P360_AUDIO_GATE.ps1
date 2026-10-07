@@ -544,7 +544,7 @@ function Install-TestPackage([string]$RunMode,$Info,[string]$InstanceId) {
     }
 
     Rebind-TestTarget $InstanceId $wantVersion
-    Wait-TargetHealthy $InstanceId | Out-Null
+    Wait-TargetPresent $InstanceId | Out-Null
 
     $driver = Get-SignedDriver $InstanceId
     if ([string]$driver.DriverVersion -ne $wantVersion -or
