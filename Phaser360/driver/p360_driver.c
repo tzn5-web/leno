@@ -596,7 +596,7 @@ p360_runtime_boot_start(
 
         status=p360_telemetry_ipc(
             firmwareError,
-            12u);
+            P360_IPC3_TONE_CONTROL_BYTES);
         if (!NT_SUCCESS(status))
             goto fail_live;
 
