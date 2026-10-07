@@ -508,7 +508,6 @@ for token in (
 ):
     if token not in runner:
         raise SystemExit(f"real WaveRT final-runner contract missing: {token}")
-        raise SystemExit(f"hardware gate runner safety contract missing: {token}")
 
 install_test_begin=runner.index("function Install-TestPackage")
 install_test_end=runner.index("function ",install_test_begin+1)
@@ -517,16 +516,53 @@ if '"/install"' in install_test_body:
     raise SystemExit("P360 ADSP test packages must be staged without pnputil /install")
 
 for token in (
+    'function Assert-SafeAmpPackage',
+    'function Backup-OriginalAmpDriver',
     'function Install-SafeAmpPackage',
+    'function Restore-OriginalAmpDriver',
+    'function Wait-AmpBinding',
+    '$SafeAmpServiceName = "P360Max98357Safe"',
+    '$SafeAmpProviderName = "PHASER360 Project"',
+    '$SafeAmpDriverVersion = "2.0.0.0"',
     '$add=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/add-driver",$inf) -AllowFailure',
     '$remove=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/remove-device",$InstanceId) -AllowFailure',
     '$scan=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure',
-    'function Restore-OriginalAmpDriver',
     '[string]$script:State.AmpOriginalExportedInf) -AllowFailure',
-    'Original MAX98357A driver was not restored exactly.',
+    'AMP_SAFE_BIND=PASS',
+    'AMP_RESTORE=PASS',
+    'AmpRestoreVerified=$false',
 ):
     if token not in runner:
         raise SystemExit(f"safe MAX98357A bind/restore transaction missing: {token}")
+
+safe_amp_install_begin=runner.index("function Install-SafeAmpPackage")
+safe_amp_install_end=runner.index("function Restore-OriginalAmpDriver",safe_amp_install_begin)
+safe_amp_install_body=runner[safe_amp_install_begin:safe_amp_install_end]
+if '"/install"' in safe_amp_install_body:
+    raise SystemExit("safe MAX98357A package must be staged before exact devnode remove/rescan")
+
+for token in (
+    "Compile fail-closed MAX98357A dependency",
+    "P360_MAX98357_SAFE_COMPILE=PASS",
+    'Join-Path $root "amp"',
+    "P360Max98357Safe.inf",
+    "P360Max98357Safe.cat",
+    "P360Max98357Safe.sys",
+    'SafeAmpDriverVersion = "2.0.0.0"',
+    'SafeAmpProvider = "PHASER360 Project"',
+    'SafeAmpService = "P360Max98357Safe"',
+    "SafeAmpSysSha256 = $ampHash",
+    "P360_MAX98357_SAFE_SIGN=PASS",
+):
+    if token not in workflow:
+        raise SystemExit(f"safe MAX98357A package/signing workflow missing: {token}")
+
+amp_backup_i=runner.index("Backup-OriginalAmpDriver $ampId")
+amp_install_i=runner.index("Install-SafeAmpPackage $info $ampId",amp_backup_i)
+amp_ready_i=runner.index("AMP_SAFE_READY=PASS",amp_install_i)
+final_phase_after_amp_i=runner.index('Write-RunLog "FINAL_SPEAKER_PHASE=BEGIN"',amp_ready_i)
+if not amp_backup_i < amp_install_i < amp_ready_i < final_phase_after_amp_i:
+    raise SystemExit("safe MAX98357A proof is not complete before speaker phase")
 
 for forbidden in (
     "preaudio-proof.json",
