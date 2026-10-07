@@ -9,7 +9,7 @@
 #include "../include/p360_board.h"
 
 struct mock {
-    uint8_t reply[20];
+    uint8_t reply[216];
     uint32_t reply_bytes;
     uint64_t now;
     unsigned finishes;
@@ -74,6 +74,7 @@ int main(void)
     const struct p360_ipc3_speaker_ids ids={1u,100u,101u,102u,103u};
     struct p360_ipc3_message pcm;
     struct p360_ipc3_message tone;
+    struct p360_ipc3_message tone_control;
     struct mock m;
     uint8_t proof[8];
     int32_t error;
@@ -120,6 +121,26 @@ int main(void)
     assert(p360_dispatch_process(&d,&e,&io,&m)==0);
     assert(p360_ipc_consume(&d.ipc,&error,&bytes)==0);
     assert(error==0 && bytes==20u);
+
+    memset(&m,0,sizeof(m));
+    m.now=275u;
+    ready(&d);
+    assert(p360_ipc3_build_tone_amplitude_control(
+        &tone_control,ids.tone_id,0x01000000)==0);
+    assert(p360_dispatch_expect_message(
+        &d,175u,100u,tone_control.data,tone_control.bytes)==0);
+    assert(d.expected_generic==0);
+    assert(d.expected_reply_bytes==140u);
+    assert(d.expected_reply_cmd==0x50030000u);
+    assert(d.expected_comp_id==ids.tone_id);
+
+    m.reply_bytes=140u;
+    memcpy(m.reply,tone_control.data,tone_control.bytes);
+    put32(m.reply+8,0u);
+    e=reply_event(1u);
+    assert(p360_dispatch_process(&d,&e,&io,&m)==0);
+    assert(p360_ipc_consume(&d.ipc,&error,&bytes)==0);
+    assert(error==0 && bytes==140u);
 
     memset(&m,0,sizeof(m));
     m.now=300u;
