@@ -393,13 +393,44 @@ function Wait-TargetHealthy([string]$InstanceId,[int]$Seconds=12) {
     throw "Target did not return healthy within $Seconds seconds."
 }
 
+function Get-P360StoreEntries {
+    return @(Get-WindowsDriver -Online -All | Where-Object {
+        [string]$_.ProviderName -eq "PHASER360 Project"
+    })
+}
+
+function Assert-NoStaleTestPackage {
+    $stale = @(Get-P360StoreEntries | Where-Object {
+        ([string]$_.Version -eq "2.0.100.1") -or
+        ([string]$_.Version -eq "2.0.200.1")
+    })
+    if ($stale.Count -gt 0) {
+        $names = ($stale | ForEach-Object { "$($_.Driver):$($_.Version)" }) -join ", "
+        throw "Stale Phaser360 test package exists in Driver Store: $names. Run -Mode Restore before continuing."
+    }
+}
+
 function Install-TestPackage([string]$RunMode,$Info,[string]$InstanceId) {
     $folder = Assert-Package $RunMode $Info
     Assert-CatalogSignature $folder
 
     $inf = Join-Path $folder "P360SofAudio.inf"
     $wantVersion = Get-InfVersion $inf
+    Assert-NoStaleTestPackage
+
     Invoke-Tool -Exe "pnputil.exe" -Arguments @("/add-driver",$inf,"/install") | Out-Null
+
+    $store = @(Get-P360StoreEntries | Where-Object {
+        [string]$_.Version -eq $wantVersion
+    })
+    if ($store.Count -ne 1) {
+        throw "Could not identify exactly one staged $RunMode package in Driver Store."
+    }
+
+    $script:State.TestInfName = [string]$store[0].Driver
+    $script:State.TestDriverVersion = $wantVersion
+    Save-State
+
     Restart-Target $InstanceId
     Wait-TargetHealthy $InstanceId | Out-Null
 
@@ -408,10 +439,6 @@ function Install-TestPackage([string]$RunMode,$Info,[string]$InstanceId) {
         [string]$driver.DriverProviderName -ne "PHASER360 Project") {
         throw "PnP did not bind the requested $RunMode package. Current: INF=$($driver.InfName), Version=$($driver.DriverVersion), Provider=$($driver.DriverProviderName)"
     }
-
-    $script:State.TestInfName = [string]$driver.InfName
-    $script:State.TestDriverVersion = [string]$driver.DriverVersion
-    Save-State
 }
 
 function Get-Telemetry {
