@@ -23,6 +23,198 @@ p360_ipc_probe_policy_enabled(VOID)
     return P360_IPC_PROBE_ENABLED ? TRUE : FALSE;
 }
 
+static BOOLEAN
+p360_tone_topology_policy_enabled(VOID)
+{
+    return P360_TONE_TOPOLOGY_PROOF_ENABLED ? TRUE : FALSE;
+}
+
+static NTSTATUS
+p360_runtime_send_zero_error(
+    _Inout_ P360_DEVICE_CONTEXT *ctx,
+    _In_ const struct p360_ipc3_message *message,
+    _In_ ULONG expectedReplyBytes
+    )
+{
+    LONG firmwareError=0;
+    ULONG replyBytes=0;
+    NTSTATUS status;
+
+    if (!ctx || !message || !message->bytes ||
+        message->bytes>sizeof(message->data) ||
+        (expectedReplyBytes!=12u && expectedReplyBytes!=20u)) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    status=p360_cs_runtime_send_ipc(
+        &ctx->Runtime,
+        message->data,
+        message->bytes,
+        100u,
+        &firmwareError,
+        &replyBytes);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    if (firmwareError!=0 || replyBytes!=expectedReplyBytes)
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS
+p360_runtime_prepare_tone_topology(
+    _Inout_ P360_DEVICE_CONTEXT *ctx,
+    _Out_ P360_FAILURE_REASON *failure
+    )
+{
+    const struct p360_ipc3_speaker_ids ids={
+        1u,   /* pipeline_id */
+        100u, /* tone_id */
+        101u, /* buffer_id */
+        102u, /* dai_id */
+        103u  /* pipe_comp_id */
+    };
+    const struct p360_ipc3_ssp1_profile ssp={
+        P360_IPC3_DAI_FMT_I2S |
+            P360_IPC3_DAI_FMT_NB_NF |
+            P360_IPC3_DAI_FMT_CBC_CFC,
+        P360_SPEAKER_SSP1_MCLK_ID,
+        P360_SPEAKER_SSP1_MCLK_HZ,
+        P360_SAMPLE_RATE,
+        P360_SPEAKER_SSP1_BCLK_HZ,
+        P360_SPEAKER_CHANNELS,
+        3u,
+        3u,
+        P360_SPEAKER_DAI_VALID_BITS,
+        P360_SPEAKER_DAI_SLOT_BITS,
+        P360_IPC3_MCLK_CODEC_INPUT,
+        0u, /* frame_pulse_width: upstream GLK default */
+        0u, /* per-slot padding */
+        0u, /* clks_control */
+        0u, /* quirks */
+        0u, /* bclk_delay */
+        0u, /* group_id */
+        0u  /* flags: SOF_DAI_CONFIG_FLAGS_NONE */
+    };
+    struct p360_ipc3_message message;
+    NTSTATUS status;
+    int rc;
+
+    if (failure)
+        *failure=P360_FAIL_TOPOLOGY;
+
+    if (!ctx || !failure ||
+        ctx->State.state!=P360_STATE_IPC_READY ||
+        !ctx->State.ipc_ready ||
+        !ctx->State.fw_ready ||
+        !ctx->Runtime.Bound ||
+        !InterlockedCompareExchange(&ctx->Runtime.Active,0,0) ||
+        InterlockedCompareExchange(&ctx->Runtime.Fault,0,0) ||
+        InterlockedCompareExchange(&ctx->Removing,0,0)!=0) {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+
+#define P360_BUILD_AND_SEND(_builder,_expected)                         do {                                                                    RtlZeroMemory(&message,sizeof(message));                            rc=(_builder);                                                      if (rc!=P360_IPC3_TOPOLOGY_OK)                                         return STATUS_INVALID_PARAMETER;                                status=p360_runtime_send_zero_error(ctx,&message,(_expected));         if (!NT_SUCCESS(status))                                                return status;                                             } while (0)
+
+    /*
+     * SOF IPC3 firmware before ABI 3.19 restores static pipelines in this
+     * order: components first, then routes, then scheduler PIPE_NEW and
+     * PIPE_COMPLETE. Match that host behavior exactly.
+     */
+    P360_BUILD_AND_SEND(
+        p360_ipc3_build_tone_new(
+            &message,
+            &ids,
+            P360_SAMPLE_RATE),
+        20u);
+
+    P360_BUILD_AND_SEND(
+        p360_ipc3_build_buffer_new(
+            &message,
+            &ids,
+            768u), /* 2 x 1 ms S32 stereo periods */
+        20u);
+
+    P360_BUILD_AND_SEND(
+        p360_ipc3_build_dai_new(
+            &message,
+            &ids,
+            g_p360_phaser360_profile.ssp_amp),
+        20u);
+
+    P360_BUILD_AND_SEND(
+        p360_ipc3_build_ssp1_config(
+            &message,
+            g_p360_phaser360_profile.ssp_amp,
+            &ssp),
+        12u);
+
+    P360_BUILD_AND_SEND(
+        p360_ipc3_build_connect(
+            &message,
+            ids.tone_id,
+            ids.buffer_id),
+        12u);
+
+    P360_BUILD_AND_SEND(
+        p360_ipc3_build_connect(
+            &message,
+            ids.buffer_id,
+            ids.dai_id),
+        12u);
+
+    P360_BUILD_AND_SEND(
+        p360_ipc3_build_pipe_new(
+            &message,
+            &ids,
+            1000u,
+            48u),
+        20u);
+
+    P360_BUILD_AND_SEND(
+        p360_ipc3_build_pipe_complete(
+            &message,
+            &ids),
+        12u);
+
+#undef P360_BUILD_AND_SEND
+
+    ctx->State.topology_ready=1;
+    if (!p360_state_advance(
+            &ctx->State,
+            P360_STATE_TOPOLOGY_READY)) {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+
+    *failure=P360_FAIL_STREAM;
+
+    RtlZeroMemory(&message,sizeof(message));
+    rc=p360_ipc3_build_pcm_params(
+        &message,
+        ids.tone_id,
+        P360_SAMPLE_RATE,
+        P360_SPEAKER_CHANNELS);
+    if (rc!=P360_IPC3_TOPOLOGY_OK)
+        return STATUS_INVALID_PARAMETER;
+
+    status=p360_runtime_send_zero_error(
+        ctx,
+        &message,
+        20u);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    ctx->State.audio_core_ready=1;
+    if (!p360_state_advance(
+            &ctx->State,
+            P360_STATE_AUDIO_CORE_READY)) {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+
+    return STATUS_SUCCESS;
+}
+
 static NTSTATUS
 p360_loader_status_to_ntstatus(
     _In_ int rc)
@@ -167,6 +359,22 @@ p360_runtime_boot_start(
             status=STATUS_INVALID_DEVICE_STATE;
             goto fail_live;
         }
+    }
+
+    if (p360_tone_topology_policy_enabled()) {
+        if (!p360_ipc_probe_policy_enabled() ||
+            ctx->State.state!=P360_STATE_IPC_READY ||
+            !ctx->State.ipc_ready) {
+            failure=P360_FAIL_IPC;
+            status=STATUS_INVALID_DEVICE_STATE;
+            goto fail_live;
+        }
+
+        status=p360_runtime_prepare_tone_topology(
+            ctx,
+            &failure);
+        if (!NT_SUCCESS(status))
+            goto fail_live;
     }
 
     p360_firmware_release(&firmware);
