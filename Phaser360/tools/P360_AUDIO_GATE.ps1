@@ -1666,10 +1666,8 @@ try {
         [string]$amp.Service,
         [string]$ampDriver.DriverVersion,
         [string]$ampDriver.DriverProviderName)
-    Write-RunLog "FINAL_SPEAKER_PHASE=BEGIN"
-    $script:State.SpeakerAttempted=$true
-    Save-State
 
+    Write-RunLog "PREAUDIO_PHASE=BEGIN"
     Install-TestPackage "FinalSpeaker" $info $targetId
 
     # Final HOST build flags:
@@ -1680,7 +1678,14 @@ try {
     if ($telemetry.BootEpoch -lt 1 -or $telemetry.Stage -lt 70) {
         throw "Final HOST driver did not reach fresh AUDIO_CORE."
     }
+    $script:State.PreAudioPassed=$true
+    Save-State
+    Write-RunLog "PREAUDIO_CORE_AND_AMP_MUTE=PASS"
     Write-RunLog "FINAL_HOST_AUDIO_CORE=PASS"
+
+    Write-RunLog "FINAL_SPEAKER_PHASE=BEGIN"
+    $script:State.SpeakerAttempted=$true
+    Save-State
 
     $waveTest=Join-Path $PackageRoot "P360_WAVERT_TEST.exe"
     if (-not (Test-Path -LiteralPath $waveTest -PathType Leaf)) {
