@@ -1,7 +1,9 @@
 #pragma once
 #include "p360_state.h"
 
+#ifndef P360_ENABLE_INTERNAL_SPEAKER
 #define P360_ENABLE_INTERNAL_SPEAKER 0
+#endif
 
 typedef struct P360_SAFETY_POLICY {
     unsigned require_exact_pci_identity : 1;
