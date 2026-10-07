@@ -76,6 +76,8 @@ dispatch_h=(ROOT/"sof_core/loader/p360_dispatch.h").read_text()
 dispatch=(ROOT/"sof_core/loader/p360_dispatch.c").read_text()
 ipc3_tx_h=(ROOT/"sof_core/loader/p360_ipc3_tx.h").read_text()
 ipc3_tx=(ROOT/"sof_core/loader/p360_ipc3_tx.c").read_text()
+ipc3_topology_h=(ROOT/"sof_core/loader/p360_ipc3_topology.h").read_text()
+ipc3_topology=(ROOT/"sof_core/loader/p360_ipc3_topology.c").read_text()
 run_b4=(ROOT/"tests/run_b4_core.sh").read_text()
 csaudio_h=(ROOT/"include/p360_csaudio.h").read_text()
 csaudio=(ROOT/"src/p360_csaudio.c").read_text()
@@ -241,6 +243,8 @@ for token in (
     r"..\include\p360_csaudio.h",
     r"..\sof_core\loader\p360_ipc3_tx.c",
     r"..\sof_core\loader\p360_ipc3_tx.h",
+    r"..\sof_core\loader\p360_ipc3_topology.c",
+    r"..\sof_core\loader\p360_ipc3_topology.h",
     "PortCls.lib",
 ):
     if token not in project:
@@ -332,6 +336,24 @@ for token in (
 
 if "tests/ipc3_tx_regression.c" not in run_b4:
     raise SystemExit("IPC3 TX regression is not in the B4 gate")
+
+for token in (
+    "P360_IPC3_TONE_NEW_BYTES       100u",
+    "P360_IPC3_DAI_CONFIG_BYTES     112u",
+    "P360_IPC3_COMP_TONE  10u",
+    "P360_IPC3_FRAME_S24_4LE 1u",
+    "P360_IPC3_DAI_INTEL_SSP   1u",
+    "p360_ipc3_build_tone_new(",
+    "p360_ipc3_build_dai_new(",
+    "p360_ipc3_build_ssp1_config(",
+    "p360_ipc3_build_stream_trigger(",
+):
+    if token not in (ipc3_topology_h + "\n" + ipc3_topology):
+        raise SystemExit(f"IPC3 speaker topology ABI contract missing: {token}")
+
+if "tests/ipc3_topology_regression.c" not in run_b4:
+    raise SystemExit("IPC3 speaker topology regression is not in the B4 gate")
+
 
 driver=(ROOT/"driver/p360_driver.c").read_text()
 driver_entry_i=driver.index("DriverEntry(")
