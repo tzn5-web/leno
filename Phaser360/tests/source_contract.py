@@ -1602,12 +1602,12 @@ for token in (
 amp_install_gate_i=runner.index("Install-SafeAmpPackage $info $ampId")
 amp_ready_gate_i=runner.index("AMP_SAFE_READY=PASS",amp_install_gate_i)
 final_stack_phase_gate_i=runner.index('Write-RunLog "FINAL_STACK_INSTALL=BEGIN"',amp_ready_gate_i)
-final_install_gate_i=runner.index('Install-TestPackage "FinalSpeaker"',final_stack_phase_gate_i)
+final_core_gate_i=runner.index("$telemetry=Ensure-FinalCoreReady",final_stack_phase_gate_i)
 if not (
     amp_install_gate_i < amp_ready_gate_i <
-    final_stack_phase_gate_i < final_install_gate_i
+    final_stack_phase_gate_i < final_core_gate_i
 ):
-    raise SystemExit("safe MAX98357A proof is not ahead of final audio driver bind")
+    raise SystemExit("safe MAX98357A proof is not ahead of self-healing final core bind")
 
 
 if "attributes.ExecutionLevel = WdfExecutionLevelDispatch" in runtime:
