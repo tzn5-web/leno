@@ -1449,6 +1449,11 @@ function Write-Report([string]$Result,[object]$Telemetry) {
         OriginalService=$script:State.OriginalService
         OriginalInfName=$script:State.OriginalInfName
         OriginalDriverVersion=$script:State.OriginalDriverVersion
+        AmpInstanceId=$(if ($script:State.PSObject.Properties["AmpInstanceId"]) {[string]$script:State.AmpInstanceId} else {""})
+        AmpOriginalService=$(if ($script:State.PSObject.Properties["AmpOriginalService"]) {[string]$script:State.AmpOriginalService} else {""})
+        AmpOriginalDriverVersion=$(if ($script:State.PSObject.Properties["AmpOriginalDriverVersion"]) {[string]$script:State.AmpOriginalDriverVersion} else {""})
+        SafeAmpInstalled=(Get-StateBool "SafeAmpInstalled")
+        AmpRestoreVerified=(Get-StateBool "AmpRestoreVerified")
         PreAudioPassed=(Get-StateBool "PreAudioPassed")
         PreAudioStopProved=(Get-StateBool "PreAudioStopProved")
         SpeakerAttempted=(Get-StateBool "SpeakerAttempted")
@@ -1469,6 +1474,7 @@ if ($Mode -eq "Restore") {
     $targetId=[string]$script:State.TargetInstanceId
     try {
         Restore-OriginalDriver $targetId
+        Restore-OriginalAmpDriver
         Restore-Firmware
         Remove-TestCertificate ([string]$script:State.CertificateThumbprint)
         Write-RunLog "RESTORE=PASS"
@@ -1517,6 +1523,17 @@ $script:State=[pscustomobject]@{
     OriginalExportedInf=""
     TestInfName=""
     TestDriverVersion=""
+    AmpInstanceId=""
+    AmpOriginalService=""
+    AmpOriginalProblemCode=0
+    AmpOriginalInfName=""
+    AmpOriginalDriverVersion=""
+    AmpOriginalProvider=""
+    AmpOriginalExportedInf=""
+    SafeAmpInfName=""
+    SafeAmpInstalled=$false
+    AmpDisabledByRunner=$false
+    AmpRestoreVerified=$false
     CertificateThumbprint=""
     FirmwareHadOriginal=$false
     FirmwareBackup=""
@@ -1547,6 +1564,7 @@ Write-RunLog "FIRMWARE=$firmware"
 Write-RunLog "FIRMWARE_SHA256=$ExpectedFirmwareSha256"
 
 $finalFolder=Assert-Package "FinalSpeaker" $info
+$ampFolder=Assert-SafeAmpPackage $info
 Write-RunLog "PACKAGE_HEAD=$($info.HeadSha)"
 
 $telemetry=$null
@@ -1554,14 +1572,31 @@ $success=$false
 
 try {
     Backup-OriginalDriver $targetId
+
+    $amp=Get-AmpDevice
+    $ampId=[string]$amp.PNPDeviceID
+    Backup-OriginalAmpDriver $ampId
+
     Install-Firmware $firmware
     Import-TestCertificate $info | Out-Null
+    Install-SafeAmpPackage $info $ampId
 
     # Final proof is Windows PCM, not a DSP-generated Tone path:
     # WinMM -> Windows Audio Engine -> WaveRT -> CoolStar HDA DMA ->
     # SOF HOST -> SSP1 -> MAX98357A.
     $amp=Get-AmpDevice
-    Write-RunLog "AMP=$($amp.PNPDeviceID) SERVICE=$($amp.Service)"
+    $ampDriver=Get-BoundDriverOrNull ([string]$amp.PNPDeviceID)
+    if (-not $ampDriver -or
+        [string]$amp.Service -ne [string]$info.SafeAmpService -or
+        [string]$ampDriver.DriverVersion -ne [string]$info.SafeAmpDriverVersion -or
+        [string]$ampDriver.DriverProviderName -ne [string]$info.SafeAmpProvider) {
+        throw "Fail-closed MAX98357A identity changed before speaker phase."
+    }
+    Write-RunLog ("AMP_SAFE_READY=PASS ID={0} SERVICE={1} VERSION={2} PROVIDER={3}" -f
+        [string]$amp.PNPDeviceID,
+        [string]$amp.Service,
+        [string]$ampDriver.DriverVersion,
+        [string]$ampDriver.DriverProviderName)
     Write-RunLog "FINAL_SPEAKER_PHASE=BEGIN"
     $script:State.SpeakerAttempted=$true
     Save-State
@@ -1636,6 +1671,14 @@ try {
     }
 
     try {
+        Restore-OriginalAmpDriver
+        Write-RunLog "FINAL_AMP_RESTORE=PASS"
+    } catch {
+        Write-RunLog "FINAL_AMP_RESTORE=FAIL $($_.Exception.Message)"
+        $success=$false
+    }
+
+    try {
         Restore-Firmware
         Write-RunLog "FIRMWARE_RESTORE=PASS"
     } catch {
@@ -1665,7 +1708,8 @@ if ($success) {
     if (-not $script:State.SpeakerAttempted -or
         -not $script:State.SpeakerPassed -or
         -not $script:State.SpeakerStopProved -or
-        -not $script:State.RestoreVerified) {
+        -not $script:State.RestoreVerified -or
+        -not $script:State.AmpRestoreVerified) {
         Write-RunLog "FINAL_GATE=FAIL incomplete proof vector"
         $success=$false
     }
