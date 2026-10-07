@@ -628,7 +628,7 @@ p360_host_playback_prepare(
         playback,
         &ctx->Bus);
     if (!NT_SUCCESS(status))
-        return status;
+        goto fail;
 
     status=p360_playback_stream_bind_buffer(
         playback,
@@ -636,7 +636,7 @@ p360_host_playback_prepare(
         bufferBytes,
         periodBytes);
     if (!NT_SUCCESS(status))
-        return status;
+        goto fail;
 
     pageTablePhysical=
         p360_playback_page_table_physical32(playback);
@@ -851,10 +851,13 @@ p360_host_playback_stop(
                 ctx,
                 &message,
                 12u);
-            if (!NT_SUCCESS(status) && NT_SUCCESS(firstStatus))
-                firstStatus=status;
+            if (!NT_SUCCESS(status)) {
+                if (NT_SUCCESS(firstStatus))
+                    firstStatus=status;
+            } else {
+                playback->SofRunning=FALSE;
+            }
         }
-        playback->SofRunning=FALSE;
     }
 
     status=p360_playback_stream_stop(playback);
@@ -888,6 +891,17 @@ p360_host_playback_release(
     firstStatus=p360_host_playback_stop(
         ctx,
         playback);
+
+    /*
+     * Do not PCM_FREE or release the HDA stream while firmware still reports
+     * the HOST pipeline as running. The caller can retry STOP or escalate to
+     * the full DSP reset path; silently clearing ownership here would make a
+     * later teardown unsafe.
+     */
+    if (playback->SofRunning)
+        return NT_SUCCESS(firstStatus) ?
+            STATUS_DEVICE_HARDWARE_ERROR :
+            firstStatus;
 
     if (playback->SofParamsPrepared) {
         RtlZeroMemory(&message,sizeof(message));
