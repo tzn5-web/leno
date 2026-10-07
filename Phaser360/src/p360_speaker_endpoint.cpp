@@ -454,8 +454,6 @@ public:
     }
 
 private:
-    NTSTATUS EnsurePlaybackPrepared();
-
     volatile LONG m_Refs;
 };
 
@@ -516,6 +514,8 @@ public:
         );
 
 private:
+    NTSTATUS EnsurePlaybackPrepared();
+
     volatile LONG m_Refs;
     P360WaveMiniport *m_Owner;
     PPORTWAVERTSTREAM m_PortStream;
@@ -997,11 +997,23 @@ P360WaveStream::AllocateAudioBuffer(
      * Four periods keep SOF's host-period contract integral while preserving
      * frame alignment for stereo S16 WaveRT buffers.
      */
-    RequestedSize-=RequestedSize %
-        (P360_SPEAKER_CHANNELS *
-         (P360_SPEAKER_CONTAINER_BITS / 8u) * 4u);
-    if (!RequestedSize)
-        return STATUS_INVALID_BUFFER_SIZE;
+    {
+        const ULONG alignment=
+            P360_SPEAKER_CHANNELS *
+            (P360_SPEAKER_CONTAINER_BITS / 8u) * 4u;
+        const ULONG remainder=RequestedSize % alignment;
+
+        if (remainder) {
+            const ULONG delta=alignment-remainder;
+            if (RequestedSize>P360_PLAYBACK_MAX_BUFFER_BYTES-delta)
+                return STATUS_INVALID_BUFFER_SIZE;
+            RequestedSize+=delta;
+        }
+
+        if (!RequestedSize ||
+            RequestedSize>P360_PLAYBACK_MAX_BUFFER_BYTES)
+            return STATUS_INVALID_BUFFER_SIZE;
+    }
 
     high.QuadPart=MAXULONG;
 
@@ -1030,7 +1042,7 @@ P360WaveStream::AllocateAudioBuffer(
     *AudioBufferMdl=mdl;
     *ActualSize=RequestedSize;
     *OffsetFromFirstPage=0;
-    *CacheType=MmCached;
+    *CacheType=MmWriteCombined;
     return STATUS_SUCCESS;
 }
 
@@ -1071,7 +1083,7 @@ P360WaveStream::GetPositionRegister(
     )
 {
     UNREFERENCED_PARAMETER(Register);
-    return STATUS_NOT_IMPLEMENTED;
+    return STATUS_NOT_SUPPORTED;
 }
 
 STDMETHODIMP
@@ -1080,7 +1092,7 @@ P360WaveStream::GetClockRegister(
     )
 {
     UNREFERENCED_PARAMETER(Register);
-    return STATUS_NOT_IMPLEMENTED;
+    return STATUS_NOT_SUPPORTED;
 }
 
 NTSTATUS
