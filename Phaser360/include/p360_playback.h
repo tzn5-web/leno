@@ -5,6 +5,10 @@
 
 #include "p360_cs_bus.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define P360_PLAYBACK_MAX_BUFFER_BYTES (64u * 1024u)
 #define P360_PLAYBACK_PAGE_TABLE_BYTES PAGE_SIZE
 
@@ -81,3 +85,7 @@ UINT32
 p360_playback_page_table_physical32(
     _In_ const P360_PLAYBACK_STREAM *Playback
     );
+
+#ifdef __cplusplus
+}
+#endif
