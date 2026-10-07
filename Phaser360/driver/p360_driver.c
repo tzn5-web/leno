@@ -963,6 +963,107 @@ p360_host_playback_release(
     return firstStatus;
 }
 
+NTSTATUS
+p360_host_playback_force_quiesce(
+    P360_DEVICE_CONTEXT *ctx,
+    P360_PLAYBACK_STREAM *playback
+    )
+{
+    NTSTATUS firstStatus=STATUS_SUCCESS;
+    NTSTATUS status;
+
+    if (!ctx || !playback ||
+        KeGetCurrentIrql()!=PASSIVE_LEVEL)
+        return STATUS_INVALID_PARAMETER;
+
+    /*
+     * Preserve the fail-quiet order even on the emergency path. A failed MAX
+     * mute is recorded, but it must not prevent transport quiescence: removing
+     * sample flow is safer than leaving SOF/HDA DMA live.
+     */
+    if (playback->SpeakerStarted && ctx->CsAudioInitialized) {
+        status=p360_csaudio_speaker_stop(&ctx->CsAudio);
+        if (NT_SUCCESS(status)) {
+            playback->SpeakerStarted=FALSE;
+        } else if (NT_SUCCESS(firstStatus)) {
+            firstStatus=status;
+        }
+    }
+
+    if (playback->SpeakerArmed && !playback->SpeakerStarted) {
+        if (p360_state_speaker_disarm(&ctx->State))
+            playback->SpeakerArmed=FALSE;
+        else if (NT_SUCCESS(firstStatus))
+            firstStatus=STATUS_INVALID_DEVICE_STATE;
+    }
+
+    status=p360_playback_stream_stop(playback);
+    if (!NT_SUCCESS(status) && NT_SUCCESS(firstStatus))
+        firstStatus=status;
+
+    /*
+     * If firmware ownership could not be released through STREAM_STOP or
+     * PCM_FREE, a proved full DSP reset is the only operation allowed to
+     * invalidate those references. Runtime stop masks IRQ/DPC, resets the DSP
+     * and releases the live-DSP power lease.
+     */
+    if (ctx->RuntimeInitialized &&
+        (ctx->Runtime.Bound ||
+         InterlockedCompareExchange(&ctx->Runtime.Active,0,0) ||
+         InterlockedCompareExchange(&ctx->Runtime.DpcState,0,0) ||
+         InterlockedCompareExchange(&ctx->Runtime.EventValid,0,0) ||
+         (ctx->BootInitialized && ctx->Boot.LiveDsp))) {
+        status=p360_cs_runtime_stop(&ctx->Runtime);
+        if (!NT_SUCCESS(status) &&
+            ctx->BootInitialized &&
+            ctx->Boot.LiveDsp) {
+            p360_state_fail(&ctx->State,P360_FAIL_STREAM);
+            return status;
+        }
+        if (!NT_SUCCESS(status) && NT_SUCCESS(firstStatus))
+            firstStatus=status;
+    }
+
+    if (ctx->BootInitialized && ctx->Boot.LiveDsp) {
+        p360_state_fail(&ctx->State,P360_FAIL_STREAM);
+        return NT_SUCCESS(firstStatus) ?
+            STATUS_DEVICE_HARDWARE_ERROR :
+            firstStatus;
+    }
+
+    if (ctx->State.hardware_identity_ok &&
+        ctx->State.nhlt_ok) {
+        (void)p360_state_runtime_reset(&ctx->State,1);
+    }
+
+    /*
+     * DSP reset is the ownership proof for these two firmware-side latches.
+     * Do not clear them anywhere else after a failed IPC teardown.
+     */
+    playback->SofRunning=FALSE;
+    playback->SofParamsPrepared=FALSE;
+    playback->SpeakerArmed=FALSE;
+
+    status=p360_playback_stream_retire(playback);
+    if (!NT_SUCCESS(status)) {
+        p360_state_fail(&ctx->State,P360_FAIL_STREAM);
+        return status;
+    }
+
+    if (!playback->StreamOwned &&
+        !playback->StreamPrepared &&
+        !playback->Running &&
+        !playback->PageTable &&
+        !playback->AudioMdl) {
+        (void)InterlockedCompareExchangePointer(
+            (PVOID volatile *)&ctx->ActivePlayback,
+            NULL,
+            playback);
+    }
+
+    return firstStatus;
+}
+
 static NTSTATUS
 p360_host_force_release_active_playback(
     _Inout_ P360_DEVICE_CONTEXT *ctx)
@@ -981,9 +1082,17 @@ p360_host_force_release_active_playback(
     if (!playback)
         return STATUS_SUCCESS;
 
-    return p360_host_playback_release(
-        ctx,
-        playback);
+    {
+        NTSTATUS status=p360_host_playback_release(
+            ctx,
+            playback);
+        if (NT_SUCCESS(status))
+            return STATUS_SUCCESS;
+
+        return p360_host_playback_force_quiesce(
+            ctx,
+            playback);
+    }
 }
 
 static NTSTATUS
