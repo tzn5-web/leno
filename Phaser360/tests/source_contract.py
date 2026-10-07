@@ -81,8 +81,26 @@ ipc3_topology=(ROOT/"sof_core/loader/p360_ipc3_topology.c").read_text()
 run_b4=(ROOT/"tests/run_b4_core.sh").read_text()
 csaudio_h=(ROOT/"include/p360_csaudio.h").read_text()
 csaudio=(ROOT/"src/p360_csaudio.c").read_text()
+telemetry_h=(ROOT/"include/p360_telemetry.h").read_text()
+telemetry=(ROOT/"src/p360_telemetry.c").read_text()
 state_h=(ROOT/"include/p360_state.h").read_text()
 state=(ROOT/"src/p360_state.c").read_text()
+
+for token in (
+    r"\\Registry\\Machine\\SYSTEM\\CurrentControlSet\\Services\\P360SofAudio\\Parameters",
+    "P360_TELEM_STAGE_IPC_READY      50u",
+    "P360_TELEM_STAGE_TONE_COMPLETE  110u",
+    "P360_TELEM_STAGE_STOP_COMPLETE  120u",
+    "p360_telemetry_reset(",
+    "p360_telemetry_stage(",
+    "p360_telemetry_boot_epoch(",
+    "p360_telemetry_ipc(",
+    "p360_telemetry_result(",
+    "ZwCreateKey(",
+    "ZwSetValueKey(",
+):
+    if token not in telemetry_h + "\n" + telemetry:
+        raise SystemExit(f"runtime telemetry contract missing: {token}")
 
 for token in (
     'L"\\\\CallBack\\\\CsAudioCallbackAPI"',
@@ -263,6 +281,8 @@ for token in (
     r"..\src\p360_safety.c",
     r"..\src\p360_csaudio.c",
     r"..\include\p360_csaudio.h",
+    r"..\src\p360_telemetry.c",
+    r"..\include\p360_telemetry.h",
     r"..\sof_core\loader\p360_ipc3_tx.c",
     r"..\sof_core\loader\p360_ipc3_tx.h",
     r"..\sof_core\loader\p360_ipc3_topology.c",
@@ -295,6 +315,8 @@ for token in (
     "/p:P360InternalSpeakerEnabled=1",
     "/p:P360BoundedToneTestEnabled=1",
     "P360SofAudio-portcls-shell.sys",
+    "P360SofAudio-preaudio-ipc3.sys",
+    "P360SofAudio-preaudio-ipc3.pdb",
     "PORTCLS_TONE_TOPOLOGY_PROOF_COMPILE=PASS",
     "PORTCLS_BOUNDED_TONE_TEST_COMPILE=PASS",
     "P360SofAudio-bounded-tone-test.sys",
@@ -446,6 +468,26 @@ for forbidden in (
 
 
 driver=(ROOT/"driver/p360_driver.c").read_text()
+
+for token in (
+    "p360_build_flags(VOID)",
+    "p360_telemetry_reset(",
+    "P360_TELEM_STAGE_FW_LOADED",
+    "P360_TELEM_STAGE_SOF_BOOTING",
+    "P360_TELEM_STAGE_FW_READY",
+    "P360_TELEM_STAGE_IRQ_READY",
+    "p360_telemetry_ipc(",
+    "P360_TELEM_STAGE_IPC_READY",
+    "P360_TELEM_STAGE_TOPOLOGY_READY",
+    "P360_TELEM_STAGE_AUDIO_CORE",
+    "P360_TELEM_STAGE_STREAM_STARTED",
+    "P360_TELEM_STAGE_SPEAKER_ARMED",
+    "P360_TELEM_STAGE_AMP_STARTED",
+    "P360_TELEM_STAGE_TONE_COMPLETE",
+    "P360_TELEM_STAGE_STOP_COMPLETE",
+):
+    if token not in driver:
+        raise SystemExit(f"hardware proof telemetry milestone missing: {token}")
 
 for token in (
     "p360_cs_runtime_send_ipc(",
