@@ -64,4 +64,7 @@ Manual rollback after a successful install:
   Double-click RESTORE_LAST_SESSION.cmd.
 
 Results:
-  Desktop\P360_AUDIO_SAFE\
+  Detailed recovery state remains under Desktop\P360_AUDIO_SAFE\.
+  Every Audio run also writes one result ZIP directly on Desktop:
+  P360_AUDIO_*.zip
+  Send that ZIP back for the next audit; no manual file selection is needed.
