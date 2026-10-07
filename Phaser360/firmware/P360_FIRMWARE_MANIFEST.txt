@@ -1,37 +1,42 @@
 PHASER360 SOF firmware manifest
 
 Runtime filename:
-  p360-f686.ri
+  sof-apl-v1.9.3-official.ri
 
 Required install path:
-  \SystemRoot\System32\drivers\P360\p360-f686.ri
+  \SystemRoot\System32\drivers\P360\sof-apl-v1.9.3-official.ri
 
 Exact size:
-  246528 bytes
+  287488 bytes
 
 SHA-256:
-  f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab
+  40029b5a05665f19a492ef00b8c0a24c42e90d7c00fc57146e07947fd1407d5c
 
 Pinned firmware:
-  SOF 1.9.3 / IPC3 diagnostic-v2 image used by the prior Phaser360
-  v10.11B/v10.14C audited packages.
+  Official Intel-signed SOF 1.9.3 Apollo Lake image.
 
-Provenance:
-  The byte-identical image was recovered from the user's prior
-  PHASER360_v10_11B_FULL_LINK_AUDIT_ONLY package as firmware/sof-apl.ri.
-  The current loader independently validates the exact size, XMan manifest,
-  SHA-256 and fixed FW_READY bytes before use.
+Upstream provenance:
+  repository: thesofproject/sof-bin
+  path: v1.9.x/sof-v1.9.3/intel-signed/sof-apl.ri
+  Git blob SHA: 3e62f3b4b98960f79d017503f2f26301265c5c6d
 
-Repository payload:
-  Phaser360/firmware/p360-f686.ri.gz
-  gzip SHA-256:
-  221f536ad2e1ccc53ec145573fb8556dd3d7d115322e085d5cfae3faf62e48c3
+Gemini Lake naming:
+  In the SOF 1.9.x distribution, sof-glk.ri resolves to the Apollo Lake
+  sof-apl.ri payload for this generation. The Windows package stores the
+  resolved official image under an explicit non-symlink filename.
 
-CI reconstruction:
-  The Windows workflow decompresses the repository payload to
-  firmware/p360-f686.ri and rejects the build unless the raw result is exactly
-  246528 bytes with SHA-256 f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab.
+Compatibility facts verified before pinning:
+  XMan magic: XMan
+  XMan manifest bytes: 768
+  IPC ABI from FW_READY: 3.20
+  build tag: a9780
+  source hash in FW_READY: 0xc84cce8f
+
+The previous repository image:
+  p360-f686.ri / SHA-256 f68694b6...
+was a custom diagnostic-v2 build recovered from an earlier Phaser360 package.
+It is intentionally no longer used by the full-install driver.
 
 Packaging rule:
-  Do not substitute another sof-apl.ri by filename alone. Only the exact
-  verified image above may be packaged as p360-f686.ri.
+  CI copies the exact official file above and rejects the build unless both
+  size and SHA-256 match this manifest.
