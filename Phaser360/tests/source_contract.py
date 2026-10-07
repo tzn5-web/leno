@@ -536,15 +536,22 @@ for token in (
     "PORTCLS_BOUNDED_TONE_TEST_COMPILE=PASS",
     "P360SofAudio-bounded-tone-test.sys",
     "P360SofAudio-bounded-tone-test.pdb",
-    "FinalSpeakerDriverVersion = \"2.0.302.1\"",
+    "FinalSpeakerDriverVersion = \"3.0.100.1\"",
     "FinalSpeakerSysSha256",
-    'FinalSpeakerAmplitudeQ1_31 = "10737418"',
-    "FinalSpeakerAmplitudePercent = 0.5",
-    "FinalSpeakerToneBlocks125us = 16000",
+    'FinalArchitecture = "WaveRT->CoolStar HDA DMA->SOF HOST->SSP1->MAX98357A"',
+    "FinalWaveRtContainerBits = 32",
+    "FinalWaveRtValidBits = 16",
+    "FinalSampleRate = 48000",
+    "FinalChannels = 2",
+    "LegacyBoundedToneDiagnosticRetained = $true",
     "final\\P360SofAudio.sys",
     "P360SofAudio.inx",
     "P360_FIRMWARE_MANIFEST.txt",
     "PORTCLS_SPEAKER_ENDPOINT_COMPILE=PASS",
+    "PORTCLS_HOST_WAVERT_PLAYBACK_COMPILE=PASS",
+    "P360SofAudio-host-playback.sys",
+    "P360SofAudio-host-playback.pdb",
+    "/p:P360HostPlaybackEnabled=1",
     "PORTCLS_SOF_BOOT_COMPILE=PASS",
     "PORTCLS_SOF_IPC3_PROOF_COMPILE=PASS",
 ):
@@ -585,6 +592,35 @@ for token in (
         raise SystemExit(f"bounded speaker build missing required gate: {token}")
 if "/p:P360SpeakerEndpointEnabled=1" in bounded_step:
     raise SystemExit("bounded speaker proof must not expose normal Windows speaker endpoint")
+
+
+host_step_begin=workflow.index("- name: Compile real HOST WaveRT speaker path")
+host_step_end=workflow.index("- name: Locate WDK signing tools",host_step_begin)
+host_step=workflow[host_step_begin:host_step_end]
+for token in (
+    "/p:P360PortClsShellEnabled=1",
+    "/p:P360RuntimeBootEnabled=1",
+    "/p:P360IpcProbeEnabled=1",
+    "/p:P360SpeakerEndpointEnabled=1",
+    "/p:P360HostPlaybackEnabled=1",
+    "/p:P360InternalSpeakerEnabled=1",
+    "P360SofAudio-host-playback.sys",
+    "PORTCLS_HOST_WAVERT_PLAYBACK_COMPILE=PASS",
+):
+    if token not in host_step:
+        raise SystemExit(f"real HOST WaveRT build missing required gate/output: {token}")
+for forbidden in (
+    "/p:P360ToneTopologyProofEnabled=1",
+    "/p:P360BoundedToneTestEnabled=1",
+):
+    if forbidden in host_step:
+        raise SystemExit(f"real HOST WaveRT final build depends on legacy Tone path: {forbidden}")
+
+final_catalog_i=workflow.index('"Phaser360\\driver\\out\\Release\\P360SofAudio-host-playback.sys"')
+final_dir_i=workflow.index("$finalDir",final_catalog_i)
+final_ver_i=workflow.index('"3.0.100.1"',final_dir_i)
+if not final_catalog_i < final_dir_i < final_ver_i:
+    raise SystemExit("final catalog is not built from the HOST WaveRT image")
 
 for token in (
     "WdfDriverInitNoDispatchOverride",
