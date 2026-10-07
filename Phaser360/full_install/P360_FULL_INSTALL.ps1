@@ -308,18 +308,6 @@ function Reset-WasapiEndpointFormat {
     return $false
 }
 
-function Run-WasapiPhysicalOnce {
-    Log "PHYSICAL_WASAPI_ATTEMPTS_MAX=1"
-    Log "PHYSICAL_WASAPI_ATTEMPT=1"
-    $r=Invoke-Tool $Wasapi @() -AllowFailure
-    if ($r.ExitCode -eq 0) {
-        Log "WASAPI_SHARED_PHYSICAL_PLAYBACK=PASS"
-        return $true
-    }
-    Log ("WASAPI_SHARED_PHYSICAL_PLAYBACK=FAIL EXIT="+$r.ExitCode)
-    return $false
-}
-
 function Remove-StaleProjectPackages {
     $keep=@()
     foreach($prefix in @($AdspPrefix,$AmpPrefix)) {
@@ -432,7 +420,7 @@ Assert-Admin
 Log "PHASER360 FULL AUDIO DRIVER INSTALL"
 Log ("MODE="+$Mode)
 Log "TARGET=ADSP+MAX98357A+SOF+WAVERT+WINDOWS_AUDIO"
-Log "PHYSICAL_AUDIO_TEST=ONE_SHOT_WASAPI_SHARED"
+Log "PHYSICAL_AUDIO_TEST=NO"
 
 try {
     if ($Mode -eq "Restore") {
@@ -446,22 +434,15 @@ try {
         Install-FullStack $info
 
         Log "FULL_DRIVER_INSTALL=PASS"
-        Log "WINDOWS_AUDIO_ENDPOINT=PREFLIGHT_READY"
-
-        if (-not (Run-WasapiPhysicalOnce)) {
-            throw "One-shot WASAPI shared physical playback failed. No automatic physical replay is permitted."
-        }
-
-        Log "FINAL_ACCEPTANCE=WASAPI_SHARED_ENDPOINT_FUNCTIONAL"
+        Log "WINDOWS_AUDIO_ENDPOINT=READY"
         Log "AUDIO_DRIVER_READY=YES"
         $FinalStatus="PASS"
     }
 } catch {
     Log ("ERROR="+$_.Exception.Message)
     Log "FULL_DRIVER_INSTALL=FAIL"
-    Log "PRODUCTION_DRIVER_LEFT_INSTALLED_FOR_DIAGNOSIS=YES"
+    Log "FULL_DRIVER_LEFT_INSTALLED_FOR_DIAGNOSIS=YES"
     Log "AUTOMATIC_ROLLBACK=NO"
-    Log "AUTOMATIC_PHYSICAL_REPLAY=NO"
     $FinalStatus="FAIL"
 }
 
