@@ -362,18 +362,41 @@ for token in (
 if '"/install"' in runner:
     raise SystemExit("hardware gate runner must stage packages without pnputil /install")
 
-pre_phase_i=runner.index('Write-RunLog "PREAUDIO_PHASE=BEGIN"')
-pre_pass_i=runner.index('Write-RunLog "PREAUDIO_FW_READY_IRQ_IPC=PASS"',pre_phase_i)
-pre_stop_i=runner.index('Write-RunLog "PREAUDIO_STOP=PASS"',pre_pass_i)
-pre_restore_i=runner.index('Write-RunLog "PREAUDIO_BASELINE_RESTORE=PASS"',pre_stop_i)
-speaker_phase_i=runner.index('Write-RunLog "SPEAKER_PHASE=BEGIN"',pre_restore_i)
-tone_pass_i=runner.index('Write-RunLog "BOUNDED_TONE_250MS=PASS"',speaker_phase_i)
-speaker_stop_i=runner.index('Write-RunLog "SPEAKER_STOP_MUTE=PASS"',tone_pass_i)
-if not (
-    pre_phase_i < pre_pass_i < pre_stop_i < pre_restore_i <
-    speaker_phase_i < tone_pass_i < speaker_stop_i
+for forbidden in (
+    "preaudio-proof.json",
+    "Assert-PreAudioProof",
+    "Write-PreAudioProof",
 ):
-    raise SystemExit("one-shot PRE-AUDIO -> restore -> speaker ordering drifted")
+    if forbidden in runner:
+        raise SystemExit(f"persistent PRE-AUDIO proof reuse path reintroduced: {forbidden}")
+
+pre_phase_i=runner.index('Write-RunLog "PREAUDIO_PHASE=BEGIN"')
+pre_install_i=runner.index('Install-TestPackage "PreAudio"',pre_phase_i)
+pre_wait_i=runner.index("Wait-Telemetry -ExpectedFlags 3",pre_install_i)
+pre_pass_i=runner.index('Write-RunLog "PREAUDIO_FW_READY_IRQ_IPC=PASS"',pre_wait_i)
+pre_stop_call_i=runner.index("Disable-TargetAndProveStop $targetId 3",pre_pass_i)
+pre_stop_i=runner.index('Write-RunLog "PREAUDIO_STOP=PASS"',pre_stop_call_i)
+pre_restore_call_i=runner.index("Restore-OriginalDriver $targetId",pre_stop_i)
+pre_restore_i=runner.index('Write-RunLog "PREAUDIO_BASELINE_RESTORE=PASS"',pre_restore_call_i)
+baseline_recheck_i=runner.index("Assert-SafeBaselineBeforeNewTest $targetId",pre_restore_i)
+speaker_guard_i=runner.index(
+    "if (-not $script:State.PreAudioPassed -or -not $script:State.PreAudioStopProved)",
+    baseline_recheck_i)
+speaker_phase_i=runner.index('Write-RunLog "SPEAKER_PHASE=BEGIN"',speaker_guard_i)
+speaker_attempt_i=runner.index("$script:State.SpeakerAttempted=$true",speaker_phase_i)
+speaker_install_i=runner.index('Install-TestPackage "BoundedSpeaker"',speaker_attempt_i)
+speaker_wait_i=runner.index("Wait-Telemetry -ExpectedFlags 31",speaker_install_i)
+tone_pass_i=runner.index('Write-RunLog "BOUNDED_TONE_250MS=PASS"',speaker_wait_i)
+speaker_stop_call_i=runner.index("Disable-TargetAndProveStop $targetId 31",tone_pass_i)
+speaker_stop_i=runner.index('Write-RunLog "SPEAKER_STOP_MUTE=PASS"',speaker_stop_call_i)
+if not (
+    pre_phase_i < pre_install_i < pre_wait_i < pre_pass_i <
+    pre_stop_call_i < pre_stop_i < pre_restore_call_i < pre_restore_i <
+    baseline_recheck_i < speaker_guard_i < speaker_phase_i <
+    speaker_attempt_i < speaker_install_i < speaker_wait_i < tone_pass_i <
+    speaker_stop_call_i < speaker_stop_i
+):
+    raise SystemExit("same-run PRE-AUDIO -> STOP -> baseline -> bounded speaker ordering drifted")
 
 for forbidden in (
     "bcdedit.exe /set",
