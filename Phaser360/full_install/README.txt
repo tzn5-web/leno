@@ -31,17 +31,19 @@ The installer:
 
 FINAL ACCEPTANCE
 ----------------
-After all no-sound repairs have passed, the installer performs exactly ONE
-physical WASAPI shared playback attempt:
+The installer itself is install-only: it does not start physical playback.
+
+After INSTALL_PHASER360_AUDIO.cmd reports PASS, run
+TEST_PHASER360_AUDIO.cmd when you want the real final acceptance. That command
+performs exactly ONE physical WASAPI shared playback attempt:
 - 48 kHz stereo PCM;
 - 32-bit container / 16 valid bits;
 - 997 Hz;
 - 2000 ms;
 - less than 0.5 percent amplitude.
 
-There is no automatic second physical attempt and no automatic rollback.
-If this final playback fails, the same production stack remains installed for
-diagnosis.
+There is no automatic second physical attempt. The test result does not swap
+drivers or roll back the installed production stack.
 
 The legacy waveOut utility is not part of the full-install package and is not
 used as production acceptance.
