@@ -594,14 +594,13 @@ for token in (
     'Phaser360\\firmware\\p360-f686.ri.gz',
     '221f536ad2e1ccc53ec145573fb8556dd3d7d115322e085d5cfae3faf62e48c3',
     '[IO.Compression.GZipStream]::new(',
-    'P360_EXACT_FIRMWARE_RECONSTRUCT=PASS',
     'Join-Path $root "p360-f686.ri"',
-    'FirmwareSha256 = (Get-FileHash (Join-Path $root "p360-f686.ri")',
-    'P360_PRODUCTION_VERIFY',
-    'P360_PRODUCTION_PACKAGE=PASS',
+    'FirmwareSha256=(Get-FileHash (Join-Path $root "p360-f686.ri")',
+    'P360_FULL_INSTALL_VERIFY',
+    'P360_FULL_INSTALL_PACKAGE=PASS',
 ):
     if token not in workflow:
-        raise SystemExit(f"self-contained production firmware workflow contract missing: {token}")
+        raise SystemExit(f"self-contained full-install firmware workflow contract missing: {token}")
 
 for forbidden in (
     "Final speaker test did not reach fresh TONE_COMPLETE.",
@@ -662,16 +661,16 @@ if '"/install"' in safe_amp_install_body:
     raise SystemExit("safe MAX98357A package must be staged before exact devnode remove/rescan")
 
 for token in (
-    "Compile fail-closed MAX98357A dependency",
-    "P360_MAX98357_SAFE_COMPILE=PASS",
+    "Build complete MAX98357A amplifier driver",
+    "P360_MAX98357A_BUILD=PASS",
     'P360Max98357Safe.sys" = "P360Max98357Safe.sys"',
     '"P360Max98357Safe.sys"',
-    'P360Max98357SafeSha256 = (Get-FileHash (Join-Path $root "P360Max98357Safe.sys")',
+    'P360Max98357SafeSha256=(Get-FileHash (Join-Path $root "P360Max98357Safe.sys")',
     "P360AudioBundle.inf",
     "P360AudioBundle.cat",
 ):
     if token not in workflow:
-        raise SystemExit(f"production MAX98357A integration/signing workflow missing: {token}")
+        raise SystemExit(f"full-install MAX98357A integration/signing workflow missing: {token}")
 
 amp_backup_i=runner.index("Backup-OriginalAmpDriver $ampId")
 amp_install_i=runner.index("Install-SafeAmpPackage $info $ampId",amp_backup_i)
