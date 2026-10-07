@@ -390,7 +390,7 @@ for token in (
     "net session >nul 2>&1",
     "Start-Process -FilePath '%~f0' -Verb RunAs",
     'P360_AUDIO_GATE.ps1" -Mode Audio',
-    "PRE-AUDIO proof first",
+    "2. PRE-AUDIO: FW_READY + IRQ + IPC + STOP",
     "Return code: %RC%",
     "pause",
 ):
