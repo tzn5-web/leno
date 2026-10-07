@@ -60,7 +60,14 @@ static void test_state_machine(void)
     assert(!p360_safety_can_start_speaker(&sm)); /* compile gate remains closed */
     {
         P360_STATE_MACHINE direct = sm;
-        assert(p360_state_advance(&direct, P360_STATE_SPEAKER_ARMED));
+        assert(!p360_state_advance(&direct, P360_STATE_SPEAKER_ARMED));
+        assert(p360_state_speaker_arm(&direct));
+        assert(direct.state == P360_STATE_SPEAKER_ARMED);
+        assert(direct.speaker_runtime_armed);
+        assert(!p360_speaker_may_arm(&direct));
+        assert(p360_state_speaker_disarm(&direct));
+        assert(direct.state == P360_STATE_AUDIO_CORE_READY);
+        assert(!direct.speaker_runtime_armed);
     }
     sm.speaker_policy_enabled = 0;
 
