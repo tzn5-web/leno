@@ -1001,10 +1001,14 @@ for token in (
 for forbidden in (
     "Run-WasapiPhysicalOnce",
     "PHYSICAL_WASAPI_ATTEMPT",
+    "WASAPI_SHARED_PHYSICAL_PLAYBACK",
     "P360_WAVERT_TEST.exe",
 ):
     if forbidden in full_installer:
-        raise SystemExit(f"legacy waveOut test leaked into full installer: {forbidden}")
+        raise SystemExit(f"physical/legacy test leaked into full installer: {forbidden}")
+
+if "PhysicalAudioTest=$true" in workflow:
+    raise SystemExit("full-install workflow must remain install-only")
 
 full_prepare_begin=workflow.index("- name: Assemble full-install driver")
 full_build_begin=workflow.index("- name: Catalog sign audit and package",full_prepare_begin)
@@ -1028,19 +1032,25 @@ full_build=workflow[full_build_begin:full_upload_begin]
 for token in (
     'InstallerMode="FullInstall"',
     'ForceBindingApi="UpdateDriverForPlugAndPlayDevices/INSTALLFLAG_FORCE"',
-    "PhysicalAudioTest=$true",
-    "PhysicalWasapiAttemptsMax=1",
-    'FinalAcceptance="WASAPI_SHARED_ENDPOINT_FUNCTIONAL"',
+    "PhysicalAudioTest=$false",
     "P360SofAudioSha256=",
     "P360Max98357SafeSha256=",
     "WasapiTestSha256=",
     "ForceInstallSha256=",
     "P360_FULL_INSTALL_PACKAGE=PASS",
-    "P360_FINAL_ACCEPTANCE=WASAPI_SHARED_ONE_SHOT",
-    "P360_PHYSICAL_WASAPI_ATTEMPTS_MAX=1",
 ):
     if token not in full_build:
         raise SystemExit(f"full-install manifest/audit missing: {token}")
+
+for forbidden in (
+    "PhysicalAudioTest=$true",
+    "PhysicalWasapiAttemptsMax=",
+    "FinalAcceptance=",
+    "P360_FINAL_ACCEPTANCE=WASAPI_SHARED_ONE_SHOT",
+    "P360_PHYSICAL_WASAPI_ATTEMPTS_MAX=1",
+):
+    if forbidden in full_build:
+        raise SystemExit(f"physical playback manifest gate reintroduced: {forbidden}")
 
 for token in (
     "WdfDriverInitNoDispatchOverride",
