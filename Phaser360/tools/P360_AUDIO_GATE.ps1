@@ -415,6 +415,188 @@ function Backup-OriginalDriver([string]$InstanceId) {
         $script:State.OriginalProvider)
 }
 
+function Backup-OriginalAmpDriver([string]$InstanceId) {
+    $amp=Get-AmpDevice
+    if ([string]$amp.PNPDeviceID -ne $InstanceId) {
+        throw "MAX98357A instance changed before baseline capture."
+    }
+
+    $driver=Get-SignedDriverOrNull $InstanceId
+    if (-not $driver) {
+        throw "MAX98357A baseline has no signed-driver record."
+    }
+
+    $inf=[string]$driver.InfName
+    if ($inf -notmatch "(?i)^oem\d+\.inf$") {
+        throw "Current MAX98357A driver '$inf' is not exportable; refusing replacement."
+    }
+
+    $backup=Join-Path $script:Session "original-amp-driver"
+    New-Item -ItemType Directory -Path $backup -Force | Out-Null
+    Invoke-Tool -Exe "pnputil.exe" -Arguments @("/export-driver",$inf,$backup) | Out-Null
+    $exportedInf=Get-ChildItem -LiteralPath $backup -Filter "*.inf" -File -Recurse | Select-Object -First 1
+    if (-not $exportedInf) {
+        throw "Original MAX98357A driver export did not produce an INF."
+    }
+
+    $script:State.AmpInstanceId=$InstanceId
+    $script:State.AmpOriginalService=[string]$amp.Service
+    $script:State.AmpOriginalProblemCode=[int]$amp.ConfigManagerErrorCode
+    $script:State.AmpOriginalInfName=$inf
+    $script:State.AmpOriginalDriverVersion=[string]$driver.DriverVersion
+    $script:State.AmpOriginalProvider=[string]$driver.DriverProviderName
+    $script:State.AmpOriginalExportedInf=$exportedInf.FullName
+    $script:State.AmpRestoreVerified=$false
+    Save-State
+
+    Write-RunLog ("AMP_ORIGINAL=BOUND INF={0} SERVICE={1} VERSION={2} PROVIDER={3}" -f
+        $script:State.AmpOriginalInfName,
+        $script:State.AmpOriginalService,
+        $script:State.AmpOriginalDriverVersion,
+        $script:State.AmpOriginalProvider)
+}
+
+function Wait-AmpBinding(
+    [string]$InstanceId,
+    [string]$Version,
+    [string]$Provider,
+    [string]$Service,
+    [int]$Seconds=15
+) {
+    $deadline=(Get-Date).AddSeconds($Seconds)
+    do {
+        Start-Sleep -Milliseconds 500
+        $dev=Get-TargetByIdOrNull $InstanceId
+        $drv=Get-BoundDriverOrNull $InstanceId
+        if ($dev -and $drv -and
+            [int]$dev.ConfigManagerErrorCode -eq 0 -and
+            [string]$dev.Service -eq $Service -and
+            [string]$drv.DriverVersion -eq $Version -and
+            [string]$drv.DriverProviderName -eq $Provider) {
+            return [pscustomobject]@{ Device=$dev; Driver=$drv }
+        }
+    } while ((Get-Date) -lt $deadline)
+    return $null
+}
+
+function Install-SafeAmpPackage($Info,[string]$InstanceId) {
+    $folder=Assert-SafeAmpPackage $Info
+    Assert-CatalogSignatureFile (Join-Path $folder "P360Max98357Safe.cat")
+
+    $inf=Join-Path $folder "P360Max98357Safe.inf"
+    $version=[string]$Info.SafeAmpDriverVersion
+    $provider=[string]$Info.SafeAmpProvider
+    $service=[string]$Info.SafeAmpService
+
+    $disable=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/disable-device",$InstanceId) -AllowFailure
+    if ($disable.ExitCode -ne 0) {
+        throw "Could not disable MAX98357A before safe-driver transition."
+    }
+    $script:State.AmpDisabledByRunner=$true
+    Save-State
+
+    $add=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/add-driver",$inf,"/install") -AllowFailure
+    if ($add.ExitCode -ne 0) {
+        throw "Safe MAX98357A staging/install failed with exit code $($add.ExitCode)."
+    }
+    if ($add.Output -match "(?i)reboot is needed|restart is needed") {
+        throw "Safe MAX98357A installation requested reboot; refusing audio execution."
+    }
+
+    $enable=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/enable-device",$InstanceId) -AllowFailure
+    Write-RunLog "AMP_ENABLE_AFTER_STAGE_EXIT=$($enable.ExitCode)"
+    $null=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/restart-device",$InstanceId) -AllowFailure
+
+    $bound=Wait-AmpBinding $InstanceId $version $provider $service 8
+    if (-not $bound) {
+        $null=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/disable-device",$InstanceId) -AllowFailure
+        $remove=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/remove-device",$InstanceId) -AllowFailure
+        if ($remove.ExitCode -ne 0) {
+            throw "Safe MAX98357A could not be selected and exact amp removal failed."
+        }
+        $scan=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure
+        if ($scan.ExitCode -ne 0) {
+            throw "PnP rescan failed while selecting safe MAX98357A."
+        }
+        $bound=Wait-AmpBinding $InstanceId $version $provider $service 15
+    }
+
+    if (-not $bound) {
+        throw "MAX98357A did not bind to the pinned fail-closed driver."
+    }
+
+    $script:State.SafeAmpInfName=[string]$bound.Driver.InfName
+    $script:State.SafeAmpInstalled=$true
+    $script:State.AmpDisabledByRunner=$false
+    Save-State
+
+    Write-RunLog ("AMP_SAFE_BIND=PASS SERVICE={0} VERSION={1} PROVIDER={2} INF={3}" -f
+        [string]$bound.Device.Service,
+        [string]$bound.Driver.DriverVersion,
+        [string]$bound.Driver.DriverProviderName,
+        [string]$bound.Driver.InfName)
+}
+
+function Restore-OriginalAmpDriver {
+    if (-not $script:State -or
+        -not $script:State.PSObject.Properties["AmpInstanceId"] -or
+        -not [string]$script:State.AmpInstanceId) {
+        return
+    }
+
+    $instance=[string]$script:State.AmpInstanceId
+    $null=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/disable-device",$instance) -AllowFailure
+
+    if ($script:State.PSObject.Properties["SafeAmpInfName"] -and
+        [string]$script:State.SafeAmpInfName) {
+        $delete=Invoke-Tool -Exe "pnputil.exe" -Arguments @(
+            "/delete-driver",
+            [string]$script:State.SafeAmpInfName,
+            "/uninstall",
+            "/force") -AllowFailure
+        Write-RunLog "AMP_SAFE_DELETE_EXIT=$($delete.ExitCode)"
+    }
+
+    if (-not $script:State.AmpOriginalExportedInf -or
+        -not (Test-Path -LiteralPath ([string]$script:State.AmpOriginalExportedInf) -PathType Leaf)) {
+        throw "Original MAX98357A driver backup is missing."
+    }
+
+    $restore=Invoke-Tool -Exe "pnputil.exe" -Arguments @(
+        "/add-driver",
+        [string]$script:State.AmpOriginalExportedInf,
+        "/install") -AllowFailure
+    Write-RunLog "AMP_RESTORE_STAGE_EXIT=$($restore.ExitCode)"
+
+    $null=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/enable-device",$instance) -AllowFailure
+    $null=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/restart-device",$instance) -AllowFailure
+
+    $bound=Wait-AmpBinding $instance ([string]$script:State.AmpOriginalDriverVersion) ([string]$script:State.AmpOriginalProvider) ([string]$script:State.AmpOriginalService) 10
+
+    if (-not $bound) {
+        $null=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/disable-device",$instance) -AllowFailure
+        $null=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/remove-device",$instance) -AllowFailure
+        $scan=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure
+        if ($scan.ExitCode -ne 0) {
+            throw "MAX98357A baseline rescan failed."
+        }
+        $bound=Wait-AmpBinding $instance ([string]$script:State.AmpOriginalDriverVersion) ([string]$script:State.AmpOriginalProvider) ([string]$script:State.AmpOriginalService) 15
+    }
+
+    if (-not $bound) {
+        throw "Original MAX98357A driver was not restored exactly."
+    }
+
+    $script:State.SafeAmpInstalled=$false
+    $script:State.AmpDisabledByRunner=$false
+    $script:State.AmpRestoreVerified=$true
+    Save-State
+    Write-RunLog ("AMP_RESTORE=PASS SERVICE={0} VERSION={1} PROVIDER={2}" -f
+        [string]$bound.Device.Service,
+        [string]$bound.Driver.DriverVersion,
+        [string]$bound.Driver.DriverProviderName)
+}
+
 function Install-Firmware([string]$Firmware) {
     $dir = Join-Path $env:SystemRoot "System32\drivers\P360"
     $dest = Join-Path $dir "p360-f686.ri"
