@@ -282,6 +282,57 @@ int p360_ipc3_build_pcm_params(struct p360_ipc3_message *out,
     return P360_IPC3_TOPOLOGY_OK;
 }
 
+
+int p360_ipc3_build_tone_amplitude_control(struct p360_ipc3_message *out,
+    uint32_t comp_id,int32_t amplitude_q1_31)
+{
+    uint8_t *d;
+
+    /*
+     * SOF v1.9.3 tone amplitude is a runtime ENUM control.  The tone
+     * component consumes sof_ipc_ctrl_value_comp entries from the opaque
+     * sof_abi_hdr payload.  Program both stereo channels before PCM_PARAMS
+     * so tone_prepare() initializes at the bounded target instead of the
+     * firmware default 0.1 (-20 dBFS).
+     */
+    if (!out || !comp_id || amplitude_q1_31<=0 ||
+        (uint32_t)amplitude_q1_31>0x0147ae14u)
+        return P360_IPC3_TOPOLOGY_ARGUMENT;
+
+    zero_message(out);
+    d=out->data;
+
+    /* struct sof_ipc_ctrl_data: 92 bytes. */
+    put32(d,P360_IPC3_TONE_CONTROL_BYTES);
+    put32(d+4,P360_IPC3_GLB_COMP_MSG|P360_IPC3_COMP_SET_DATA);
+    put32(d+8,0u); /* request-side reply/error field */
+    put32(d+12,comp_id);
+    put32(d+16,3u); /* SOF_CTRL_TYPE_VALUE_COMP_SET */
+    put32(d+20,1u); /* SOF_CTRL_CMD_ENUM */
+    put32(d+24,1u); /* SOF_TONE_IDX_AMPLITUDE */
+
+    /* d+28 .. d+55: zero host buffer. */
+    put32(d+56,2u); /* two stereo elements */
+    put32(d+60,0u); /* elems_remaining */
+    put32(d+64,0u); /* msg_index */
+    /* d+68 .. d+91 reserved */
+
+    /* struct sof_abi_hdr at +92. ABI 3.20.0 used by pinned SOF v1.9.3. */
+    put32(d+92,0x00464f53u); /* "SOF\0" */
+    put32(d+96,0u);
+    put32(d+100,16u);       /* two sof_ipc_ctrl_value_comp entries */
+    put32(d+104,0x03014000u);
+    /* d+108 .. d+123 reserved */
+
+    put32(d+124,0u);
+    put32(d+128,(uint32_t)amplitude_q1_31);
+    put32(d+132,1u);
+    put32(d+136,(uint32_t)amplitude_q1_31);
+
+    out->bytes=P360_IPC3_TONE_CONTROL_BYTES;
+    return P360_IPC3_TOPOLOGY_OK;
+}
+
 int p360_ipc3_build_stream_trigger(struct p360_ipc3_message *out,
     uint32_t comp_id,int start)
 {
