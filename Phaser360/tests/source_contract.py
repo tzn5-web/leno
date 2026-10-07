@@ -911,7 +911,7 @@ for token in (
     "pfn>0xfffffu",
     "GetRenderStream(",
     "PrepareDSP(",
-    "DSPEnableSPIB",
+    "DSPDisableSPIB",
     "TriggerDSP(",
     "StreamPosition(",
     "CleanupDSP(",
@@ -919,6 +919,9 @@ for token in (
 ):
     if token not in playback:
         raise SystemExit(f"CoolStar/SOF host DMA bridge missing: {token}")
+
+if "DSPEnableSPIB" in playback:
+    raise SystemExit("static SPIB was reintroduced into cyclic WaveRT playback")
 
 # The compressed SOF page table must be created from the WaveRT MDL and the
 # audio MDL must remain owned by PortCls; the bridge may not allocate a second
