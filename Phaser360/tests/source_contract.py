@@ -751,6 +751,34 @@ for token in (
     if token not in restore_cmd:
         raise SystemExit(f"one-click restore launcher contract missing: {token}")
 
+for token in (
+    "function Write-ResultZip",
+    "[IO.Compression.ZipFile]::CreateFromDirectory(",
+    'Write-RunLog "RESULT_ZIP_BEGIN=$zip"',
+    'Write-Host "RESULT_ZIP_SHA256=$sha"',
+    'Write-ResultZip "AUDIO" | Out-Null',
+    'Write-ResultZip "RESTORE" | Out-Null',
+):
+    if token not in runner:
+        raise SystemExit(f"single Desktop result ZIP contract missing: {token}")
+
+report_i=runner.index('Write-Report $(if ($success) {"PASS"} else {"FAIL"}) $telemetry')
+result_dir_i=runner.index('Write-RunLog "RESULT_DIR=$Session"',report_i)
+result_zip_i=runner.index('Write-ResultZip "AUDIO" | Out-Null',result_dir_i)
+final_exit_i=runner.index('if ($success) { exit 0 }',result_zip_i)
+if not report_i < result_dir_i < result_zip_i < final_exit_i:
+    raise SystemExit("result ZIP is not snapshotted after report and before final exit")
+
+for token in (
+    "one result ZIP directly on Desktop",
+    "P360_AUDIO_*.zip",
+):
+    if token not in runner_readme:
+        raise SystemExit(f"result ZIP README contract missing: {token}")
+
+if "Result ZIP: %USERPROFILE%\\Desktop\\P360_AUDIO_*.zip" not in start_cmd:
+    raise SystemExit("one-click launcher does not publish Desktop result ZIP location")
+
 for launcher_name, launcher in (
     ("START_AUDIO_TEST.cmd",start_cmd),
     ("RESTORE_LAST_SESSION.cmd",restore_cmd),
