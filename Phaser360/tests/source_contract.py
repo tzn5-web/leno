@@ -536,11 +536,13 @@ for token in (
     "Recover-PreviousBaselineIfNeeded",
     "RESUME_AFTER_REBOOT_SCHEDULED=YES",
     "MANUAL_WINDOWS_RESTART_REQUIRED=YES",
-    "PREAUDIO_CORE_AND_AMP_MUTE=PASS",
-    "FINAL_SPEAKER_PHASE=BEGIN",
+    "INTERNAL_READY_GATE=PASS",
+    "PHYSICAL_AUDIO_TEST=BEGIN",
     "FINAL_WAVERT_2000MS_MAX_0P5PCT=PASS",
-    "FINAL_SPEAKER_STOP_MUTE=PASS",
-    "FINAL_DRIVER_RESTORE=PASS",
+    "STREAM_STOP_AND_AMP_MUTE=PASS",
+    "PERSISTENT_FINAL_STACK=YES",
+    "ROLLBACK_ON_SUCCESS=NO",
+    "AUDIO_READY=PASS ENDPOINT_REMAINS_INSTALLED=YES",
     "AUDIO_GATE=PASS",
     "NO_AUTO_REBOOT=YES",
     r"D:\PHASER360_WORK\continuation_20261005\v10_17R_original\firmware\sof-apl.ri",
@@ -618,35 +620,67 @@ for token in (
 amp_backup_i=runner.index("Backup-OriginalAmpDriver $ampId")
 amp_install_i=runner.index("Install-SafeAmpPackage $info $ampId",amp_backup_i)
 amp_ready_i=runner.index("AMP_SAFE_READY=PASS",amp_install_i)
-final_phase_after_amp_i=runner.index('Write-RunLog "FINAL_SPEAKER_PHASE=BEGIN"',amp_ready_i)
-if not amp_backup_i < amp_install_i < amp_ready_i < final_phase_after_amp_i:
-    raise SystemExit("safe MAX98357A proof is not complete before speaker phase")
+final_install_phase_i=runner.index('Write-RunLog "FINAL_STACK_INSTALL=BEGIN"',amp_ready_i)
+if not amp_backup_i < amp_install_i < amp_ready_i < final_install_phase_i:
+    raise SystemExit("safe MAX98357A proof is not complete before final stack install")
 
 for forbidden in (
     "preaudio-proof.json",
     "Assert-PreAudioProof",
     "Write-PreAudioProof",
+    'Write-RunLog "PREAUDIO_PHASE=BEGIN"',
+    'Write-RunLog "PREAUDIO_CORE_AND_AMP_MUTE=PASS"',
 ):
     if forbidden in runner:
-        raise SystemExit(f"persistent PRE-AUDIO proof reuse path reintroduced: {forbidden}")
+        raise SystemExit(f"separate/persistent PRE-AUDIO runtime path reintroduced: {forbidden}")
 
-preaudio_phase_i=runner.index('Write-RunLog "PREAUDIO_PHASE=BEGIN"')
-final_install_i=runner.index('Install-TestPackage "FinalSpeaker"',preaudio_phase_i)
+final_install_i=runner.index('Install-TestPackage "FinalSpeaker"',final_install_phase_i)
 final_core_wait_i=runner.index("Wait-Telemetry -ExpectedFlags 47 -MinimumStage 70",final_install_i)
-preaudio_pass_i=runner.index('Write-RunLog "PREAUDIO_CORE_AND_AMP_MUTE=PASS"',final_core_wait_i)
-final_phase_i=runner.index('Write-RunLog "FINAL_SPEAKER_PHASE=BEGIN"',preaudio_pass_i)
-final_attempt_i=runner.index("$script:State.SpeakerAttempted=$true",final_phase_i)
+internal_pass_i=runner.index('Write-RunLog "INTERNAL_READY_GATE=PASS"',final_core_wait_i)
+physical_phase_i=runner.index('Write-RunLog "PHYSICAL_AUDIO_TEST=BEGIN"',internal_pass_i)
+final_attempt_i=runner.index("$script:State.SpeakerAttempted=$true",physical_phase_i)
 final_wave_i=runner.index("$waveResult=Invoke-Tool -Exe $waveTest -Arguments @() -AllowFailure",final_attempt_i)
 final_stop_wait_i=runner.index("Wait-Telemetry -ExpectedFlags 47 -MinimumStage 120",final_wave_i)
 final_pass_i=runner.index('Write-RunLog "FINAL_WAVERT_2000MS_MAX_0P5PCT=PASS"',final_stop_wait_i)
-final_stop_call_i=runner.index("Disable-TargetAndProveStop $targetId 47",final_pass_i)
-final_stop_i=runner.index('Write-RunLog "FINAL_SPEAKER_STOP_MUTE=PASS"',final_stop_call_i)
+idle_pass_i=runner.index('Write-RunLog "STREAM_STOP_AND_AMP_MUTE=PASS"',final_pass_i)
+stack_verify_i=runner.index("Assert-FinalAudioStack $info $targetId $ampId",idle_pass_i)
+audio_ready_i=runner.index('Write-RunLog "AUDIO_READY=PASS ENDPOINT_REMAINS_INSTALLED=YES"',stack_verify_i)
+persistent_i=runner.index('Write-RunLog "PERSISTENT_FINAL_STACK=YES"',audio_ready_i)
 if not (
-    preaudio_phase_i < final_install_i < final_core_wait_i < preaudio_pass_i <
-    final_phase_i < final_attempt_i < final_wave_i < final_stop_wait_i <
-    final_pass_i < final_stop_call_i < final_stop_i
+    final_install_phase_i < final_install_i < final_core_wait_i < internal_pass_i <
+    physical_phase_i < final_attempt_i < final_wave_i < final_stop_wait_i <
+    final_pass_i < idle_pass_i < stack_verify_i < audio_ready_i < persistent_i
 ):
-    raise SystemExit("fresh preaudio -> single WaveRT speaker transaction ordering drifted")
+    raise SystemExit("single install -> one WaveRT test -> persistent audio ordering drifted")
+
+if "Disable-TargetAndProveStop $targetId 47" in runner[final_pass_i:]:
+    raise SystemExit("successful audio path still disables the final P360 target")
+
+success_tail=runner[runner.index("} finally {",audio_ready_i):]
+for forbidden in (
+    'Restore-OriginalDriver $targetId\n        Write-RunLog "FINAL_DRIVER_RESTORE=PASS"',
+    'Write-RunLog "FINAL_AMP_RESTORE=PASS"',
+    'Write-RunLog "FIRMWARE_RESTORE=PASS"',
+    'Write-RunLog "CERT_CLEANUP=PASS"',
+):
+    if forbidden in success_tail:
+        raise SystemExit(f"success path still contains unconditional restore: {forbidden}")
+
+for token in (
+    'if (-not $success) {',
+    "FAILURE_ROLLBACK_ADSP=PASS",
+    "FAILURE_ROLLBACK_AMP=PASS",
+    "FAILURE_ROLLBACK_FIRMWARE=PASS",
+    "FAILURE_ROLLBACK_CERT=PASS",
+    "FAILURE_ROLLBACK_BASELINE=PASS",
+    "ROLLBACK_ON_SUCCESS=NO",
+    "MANUAL_ROLLBACK=RESTORE_LAST_SESSION.cmd",
+):
+    if token not in runner:
+        raise SystemExit(f"persistent-success/failure-rollback contract missing: {token}")
+
+if "3.0.100.1" not in runner[runner.index("function Test-IsReservedGateVersion"):runner.index("function Assert-NoStaleTestPackage")]:
+    raise SystemExit("final persistent P360 driver version is not covered by rollback cleanup")
 
 for forbidden in (
     "bcdedit.exe /set",
@@ -663,9 +697,10 @@ for token in (
     "net session >nul 2>&1",
     "Start-Process -FilePath '%~f0' -Verb RunAs",
     'P360_AUDIO_GATE.ps1" -Mode Audio',
-    "2. Install pinned fail-closed MAX98357A driver in mute",
-    "3. Fresh PRE-AUDIO proof: SOF + IRQ + IPC3 + HOST topology",
-    "4. If PRE-AUDIO passes: WaveRT speaker test, 2 s / 0.5%%",
+    "2. Install/patch the pinned final ADSP + fail-closed MAX98357A stack",
+    "3. Run all SOF/IRQ/IPC/HDA safety gates internally",
+    "4. Perform ONE physical WaveRT speaker test: 2 s / 0.5%%",
+    "5. If PASS: keep the final audio stack installed and ready for Windows audio",
     "Return code: %RC%",
     "pause",
 ):
@@ -734,6 +769,8 @@ for token in (
     "P360SofAudio-bounded-tone-test.sys",
     "P360SofAudio-bounded-tone-test.pdb",
     "FinalSpeakerDriverVersion = \"3.0.100.1\"",
+    "FinalSpeakerProvider = \"PHASER360 Project\"",
+    "FinalSpeakerService = \"P360SofAudio\"",
     "FinalSpeakerSysSha256",
     'FinalArchitecture = "WaveRT->CoolStar HDA DMA->SOF HOST->SSP1->MAX98357A"',
     "FinalWaveRtContainerBits = 32",
@@ -1450,13 +1487,13 @@ for token in (
 
 amp_install_gate_i=runner.index("Install-SafeAmpPackage $info $ampId")
 amp_ready_gate_i=runner.index("AMP_SAFE_READY=PASS",amp_install_gate_i)
-preaudio_phase_gate_i=runner.index('Write-RunLog "PREAUDIO_PHASE=BEGIN"',amp_ready_gate_i)
-final_install_gate_i=runner.index('Install-TestPackage "FinalSpeaker"',preaudio_phase_gate_i)
+final_stack_phase_gate_i=runner.index('Write-RunLog "FINAL_STACK_INSTALL=BEGIN"',amp_ready_gate_i)
+final_install_gate_i=runner.index('Install-TestPackage "FinalSpeaker"',final_stack_phase_gate_i)
 if not (
     amp_install_gate_i < amp_ready_gate_i <
-    preaudio_phase_gate_i < final_install_gate_i
+    final_stack_phase_gate_i < final_install_gate_i
 ):
-    raise SystemExit("safe MAX98357A proof is not ahead of the fresh preaudio driver bind")
+    raise SystemExit("safe MAX98357A proof is not ahead of final audio driver bind")
 
 
 if "attributes.ExecutionLevel = WdfExecutionLevelDispatch" in runtime:
