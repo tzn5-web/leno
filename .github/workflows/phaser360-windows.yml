@@ -344,9 +344,9 @@ jobs:
             "2.0.201.1"
 
           New-P360Catalog `
-            "Phaser360\driver\out\Release\P360SofAudio-bounded-tone-test.sys" `
+            "Phaser360\driver\out\Release\P360SofAudio-host-playback.sys" `
             $finalDir `
-            "2.0.302.1"
+            "3.0.100.1"
 
       - name: Sign hardware gate catalogs
         shell: pwsh
@@ -396,14 +396,16 @@ jobs:
             CertificateThumbprint = "${env:P360_CERT_THUMBPRINT}"
             PreAudioDriverVersion = "2.0.101.1"
             BoundedDriverVersion = "2.0.201.1"
-            FinalSpeakerDriverVersion = "2.0.302.1"
+            FinalSpeakerDriverVersion = "3.0.100.1"
             PreAudioSysSha256 = $preHash
             BoundedSysSha256 = $boundedHash
             FinalSpeakerSysSha256 = $finalHash
-            FinalSpeakerDurationMs = 2000
-            FinalSpeakerAmplitudeQ1_31 = "10737418"
-            FinalSpeakerAmplitudePercent = 0.5
-            FinalSpeakerToneBlocks125us = 16000
+            FinalArchitecture = "WaveRT->CoolStar HDA DMA->SOF HOST->SSP1->MAX98357A"
+            FinalWaveRtContainerBits = 32
+            FinalWaveRtValidBits = 16
+            FinalSampleRate = 48000
+            FinalChannels = 2
+            LegacyBoundedToneDiagnosticRetained = $true
             FirmwareBytes = 246528
             FirmwareSha256 = "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab"
           } | ConvertTo-Json |
@@ -480,6 +482,8 @@ jobs:
             Phaser360/driver/out/Release/P360SofAudio-preaudio-ipc3.pdb
             Phaser360/driver/out/Release/P360SofAudio-bounded-tone-test.sys
             Phaser360/driver/out/Release/P360SofAudio-bounded-tone-test.pdb
+            Phaser360/driver/out/Release/P360SofAudio-host-playback.sys
+            Phaser360/driver/out/Release/P360SofAudio-host-playback.pdb
             Phaser360/driver/P360SofAudio.inx
             Phaser360/firmware/P360_FIRMWARE_MANIFEST.txt
           if-no-files-found: error
