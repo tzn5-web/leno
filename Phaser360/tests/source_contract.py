@@ -972,8 +972,12 @@ if "PKEY_AudioEndpoint_Association%,,%KSNODETYPE_ANY%" in production_inf:
     raise SystemExit("production speaker endpoint is still classified as KSNODETYPE_ANY")
 
 for token in (
-    "MIX_EXACT_P360=",
-    "WASAPI_TEST=FAIL stage=MixFormat",
+    "PKEY_AudioEngine_OEMFormat",
+    "PKEY_AudioEngine_DeviceFormat",
+    "DEVICE_FORMAT_EXACT_P360=",
+    "IAudioEndpointFormatControl",
+    "ResetToDefault(0)",
+    "MIX_INTERNAL_ENGINE_FORMAT=OBSERVED",
     "AUDCLNT_SHAREMODE_SHARED",
     "IAudioRenderClient",
     "IAudioClock",
@@ -983,10 +987,19 @@ for token in (
     if token not in wasapi_shared:
         raise SystemExit(f"WASAPI shared acceptance contract missing: {token}")
 
+for forbidden in (
+    "WASAPI_TEST=FAIL stage=MixFormat",
+    "MIX_EXACT_P360=",
+):
+    if forbidden in wasapi_shared:
+        raise SystemExit(f"internal engine mix format is incorrectly treated as hardware format: {forbidden}")
+
 for token in (
     "Report-NonAudioBoot0000",
     "NOT_AUDIO_BLOCKER=YES",
     "Remove-StaleProjectPackages",
+    "Reset-WasapiEndpointFormat",
+    "WASAPI_DEVICE_FORMAT_RESET=PASS",
     "PREFLIGHT_REPAIR_ROUND=",
     "PHYSICAL_WASAPI_ATTEMPTS_MAX=1",
     "PHYSICAL_WASAPI_ATTEMPT=1",
