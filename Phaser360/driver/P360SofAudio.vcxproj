@@ -55,6 +55,8 @@
     <P360ToneTopologyProofEnabled Condition="'$(P360ToneTopologyProofEnabled)'==''">0</P360ToneTopologyProofEnabled>
     <P360InternalSpeakerEnabled Condition="'$(P360InternalSpeakerEnabled)'==''">0</P360InternalSpeakerEnabled>
     <P360BoundedToneTestEnabled Condition="'$(P360BoundedToneTestEnabled)'==''">0</P360BoundedToneTestEnabled>
+    <P360ToneDurationMs Condition="'$(P360ToneDurationMs)'==''">250</P360ToneDurationMs>
+    <P360ToneAmplitudeQ31 Condition="'$(P360ToneAmplitudeQ31)'==''">10737418</P360ToneAmplitudeQ31>
   </PropertyGroup>
 
   <ItemDefinitionGroup>
@@ -64,7 +66,7 @@
       <BufferSecurityCheck>true</BufferSecurityCheck>
       <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>$(ProjectDir)kernel_compat;$(ProjectDir);$(ProjectDir)..\include;$(ProjectDir)..\sof_core;$(ProjectDir)..\sof_core\loader;$(ProjectDir)..\sof_core\adapter;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>P360_RUNTIME_BUILD=1;P360_RUNTIME_BOOT_ENABLED=$(P360RuntimeBootEnabled);P360_PORTCLS_SHELL_ENABLED=$(P360PortClsShellEnabled);P360_IPC_PROBE_ENABLED=$(P360IpcProbeEnabled);P360_SPEAKER_ENDPOINT_ENABLED=$(P360SpeakerEndpointEnabled);P360_TONE_TOPOLOGY_PROOF_ENABLED=$(P360ToneTopologyProofEnabled);P360_ENABLE_INTERNAL_SPEAKER=$(P360InternalSpeakerEnabled);P360_BOUNDED_TONE_TEST_ENABLED=$(P360BoundedToneTestEnabled);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>P360_RUNTIME_BUILD=1;P360_RUNTIME_BOOT_ENABLED=$(P360RuntimeBootEnabled);P360_PORTCLS_SHELL_ENABLED=$(P360PortClsShellEnabled);P360_IPC_PROBE_ENABLED=$(P360IpcProbeEnabled);P360_SPEAKER_ENDPOINT_ENABLED=$(P360SpeakerEndpointEnabled);P360_TONE_TOPOLOGY_PROOF_ENABLED=$(P360ToneTopologyProofEnabled);P360_ENABLE_INTERNAL_SPEAKER=$(P360InternalSpeakerEnabled);P360_BOUNDED_TONE_TEST_ENABLED=$(P360BoundedToneTestEnabled);P360_BOUNDED_TONE_DURATION_MS=$(P360ToneDurationMs);P360_BOUNDED_TONE_AMPLITUDE_Q1_31=$(P360ToneAmplitudeQ31);%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
