@@ -947,3 +947,87 @@ for token in (
         raise SystemExit(f"runtime-create exact diagnostic/fix missing: {token}")
 
 print("Phaser360 exact start-failure diagnostic contract: PASS")
+
+
+# Final direct speaker diagnostic: reuse the proved SOF Tone -> SSP1 path, but
+# clamp the firmware default -20 dB Tone to <=1% before any STREAM_START.
+final_runner=(ROOT/"tools/P360_FINAL_SPEAKER_TEST.ps1").read_text()
+final_start=(ROOT/"tools/START_FINAL_SPEAKER_TEST.cmd").read_text()
+final_restore=(ROOT/"tools/RESTORE_FINAL_SPEAKER_TEST.cmd").read_text()
+
+for token in (
+    "P360_IPC3_GLB_COMP_MSG   0x50000000u",
+    "P360_IPC3_COMP_SET_DATA  0x00030000u",
+    "P360_IPC3_CTRL_TYPE_VALUE_COMP_SET 3u",
+    "P360_IPC3_CTRL_CMD_ENUM             1u",
+    "P360_IPC3_TONE_IDX_AMPLITUDE        1u",
+    "P360_IPC3_TONE_AMPLITUDE_MAX_Q1_31  21474836u",
+    "P360_IPC3_TONE_AMPLITUDE_SAFE_Q1_31 10737418u",
+    "p360_ipc3_build_tone_amplitude(",
+    "put32(d+96,amplitude_q1_31)",
+    "put32(d+104,amplitude_q1_31)",
+):
+    if token not in ipc3_topology_h + "\n" + ipc3_topology:
+        raise SystemExit(f"final low-gain Tone IPC3 contract missing: {token}")
+
+amp_build_i=driver.index("p360_ipc3_build_tone_amplitude(")
+topology_ready_i=driver.index("ctx->State.topology_ready=1;",amp_build_i)
+bounded_block_i=driver.index("p360_runtime_run_bounded_tone(")
+stream_start_i=driver.index("p360_ipc3_build_stream_trigger(",bounded_block_i)
+if not (amp_build_i < topology_ready_i < bounded_block_i < stream_start_i):
+    raise SystemExit("Tone amplitude is not clamped before final STREAM_START")
+
+for token in (
+    "DIRECT_CHAIN=SOF_TONE->BUFFER->SSP1->MAX98357A",
+    "TONE_DURATION_MS=2000",
+    "TONE_AMPLITUDE_Q1_31=10737418",
+    "TONE_AMPLITUDE_PERCENT=0.5",
+    "Install-TestPackage \"BoundedSpeaker\"",
+    "Wait-Telemetry -ExpectedFlags 31 -MinimumStage 110",
+    "FINAL_TONE_2000MS_0P5PCT=PASS",
+    "FINAL_STOP_MUTE=PASS",
+    "FINAL_DRIVER_RESTORE=PASS",
+    "FINAL_SPEAKER_GATE=PASS",
+    "NO_AUTO_REBOOT=YES",
+):
+    if token not in final_runner:
+        raise SystemExit(f"final speaker runner contract missing: {token}")
+
+for forbidden in (
+    'Install-TestPackage "PreAudio"',
+    "PREAUDIO_PHASE=BEGIN",
+    "Restart-Computer",
+    "shutdown.exe",
+    "bcdedit.exe /set",
+):
+    if forbidden.lower() in final_runner.lower():
+        raise SystemExit(f"final direct speaker runner contains forbidden detour: {forbidden}")
+
+for token in (
+    "START_FINAL_SPEAKER_TEST.cmd",
+    "P360_FINAL_SPEAKER_TEST.ps1",
+    "Duration: exactly 2 seconds",
+    "0.5%% full-scale",
+):
+    if token not in final_start:
+        raise SystemExit(f"final speaker launcher contract missing: {token}")
+
+if 'P360_FINAL_SPEAKER_TEST.ps1" -Mode Restore' not in final_restore:
+    raise SystemExit("final speaker restore launcher does not target final runner")
+
+for token in (
+    "/p:P360ToneDurationMs=2000",
+    "/p:P360ToneAmplitudeQ31=10737418",
+    "P360SofAudio-final-speaker-test.sys",
+    "2.0.202.1",
+    "ToneDurationMs = 2000",
+    "ToneAmplitudeQ31 = 10737418",
+    "ToneAmplitudePercent = 0.5",
+    "P360_FINAL_SPEAKER_TEST.zip",
+    "P360-FINAL-SPEAKER-TEST-\${{ github.sha }}",
+    "P360_FINAL_SPEAKER_PACKAGE=PASS",
+):
+    if token not in workflow:
+        raise SystemExit(f"final signed speaker CI contract missing: {token}")
+
+print("Phaser360 final 2s / 0.5% speaker contract: PASS")
