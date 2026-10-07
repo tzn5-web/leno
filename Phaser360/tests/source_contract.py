@@ -858,7 +858,7 @@ for token in (
     "FinalWaveRtValidBits = 16",
     "FinalSampleRate = 48000",
     "FinalChannels = 2",
-    "LegacyBoundedToneDiagnosticRetained = $true",
+    "LegacyBoundedToneDiagnosticRetained = $false",
     "final\\P360SofAudio.sys",
     "P360SofAudio.inx",
     "P360_FIRMWARE_MANIFEST.txt",
