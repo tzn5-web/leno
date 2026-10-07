@@ -29,4 +29,9 @@ cc $CFLAGS $SAN tests/irq_arm_adapter_regression.c   sof_core/loader/p360_irq_ar
 cc $CFLAGS $SAN tests/ipc3_tx_regression.c   sof_core/p360_transport_core.c   sof_core/loader/p360_fw_image.c   sof_core/loader/p360_dispatch.c   sof_core/loader/p360_ipc3_tx.c   -o "$OBJ/ipc3_tx"
 "$OBJ/ipc3_tx"
 
+cc $CFLAGS $SAN tests/ipc3_topology_regression.c \
+  sof_core/loader/p360_ipc3_topology.c \
+  -o "$OBJ/ipc3_topology"
+"$OBJ/ipc3_topology"
+
 echo "B4 core compile/regressions: PASS"
