@@ -305,6 +305,39 @@ for token in (
         raise SystemExit(f"staged audio build gate is not parameterized: {token}")
 
 workflow=(ROOT.parent/".github/workflows/phaser360-windows.yml").read_text()
+runner=(ROOT/"tools/P360_AUDIO_GATE.ps1").read_text()
+runner_readme=(ROOT/"tools/P360_AUDIO_GATE_README.txt").read_text()
+
+for token in (
+    'ValidateSet("Audit","PreAudio","BoundedSpeaker","Restore")',
+    "ExpectedFirmwareBytes = 246528",
+    "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab",
+    "ExpectedFlags 3 -MinimumStage 50",
+    "ExpectedFlags 31 -MinimumStage 110",
+    "FirmwareError -ne -22",
+    "ReplyBytes -ne 12",
+    "Disable-TargetAndProveStop",
+    "Restore-OriginalDriver",
+    "Restore-Firmware",
+    "Remove-TestCertificate",
+    "Assert-PreAudioProof",
+    "PREAUDIO_GATE=PASS",
+    "SPEAKER_GATE=PASS",
+    "NO_AUTO_REBOOT=YES",
+):
+    if token not in runner:
+        raise SystemExit(f"hardware gate runner safety contract missing: {token}")
+
+for forbidden in (
+    "bcdedit.exe /set",
+    "bcdedit /set",
+    "Restart-Computer",
+    "shutdown.exe",
+    "/reboot",
+):
+    if forbidden.lower() in runner.lower():
+        raise SystemExit(f"hardware gate runner gained forbidden reboot/BCD mutation: {forbidden}")
+
 for token in (
     "/p:P360PortClsShellEnabled=1",
     "/p:P360RuntimeBootEnabled=0",
@@ -317,6 +350,14 @@ for token in (
     "P360SofAudio-portcls-shell.sys",
     "P360SofAudio-preaudio-ipc3.sys",
     "P360SofAudio-preaudio-ipc3.pdb",
+    "P360_AUDIO_GATE_PARSE=PASS",
+    "inf2cat.exe",
+    "signtool.exe",
+    "10_VB_X64",
+    "New-SelfSignedCertificate",
+    "P360_AUDIO_GATE_PACKAGE=PASS",
+    "P360_AUDIO_GATE.zip",
+    "P360-AUDIO-GATE-${{ github.sha }}",
     "PORTCLS_TONE_TOPOLOGY_PROOF_COMPILE=PASS",
     "PORTCLS_BOUNDED_TONE_TEST_COMPILE=PASS",
     "P360SofAudio-bounded-tone-test.sys",
