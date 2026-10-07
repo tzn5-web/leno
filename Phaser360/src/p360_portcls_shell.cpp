@@ -164,21 +164,37 @@ private:
     DEVICE_POWER_STATE m_PowerState;
 };
 
-static VOID
+static NTSTATUS
 p360_portcls_detach_power(
+    _In_ PDEVICE_OBJECT DeviceObject,
     _Inout_ P360_DEVICE_CONTEXT *Context
     )
 {
     P360AdapterPowerManagement *power;
+    NTSTATUS status;
 
-    if (!Context || !Context->AdapterPowerManager)
-        return;
+    if (!DeviceObject || !Context)
+        return STATUS_INVALID_PARAMETER;
+
+    if (!Context->AdapterPowerManager)
+        return STATUS_SUCCESS;
+
+    /*
+     * Stop PortCls from issuing any new PowerChangeState callback before the
+     * adapter object loses its context/reference. Microsoft explicitly
+     * requires unregistering an interface previously registered with
+     * PcRegisterAdapterPowerManagement during adapter teardown.
+     */
+    status=PcUnregisterAdapterPowerManagement(DeviceObject);
+    if (!NT_SUCCESS(status))
+        return status;
 
     power=reinterpret_cast<P360AdapterPowerManagement *>(
         Context->AdapterPowerManager);
     Context->AdapterPowerManager=NULL;
     power->DetachContext();
     power->Release();
+    return STATUS_SUCCESS;
 }
 
 static BOOLEAN
@@ -308,7 +324,18 @@ p360_portcls_cleanup_instance(
         ctx->SpeakerEndpointInstalled=FALSE;
     }
 
-    p360_portcls_detach_power(ctx);
+    {
+        NTSTATUS powerStatus=p360_portcls_detach_power(
+            Fdo,
+            ctx);
+        if (!NT_SUCCESS(powerStatus)) {
+            (void)p360_portcls_publish_instance(
+                Fdo,
+                frameworkDevice,
+                ctx);
+            return powerStatus;
+        }
+    }
 
     d0Status=p360_host_d0_exit(ctx);
     releaseStatus=p360_host_release(ctx);
@@ -465,8 +492,10 @@ fail:
         ctx->SpeakerEndpointInstalled=FALSE;
     }
 
-    if (ctx)
-        p360_portcls_detach_power(ctx);
+    if (ctx && ctx->AdapterPowerManager)
+        (void)p360_portcls_detach_power(
+            DeviceObject,
+            ctx);
 
     if (d0Entered)
         (void)p360_host_d0_exit(ctx);
