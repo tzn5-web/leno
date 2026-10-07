@@ -10,7 +10,7 @@ PINNED={
     "sof_core/p360_transport_core.c":"fe593c280b7d66a152fe28997b9e76ed5eecc59105ffddc1cc1acccdb642fbee",
     "sof_core/p360_transport_core.h":"e89e42e0ba5119dbd4670fa607f6e81d33f19c25eeb744df08e6713c661c41d5",
     "sof_core/loader/p360_loader.c":"b0bb47b151eba7dd1b0a149fa649e661f39aabb306c1ea70192b285307414148",
-    "sof_core/loader/p360_loader.h":"358dac81c37edcda164c4f075b7ed7644e989570221f0c29be43ce56cdd3d1df",
+    "sof_core/loader/p360_loader.h":"425fb596171f80a5907c5d989c805fe4455afd88fff6d9d90c6c2cbd5d3a2a72",
     "sof_core/loader/p360_fw_image.c":"3b370ae00596ff8ae3f3ca4c30e62a078a9c178af6a261c4d0009164854b6ab7",
     "sof_core/loader/p360_ipc_timer.c":"37148efb6a24877ae4379038eb1c108ab8b8f02824a5bfda1051b2d21454a0e9",
     "sof_core/loader/p360_ipc_timer.h":"2df15b4d9e0b16380d96503e83192e03e5d4685121f36a27e11af9b4e7e891d3",
@@ -119,6 +119,13 @@ for token in (
     "p360_telemetry_boot_epoch(",
     "p360_telemetry_ipc(",
     "p360_telemetry_result(",
+    "p360_telemetry_loader(",
+    "LoaderPhase",
+    "EntryAdspcs",
+    "NormalizedAdspcs",
+    "FinalAdspcs",
+    "RomStatus",
+    "RomError",
     "ZwCreateKey(",
     "ZwSetValueKey(",
 ):
@@ -881,13 +888,14 @@ if not (
 
 start_i=driver.index("p360_runtime_boot_start(")
 loader_i=driver.index("p360_loader_run(", start_i)
-ready_i=driver.index("result.ready_proved", loader_i)
+loader_telem_i=driver.index("p360_telemetry_loader(", loader_i)
+ready_i=driver.index("result.ready_proved", loader_telem_i)
 bind_live_i=driver.index("p360_cs_runtime_bind_live(", ready_i)
 probe_gate_i=driver.index("if (p360_ipc_probe_policy_enabled())", bind_live_i)
 probe_call_i=driver.index("p360_cs_runtime_probe_ipc(", probe_gate_i)
 ipc_flag_i=driver.index("ctx->State.ipc_ready=1;", probe_call_i)
 ipc_state_i=driver.index("P360_STATE_IPC_READY", ipc_flag_i)
-if not (start_i < loader_i < ready_i < bind_live_i < probe_gate_i <
+if not (start_i < loader_i < loader_telem_i < ready_i < bind_live_i < probe_gate_i <
         probe_call_i < ipc_flag_i < ipc_state_i):
     raise SystemExit("SOF boot -> FW_READY -> IRQ -> real IPC3 proof ordering drifted")
 
