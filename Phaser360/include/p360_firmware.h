@@ -4,7 +4,7 @@
 #include "../sof_core/loader/p360_loader.h"
 
 #define P360_FIRMWARE_NT_PATH \
-    L"\\SystemRoot\\System32\\drivers\\P360\\p360-f686.ri"
+    L"\\SystemRoot\\System32\\drivers\\P360\\sof-apl-v1.9.3-official.ri"
 
 typedef struct P360_FIRMWARE_BLOB {
     PUCHAR Data;
