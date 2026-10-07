@@ -2,7 +2,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include "../sof_core/loader/p360_ipc3_topology.h"\n#include "../include/p360_board.h"
+#include "../sof_core/loader/p360_ipc3_topology.h"
+#include "../include/p360_board.h"
 
 static uint32_t u32(const uint8_t *p)
 {
