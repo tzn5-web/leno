@@ -3,10 +3,32 @@
 #include <ntddk.h>
 #include <portcls.h>
 #include <ksmedia.h>
-#include <new>
 
 #include "../include/p360_board.h"
 #include "../include/p360_speaker_endpoint.h"
+
+/*
+ * WDK /kernel does not support the CRT <new> header because that header
+ * exposes exception-handling machinery. These miniports only need placement
+ * construction into ExAllocatePool2 memory, so provide the two non-allocating
+ * placement operators locally and keep all object lifetime explicit.
+ */
+__forceinline void * __cdecl
+operator new(
+    size_t,
+    void *memory
+    ) noexcept
+{
+    return memory;
+}
+
+__forceinline void __cdecl
+operator delete(
+    void *,
+    void *
+    ) noexcept
+{
+}
 
 #define P360_SPEAKER_POOL_TAG ((ULONG)'S63P')
 #define P360_WAVE_SYSTEM_PIN 0u
