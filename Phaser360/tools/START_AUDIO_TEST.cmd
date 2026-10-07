@@ -13,12 +13,13 @@ if not "%errorlevel%"=="0" (
 
 echo ============================================================
 echo PHASER360 AUDIO ONE-SHOT
-echo 1. Recover/verify ADSP + MAX98357A baselines
-echo 2. Install pinned fail-closed MAX98357A driver in mute
-echo 3. Fresh PRE-AUDIO proof: SOF + IRQ + IPC3 + HOST topology
-echo 4. If PRE-AUDIO passes: WaveRT speaker test, 2 s / 0.5%%
-echo 5. Prove STOP/mute and restore both original drivers
-echo No automatic reboot. No automatic speaker retry.
+echo 1. Detect/recover any incomplete previous P360 state
+echo 2. Install/patch the pinned final ADSP + fail-closed MAX98357A stack
+echo 3. Run all SOF/IRQ/IPC/HDA safety gates internally
+echo 4. Perform ONE physical WaveRT speaker test: 2 s / 0.5%%
+echo 5. If PASS: keep the final audio stack installed and ready for Windows audio
+echo 6. If FAIL: automatically roll back to the exact saved baseline
+echo No automatic reboot. No automatic second physical test.
 echo ============================================================
 echo.
 
@@ -28,15 +29,15 @@ set "RC=%errorlevel%"
 echo.
 echo ============================================================
 if "%RC%"=="0" (
-    echo PHASER360 AUDIO GATE: PASS
+    echo PHASER360 AUDIO: PASS - FINAL DRIVER STACK REMAINS INSTALLED
 ) else if "%RC%"=="10" (
     echo PHASER360 BASELINE RECOVERY NEEDS ONE WINDOWS RESTART.
     echo Restart Windows normally. The runner is scheduled to reopen
     echo automatically after login; approve the Administrator prompt.
     echo NO SPEAKER TEST WAS STARTED.
 ) else (
-    echo PHASER360 AUDIO GATE: FAILED / STOPPED SAFELY
-    echo The runner attempted no second/retry speaker phase.
+    echo PHASER360 AUDIO: FAILED - BASELINE ROLLBACK ATTEMPTED
+    echo The runner performed no second physical speaker test.
 )
 echo Return code: %RC%
 echo Results: %%USERPROFILE%%\Desktop\P360_AUDIO_SAFE
