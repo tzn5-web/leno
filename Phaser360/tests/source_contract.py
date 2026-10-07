@@ -300,6 +300,17 @@ for token in (
 if "if (wave->wFormatTag==WAVE_FORMAT_PCM)" in speaker_endpoint:
     raise SystemExit("plain PCM was reintroduced; it cannot express 16 valid bits in a 32-bit container")
 
+if "format.ValidBitsPerSample=P360_SPEAKER_CONTAINER_BITS;" not in playback:
+    raise SystemExit("CoolStar HDA host descriptor must be programmed as 32-bit")
+
+wave_test=(ROOT/"tools/P360_WAVERT_TEST.c").read_text()
+for token in (
+    "int32_t q16=(int32_t)(sin(phase)*163.0);",
+    "int32_t v=q16 << 16;",
+):
+    if token not in wave_test:
+        raise SystemExit(f"bounded WaveRT test is not 16-valid-bit left aligned: {token}")
+
 host_pcm_begin=ipc3_topology.index("int p360_ipc3_build_host_pcm_params")
 host_pcm_end=ipc3_topology.index("int p360_ipc3_build_pcm_free",host_pcm_begin)
 host_pcm=ipc3_topology[host_pcm_begin:host_pcm_end]
@@ -313,8 +324,8 @@ for token in (
 
 playback_dai_begin=ipc3_topology.index("int p360_ipc3_build_playback_dai_new")
 playback_dai_end=ipc3_topology.index("int p360_ipc3_build_tone_new",playback_dai_begin)
-if "P360_IPC3_FRAME_S32_LE" not in ipc3_topology[playback_dai_begin:playback_dai_end]:
-    raise SystemExit("SOF DAI DMA container is not forced to S32 before SSP1 s16 backend")
+if "P360_IPC3_FRAME_S16_LE" not in ipc3_topology[playback_dai_begin:playback_dai_end]:
+    raise SystemExit("SOF DAI component is not fixed to the GLK SSP1 S16 backend")
 
 board_h=(ROOT/"include/p360_board.h").read_text()
 for token in (
