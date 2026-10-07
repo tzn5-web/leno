@@ -1,6 +1,112 @@
 #include "../include/p360_playback.h"
 #include "../include/p360_board.h"
 
+#define P360_HDA_GCAP_OFFSET          0x00u
+#define P360_HDA_STREAM_BASE          0x80u
+#define P360_HDA_STREAM_STRIDE        0x20u
+#define P360_HDA_SD_CTL_OFFSET        0x00u
+#define P360_HDA_SD_CTL_RUN           0x00000002u
+#define P360_HDA_SD_CTL_TAG_MASK      0x00f00000u
+#define P360_HDA_SD_CTL_TAG_SHIFT     20u
+#define P360_HDA_RUN_POLL_US          2000u
+#define P360_HDA_RUN_POLL_STEP_US     10u
+
+static NTSTATUS
+p360_playback_read_run_state(
+    _In_ const P360_PLAYBACK_STREAM *p,
+    _Out_ BOOLEAN *running
+    )
+{
+    volatile UCHAR *base;
+    USHORT gcap;
+    ULONG inputStreams;
+    ULONG outputStreams;
+    ULONG i;
+    ULONG matches=0;
+    BOOLEAN foundRunning=FALSE;
+
+    if (!p || !running || !p->Bus ||
+        !p->Bus->resources_valid ||
+        !p->Bus->hda.Base.baseptr ||
+        p->Bus->hda.Len<P360_HDA_STREAM_BASE ||
+        !p->StreamTag) {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+
+    base=(volatile UCHAR *)p->Bus->hda.Base.baseptr;
+    gcap=READ_REGISTER_USHORT(
+        (volatile USHORT *)(base+P360_HDA_GCAP_OFFSET));
+    inputStreams=(gcap >> 8) & 0x0fu;
+    outputStreams=(gcap >> 12) & 0x0fu;
+
+    if (!outputStreams ||
+        inputStreams+outputStreams>15u ||
+        P360_HDA_STREAM_BASE+
+            (inputStreams+outputStreams)*P360_HDA_STREAM_STRIDE>
+            p->Bus->hda.Len) {
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+    }
+
+    /*
+     * CoolStar assigns stream tags uniquely within the render/output group.
+     * Scan only output descriptors because input tags deliberately reuse the
+     * same numeric range. This is read-only MMIO; CoolStar remains the sole
+     * owner of HDA descriptor writes.
+     */
+    for (i=inputStreams;i<inputStreams+outputStreams;++i) {
+        ULONG ctl=READ_REGISTER_ULONG(
+            (volatile ULONG *)(base+
+                P360_HDA_STREAM_BASE+
+                i*P360_HDA_STREAM_STRIDE+
+                P360_HDA_SD_CTL_OFFSET));
+        ULONG tag=(ctl & P360_HDA_SD_CTL_TAG_MASK) >>
+            P360_HDA_SD_CTL_TAG_SHIFT;
+
+        if (tag!=(ULONG)p->StreamTag)
+            continue;
+
+        ++matches;
+        foundRunning=(ctl & P360_HDA_SD_CTL_RUN)!=0;
+    }
+
+    if (matches!=1u)
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+
+    *running=foundRunning;
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS
+p360_playback_wait_run_state(
+    _In_ const P360_PLAYBACK_STREAM *p,
+    _In_ BOOLEAN expectedRunning
+    )
+{
+    ULONG elapsed=0;
+
+    while (elapsed<=P360_HDA_RUN_POLL_US) {
+        BOOLEAN running=FALSE;
+        NTSTATUS status=p360_playback_read_run_state(
+            p,
+            &running);
+
+        if (!NT_SUCCESS(status))
+            return status;
+
+        if (!!running==!!expectedRunning)
+            return STATUS_SUCCESS;
+
+        if (elapsed==P360_HDA_RUN_POLL_US)
+            break;
+
+        KeStallExecutionProcessor(
+            P360_HDA_RUN_POLL_STEP_US);
+        elapsed+=P360_HDA_RUN_POLL_STEP_US;
+    }
+
+    return STATUS_IO_TIMEOUT;
+}
+
 static ULONG
 p360_playback_page_table_required(
     _In_ ULONG pages
@@ -317,6 +423,34 @@ p360_playback_stream_start(
         TRUE);
     KeMemoryBarrier();
 
+    {
+        NTSTATUS status=p360_playback_wait_run_state(
+            p,
+            TRUE);
+        if (!NT_SUCCESS(status)) {
+            /*
+             * TriggerDSP is a void ABI. If RUN was not proved high, request a
+             * stop immediately and keep the software Running latch true unless
+             * RUN=0 is positively observed. This prevents cleanup/free from
+             * trusting an ambiguous descriptor state.
+             */
+            p->Bus->iface.TriggerDSP(
+                p->Bus->iface.Context,
+                p->Stream,
+                FALSE);
+            KeMemoryBarrier();
+
+            if (NT_SUCCESS(p360_playback_wait_run_state(
+                    p,
+                    FALSE))) {
+                p->Running=FALSE;
+            } else {
+                p->Running=TRUE;
+            }
+            return status;
+        }
+    }
+
     p->Running=TRUE;
     return STATUS_SUCCESS;
 }
@@ -339,6 +473,21 @@ p360_playback_stream_stop(
         p->Stream,
         FALSE);
     KeMemoryBarrier();
+
+    {
+        NTSTATUS status=p360_playback_wait_run_state(
+            p,
+            FALSE);
+        if (!NT_SUCCESS(status)) {
+            /*
+             * Never translate the void TriggerDSP call into a false STOP
+             * proof. Keep Running latched so retire/free cannot proceed.
+             */
+            p->Running=TRUE;
+            return status;
+        }
+    }
+
     p->Running=FALSE;
     return STATUS_SUCCESS;
 }
