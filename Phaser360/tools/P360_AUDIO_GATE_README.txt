@@ -29,7 +29,7 @@ Flow:
  11. On any failure, automatically restore the exact saved ADSP/MAX/firmware
      baseline and remove the temporary trust certificate.
 
-A successful run therefore ends with working PHASER360 audio installed.
+A successful run ends with working PHASER360 audio installed.
 It does not disable the target and does not return to P360AdspProbe.
 
 The runner is self-aware in the practical sense required here:
