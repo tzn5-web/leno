@@ -38,6 +38,12 @@ P360Max98357Safe.sys
 [Install.NT.Services]
 AddService=P360Max98357Safe,0x00000002,Service
 
+[Install.NT.Wdf]
+KmdfService=P360Max98357Safe,P360Max_Wdf
+
+[P360Max_Wdf]
+KmdfLibraryVersion=1.15
+
 [Service]
 DisplayName=%ServiceDesc%
 ServiceType=1

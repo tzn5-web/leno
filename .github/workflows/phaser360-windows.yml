@@ -470,6 +470,69 @@ jobs:
           }
           Write-Host "P360_MAX98357_SAFE_SIGN=PASS"
 
+      - name: Build direct production PnP package
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $ErrorActionPreference = "Stop"
+          $gate = "Phaser360\package\P360_AUDIO_GATE"
+          $root = "Phaser360\package\P360_PRODUCTION_AUDIO"
+
+          Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $root -Force | Out-Null
+
+          Copy-Item (Join-Path $gate "final\P360SofAudio.sys") (Join-Path $root "P360SofAudio.sys") -Force
+          Copy-Item (Join-Path $gate "amp\P360Max98357Safe.sys") (Join-Path $root "P360Max98357Safe.sys") -Force
+          Copy-Item (Join-Path $gate "firmware\p360-f686.ri") (Join-Path $root "p360-f686.ri") -Force
+          Copy-Item (Join-Path $gate "cert\P360_TEST.cer") (Join-Path $root "P360_TEST.cer") -Force
+          Copy-Item "Phaser360\production\P360AudioBundle.inx" (Join-Path $root "P360AudioBundle.inf") -Force
+          Copy-Item "Phaser360\production\P360_PRODUCTION_README.txt" (Join-Path $root "README.txt") -Force
+
+          & $env:P360_INF2CAT "/driver:$root" "/os:10_VB_X64" "/uselocaltime"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Inf2Cat failed for PHASER360 production bundle"
+          }
+
+          $cat = Join-Path $root "P360AudioBundle.cat"
+          if (-not (Test-Path -LiteralPath $cat)) {
+            throw "Production bundle catalog was not created"
+          }
+
+          & $env:P360_SIGNTOOL sign /fd SHA256 /f $env:P360_CERT_PFX /p $env:P360_CERT_PFX_PASSWORD /v $cat
+          if ($LASTEXITCODE -ne 0) {
+            throw "SignTool failed for PHASER360 production bundle"
+          }
+
+          $sig = Get-AuthenticodeSignature -LiteralPath $cat
+          if (-not $sig.SignerCertificate -or
+              $sig.SignerCertificate.Thumbprint -ne $env:P360_CERT_THUMBPRINT) {
+            throw "Production bundle catalog signer mismatch"
+          }
+
+          foreach ($required in @(
+            "P360AudioBundle.inf",
+            "P360AudioBundle.cat",
+            "P360SofAudio.sys",
+            "P360Max98357Safe.sys",
+            "p360-f686.ri",
+            "P360_TEST.cer",
+            "README.txt"
+          )) {
+            if (-not (Test-Path -LiteralPath (Join-Path $root $required))) {
+              throw "Production bundle missing: $required"
+            }
+          }
+
+          $fwHash = (Get-FileHash (Join-Path $root "p360-f686.ri") -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($fwHash -ne "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab") {
+            throw "Production firmware identity mismatch"
+          }
+
+          $zip = "Phaser360\package\P360_PRODUCTION_AUDIO.zip"
+          Compress-Archive -Path "$root\*" -DestinationPath $zip -Force
+          Write-Host "P360_PRODUCTION_PACKAGE=PASS"
+          Write-Host "P360_PRODUCTION_ZIP_SHA256=$((Get-FileHash $zip -Algorithm SHA256).Hash)"
+
       - name: Finalize hardware gate package
         shell: pwsh
         timeout-minutes: 2
@@ -599,6 +662,13 @@ jobs:
         with:
           name: P360-AUDIO-GATE-${{ github.sha }}
           path: Phaser360/package/P360_AUDIO_GATE.zip
+          if-no-files-found: error
+
+      - name: Upload direct production audio package
+        uses: actions/upload-artifact@v4
+        with:
+          name: P360-PRODUCTION-AUDIO-${{ github.sha }}
+          path: Phaser360/package/P360_PRODUCTION_AUDIO.zip
           if-no-files-found: error
 
       - name: Upload unsigned compile artifact
