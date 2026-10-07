@@ -17,7 +17,11 @@ static void test_board(void)
     assert(g_p360_phaser360_profile.speaker_channels == 2u);
     assert(g_p360_phaser360_profile.speaker_container_bits == 32u);
     assert(g_p360_phaser360_profile.speaker_pcm_valid_bits == 16u);
-    assert(g_p360_phaser360_profile.speaker_dai_valid_bits == 24u);
+    assert(g_p360_phaser360_profile.speaker_dai_valid_bits == 16u);
+    assert(P360_SPEAKER_DAI_SLOT_BITS == 16u);
+    assert(P360_SPEAKER_SSP1_BCLK_HZ == 1536000u);
+    assert(P360_SPEAKER_SSP1_MCLK_HZ == 19200000u);
+    assert(P360_SPEAKER_SSP1_MCLK_ID == 1u);
 
     bad.ssp2_capture = 0;
     assert(!p360_board_validate_nhlt(&bad));
