@@ -1,0 +1,30 @@
+PHASER360 SOF firmware manifest
+
+Runtime filename:
+  p360-f686.ri
+
+Required install path:
+  \SystemRoot\System32\drivers\P360\p360-f686.ri
+
+Exact size:
+  246528 bytes
+
+SHA-256:
+  f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab
+
+Pinned firmware:
+  SOF 1.9.3 / IPC3 diagnostic-v2 image used by the prior Phaser360
+  v10.11B/v10.14C audited packages.
+
+Provenance:
+  The byte-identical image was recovered from the user's prior
+  PHASER360_v10_11B_FULL_LINK_AUDIT_ONLY package as firmware/sof-apl.ri.
+  The current loader independently validates the exact size, XMan manifest,
+  SHA-256 and fixed FW_READY bytes before use.
+
+Packaging rule:
+  Do not substitute another sof-apl.ri by filename alone. An install/test
+  package may rename this exact verified image to p360-f686.ri only after
+  size and SHA-256 both match this manifest.
+
+The firmware binary is intentionally not committed in this repository.

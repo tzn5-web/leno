@@ -1,0 +1,52 @@
+[Version]
+Signature="$WINDOWS NT$"
+Class=System
+ClassGuid={4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider=%ProviderName%
+DriverVer=10/06/2026,2.0.0.0
+CatalogFile=P360SofAudio.cat
+PnpLockdown=1
+
+[DestinationDirs]
+DefaultDestDir=12
+
+[SourceDisksNames]
+1=%DiskName%,,,
+
+[SourceDisksFiles]
+P360SofAudio.sys=1
+
+[Manufacturer]
+%ManufacturerName%=Models,NTamd64.10.0...19044
+
+[Models.NTamd64.10.0...19044]
+%DeviceDesc%=P360_Install,CSAUDIO\ADSP&CTLR_VEN_8086&CTLR_DEV_3198
+
+[P360_Install.NT]
+CopyFiles=P360_CopyFiles
+
+[P360_CopyFiles]
+P360SofAudio.sys
+
+[P360_Install.NT.Services]
+AddService=P360SofAudio,0x00000002,P360_Service
+
+[P360_Service]
+DisplayName=%ServiceName%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%12%\P360SofAudio.sys
+
+[P360_Install.NT.Wdf]
+KmdfService=P360SofAudio,P360_Wdf
+
+[P360_Wdf]
+KmdfLibraryVersion=1.15
+
+[Strings]
+ProviderName="PHASER360 Project"
+ManufacturerName="PHASER360 Project"
+DiskName="PHASER360 SOF Windows Port"
+DeviceDesc="PHASER360 Gemini Lake SOF Audio DSP"
+ServiceName="PHASER360 SOF Audio"
