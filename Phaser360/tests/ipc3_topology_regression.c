@@ -92,19 +92,37 @@ int main(void)
     for (size_t i=112;i<216;i++)
         assert(m.data[i]==0u);
 
-    assert(p360_ipc3_build_tone_amplitude_control(
-        &m,ids.tone_id,0x01000000)==0);
+    assert(p360_ipc3_build_tone_amplitude(
+        &m,ids.tone_id,P360_IPC3_TONE_HALF_PERCENT_Q1_31,
+        P360_SPEAKER_CHANNELS)==0);
     assert(m.bytes==140u && u32(m.data)==140u);
     assert(u32(m.data+4)==0x50030000u);
     assert(u32(m.data+12)==ids.tone_id);
-    assert(u32(m.data+16)==3u && u32(m.data+20)==1u);
-    assert(u32(m.data+24)==1u && u32(m.data+56)==2u);
-    assert(u32(m.data+92)==0x00464f53u);
-    assert(u32(m.data+100)==16u && u32(m.data+104)==0x03014000u);
-    assert(u32(m.data+124)==0u && u32(m.data+128)==0x01000000u);
-    assert(u32(m.data+132)==1u && u32(m.data+136)==0x01000000u);
-    assert(p360_ipc3_build_tone_amplitude_control(
-        &m,ids.tone_id,0x0147ae15)!=0);
+    assert(u32(m.data+16)==P360_IPC3_CTRL_TYPE_DATA_SET);
+    assert(u32(m.data+20)==P360_IPC3_CTRL_CMD_ENUM);
+    assert(u32(m.data+24)==P360_IPC3_TONE_IDX_AMPLITUDE);
+    assert(u32(m.data+28)==28u && u32(m.data+56)==2u);
+    assert(u32(m.data+92)==P360_IPC3_SOF_ABI_MAGIC);
+    assert(u32(m.data+100)==16u &&
+        u32(m.data+104)==P360_IPC3_SOF_ABI_3_20_0);
+    assert(u32(m.data+124)==0u &&
+        u32(m.data+128)==P360_IPC3_TONE_HALF_PERCENT_Q1_31);
+    assert(u32(m.data+132)==1u &&
+        u32(m.data+136)==P360_IPC3_TONE_HALF_PERCENT_Q1_31);
+    assert(p360_ipc3_build_tone_amplitude(
+        &m,ids.tone_id,P360_IPC3_TONE_HALF_PERCENT_Q1_31+1u,
+        P360_SPEAKER_CHANNELS)!=0);
+
+    assert(p360_ipc3_build_tone_length(
+        &m,ids.tone_id,P360_IPC3_TONE_TWO_SECONDS_BLOCKS,
+        P360_SPEAKER_CHANNELS)==0);
+    assert(m.bytes==140u && u32(m.data+4)==0x50030000u);
+    assert(u32(m.data+24)==P360_IPC3_TONE_IDX_LENGTH);
+    assert(u32(m.data+128)==P360_IPC3_TONE_TWO_SECONDS_BLOCKS);
+    assert(u32(m.data+136)==P360_IPC3_TONE_TWO_SECONDS_BLOCKS);
+    assert(p360_ipc3_build_tone_length(
+        &m,ids.tone_id,P360_IPC3_TONE_TWO_SECONDS_BLOCKS+1u,
+        P360_SPEAKER_CHANNELS)!=0);
 
     assert(p360_ipc3_build_pcm_params(
         &m,ids.tone_id,P360_SAMPLE_RATE,P360_SPEAKER_CHANNELS)==0);
