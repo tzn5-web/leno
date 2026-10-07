@@ -1,0 +1,44 @@
+name: Export exact repository snapshot 6440881
+
+on:
+  push:
+    branches:
+      - snapshot-export-6440881
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact project snapshot
+        uses: actions/checkout@v4
+        with:
+          ref: 6440881e2597c312a5329a5ef09c14fcd3271e6d
+          fetch-depth: 1
+
+      - name: Build exact source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > SNAPSHOT_MANIFEST.txt <<'EOF'
+          Repository: tzn5-web/leno
+          Branch at request: phaser360-sof-windows-port
+          Exact commit: 6440881e2597c312a5329a5ef09c14fcd3271e6d
+          Snapshot includes all tracked files at this exact commit.
+          Git history and .git metadata are intentionally not included.
+          EOF
+          zip -r "/tmp/leno-phaser360-sof-windows-port-6440881.zip" . -x ".git/*"
+          sha256sum "/tmp/leno-phaser360-sof-windows-port-6440881.zip" | tee "/tmp/SHA256.txt"
+          unzip -t "/tmp/leno-phaser360-sof-windows-port-6440881.zip"
+
+      - name: Upload exact snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: leno-phaser360-sof-windows-port-6440881
+          path: |
+            /tmp/leno-phaser360-sof-windows-port-6440881.zip
+            /tmp/SHA256.txt
+          if-no-files-found: error
+          retention-days: 7
