@@ -348,6 +348,13 @@ if not (
 if "Hard barrier: the endpoint may enumerate" in speaker_endpoint:
     raise SystemExit("old enumerate-only WaveRT barrier was reintroduced")
 
+for token in (
+    "P360WaveStream::GetHWLatency(",
+    "Latency->FifoSize=p360_playback_stream_fifo_size(",
+):
+    if token not in speaker_endpoint:
+        raise SystemExit(f"WaveRT hardware latency contract missing: {token}")
+
 
 for token in (
     "P360_SPEAKER_CONTAINER_BITS",
@@ -1017,6 +1024,7 @@ for token in (
     "p360_playback_stream_start(",
     "p360_playback_stream_stop(",
     "p360_playback_stream_position(",
+    "p360_playback_stream_fifo_size(",
     "p360_playback_stream_retire(",
 ):
     if token not in playback_h:
@@ -1042,6 +1050,8 @@ for token in (
     "P360_HDA_SD_BASE",
     "P360_HDA_SD_INTERVAL",
     "P360_HDA_SD_CTL_RUN",
+    "P360_HDA_SD_FIFOSIZE_OFFSET",
+    "p360_playback_stream_fifo_size(",
     "READ_REGISTER_USHORT(",
     "READ_REGISTER_UCHAR(",
     "captureStreams=(gcap >> 8) & 0x0fu;",
