@@ -138,6 +138,11 @@ for token in (
     "P360_CSAUDIO_ENDPOINT_REGISTER",
     "P360_CSAUDIO_ENDPOINT_START",
     "P360_CSAUDIO_ENDPOINT_STOP",
+    "P360_CSAUDIO_ENDPOINT_START_ACK",
+    "P360_CSAUDIO_ENDPOINT_STOP_ACK",
+    "P360_CSAUDIO_TRANSITION",
+    "p360_csaudio_next_generation(",
+    "p360_csaudio_require_ack(",
     "ExCreateCallback(",
     "ExRegisterCallback(",
     "ExNotifyCallback(",
@@ -158,6 +163,26 @@ for p in ROOT.rglob("*"):
         if forbidden in text:
             raise SystemExit(
                 f"direct MAX98357A GPIO ownership reintroduced in {p.relative_to(ROOT)}: {forbidden}")
+
+max_safe=(ROOT/"max98357a_safe/p360_max_safe.c").read_text()
+max_safe_h=(ROOT/"max98357a_safe/p360_max_safe.h").read_text()
+max_inf=(ROOT/"max98357a_safe/P360Max98357Safe.inx").read_text()
+for token in (
+    "return p360_max_force_low(ctx);",
+    "P360_MAX_REQUEST_START_ACK",
+    "P360_MAX_REQUEST_STOP_ACK",
+    "DesiredGeneration",
+    "DesiredOn",
+    "STATUS_CANCELLED",
+    "p360_max_gpio_write(&ctx->Sdmode,0)",
+    "p360_max_gpio_write(&ctx->Sdmode,1)",
+    "ACPI\\MX98357A",
+):
+    if token not in max_safe + "\n" + max_safe_h + "\n" + max_inf:
+        raise SystemExit(f"fail-closed MAX98357A contract missing: {token}")
+
+if "gpio_data = 1" in max_safe or "gpio_data=1" in max_safe:
+    raise SystemExit("legacy D0-on MAX98357A behavior was reintroduced")
 
 
 for token in (
