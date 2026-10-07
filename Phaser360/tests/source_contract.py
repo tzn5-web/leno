@@ -215,8 +215,10 @@ if not re.search(r"#define\s+P360_TONE_TOPOLOGY_PROOF_ENABLED\s+0\b", driver_h):
 if not re.search(r"#define\s+P360_BOUNDED_TONE_TEST_ENABLED\s+0\b", driver_h):
     raise SystemExit("bounded Tone test barrier is not closed by default")
 
-if "#define P360_BOUNDED_TONE_DURATION_MS 250u" not in driver_h:
-    raise SystemExit("bounded Tone duration drifted from reviewed 250 ms proof")
+if "#define P360_BOUNDED_TONE_DURATION_MS 2000u" not in driver_h:
+    raise SystemExit("final Tone duration is not the requested 2000 ms")
+if "#define P360_DIAGNOSTIC_TONE_Q1_31 0x01000000" not in driver_h:
+    raise SystemExit("final Tone amplitude is not pinned below 1% full-scale")
 
 for token in (
     "#ifndef P360_ENABLE_INTERNAL_SPEAKER",
@@ -343,14 +345,10 @@ for token in (
     "Recover-PreviousBaselineIfNeeded",
     "RESUME_AFTER_REBOOT_SCHEDULED=YES",
     "MANUAL_WINDOWS_RESTART_REQUIRED=YES",
-    "PREAUDIO_REQUIRED_BEFORE_SPEAKER=YES",
-    "PREAUDIO_PHASE=BEGIN",
-    "PREAUDIO_FW_READY_IRQ_IPC=PASS",
-    "PREAUDIO_STOP=PASS",
-    "PREAUDIO_BASELINE_RESTORE=PASS",
-    "SPEAKER_PHASE=BEGIN",
-    "BOUNDED_TONE_250MS=PASS",
-    "SPEAKER_STOP_MUTE=PASS",
+    "DIRECT_FINAL_SPEAKER_TEST=YES",
+    "FINAL_SPEAKER_PHASE=BEGIN",
+    "FINAL_TONE_2000MS_MAX_0P78125PCT=PASS",
+    "FINAL_SPEAKER_STOP_MUTE=PASS",
     "FINAL_DRIVER_RESTORE=PASS",
     "AUDIO_GATE=PASS",
     "NO_AUTO_REBOOT=YES",
@@ -371,33 +369,18 @@ for forbidden in (
     if forbidden in runner:
         raise SystemExit(f"persistent PRE-AUDIO proof reuse path reintroduced: {forbidden}")
 
-pre_phase_i=runner.index('Write-RunLog "PREAUDIO_PHASE=BEGIN"')
-pre_install_i=runner.index('Install-TestPackage "PreAudio"',pre_phase_i)
-pre_wait_i=runner.index("Wait-Telemetry -ExpectedFlags 3",pre_install_i)
-pre_pass_i=runner.index('Write-RunLog "PREAUDIO_FW_READY_IRQ_IPC=PASS"',pre_wait_i)
-pre_stop_call_i=runner.index("Disable-TargetAndProveStop $targetId 3",pre_pass_i)
-pre_stop_i=runner.index('Write-RunLog "PREAUDIO_STOP=PASS"',pre_stop_call_i)
-pre_restore_call_i=runner.index("Restore-OriginalDriver $targetId",pre_stop_i)
-pre_restore_i=runner.index('Write-RunLog "PREAUDIO_BASELINE_RESTORE=PASS"',pre_restore_call_i)
-baseline_recheck_i=runner.index("Assert-SafeBaselineBeforeNewTest $targetId",pre_restore_i)
-speaker_guard_i=runner.index(
-    "if (-not $script:State.PreAudioPassed -or -not $script:State.PreAudioStopProved)",
-    baseline_recheck_i)
-speaker_phase_i=runner.index('Write-RunLog "SPEAKER_PHASE=BEGIN"',speaker_guard_i)
-speaker_attempt_i=runner.index("$script:State.SpeakerAttempted=$true",speaker_phase_i)
-speaker_install_i=runner.index('Install-TestPackage "BoundedSpeaker"',speaker_attempt_i)
-speaker_wait_i=runner.index("Wait-Telemetry -ExpectedFlags 31",speaker_install_i)
-tone_pass_i=runner.index('Write-RunLog "BOUNDED_TONE_250MS=PASS"',speaker_wait_i)
-speaker_stop_call_i=runner.index("Disable-TargetAndProveStop $targetId 31",tone_pass_i)
-speaker_stop_i=runner.index('Write-RunLog "SPEAKER_STOP_MUTE=PASS"',speaker_stop_call_i)
+final_phase_i=runner.index('Write-RunLog "FINAL_SPEAKER_PHASE=BEGIN"')
+final_attempt_i=runner.index("$script:State.SpeakerAttempted=$true",final_phase_i)
+final_install_i=runner.index('Install-TestPackage "FinalSpeaker"',final_attempt_i)
+final_wait_i=runner.index("Wait-Telemetry -ExpectedFlags 31",final_install_i)
+final_pass_i=runner.index('Write-RunLog "FINAL_TONE_2000MS_MAX_0P78125PCT=PASS"',final_wait_i)
+final_stop_call_i=runner.index("Disable-TargetAndProveStop $targetId 31",final_pass_i)
+final_stop_i=runner.index('Write-RunLog "FINAL_SPEAKER_STOP_MUTE=PASS"',final_stop_call_i)
 if not (
-    pre_phase_i < pre_install_i < pre_wait_i < pre_pass_i <
-    pre_stop_call_i < pre_stop_i < pre_restore_call_i < pre_restore_i <
-    baseline_recheck_i < speaker_guard_i < speaker_phase_i <
-    speaker_attempt_i < speaker_install_i < speaker_wait_i < tone_pass_i <
-    speaker_stop_call_i < speaker_stop_i
+    final_phase_i < final_attempt_i < final_install_i < final_wait_i <
+    final_pass_i < final_stop_call_i < final_stop_i
 ):
-    raise SystemExit("same-run PRE-AUDIO -> STOP -> baseline -> bounded speaker ordering drifted")
+    raise SystemExit("single final speaker transaction ordering drifted")
 
 for forbidden in (
     "bcdedit.exe /set",
@@ -414,7 +397,7 @@ for token in (
     "net session >nul 2>&1",
     "Start-Process -FilePath '%~f0' -Verb RunAs",
     'P360_AUDIO_GATE.ps1" -Mode Audio',
-    "2. PRE-AUDIO: FW_READY + IRQ + IPC + STOP",
+    "2. Load final SOF/SSP1 speaker driver",
     "Return code: %RC%",
     "pause",
 ):
@@ -482,6 +465,9 @@ for token in (
     "PORTCLS_BOUNDED_TONE_TEST_COMPILE=PASS",
     "P360SofAudio-bounded-tone-test.sys",
     "P360SofAudio-bounded-tone-test.pdb",
+    "FinalSpeakerDriverVersion = \"2.0.301.1\"",
+    "FinalSpeakerSysSha256",
+    "final\\P360SofAudio.sys",
     "P360SofAudio.inx",
     "P360_FIRMWARE_MANIFEST.txt",
     "PORTCLS_SPEAKER_ENDPOINT_COMPILE=PASS",
@@ -631,6 +617,7 @@ for token in (
     "p360_ipc3_build_dai_new(",
     "p360_ipc3_build_ssp1_config(",
     "p360_ipc3_build_pcm_params(",
+    "p360_ipc3_build_tone_amplitude_control(",
     "p360_ipc3_build_stream_trigger(",
 ):
     if token not in (ipc3_topology_h + "\n" + ipc3_topology):
@@ -825,7 +812,8 @@ pipe_new_i=driver.index("p360_ipc3_build_pipe_new(", connect2_i)
 pipe_done_i=driver.index("p360_ipc3_build_pipe_complete(", pipe_new_i)
 top_flag_i=driver.index("ctx->State.topology_ready=1;", pipe_done_i)
 top_state_i=driver.index("P360_STATE_TOPOLOGY_READY", top_flag_i)
-pcm_i=driver.index("p360_ipc3_build_pcm_params(", top_state_i)
+ampl_i=driver.index("p360_ipc3_build_tone_amplitude_control(", top_state_i)
+pcm_i=driver.index("p360_ipc3_build_pcm_params(", ampl_i)
 core_flag_i=driver.index("ctx->State.audio_core_ready=1;", pcm_i)
 core_state_i=driver.index("P360_STATE_AUDIO_CORE_READY", core_flag_i)
 if not (
@@ -927,12 +915,11 @@ for token in (
     if token not in runner:
         raise SystemExit(f"hardware gate exact-failure diagnostic missing: {token}")
 
-pre_phase_i=runner.index('Write-RunLog "PREAUDIO_PHASE=BEGIN"')
-pre_restore_i=runner.index('Write-RunLog "PREAUDIO_BASELINE_RESTORE=PASS"',pre_phase_i)
-amp_i=runner.index("$amp=Get-AmpDevice",pre_restore_i)
-speaker_phase_i=runner.index('Write-RunLog "SPEAKER_PHASE=BEGIN"',amp_i)
-if not (pre_phase_i < pre_restore_i < amp_i < speaker_phase_i):
-    raise SystemExit("MAX98357A dependency leaked back into minimal PRE-AUDIO")
+amp_i=runner.index("$amp=Get-AmpDevice")
+final_phase_i=runner.index('Write-RunLog "FINAL_SPEAKER_PHASE=BEGIN"',amp_i)
+final_install_i=runner.index('Install-TestPackage "FinalSpeaker"',final_phase_i)
+if not (amp_i < final_phase_i < final_install_i):
+    raise SystemExit("final MAX98357A presence gate is not ahead of driver bind")
 
 
 if "attributes.ExecutionLevel = WdfExecutionLevelDispatch" in runtime:
