@@ -703,25 +703,47 @@ function Disable-TargetAndProveStop([string]$InstanceId,[uint32]$ExpectedFlags) 
 function Restore-OriginalDriver([string]$InstanceId) {
     if (-not $script:State) { return }
 
-    if ($script:State.TestInfName) {
-        Invoke-Tool -Exe "pnputil.exe" -Arguments @("/delete-driver",[string]$script:State.TestInfName,"/uninstall","/force") -AllowFailure | Out-Null
-        $script:State.TestInfName = ""
-        Save-State
+    # First remove the exact ADSP devnode. This prevents a stale selected
+    # package from surviving only in the existing devnode after Driver Store
+    # cleanup.
+    $device=Get-TargetByIdOrNull $InstanceId
+    if ($device) {
+        $remove=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/remove-device",$InstanceId) -AllowFailure
+        if ($remove.ExitCode -ne 0) {
+            throw "Restore could not remove exact ADSP child; exit=$($remove.ExitCode)."
+        }
+
+        $deadline=(Get-Date).AddSeconds(8)
+        do {
+            Start-Sleep -Milliseconds 250
+            if (-not (Get-TargetByIdOrNull $InstanceId)) {
+                break
+            }
+        } while ((Get-Date) -lt $deadline)
+
+        if (Get-TargetByIdOrNull $InstanceId) {
+            throw "Restore could not prove ADSP child removal."
+        }
     }
 
-    # Remove any still-staged test package even if TestInfName was cleared by
-    # a prior interrupted rollback.
+    # Remove every reserved hardware-gate package. Do not use /uninstall here:
+    # the devnode is already gone, so Driver Store cleanup cannot leave the
+    # test image active.
     foreach ($entry in @(Get-P360StoreEntries | Where-Object {
         ([string]$_.Version -eq "2.0.100.1") -or
         ([string]$_.Version -eq "2.0.200.1")
     })) {
         if ($entry.Driver) {
-            Invoke-Tool -Exe "pnputil.exe" -Arguments @(
-                "/delete-driver",[string]$entry.Driver,"/uninstall","/force") -AllowFailure | Out-Null
+            $delete=Invoke-Tool -Exe "pnputil.exe" -Arguments @(
+                "/delete-driver",[string]$entry.Driver,"/force") -AllowFailure
+            Write-RunLog ("RESTORE_DELETE_TEST_PACKAGE={0} EXIT={1}" -f
+                [string]$entry.Driver,$delete.ExitCode)
         }
     }
 
-    Invoke-Tool -Exe "pnputil.exe" -Arguments @("/enable-device",$InstanceId) -AllowFailure | Out-Null
+    $script:State.TestInfName = ""
+    $script:State.TestDriverVersion = ""
+    Save-State
 
     if ([bool]$script:State.OriginalHadDriver) {
         if (-not $script:State.OriginalExportedInf -or
@@ -729,84 +751,90 @@ function Restore-OriginalDriver([string]$InstanceId) {
             throw "Original driver backup is missing."
         }
 
+        # Stage the exported baseline only. A fresh scan below selects it for
+        # the newly-created ADSP devnode.
         $restoreAdd=Invoke-Tool -Exe "pnputil.exe" -Arguments @(
             "/add-driver",
-            [string]$script:State.OriginalExportedInf,
-            "/install") -AllowFailure
-        if ($restoreAdd.ExitCode -ne 0) {
-            Write-RunLog "RESTORE_PNPUTIL_ADD_EXIT=$($restoreAdd.ExitCode) -- verifying actual binding"
+            [string]$script:State.OriginalExportedInf) -AllowFailure
+        Write-RunLog "RESTORE_STAGE_BASELINE_EXIT=$($restoreAdd.ExitCode)"
+
+        $scan=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure
+        if ($scan.ExitCode -ne 0) {
+            throw "Restore PnP scan failed with exit code $($scan.ExitCode)."
         }
 
-        $null=Restart-Target $InstanceId
-        Start-Sleep -Milliseconds 750
+        $deadline=(Get-Date).AddSeconds(20)
+        do {
+            Start-Sleep -Milliseconds 500
+            $dev=Get-TargetByIdOrNull $InstanceId
+            $driver=Get-BoundDriverOrNull $InstanceId
+            if ($dev -and $driver -and
+                [string]$dev.Service -eq [string]$script:State.OriginalService -and
+                [string]$driver.DriverVersion -eq [string]$script:State.OriginalDriverVersion -and
+                [string]$driver.DriverProviderName -eq [string]$script:State.OriginalProvider) {
 
-        if (-not (Test-BoundDriver $InstanceId ([string]$script:State.OriginalDriverVersion) ([string]$script:State.OriginalProvider))) {
-            Write-RunLog "RESTORE_RESTART_NOT_ENOUGH=YES; trying remove/scan re-enumeration"
-            $remove=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/remove-device",$InstanceId) -AllowFailure
-            Write-RunLog "RESTORE_REMOVE_DEVICE_EXIT=$($remove.ExitCode)"
-            Start-Sleep -Milliseconds 750
-            Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure | Out-Null
-
-            $deadline=(Get-Date).AddSeconds(20)
-            do {
-                Start-Sleep -Milliseconds 500
-                if (Test-BoundDriver $InstanceId ([string]$script:State.OriginalDriverVersion) ([string]$script:State.OriginalProvider)) {
-                    Write-RunLog "RESTORE_REENUM_BIND=PASS"
-                    break
+                if ([int]$dev.ConfigManagerErrorCode -ne [int]$script:State.OriginalProblemCode) {
+                    $enable=Invoke-Tool -Exe "pnputil.exe" -Arguments @(
+                        "/enable-device",$InstanceId) -AllowFailure
+                    Write-RunLog "RESTORE_ENABLE_EXIT=$($enable.ExitCode)"
+                    Start-Sleep -Milliseconds 750
+                    $dev=Get-TargetByIdOrNull $InstanceId
                 }
-            } while ((Get-Date) -lt $deadline)
-        }
 
-        if (-not (Test-BoundDriver $InstanceId ([string]$script:State.OriginalDriverVersion) ([string]$script:State.OriginalProvider))) {
-            $current=Get-BoundDriverOrNull $InstanceId
-            $currentText=if ($current) {
-                "INF=$($current.InfName) VERSION=$($current.DriverVersion) PROVIDER=$($current.DriverProviderName)"
-            } else {
-                "UNBOUND"
+                if ($dev -and
+                    [int]$dev.ConfigManagerErrorCode -eq [int]$script:State.OriginalProblemCode) {
+                    Write-RunLog ("RESTORE_BOUND_BASELINE=PASS SERVICE={0} CODE={1} VERSION={2} INF={3}" -f
+                        [string]$dev.Service,
+                        [int]$dev.ConfigManagerErrorCode,
+                        [string]$driver.DriverVersion,
+                        [string]$driver.InfName)
+                    $script:State.RestoreVerified = $true
+                    $script:State | Add-Member -NotePropertyName RebootRequired -NotePropertyValue $false -Force
+                    Save-State
+                    return
+                }
             }
-            $script:State | Add-Member -NotePropertyName RebootRequired -NotePropertyValue $true -Force
-            Save-State
-            throw "Baseline restore requires one manual Windows reboot. Current=$currentText. Test packages are removed; original package remains staged."
-        }
+        } while ((Get-Date) -lt $deadline)
 
-        Wait-TargetHealthy $InstanceId | Out-Null
-
-        $driver=Get-SignedDriver $InstanceId
-        if ([string]$driver.DriverVersion -ne [string]$script:State.OriginalDriverVersion) {
-            throw "Restore verification failed: current driver version $($driver.DriverVersion), expected $($script:State.OriginalDriverVersion)."
-        }
-        if ([string]$driver.DriverProviderName -ne [string]$script:State.OriginalProvider) {
-            throw "Restore verification failed: current provider $($driver.DriverProviderName), expected $($script:State.OriginalProvider)."
-        }
-        Write-RunLog "RESTORE_BOUND_BASELINE=PASS"
-    } else {
-        # The original DSP may legitimately be an unbound Code 28 child.
-        # Removing our test package must return it to that exact baseline;
-        # healthy Code 0 is NOT required in this branch.
-        Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure | Out-Null
-        $dev=Wait-TargetPresent $InstanceId
-
-        $driver=Get-SignedDriverOrNull $InstanceId
-        if ($driver) {
-            throw ("Restore verification failed: originally-unbound target acquired driver INF={0}, provider={1}, version={2}." -f
-                $driver.InfName,$driver.DriverProviderName,$driver.DriverVersion)
-        }
-
-        if ([int]$dev.ConfigManagerErrorCode -ne [int]$script:State.OriginalProblemCode) {
-            throw ("Restore verification failed: originally-unbound target problem code is {0}, expected {1}." -f
-                [int]$dev.ConfigManagerErrorCode,[int]$script:State.OriginalProblemCode)
-        }
-
-        if ([string]$dev.Service -ne [string]$script:State.OriginalService) {
-            throw ("Restore verification failed: originally-unbound target service is '{0}', expected '{1}'." -f
-                [string]$dev.Service,[string]$script:State.OriginalService)
-        }
-
-        Write-RunLog ("RESTORE_UNBOUND_BASELINE=PASS CODE={0}" -f
-            [int]$dev.ConfigManagerErrorCode)
+        $dev=Get-TargetByIdOrNull $InstanceId
+        $driver=Get-BoundDriverOrNull $InstanceId
+        $script:State | Add-Member -NotePropertyName RebootRequired -NotePropertyValue $true -Force
+        Save-State
+        throw ("Baseline restore did not bind after fresh child re-enumeration. service={0}, code={1}, inf={2}, provider={3}, version={4}. A Windows restart is required before another audio-gate run." -f
+            $(if ($dev) {[string]$dev.Service} else {"<missing>"}),
+            $(if ($dev) {[int]$dev.ConfigManagerErrorCode} else {-1}),
+            $(if ($driver) {[string]$driver.InfName} else {"<none>"}),
+            $(if ($driver) {[string]$driver.DriverProviderName} else {"<none>"}),
+            $(if ($driver) {[string]$driver.DriverVersion} else {"<none>"}))
     }
 
+    # Originally-unbound baseline.
+    $scan=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure
+    if ($scan.ExitCode -ne 0) {
+        throw "Restore PnP scan failed with exit code $($scan.ExitCode)."
+    }
+
+    $dev=Wait-TargetPresent $InstanceId
+    $driver=Get-SignedDriverOrNull $InstanceId
+    if ($driver) {
+        throw ("Restore verification failed: originally-unbound target acquired driver INF={0}, provider={1}, version={2}." -f
+            $driver.InfName,$driver.DriverProviderName,$driver.DriverVersion)
+    }
+
+    if ([int]$dev.ConfigManagerErrorCode -ne [int]$script:State.OriginalProblemCode) {
+        throw ("Restore verification failed: originally-unbound target problem code is {0}, expected {1}." -f
+            [int]$dev.ConfigManagerErrorCode,[int]$script:State.OriginalProblemCode)
+    }
+
+    if ([string]$dev.Service -ne [string]$script:State.OriginalService) {
+        throw ("Restore verification failed: originally-unbound target service is '{0}', expected '{1}'." -f
+            [string]$dev.Service,[string]$script:State.OriginalService)
+    }
+
+    Write-RunLog ("RESTORE_UNBOUND_BASELINE=PASS CODE={0}" -f
+        [int]$dev.ConfigManagerErrorCode)
     $script:State.RestoreVerified = $true
+    $script:State | Add-Member -NotePropertyName RebootRequired -NotePropertyValue $false -Force
     Save-State
 }
 
