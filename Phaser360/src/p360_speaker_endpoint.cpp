@@ -1167,8 +1167,19 @@ P360WaveStream::GetHWLatency(
     PKSRTAUDIO_HWLATENCY Latency
     )
 {
-    if (Latency)
-        RtlZeroMemory(Latency,sizeof(*Latency));
+    if (!Latency)
+        return;
+
+    RtlZeroMemory(Latency,sizeof(*Latency));
+
+    /*
+     * Report the hardware FIFO value that the HDA controller actually
+     * advertises for this render stream. Chipset/codec delay remain zero
+     * until a board-specific upper bound is measured; fabricating a latency
+     * estimate here would be less correct than explicitly leaving it unknown.
+     */
+    Latency->FifoSize=p360_playback_stream_fifo_size(
+        &m_Playback);
 }
 
 STDMETHODIMP
