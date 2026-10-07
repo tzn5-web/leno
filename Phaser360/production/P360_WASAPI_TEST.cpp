@@ -3,6 +3,7 @@
 #include <windows.h>
 #include <mmdeviceapi.h>
 #include <audioclient.h>
+#include <audioendpoints.h>
 #include <functiondiscoverykeys_devpkey.h>
 #include <ks.h>
 #include <ksmedia.h>
@@ -91,6 +92,46 @@ static void print_format(const wchar_t *prefix,const WAVEFORMATEX *w)
         wprintf(L"%ls_VALID_BITS=%u\n",prefix,e->Samples.wValidBitsPerSample);
         wprintf(L"%ls_CHANNEL_MASK=0x%08lX\n",prefix,e->dwChannelMask);
     }
+}
+
+static HRESULT read_endpoint_format(
+    IMMDevice *endpoint,
+    REFPROPERTYKEY key,
+    const wchar_t *prefix,
+    int *isExact)
+{
+    IPropertyStore *store=NULL;
+    PROPVARIANT value;
+    HRESULT hr;
+
+    if (!endpoint || !isExact) return E_POINTER;
+    *isExact=0;
+    PropVariantInit(&value);
+
+    hr=endpoint->OpenPropertyStore(STGM_READ,&store);
+    if (FAILED(hr)) goto done;
+
+    hr=store->GetValue(key,&value);
+    if (FAILED(hr)) goto done;
+
+    if (value.vt!=VT_BLOB ||
+        value.blob.cbSize<sizeof(WAVEFORMATEX) ||
+        !value.blob.pBlobData) {
+        hr=HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+        goto done;
+    }
+
+    {
+        const WAVEFORMATEX *w=(const WAVEFORMATEX *)value.blob.pBlobData;
+        print_format(prefix,w);
+        *isExact=exact_expected(w);
+        wprintf(L"%ls_EXACT_P360=%ls\n",prefix,*isExact?L"YES":L"NO");
+    }
+
+done:
+    PropVariantClear(&value);
+    if (store) store->Release();
+    return hr;
 }
 
 static HRESULT find_endpoint(IMMDevice **out)
@@ -183,6 +224,7 @@ static void fill_tone(BYTE *data,UINT32 frames,uint64_t *frameCursor)
 int wmain(int argc,wchar_t **argv)
 {
     int preflight=0;
+    int resetDefault=0;
     HRESULT hr;
     HRESULT cohr;
     IMMDevice *endpoint=NULL;
@@ -200,6 +242,8 @@ int wmain(int argc,wchar_t **argv)
 
     if (argc==2 && wcscmp(argv[1],L"--preflight")==0) {
         preflight=1;
+    } else if (argc==2 && wcscmp(argv[1],L"--reset-default")==0) {
+        resetDefault=1;
     } else if (argc!=1) {
         wprintf(L"WASAPI_TEST=FAIL reason=invalid_arguments\n");
         return 40;
@@ -218,6 +262,48 @@ int wmain(int argc,wchar_t **argv)
         goto done;
     }
 
+    {
+        int oemExact=0;
+        hr=read_endpoint_format(endpoint,PKEY_AudioEngine_OEMFormat,L"OEM_FORMAT",&oemExact);
+        if (FAILED(hr) || !oemExact) {
+            wprintf(L"WASAPI_TEST=FAIL stage=OEMDeviceFormat hr=0x%08lX\n",(unsigned long)hr);
+            rc=62;
+            goto done;
+        }
+    }
+
+    if (resetDefault) {
+        IAudioEndpointFormatControl *formatControl=NULL;
+        hr=endpoint->Activate(__uuidof(IAudioEndpointFormatControl),CLSCTX_ALL,NULL,(void **)&formatControl);
+        if (FAILED(hr) || !formatControl) {
+            wprintf(L"WASAPI_TEST=FAIL stage=ActivateEndpointFormatControl hr=0x%08lX\n",(unsigned long)hr);
+            rc=63;
+            goto done;
+        }
+        hr=formatControl->ResetToDefault(0);
+        formatControl->Release();
+        if (FAILED(hr)) {
+            wprintf(L"WASAPI_TEST=FAIL stage=ResetToDefault hr=0x%08lX\n",(unsigned long)hr);
+            rc=64;
+            goto done;
+        }
+        wprintf(L"ENDPOINT_FORMAT_RESET_TO_OEM_DEFAULT=PASS\n");
+        wprintf(L"WASAPI_TEST=PASS\n");
+        rc=0;
+        goto done;
+    }
+
+    {
+        int deviceExact=0;
+        hr=read_endpoint_format(endpoint,PKEY_AudioEngine_DeviceFormat,L"DEVICE_FORMAT",&deviceExact);
+        if (FAILED(hr) || !deviceExact) {
+            wprintf(L"WASAPI_TEST=FAIL stage=DeviceFormat expected=48000_stereo_s32container_s16valid hr=0x%08lX\n",
+                    (unsigned long)hr);
+            rc=65;
+            goto done;
+        }
+    }
+
     hr=endpoint->Activate(__uuidof(IAudioClient),CLSCTX_ALL,NULL,(void **)&client);
     if (FAILED(hr)) {
         wprintf(L"WASAPI_TEST=FAIL stage=ActivateIAudioClient hr=0x%08lX\n",(unsigned long)hr);
@@ -233,12 +319,7 @@ int wmain(int argc,wchar_t **argv)
     }
 
     print_format(L"MIX",mix);
-    wprintf(L"MIX_EXACT_P360=%ls\n",exact_expected(mix)?L"YES":L"NO");
-    if (!exact_expected(mix)) {
-        wprintf(L"WASAPI_TEST=FAIL stage=MixFormat expected=48000_stereo_s32container_s16valid\n");
-        rc=61;
-        goto done;
-    }
+    wprintf(L"MIX_INTERNAL_ENGINE_FORMAT=OBSERVED\n");
 
     init_expected(&expected);
     hr=client->IsFormatSupported(AUDCLNT_SHAREMODE_SHARED,
