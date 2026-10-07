@@ -446,12 +446,8 @@ function Restart-Target([string]$InstanceId) {
 function Get-PnpPropertyData([string]$InstanceId,[string]$KeyName) {
     try {
         $p=Get-PnpDeviceProperty -InstanceId $InstanceId -KeyName $KeyName -ErrorAction Stop
-        if ($p -and $null -ne $p.Data) {
-            return [string]$p.Data
-        }
-    } catch {
-        return $null
-    }
+        if ($p -and $null -ne $p.Data) { return [string]$p.Data }
+    } catch { return $null }
     return $null
 }
 
@@ -469,7 +465,6 @@ function Get-LiveDriverIdentityOrNull([string]$InstanceId) {
 function Get-BoundDriverOrNull([string]$InstanceId) {
     $live=Get-LiveDriverIdentityOrNull $InstanceId
     if ($live) { return $live }
-
     $wmi=Get-SignedDriverOrNull $InstanceId
     if ($wmi) {
         $wmi | Add-Member -NotePropertyName Source -NotePropertyValue "Win32_PnPSignedDriver" -Force
@@ -708,11 +703,7 @@ function Get-P360StoreEntries {
 }
 
 function Test-IsReservedGateVersion([string]$Version) {
-    return $Version -in @(
-        "2.0.100.1",
-        "2.0.101.1",
-        "2.0.200.1",
-        "2.0.201.1")
+    return $Version -in @("2.0.100.1","2.0.101.1","2.0.200.1","2.0.201.1")
 }
 
 function Assert-NoStaleTestPackage {
