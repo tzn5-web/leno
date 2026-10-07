@@ -2,7 +2,7 @@
 
 #include <ntddk.h>
 #include <wdf.h>
-#include "gpio.h"
+#include "p360_gpio.h"
 
 typedef enum _P360_MAX_ENDPOINT_TYPE {
     P360_MAX_ENDPOINT_DSP = 0,

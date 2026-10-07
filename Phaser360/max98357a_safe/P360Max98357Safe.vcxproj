@@ -54,7 +54,7 @@
     <ClCompile Include="p360_max_safe.c" />
     <ClCompile Include="gpio.c" />
     <ClInclude Include="p360_max_safe.h" />
-    <ClInclude Include="gpio.h" />
+    <ClInclude Include="p360_gpio.h" />
     <None Include="P360Max98357Safe.inx" />
     <None Include="LICENSE.txt" />
   </ItemGroup>

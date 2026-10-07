@@ -1,7 +1,7 @@
 /*
  * Derived from CoolStar/max98357a gpio.c (Apache-2.0).
  */
-#include "gpio.h"
+#include "p360_gpio.h"
 #include <gpio.h>
 #include <reshub.h>
 
