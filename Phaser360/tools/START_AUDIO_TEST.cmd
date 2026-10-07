@@ -15,7 +15,7 @@ echo ============================================================
 echo PHASER360 AUDIO ONE-SHOT
 echo 1. Recover/verify baseline P360AdspProbe
 echo 2. Load final SOF/SSP1 speaker driver
-echo 3. Internal speaker tone: 2 seconds, 0.78125%% full-scale
+echo 3. Internal speaker tone: 2 seconds, 0.5%% full-scale
 echo 4. STOP/mute and verified baseline restore
 echo No automatic reboot.
 echo ============================================================
