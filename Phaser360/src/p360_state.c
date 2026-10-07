@@ -37,7 +37,11 @@ void p360_state_fail(P360_STATE_MACHINE *sm, P360_FAILURE_REASON why)
     sm->topology_ready = 0;
     sm->audio_core_ready = 0;
     sm->headphone_ready = 0;
-    sm->speaker_runtime_armed = 0;
+    /*
+     * Never erase an unproven speaker-enable state merely because another
+     * subsystem failed. The armed bit is a safety latch and is cleared only
+     * after a confirmed MAX98357A STOP or a proved full runtime reset.
+     */
     sm->failure = why;
     sm->state = P360_STATE_FAILED;
     sm->generation++;
@@ -72,13 +76,17 @@ int p360_state_speaker_arm(P360_STATE_MACHINE *sm)
 
 int p360_state_speaker_disarm(P360_STATE_MACHINE *sm)
 {
-    if (!sm ||
-        sm->state != P360_STATE_SPEAKER_ARMED ||
-        !sm->speaker_runtime_armed)
+    if (!sm || !sm->speaker_runtime_armed)
         return 0;
 
+    /*
+     * A confirmed mute is allowed to clear the safety latch even if another
+     * failure already moved the state machine to FAILED. Preserve FAILED in
+     * that case; only the armed bit is being proved false here.
+     */
     sm->speaker_runtime_armed = 0;
-    sm->state = P360_STATE_AUDIO_CORE_READY;
+    if (sm->state == P360_STATE_SPEAKER_ARMED)
+        sm->state = P360_STATE_AUDIO_CORE_READY;
     sm->generation++;
     return 1;
 }
