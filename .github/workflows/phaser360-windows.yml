@@ -221,6 +221,21 @@ jobs:
           Write-Host "P360_WAVERT_TEST_COMPILE=PASS"
           Write-Host "SHA256=$((Get-FileHash $out -Algorithm SHA256).Hash)"
 
+      - name: Compile WASAPI shared acceptance utility
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $vcvars = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          if (-not (Test-Path $vcvars)) { throw "vcvars64.bat not found" }
+          $out = "Phaser360\driver\out\Release\P360_WASAPI_TEST.exe"
+          $cmd = ('call "{0}" && cl.exe /nologo /O2 /MT /W4 /EHsc /DUNICODE /D_UNICODE /Fe:"{1}" Phaser360\production\P360_WASAPI_TEST.cpp ole32.lib uuid.lib propsys.lib' -f $vcvars,$out)
+          & cmd.exe /d /s /c $cmd
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $out)) {
+            throw "P360_WASAPI_TEST.exe compile failed"
+          }
+          Write-Host "P360_WASAPI_SHARED_TEST_COMPILE=PASS"
+          Write-Host "SHA256=$((Get-FileHash $out -Algorithm SHA256).Hash)"
+
       - name: Locate WDK signing tools
         shell: pwsh
         timeout-minutes: 2
@@ -256,50 +271,51 @@ jobs:
           "P360_INF2CAT=$inf2cat" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "P360_SIGNTOOL=$signtool" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Prepare hardware gate certificate
+      - name: Prepare single production package inputs
         shell: pwsh
-        timeout-minutes: 2
+        timeout-minutes: 3
         run: |
           $ErrorActionPreference = "Stop"
-          $root = "Phaser360\package\P360_AUDIO_GATE"
-          $certDir = Join-Path $root "cert"
-          $preDir = Join-Path $root "preaudio"
-          $boundedDir = Join-Path $root "bounded"
-          $finalDir = Join-Path $root "final"
-          $ampDir = Join-Path $root "amp"
-          $firmwareDir = Join-Path $root "firmware"
+          $root = "Phaser360\package\P360_PRODUCTION_AUDIO"
           Remove-Item "Phaser360\package" -Recurse -Force -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Path $certDir,$preDir,$boundedDir,$finalDir,$ampDir,$firmwareDir -Force | Out-Null
+          New-Item -ItemType Directory -Path $root -Force | Out-Null
 
-          Copy-Item Phaser360\tools\P360_AUDIO_GATE.ps1 (Join-Path $root "P360_AUDIO_GATE.ps1") -Force
-          Copy-Item Phaser360\tools\START_AUDIO_TEST.cmd (Join-Path $root "START_AUDIO_TEST.cmd") -Force
-          Copy-Item Phaser360\tools\RESTORE_LAST_SESSION.cmd (Join-Path $root "RESTORE_LAST_SESSION.cmd") -Force
-          Copy-Item Phaser360\tools\P360_AUDIO_GATE_README.txt (Join-Path $root "README.txt") -Force
-          Copy-Item Phaser360\driver\out\Release\P360_WAVERT_TEST.exe (Join-Path $root "P360_WAVERT_TEST.exe") -Force
-          Copy-Item Phaser360\firmware\P360_FIRMWARE_MANIFEST.txt (Join-Path $firmwareDir "P360_FIRMWARE_MANIFEST.txt") -Force
+          $copies = [ordered]@{
+            "Phaser360\driver\out\Release\P360SofAudio-host-playback.sys" = "P360SofAudio.sys"
+            "Phaser360\max98357a_safe\out\Release\P360Max98357Safe.sys" = "P360Max98357Safe.sys"
+            "Phaser360\driver\out\Release\P360_WASAPI_TEST.exe" = "P360_WASAPI_TEST.exe"
+            "Phaser360\driver\out\Release\P360_WAVERT_TEST.exe" = "P360_WAVERT_TEST.exe"
+            "Phaser360\production\P360AudioBundle.inx" = "P360AudioBundle.inf"
+            "Phaser360\production\P360_PRODUCTION_INSTALL.ps1" = "P360_PRODUCTION_INSTALL.ps1"
+            "Phaser360\production\START_P360_PRODUCTION.cmd" = "START_P360_PRODUCTION.cmd"
+            "Phaser360\production\RESTORE_P360_PRODUCTION.cmd" = "RESTORE_P360_PRODUCTION.cmd"
+            "Phaser360\production\P360_PRODUCTION_README.txt" = "README.txt"
+          }
+          foreach($src in $copies.Keys) {
+            if (-not (Test-Path -LiteralPath $src -PathType Leaf)) {
+              throw "Production input missing: $src"
+            }
+            Copy-Item -LiteralPath $src -Destination (Join-Path $root $copies[$src]) -Force
+          }
 
           $firmwarePayload = "Phaser360\firmware\p360-f686.ri.gz"
           $firmwarePayloadExpected = "221f536ad2e1ccc53ec145573fb8556dd3d7d115322e085d5cfae3faf62e48c3"
           if (-not (Test-Path -LiteralPath $firmwarePayload -PathType Leaf)) {
-            throw "Pinned PHASER360 firmware payload is missing from the repository."
+            throw "Pinned PHASER360 firmware payload is missing."
           }
           $payloadHash = (Get-FileHash -LiteralPath $firmwarePayload -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($payloadHash -ne $firmwarePayloadExpected) {
             throw "Pinned firmware gzip payload hash mismatch: $payloadHash"
           }
 
-          $firmwareOut = Join-Path $firmwareDir "p360-f686.ri"
+          $firmwareOut = Join-Path $root "p360-f686.ri"
           $inputStream = [IO.File]::OpenRead($firmwarePayload)
           $outputStream = [IO.File]::Create($firmwareOut)
           try {
             $gzip = [IO.Compression.GZipStream]::new(
               $inputStream,
               [IO.Compression.CompressionMode]::Decompress)
-            try {
-              $gzip.CopyTo($outputStream)
-            } finally {
-              $gzip.Dispose()
-            }
+            try { $gzip.CopyTo($outputStream) } finally { $gzip.Dispose() }
           } finally {
             $outputStream.Dispose()
             $inputStream.Dispose()
@@ -307,16 +323,12 @@ jobs:
 
           $firmwareItem = Get-Item -LiteralPath $firmwareOut
           $firmwareHash = (Get-FileHash -LiteralPath $firmwareOut -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($firmwareItem.Length -ne 246528) {
-            throw "Pinned firmware size mismatch: $($firmwareItem.Length)"
-          }
-          if ($firmwareHash -ne "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab") {
-            throw "Pinned firmware SHA256 mismatch: $firmwareHash"
+          if ($firmwareItem.Length -ne 246528 -or
+              $firmwareHash -ne "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab") {
+            throw "Pinned production firmware identity mismatch."
           }
           Write-Host "P360_EXACT_FIRMWARE_RECONSTRUCT=PASS"
-          Write-Host "P360_EXACT_FIRMWARE_SHA256=$firmwareHash"
 
-          Write-Host "CERT_CREATE=BEGIN"
           $rsa = [System.Security.Cryptography.RSA]::Create(2048)
           $dn = [System.Security.Cryptography.X509Certificates.X500DistinguishedName]::new(
             "CN=PHASER360 Project CI Test")
@@ -325,30 +337,21 @@ jobs:
             $rsa,
             [System.Security.Cryptography.HashAlgorithmName]::SHA256,
             [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
-
           $oids = [System.Security.Cryptography.OidCollection]::new()
-          [void]$oids.Add(
-            [System.Security.Cryptography.Oid]::new("1.3.6.1.5.5.7.3.3"))
+          [void]$oids.Add([System.Security.Cryptography.Oid]::new("1.3.6.1.5.5.7.3.3"))
           $req.CertificateExtensions.Add(
-            [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]::new(
-              $oids,
-              $false))
+            [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]::new($oids,$false))
           $req.CertificateExtensions.Add(
             [System.Security.Cryptography.X509Certificates.X509KeyUsageExtension]::new(
-              [System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature,
-              $true))
-
+              [System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature,$true))
           $cert = $req.CreateSelfSigned(
             [DateTimeOffset]::UtcNow.AddMinutes(-5),
             [DateTimeOffset]::UtcNow.AddYears(1))
-          Write-Host "CERT_CREATE=PASS"
 
-          $cer = Join-Path $certDir "P360_TEST.cer"
+          $cer = Join-Path $root "P360_TEST.cer"
           [IO.File]::WriteAllBytes(
             $cer,
-            $cert.Export(
-              [System.Security.Cryptography.X509Certificates.X509ContentType]::Cert))
-          Write-Host "CERT_EXPORT=PASS"
+            $cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert))
 
           $pfx = Join-Path $env:RUNNER_TEMP "P360_TEST.pfx"
           $pfxPasswordText = "P360-CI-EPHEMERAL"
@@ -357,136 +360,41 @@ jobs:
             $cert.Export(
               [System.Security.Cryptography.X509Certificates.X509ContentType]::Pfx,
               $pfxPasswordText))
-          Write-Host "CERT_PFX_EXPORT=PASS"
-
-          # Do not touch any hosted-runner certificate store. SignTool can
-          # consume the ephemeral PFX directly; the target runner imports only
-          # the public CER before pnputil.
-          Write-Host "CERT_TRUST_DEFERRED_TO_TARGET=YES"
 
           "P360_CERT_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "P360_CERT_PFX=$pfx" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "P360_CERT_PFX_PASSWORD=$pfxPasswordText" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "P360_SINGLE_PRODUCTION_INPUTS=PASS"
 
-      - name: Build hardware gate catalogs
+      - name: Build and audit single production package
         shell: pwsh
-        timeout-minutes: 2
+        timeout-minutes: 4
         run: |
           $ErrorActionPreference = "Stop"
-          $root = "Phaser360\package\P360_AUDIO_GATE"
-          $preDir = Join-Path $root "preaudio"
-          $boundedDir = Join-Path $root "bounded"
-          $finalDir = Join-Path $root "final"
-          $ampDir = Join-Path $root "amp"
-          $firmwareDir = Join-Path $root "firmware"
-
-          function New-P360Catalog(
-            [string]$SourceSys,
-            [string]$Destination,
-            [string]$DriverVersion
-          ) {
-            Copy-Item $SourceSys (Join-Path $Destination "P360SofAudio.sys") -Force
-
-            $inf = Get-Content Phaser360\driver\P360SofAudio.inx -Raw
-            $inf = $inf.Replace(
-              "DriverVer=10/06/2026,2.0.0.0",
-              "DriverVer=10/07/2026,$DriverVersion")
-            Set-Content (Join-Path $Destination "P360SofAudio.inf") -Value $inf -Encoding ascii
-
-            Write-Host "INF2CAT_BEGIN=$Destination"
-            & $env:P360_INF2CAT "/driver:$Destination" "/os:10_VB_X64" "/uselocaltime"
-            if ($LASTEXITCODE -ne 0) { throw "Inf2Cat failed for $Destination" }
-
-            $cat = Join-Path $Destination "P360SofAudio.cat"
-            if (-not (Test-Path $cat)) { throw "Inf2Cat did not create $cat" }
-            Write-Host "INF2CAT_PASS=$Destination"
-          }
-
-          New-P360Catalog `
-            "Phaser360\driver\out\Release\P360SofAudio-preaudio-ipc3.sys" `
-            $preDir `
-            "2.0.101.1"
-
-          New-P360Catalog `
-            "Phaser360\driver\out\Release\P360SofAudio-bounded-tone-test.sys" `
-            $boundedDir `
-            "2.0.201.1"
-
-          New-P360Catalog `
-            "Phaser360\driver\out\Release\P360SofAudio-host-playback.sys" `
-            $finalDir `
-            "3.0.100.1"
-
-          Copy-Item "Phaser360\max98357a_safe\out\Release\P360Max98357Safe.sys" (Join-Path $ampDir "P360Max98357Safe.sys") -Force
-          $ampInf = Get-Content "Phaser360\max98357a_safe\P360Max98357Safe.inx" -Raw
-          Set-Content (Join-Path $ampDir "P360Max98357Safe.inf") -Value $ampInf -Encoding ascii
-
-          Write-Host "INF2CAT_BEGIN=$ampDir"
-          & $env:P360_INF2CAT "/driver:$ampDir" "/os:10_VB_X64" "/uselocaltime"
-          if ($LASTEXITCODE -ne 0) { throw "Inf2Cat failed for safe MAX98357A package" }
-          $ampCat = Join-Path $ampDir "P360Max98357Safe.cat"
-          if (-not (Test-Path $ampCat)) { throw "Inf2Cat did not create $ampCat" }
-          Write-Host "INF2CAT_PASS=$ampDir"
-
-      - name: Sign hardware gate catalogs
-        shell: pwsh
-        timeout-minutes: 2
-        run: |
-          $ErrorActionPreference = "Stop"
-          $root = "Phaser360\package\P360_AUDIO_GATE"
-          foreach ($dir in @("preaudio","bounded","final")) {
-            $cat = Join-Path (Join-Path $root $dir) "P360SofAudio.cat"
-            Write-Host "SIGN_BEGIN=$cat"
-            & $env:P360_SIGNTOOL sign /fd SHA256 /f $env:P360_CERT_PFX /p $env:P360_CERT_PFX_PASSWORD /v $cat
-            if ($LASTEXITCODE -ne 0) { throw "SignTool sign failed for $cat" }
-            Write-Host "SIGN_PASS=$cat"
-
-            $sig = Get-AuthenticodeSignature -LiteralPath $cat
-            if (-not $sig.SignerCertificate) {
-              throw "Signed catalog has no signer certificate: $cat"
-            }
-            if ($sig.SignerCertificate.Thumbprint -ne $env:P360_CERT_THUMBPRINT) {
-              throw "Signed catalog signer thumbprint mismatch: $cat"
-            }
-            $allowed = @("Valid","NotTrusted","UnknownError")
-            if ($allowed -notcontains [string]$sig.Status) {
-              throw "Signed catalog integrity check failed: $cat status=$($sig.Status)"
-            }
-            Write-Host "VERIFY_SIGNER_PASS=$cat"
-            Write-Host "VERIFY_STATUS=$($sig.Status)"
-          }
-
-          $ampCat = Join-Path (Join-Path $root "amp") "P360Max98357Safe.cat"
-          Write-Host "SIGN_BEGIN=$ampCat"
-          & $env:P360_SIGNTOOL sign /fd SHA256 /f $env:P360_CERT_PFX /p $env:P360_CERT_PFX_PASSWORD /v $ampCat
-          if ($LASTEXITCODE -ne 0) { throw "SignTool sign failed for $ampCat" }
-          $ampSig = Get-AuthenticodeSignature -LiteralPath $ampCat
-          if (-not $ampSig.SignerCertificate -or
-              $ampSig.SignerCertificate.Thumbprint -ne $env:P360_CERT_THUMBPRINT) {
-            throw "Safe MAX98357A catalog signer mismatch"
-          }
-          if (@("Valid","NotTrusted","UnknownError") -notcontains [string]$ampSig.Status) {
-            throw "Safe MAX98357A catalog integrity check failed: $($ampSig.Status)"
-          }
-          Write-Host "P360_MAX98357_SAFE_SIGN=PASS"
-
-      - name: Build direct production PnP package
-        shell: pwsh
-        timeout-minutes: 2
-        run: |
-          $ErrorActionPreference = "Stop"
-          $gate = "Phaser360\package\P360_AUDIO_GATE"
           $root = "Phaser360\package\P360_PRODUCTION_AUDIO"
+          $inf = Join-Path $root "P360AudioBundle.inf"
 
-          Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Path $root -Force | Out-Null
+          # Production runner must parse before it is shipped.
+          $runnerText = Get-Content (Join-Path $root "P360_PRODUCTION_INSTALL.ps1") -Raw
+          $null = [scriptblock]::Create($runnerText)
 
-          Copy-Item (Join-Path $gate "final\P360SofAudio.sys") (Join-Path $root "P360SofAudio.sys") -Force
-          Copy-Item (Join-Path $gate "amp\P360Max98357Safe.sys") (Join-Path $root "P360Max98357Safe.sys") -Force
-          Copy-Item (Join-Path $gate "firmware\p360-f686.ri") (Join-Path $root "p360-f686.ri") -Force
-          Copy-Item (Join-Path $gate "cert\P360_TEST.cer") (Join-Path $root "P360_TEST.cer") -Force
-          Copy-Item "Phaser360\production\P360AudioBundle.inx" (Join-Path $root "P360AudioBundle.inf") -Force
-          Copy-Item "Phaser360\production\P360_PRODUCTION_README.txt" (Join-Path $root "README.txt") -Force
+          $infText = Get-Content -LiteralPath $inf -Raw
+          foreach($requiredToken in @(
+            "PKEY_AudioEngine_OEMFormat",
+            "KSNODETYPE_SPEAKER",
+            "DriverVer=10/07/2026,4.2.0.0"
+          )) {
+            if ($infText -notmatch [regex]::Escape($requiredToken)) {
+              throw "Production INF contract missing: $requiredToken"
+            }
+          }
+          if ($infText -match "PKEY_AudioEndpoint_Supports_EventDriven_Mode") {
+            throw "Production INF falsely advertises event-driven WaveRT."
+          }
+          if ($infText -match "KSNODETYPE_ANY%\s*$" -and
+              $infText -match "PKEY_AudioEndpoint_Association") {
+            throw "Speaker endpoint association is still generic."
+          }
 
           & $env:P360_INF2CAT "/driver:$root" "/os:10_VB_X64" "/uselocaltime"
           if ($LASTEXITCODE -ne 0) {
@@ -508,6 +416,30 @@ jobs:
               $sig.SignerCertificate.Thumbprint -ne $env:P360_CERT_THUMBPRINT) {
             throw "Production bundle catalog signer mismatch"
           }
+          if (@("Valid","NotTrusted","UnknownError") -notcontains [string]$sig.Status) {
+            throw "Production catalog integrity check failed: $($sig.Status)"
+          }
+
+          $versionMatch = [regex]::Match($infText,'(?im)^\s*DriverVer\s*=\s*[^,]+,\s*([0-9.]+)\s*$')
+          if (-not $versionMatch.Success) { throw "Production DriverVer parse failed" }
+          $driverVersion = $versionMatch.Groups[1].Value
+
+          [ordered]@{
+            HeadSha = "${env:GITHUB_SHA}"
+            WorkflowRunId = "${env:GITHUB_RUN_ID}"
+            DriverVersion = $driverVersion
+            Provider = "PHASER360 Project"
+            Architecture = "WindowsAudio/WASAPI_SHARED->PortCls/WaveRT->P360SofAudio->SklHDAudBus/HDA_DMA->SOF_HOST->SSP1->MAX98357A"
+            SharedModeFormat = "48000Hz stereo PCM 32-bit-container 16-valid-bits"
+            EventDrivenAdvertised = $false
+            PhysicalWasapiAttemptsMax = 1
+            Boot0000Role = "coreboot-table/non-audio"
+            P360SofAudioSha256 = (Get-FileHash (Join-Path $root "P360SofAudio.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
+            P360Max98357SafeSha256 = (Get-FileHash (Join-Path $root "P360Max98357Safe.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
+            FirmwareSha256 = (Get-FileHash (Join-Path $root "p360-f686.ri") -Algorithm SHA256).Hash.ToLowerInvariant()
+            WasapiTestSha256 = (Get-FileHash (Join-Path $root "P360_WASAPI_TEST.exe") -Algorithm SHA256).Hash.ToLowerInvariant()
+            LegacyWaveOutTestSha256 = (Get-FileHash (Join-Path $root "P360_WAVERT_TEST.exe") -Algorithm SHA256).Hash.ToLowerInvariant()
+          } | ConvertTo-Json | Set-Content (Join-Path $root "PACKAGE_INFO.json") -Encoding utf8
 
           foreach ($required in @(
             "P360AudioBundle.inf",
@@ -516,177 +448,53 @@ jobs:
             "P360Max98357Safe.sys",
             "p360-f686.ri",
             "P360_TEST.cer",
+            "P360_WASAPI_TEST.exe",
+            "P360_WAVERT_TEST.exe",
+            "P360_PRODUCTION_INSTALL.ps1",
+            "START_P360_PRODUCTION.cmd",
+            "RESTORE_P360_PRODUCTION.cmd",
+            "PACKAGE_INFO.json",
             "README.txt"
           )) {
-            if (-not (Test-Path -LiteralPath (Join-Path $root $required))) {
+            if (-not (Test-Path -LiteralPath (Join-Path $root $required) -PathType Leaf)) {
               throw "Production bundle missing: $required"
             }
           }
 
-          $fwHash = (Get-FileHash (Join-Path $root "p360-f686.ri") -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($fwHash -ne "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab") {
-            throw "Production firmware identity mismatch"
+          foreach($forbidden in @(
+            "preaudio","bounded","final","amp",
+            "P360_AUDIO_GATE.ps1","START_AUDIO_TEST.cmd","RESTORE_LAST_SESSION.cmd"
+          )) {
+            if (Test-Path -LiteralPath (Join-Path $root $forbidden)) {
+              throw "Legacy diagnostic install surface leaked into production: $forbidden"
+            }
           }
 
           $zip = "Phaser360\package\P360_PRODUCTION_AUDIO.zip"
           Compress-Archive -Path "$root\*" -DestinationPath $zip -Force
-          Write-Host "P360_PRODUCTION_PACKAGE=PASS"
-          Write-Host "P360_PRODUCTION_ZIP_SHA256=$((Get-FileHash $zip -Algorithm SHA256).Hash)"
 
-      - name: Finalize hardware gate package
-        shell: pwsh
-        timeout-minutes: 2
-        run: |
-          $ErrorActionPreference = "Stop"
-          $root = "Phaser360\package\P360_AUDIO_GATE"
-          $preDir = Join-Path $root "preaudio"
-          $boundedDir = Join-Path $root "bounded"
-          $finalDir = Join-Path $root "final"
-          $ampDir = Join-Path $root "amp"
-          $firmwareDir = Join-Path $root "firmware"
-
-          $preHash = (Get-FileHash (Join-Path $preDir "P360SofAudio.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
-          $boundedHash = (Get-FileHash (Join-Path $boundedDir "P360SofAudio.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
-          $finalHash = (Get-FileHash (Join-Path $finalDir "P360SofAudio.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
-          $ampHash = (Get-FileHash (Join-Path $ampDir "P360Max98357Safe.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
-
-          [ordered]@{
-            HeadSha = "${env:GITHUB_SHA}"
-            WorkflowRunId = "${env:GITHUB_RUN_ID}"
-            CertificateThumbprint = "${env:P360_CERT_THUMBPRINT}"
-            PreAudioDriverVersion = "2.0.101.1"
-            BoundedDriverVersion = "2.0.201.1"
-            FinalSpeakerDriverVersion = "3.0.100.1"
-            FinalSpeakerProvider = "PHASER360 Project"
-            FinalSpeakerService = "P360SofAudio"
-            SafeAmpDriverVersion = "2.0.0.0"
-            SafeAmpProvider = "PHASER360 Project"
-            SafeAmpService = "P360Max98357Safe"
-            PreAudioSysSha256 = $preHash
-            BoundedSysSha256 = $boundedHash
-            FinalSpeakerSysSha256 = $finalHash
-            SafeAmpSysSha256 = $ampHash
-            FinalArchitecture = "WaveRT->CoolStar HDA DMA->SOF HOST->SSP1->MAX98357A"
-            FinalWaveRtContainerBits = 32
-            FinalWaveRtValidBits = 16
-            FinalSampleRate = 48000
-            FinalChannels = 2
-            LegacyBoundedToneDiagnosticRetained = $false
-            FirmwareBytes = 246528
-            FirmwareSha256 = "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab"
-            FirmwareBundled = $true
-            FirmwareRelativePath = "firmware\\p360-f686.ri"
-            FirmwarePayloadSha256 = "221f536ad2e1ccc53ec145573fb8556dd3d7d115322e085d5cfae3faf62e48c3"
-          } | ConvertTo-Json |
-            Set-Content (Join-Path $root "PACKAGE_INFO.json") -Encoding utf8
-
-          Remove-Item $preDir,$boundedDir -Recurse -Force
-          if ((Test-Path -LiteralPath $preDir) -or (Test-Path -LiteralPath $boundedDir)) {
-            throw "Historical diagnostic directories survived public package cleanup."
-          }
-          Write-Host "P360_USER_PACKAGE_DIAGNOSTICS_STRIPPED=PASS"
-
-          foreach ($required in @(
-            "START_AUDIO_TEST.cmd",
-            "RESTORE_LAST_SESSION.cmd",
-            "P360_AUDIO_GATE.ps1",
-            "P360_WAVERT_TEST.exe",
-            "PACKAGE_INFO.json",
-            "README.txt",
-            "cert\P360_TEST.cer",
-            "firmware\p360-f686.ri",
-            "firmware\P360_FIRMWARE_MANIFEST.txt",
-            "final\P360SofAudio.inf",
-            "final\P360SofAudio.cat",
-            "final\P360SofAudio.sys",
-            "amp\P360Max98357Safe.inf",
-            "amp\P360Max98357Safe.cat",
-            "amp\P360Max98357Safe.sys"
-          )) {
-            if (-not (Test-Path (Join-Path $root $required))) {
-              throw "Final hardware gate package missing: $required"
-            }
-          }
-          Write-Host "P360_ONE_CLICK_PACKAGE_CONTENT=PASS"
-
-          $zip = "Phaser360\package\P360_AUDIO_GATE.zip"
-          Compress-Archive -Path "$root\*" -DestinationPath $zip -Force
-          $zipHash = (Get-FileHash $zip -Algorithm SHA256).Hash
-
-          $verifyRoot = Join-Path $env:RUNNER_TEMP "P360_AUDIO_GATE_VERIFY"
+          $verifyRoot = Join-Path $env:RUNNER_TEMP "P360_PRODUCTION_VERIFY"
           Remove-Item $verifyRoot -Recurse -Force -ErrorAction SilentlyContinue
           Expand-Archive -LiteralPath $zip -DestinationPath $verifyRoot -Force
-          foreach ($forbidden in @("preaudio","bounded")) {
-            if (Test-Path -LiteralPath (Join-Path $verifyRoot $forbidden)) {
-              throw "Public ZIP unexpectedly contains historical diagnostic directory: $forbidden"
+          foreach($required in @(
+            "P360AudioBundle.inf","P360AudioBundle.cat","P360SofAudio.sys",
+            "P360Max98357Safe.sys","p360-f686.ri","P360_TEST.cer",
+            "P360_WASAPI_TEST.exe","P360_WAVERT_TEST.exe",
+            "P360_PRODUCTION_INSTALL.ps1","START_P360_PRODUCTION.cmd",
+            "RESTORE_P360_PRODUCTION.cmd","PACKAGE_INFO.json","README.txt"
+          )) {
+            if (-not (Test-Path -LiteralPath (Join-Path $verifyRoot $required) -PathType Leaf)) {
+              throw "ZIP verification missing: $required"
             }
           }
-          $verifyFirmware = Join-Path $verifyRoot "firmware\p360-f686.ri"
-          if (-not (Test-Path -LiteralPath $verifyFirmware -PathType Leaf)) {
-            throw "Public ZIP is missing bundled firmware."
-          }
-          $verifyFirmwareItem = Get-Item -LiteralPath $verifyFirmware
-          $verifyFirmwareHash = (Get-FileHash -LiteralPath $verifyFirmware -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($verifyFirmwareItem.Length -ne 246528 -or
-              $verifyFirmwareHash -ne "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab") {
-            throw "Public ZIP firmware identity verification failed."
-          }
-          Write-Host "P360_SELF_CONTAINED_PACKAGE_VERIFY=PASS"
-          Write-Host "P360_AUDIO_GATE_PACKAGE=PASS"
-          Write-Host "P360_AUDIO_GATE_ZIP_SHA256=$zipHash"
+          Write-Host "P360_PRODUCTION_PACKAGE=PASS"
+          Write-Host "P360_SINGLE_INSTALLABLE_VERSION=PASS"
+          Write-Host "P360_FINAL_ACCEPTANCE=WASAPI_SHARED"
+          Write-Host "P360_PRODUCTION_ZIP_SHA256=$((Get-FileHash $zip -Algorithm SHA256).Hash)"
 
-      - name: Prove driver images exist
-        shell: pwsh
-        run: |
-          $images = @(
-            "Phaser360\driver\out\Release\P360SofAudio-kmdf-baseline.sys",
-            "Phaser360\driver\out\Release\P360SofAudio-portcls-shell.sys"
-          )
-
-          foreach ($sys in $images) {
-            if (-not (Test-Path $sys)) {
-              Get-ChildItem Phaser360\driver -Recurse | Select-Object FullName,Length
-              throw "Missing driver image: $sys"
-            }
-
-            $f = Get-Item $sys
-            $h = Get-FileHash $sys -Algorithm SHA256
-            Write-Host "WINDOWS_DRIVER_BUILD=PASS"
-            Write-Host "SYS=$($f.FullName)"
-            Write-Host "BYTES=$($f.Length)"
-            Write-Host "SHA256=$($h.Hash)"
-          }
-
-      - name: Upload hardware gate package
-        uses: actions/upload-artifact@v4
-        with:
-          name: P360-AUDIO-GATE-${{ github.sha }}
-          path: Phaser360/package/P360_AUDIO_GATE.zip
-          if-no-files-found: error
-
-      - name: Upload direct production audio package
+      - name: Upload production audio package
         uses: actions/upload-artifact@v4
         with:
           name: P360-PRODUCTION-AUDIO-${{ github.sha }}
           path: Phaser360/package/P360_PRODUCTION_AUDIO.zip
-          if-no-files-found: error
-
-      - name: Upload unsigned compile artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: P360SofAudio-unsigned-build
-          path: |
-            Phaser360/driver/out/Release/P360SofAudio-kmdf-baseline.sys
-            Phaser360/driver/out/Release/P360SofAudio-kmdf-baseline.pdb
-            Phaser360/driver/out/Release/P360SofAudio-portcls-shell.sys
-            Phaser360/driver/out/Release/P360SofAudio-portcls-shell.pdb
-            Phaser360/driver/out/Release/P360SofAudio-preaudio-ipc3.sys
-            Phaser360/driver/out/Release/P360SofAudio-preaudio-ipc3.pdb
-            Phaser360/driver/out/Release/P360SofAudio-bounded-tone-test.sys
-            Phaser360/driver/out/Release/P360SofAudio-bounded-tone-test.pdb
-            Phaser360/driver/out/Release/P360SofAudio-host-playback.sys
-            Phaser360/driver/out/Release/P360SofAudio-host-playback.pdb
-            Phaser360/driver/out/Release/P360_WAVERT_TEST.exe
-            Phaser360/driver/P360SofAudio.inx
-            Phaser360/firmware/P360_FIRMWARE_MANIFEST.txt
           if-no-files-found: error
