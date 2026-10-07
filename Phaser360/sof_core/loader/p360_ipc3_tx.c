@@ -73,7 +73,12 @@ int p360_ipc3_tx_begin(
         (hipct & P360_HIPCT_BUSY))
         return P360_IPC3_TX_PENDING;
 
-    if (p360_dispatch_expect(d,io->now(context),timeout_ms) != 0) {
+    if (p360_dispatch_expect_message(
+            d,
+            io->now(context),
+            timeout_ms,
+            message,
+            bytes) != 0) {
         result->status=P360_IPC3_TX_EXPECT;
         return result->status;
     }
