@@ -29,6 +29,12 @@ p360_tone_topology_policy_enabled(VOID)
     return P360_TONE_TOPOLOGY_PROOF_ENABLED ? TRUE : FALSE;
 }
 
+static BOOLEAN
+p360_bounded_tone_policy_enabled(VOID)
+{
+    return P360_BOUNDED_TONE_TEST_ENABLED ? TRUE : FALSE;
+}
+
 static NTSTATUS
 p360_runtime_send_zero_error(
     _Inout_ P360_DEVICE_CONTEXT *ctx,
@@ -215,6 +221,126 @@ p360_runtime_prepare_tone_topology(
     return STATUS_SUCCESS;
 }
 
+#if P360_BOUNDED_TONE_TEST_ENABLED
+static NTSTATUS
+p360_runtime_run_bounded_tone(
+    _Inout_ P360_DEVICE_CONTEXT *ctx,
+    _Out_ P360_FAILURE_REASON *failure
+    )
+{
+    struct p360_ipc3_message message;
+    LARGE_INTEGER delay;
+    NTSTATUS status=STATUS_SUCCESS;
+    NTSTATUS cleanupStatus;
+    BOOLEAN streamStarted=FALSE;
+    BOOLEAN speakerArmed=FALSE;
+    BOOLEAN speakerStarted=FALSE;
+    int rc;
+
+    if (failure)
+        *failure=P360_FAIL_SPEAKER_GUARD;
+
+    if (!ctx || !failure ||
+        !ctx->CsAudioInitialized ||
+        ctx->State.state!=P360_STATE_AUDIO_CORE_READY ||
+        !ctx->State.audio_core_ready ||
+        !ctx->State.topology_ready ||
+        !ctx->State.ipc_ready ||
+        !ctx->State.fw_ready ||
+        !p360_safety_can_start_speaker(&ctx->State) ||
+        InterlockedCompareExchange(&ctx->Removing,0,0)!=0) {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+
+    /*
+     * Consume the diagnostic before publishing any audio command. A failure
+     * must never cause an automatic second speaker attempt in the same PnP
+     * lifetime.
+     */
+    if (ctx->BoundedToneConsumed)
+        return STATUS_DEVICE_BUSY;
+    ctx->BoundedToneConsumed=TRUE;
+
+    *failure=P360_FAIL_STREAM;
+    RtlZeroMemory(&message,sizeof(message));
+    rc=p360_ipc3_build_stream_trigger(
+        &message,
+        P360_IPC3_SPEAKER_TONE_ID,
+        1);
+    if (rc!=P360_IPC3_TOPOLOGY_OK)
+        return STATUS_INVALID_PARAMETER;
+
+    status=p360_runtime_send_zero_error(ctx,&message,12u);
+    if (!NT_SUCCESS(status))
+        return status;
+    streamStarted=TRUE;
+
+    *failure=P360_FAIL_SPEAKER_GUARD;
+    if (!p360_state_speaker_arm(&ctx->State)) {
+        status=STATUS_INVALID_DEVICE_STATE;
+        goto cleanup;
+    }
+    speakerArmed=TRUE;
+
+    status=p360_csaudio_speaker_start(&ctx->CsAudio);
+    if (!NT_SUCCESS(status))
+        goto cleanup;
+    speakerStarted=TRUE;
+
+    /*
+     * The SOF v1.9.3 Tone component defaults to ~997 Hz at -20 dB when the
+     * optional tone fields are zero. Keep the first physical proof short and
+     * non-alertable, then mute the amplifier before stopping SSP1.
+     */
+    delay.QuadPart=-(LONGLONG)P360_BOUNDED_TONE_DURATION_MS * 10 * 1000;
+    status=KeDelayExecutionThread(
+        KernelMode,
+        FALSE,
+        &delay);
+
+cleanup:
+    if (speakerStarted) {
+        cleanupStatus=p360_csaudio_speaker_stop(&ctx->CsAudio);
+        speakerStarted=FALSE;
+        if (NT_SUCCESS(status) && !NT_SUCCESS(cleanupStatus)) {
+            status=cleanupStatus;
+            *failure=P360_FAIL_SPEAKER_GUARD;
+        }
+    }
+
+    if (speakerArmed) {
+        if (!p360_state_speaker_disarm(&ctx->State) &&
+            NT_SUCCESS(status)) {
+            status=STATUS_INVALID_DEVICE_STATE;
+            *failure=P360_FAIL_SPEAKER_GUARD;
+        }
+        speakerArmed=FALSE;
+    }
+
+    if (streamStarted) {
+        RtlZeroMemory(&message,sizeof(message));
+        rc=p360_ipc3_build_stream_trigger(
+            &message,
+            P360_IPC3_SPEAKER_TONE_ID,
+            0);
+        if (rc!=P360_IPC3_TOPOLOGY_OK) {
+            if (NT_SUCCESS(status))
+                status=STATUS_INVALID_PARAMETER;
+            *failure=P360_FAIL_STREAM;
+        } else {
+            cleanupStatus=
+                p360_runtime_send_zero_error(ctx,&message,12u);
+            if (NT_SUCCESS(status) && !NT_SUCCESS(cleanupStatus)) {
+                status=cleanupStatus;
+                *failure=P360_FAIL_STREAM;
+            }
+        }
+    }
+
+    return status;
+}
+#endif
+
 static NTSTATUS
 p360_loader_status_to_ntstatus(
     _In_ int rc)
@@ -377,6 +503,16 @@ p360_runtime_boot_start(
             goto fail_live;
     }
 
+#if P360_BOUNDED_TONE_TEST_ENABLED
+    if (p360_bounded_tone_policy_enabled()) {
+        status=p360_runtime_run_bounded_tone(
+            ctx,
+            &failure);
+        if (!NT_SUCCESS(status))
+            goto fail_live;
+    }
+#endif
+
     p360_firmware_release(&firmware);
     return STATUS_SUCCESS;
 
@@ -514,6 +650,7 @@ p360_host_prepare(
     ctx->BootInitialized=FALSE;
     ctx->RuntimeInitialized=FALSE;
     ctx->CsAudioInitialized=FALSE;
+    ctx->BoundedToneConsumed=FALSE;
     InterlockedExchange(&ctx->Removing,0);
 
     status=p360_cs_bus_open(&ctx->Bus,Device);
