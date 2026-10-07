@@ -769,6 +769,16 @@ for token in (
     if token not in runner:
         raise SystemExit(f"TestSigning self-repair contract missing: {token}")
 
+for token in (
+    '"PhysicalCommitted","HardStop","NeedsDriverPatch","NeedsManualRestart"',
+    'RESUME_SAFETY_RECOVERY=BEGIN',
+    'Ensure-PhysicalQuiesced $targetId $ampId $info',
+    'RESUME_SAFETY_RECOVERY=PASS',
+    'Previous ambiguous physical ownership was cleared before repair continued.',
+):
+    if token not in runner:
+        raise SystemExit(f"resume physical-ownership recovery contract missing: {token}")
+
 for forbidden in (
     "Restart-Computer",
     "shutdown.exe",
