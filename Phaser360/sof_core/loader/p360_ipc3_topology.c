@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-3-Clause */
 #include "p360_ipc3_topology.h"
+#include "../../include/p360_board.h"
 
 static void zero_message(struct p360_ipc3_message *m)
 {
@@ -56,15 +57,26 @@ int p360_ipc3_ssp1_profile_validate(const struct p360_ipc3_ssp1_profile *p)
     if (!p)
         return P360_IPC3_TOPOLOGY_ARGUMENT;
 
-    if ((p->format & 0x000fu)!=P360_IPC3_DAI_FMT_I2S ||
-        p->fsync_rate!=48000u ||
-        p->tdm_slots!=2u ||
-        p->sample_valid_bits!=24u ||
-        p->tdm_slot_width!=32u ||
+    if (p->format!=(P360_IPC3_DAI_FMT_I2S |
+                    P360_IPC3_DAI_FMT_NB_NF |
+                    P360_IPC3_DAI_FMT_CBC_CFC) ||
+        p->mclk_id!=P360_SPEAKER_SSP1_MCLK_ID ||
+        p->mclk_rate!=P360_SPEAKER_SSP1_MCLK_HZ ||
+        p->fsync_rate!=P360_SAMPLE_RATE ||
+        p->bclk_rate!=P360_SPEAKER_SSP1_BCLK_HZ ||
+        p->tdm_slots!=P360_SPEAKER_CHANNELS ||
+        p->rx_slots!=3u ||
         p->tx_slots!=3u ||
-        !p->bclk_rate ||
-        p->tdm_per_slot_padding_flag>1u ||
-        p->frame_pulse_width>38u)
+        p->sample_valid_bits!=P360_SPEAKER_DAI_VALID_BITS ||
+        p->tdm_slot_width!=P360_SPEAKER_DAI_SLOT_BITS ||
+        p->mclk_direction!=P360_IPC3_MCLK_CODEC_INPUT ||
+        p->frame_pulse_width!=0u ||
+        p->tdm_per_slot_padding_flag!=0u ||
+        p->clks_control!=0u ||
+        p->quirks!=0u ||
+        p->bclk_delay!=0u ||
+        p->group_id!=0u ||
+        p->flags!=0u)
         return P360_IPC3_TOPOLOGY_PROFILE;
 
     expected_bclk=(uint64_t)p->fsync_rate *
@@ -115,7 +127,7 @@ int p360_ipc3_build_tone_new(struct p360_ipc3_message *out,
     d=out->data;
     put_comp(d,P360_IPC3_TONE_NEW_BYTES,ids->tone_id,
         P360_IPC3_COMP_TONE,ids->pipeline_id);
-    put_config(d+28,2u,0u,P360_IPC3_FRAME_S24_4LE);
+    put_config(d+28,2u,0u,P360_IPC3_FRAME_S32_LE);
     put32(d+64,sample_rate);
     out->bytes=P360_IPC3_TONE_NEW_BYTES;
     return P360_IPC3_TOPOLOGY_OK;
@@ -152,7 +164,7 @@ int p360_ipc3_build_dai_new(struct p360_ipc3_message *out,
     d=out->data;
     put_comp(d,P360_IPC3_DAI_NEW_BYTES,ids->dai_id,
         P360_IPC3_COMP_DAI,ids->pipeline_id);
-    put_config(d+28,0u,2u,P360_IPC3_FRAME_S24_4LE);
+    put_config(d+28,0u,2u,P360_IPC3_FRAME_S16_LE);
     put32(d+64,P360_IPC3_STREAM_PLAYBACK);
     put32(d+68,dai_index);
     put32(d+72,P360_IPC3_DAI_INTEL_SSP);
@@ -212,6 +224,60 @@ int p360_ipc3_build_pipe_complete(struct p360_ipc3_message *out,
     put32(out->data+4,P360_IPC3_GLB_TPLG_MSG|P360_IPC3_TPLG_PIPE_DONE);
     put32(out->data+8,ids->pipe_comp_id);
     out->bytes=P360_IPC3_PIPE_READY_BYTES;
+    return P360_IPC3_TOPOLOGY_OK;
+}
+
+int p360_ipc3_build_pcm_params(struct p360_ipc3_message *out,
+    uint32_t comp_id,uint32_t sample_rate,uint16_t channels)
+{
+    uint8_t *d;
+
+    if (!out || !comp_id ||
+        sample_rate!=P360_SAMPLE_RATE ||
+        channels!=P360_SPEAKER_CHANNELS)
+        return P360_IPC3_TOPOLOGY_ARGUMENT;
+
+    zero_message(out);
+    d=out->data;
+
+    /* struct sof_ipc_pcm_params */
+    put32(d,P360_IPC3_PCM_PARAMS_BYTES);
+    put32(d+4,P360_IPC3_GLB_STREAM_MSG|P360_IPC3_STREAM_PCM_PARAMS);
+    put32(d+8,comp_id);
+    put32(d+12,0u); /* flags */
+    put32(d+16,0u);
+    put32(d+20,0u);
+
+    /* struct sof_ipc_stream_params starts at +24. */
+    put32(d+24,84u);
+
+    /* Hostless proof: preserve the nested host-buffer ABI but no pages. */
+    put32(d+28,28u);
+    put32(d+32,0u); /* phy_addr */
+    put32(d+36,0u); /* pages */
+    put32(d+40,0u); /* size */
+    put32(d+44,0u);
+    put32(d+48,0u);
+    put32(d+52,0u);
+
+    put32(d+56,P360_IPC3_STREAM_PLAYBACK);
+    put32(d+60,P360_IPC3_FRAME_S32_LE);
+    put32(d+64,P360_IPC3_BUFFER_INTERLEAVED);
+    put32(d+68,sample_rate);
+    put16(d+72,0u); /* stream_tag */
+    put16(d+74,channels);
+    put16(d+76,4u); /* valid bytes: S32 tone */
+    put16(d+78,4u); /* container bytes */
+    put32(d+80,0u); /* no host period for hostless pipeline */
+    put16(d+84,1u); /* suppress host stream-position notifications */
+    put16(d+86,0u);
+    put16(d+88,0u);
+    put16(d+90,0u);
+    put16(d+92,P360_IPC3_CHMAP_FL);
+    put16(d+94,P360_IPC3_CHMAP_FR);
+    /* Remaining channel-map entries stay SOF_CHMAP_UNKNOWN (zero). */
+
+    out->bytes=P360_IPC3_PCM_PARAMS_BYTES;
     return P360_IPC3_TOPOLOGY_OK;
 }
 
