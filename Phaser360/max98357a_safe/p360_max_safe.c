@@ -275,20 +275,24 @@ P360MaxReleaseHardware(
     _In_ WDFCMRESLIST ResourcesTranslated)
 {
     P360_MAX_CONTEXT *ctx=P360MaxGetContext(Device);
+    NTSTATUS muteStatus=STATUS_SUCCESS;
 
     UNREFERENCED_PARAMETER(ResourcesTranslated);
 
     if (!ctx)
         return STATUS_INVALID_DEVICE_STATE;
 
+    /*
+     * Surprise removal can reach ReleaseHardware without a successful D0Exit.
+     * Make one final synchronous LOW request while both GPIO and transition
+     * lock are still valid, then tear down callbacks and resources.
+     */
+    if (ctx->TransitionLock && ctx->Sdmode.Target)
+        muteStatus=p360_max_force_low(ctx);
+
     if (ctx->Registration) {
         ExUnregisterCallback(ctx->Registration);
         ctx->Registration=NULL;
-    }
-
-    if (ctx->TransitionLock) {
-        WdfObjectDelete(ctx->TransitionLock);
-        ctx->TransitionLock=NULL;
     }
 
     if (ctx->Callback) {
@@ -297,7 +301,13 @@ P360MaxReleaseHardware(
     }
 
     p360_max_gpio_deinit(Device,&ctx->Sdmode);
-    return STATUS_SUCCESS;
+
+    if (ctx->TransitionLock) {
+        WdfObjectDelete(ctx->TransitionLock);
+        ctx->TransitionLock=NULL;
+    }
+
+    return muteStatus;
 }
 
 static NTSTATUS
