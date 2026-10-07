@@ -59,12 +59,13 @@
 #endif
 
 /*
- * Final one-click internal-speaker diagnostic.  The DSP Tone component is
- * forced below 1% full-scale before PCM_PARAMS/prepare.  0x01000000 in Q1.31
- * is exactly 1/128 = 0.78125% full-scale (~ -42.14 dBFS).
+ * Final one-click internal-speaker diagnostic. The SOF Tone generator is
+ * programmed before PCM_PARAMS/prepare to 0.5% full-scale (about -46 dBFS)
+ * and independently capped in firmware to 16000 x 125 us = 2 seconds.
  */
 #define P360_BOUNDED_TONE_DURATION_MS 2000u
-#define P360_DIAGNOSTIC_TONE_Q1_31 0x01000000
+#define P360_DIAGNOSTIC_TONE_Q1_31 P360_IPC3_TONE_HALF_PERCENT_Q1_31
+#define P360_DIAGNOSTIC_TONE_BLOCKS P360_IPC3_TONE_TWO_SECONDS_BLOCKS
 
 #if P360_BOUNDED_TONE_TEST_ENABLED && \
     (!P360_RUNTIME_BOOT_ENABLED || !P360_IPC_PROBE_ENABLED || \
