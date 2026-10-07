@@ -36,6 +36,10 @@ typedef struct P360_PLAYBACK_STREAM {
     BOOLEAN StreamPrepared;
     BOOLEAN SpibEnabled;
     BOOLEAN Running;
+    BOOLEAN SofParamsPrepared;
+    BOOLEAN SofRunning;
+    BOOLEAN SpeakerArmed;
+    BOOLEAN SpeakerStarted;
     BOOLEAN Quarantined;
 } P360_PLAYBACK_STREAM;
 
