@@ -825,6 +825,13 @@ p360_host_playback_stop(
     if (!NT_SUCCESS(status) && NT_SUCCESS(firstStatus))
         firstStatus=status;
 
+    if (NT_SUCCESS(firstStatus)) {
+        status=p360_telemetry_stage(
+            P360_TELEM_STAGE_STOP_COMPLETE);
+        if (!NT_SUCCESS(status))
+            firstStatus=status;
+    }
+
     return firstStatus;
 }
 
