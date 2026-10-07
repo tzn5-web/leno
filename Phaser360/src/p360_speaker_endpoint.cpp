@@ -74,9 +74,11 @@ static KSDATAFORMAT_WAVEFORMATEXTENSIBLE gP360SpeakerFormat = {
             WAVE_FORMAT_EXTENSIBLE,
             P360_SPEAKER_CHANNELS,
             P360_SAMPLE_RATE,
-            P360_SAMPLE_RATE * P360_SPEAKER_CHANNELS * 2u,
-            P360_SPEAKER_CHANNELS * 2u,
-            P360_SPEAKER_PCM_VALID_BITS,
+            P360_SAMPLE_RATE * P360_SPEAKER_CHANNELS *
+                (P360_SPEAKER_CONTAINER_BITS / 8u),
+            P360_SPEAKER_CHANNELS *
+                (P360_SPEAKER_CONTAINER_BITS / 8u),
+            P360_SPEAKER_CONTAINER_BITS,
             sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX)
         },
         P360_SPEAKER_PCM_VALID_BITS,
@@ -96,8 +98,8 @@ static KSDATARANGE_AUDIO gP360SpeakerStreamRange = {
         STATICGUIDOF(KSDATAFORMAT_SPECIFIER_WAVEFORMATEX)
     },
     P360_SPEAKER_CHANNELS,
-    P360_SPEAKER_PCM_VALID_BITS,
-    P360_SPEAKER_PCM_VALID_BITS,
+    P360_SPEAKER_CONTAINER_BITS,
+    P360_SPEAKER_CONTAINER_BITS,
     P360_SAMPLE_RATE,
     P360_SAMPLE_RATE
 };
@@ -294,15 +296,20 @@ p360_format_supported(
     if (wave->nChannels!=P360_SPEAKER_CHANNELS ||
         wave->nSamplesPerSec!=P360_SAMPLE_RATE ||
         wave->nAvgBytesPerSec!=
-            P360_SAMPLE_RATE * P360_SPEAKER_CHANNELS * 2u ||
-        wave->nBlockAlign!=P360_SPEAKER_CHANNELS * 2u ||
-        wave->wBitsPerSample!=P360_SPEAKER_PCM_VALID_BITS) {
+            P360_SAMPLE_RATE * P360_SPEAKER_CHANNELS *
+            (P360_SPEAKER_CONTAINER_BITS / 8u) ||
+        wave->nBlockAlign!=
+            P360_SPEAKER_CHANNELS *
+            (P360_SPEAKER_CONTAINER_BITS / 8u) ||
+        wave->wBitsPerSample!=P360_SPEAKER_CONTAINER_BITS) {
         return FALSE;
     }
 
-    if (wave->wFormatTag==WAVE_FORMAT_PCM)
-        return TRUE;
-
+    /*
+     * CoolStar MAX98357A explicitly requests 16 valid bits in a forced
+     * 32-bit output container. Plain WAVE_FORMAT_PCM cannot represent that
+     * distinction, so admit only WAVE_FORMAT_EXTENSIBLE.
+     */
     if (wave->wFormatTag==WAVE_FORMAT_EXTENSIBLE &&
         wave->cbSize>=sizeof(WAVEFORMATEXTENSIBLE)-sizeof(WAVEFORMATEX) &&
         DataFormat->FormatSize>=sizeof(KSDATAFORMAT_WAVEFORMATEXTENSIBLE)) {
@@ -936,7 +943,8 @@ P360WaveStream::AllocateAudioBuffer(
      * frame alignment for stereo S16 WaveRT buffers.
      */
     RequestedSize-=RequestedSize %
-        (P360_SPEAKER_CHANNELS * 2u * 4u);
+        (P360_SPEAKER_CHANNELS *
+         (P360_SPEAKER_CONTAINER_BITS / 8u) * 4u);
     if (!RequestedSize)
         return STATUS_INVALID_BUFFER_SIZE;
 
