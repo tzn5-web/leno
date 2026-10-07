@@ -17,6 +17,170 @@ typedef struct _P360_PORTCLS_INSTANCE {
 static P360_PORTCLS_INSTANCE gP360PortClsInstance;
 static PDRIVER_UNLOAD gP360PortClsUnloadRoutine=NULL;
 
+#define P360_POWER_POOL_TAG 'w63P'
+
+class P360AdapterPowerManagement final : public IAdapterPowerManagement
+{
+public:
+    explicit P360AdapterPowerManagement(
+        _Inout_ P360_DEVICE_CONTEXT *Context
+        ) :
+        m_Refs(1),
+        m_Context(Context),
+        m_PowerState(PowerDeviceD0)
+    {
+    }
+
+    STDMETHODIMP QueryInterface(
+        _In_ REFIID InterfaceId,
+        _COM_Outptr_ PVOID *Interface
+        ) override
+    {
+        if (!Interface)
+            return STATUS_INVALID_PARAMETER;
+
+        *Interface=NULL;
+        if (IsEqualGUIDAligned(InterfaceId,IID_IUnknown) ||
+            IsEqualGUIDAligned(
+                InterfaceId,
+                IID_IAdapterPowerManagement)) {
+            *Interface=static_cast<IAdapterPowerManagement *>(this);
+            AddRef();
+            return STATUS_SUCCESS;
+        }
+
+        return STATUS_NOINTERFACE;
+    }
+
+    STDMETHODIMP_(ULONG) AddRef() override
+    {
+        return (ULONG)InterlockedIncrement(&m_Refs);
+    }
+
+    STDMETHODIMP_(ULONG) Release() override
+    {
+        LONG refs=InterlockedDecrement(&m_Refs);
+        if (!refs) {
+            this->~P360AdapterPowerManagement();
+            ExFreePoolWithTag(this,P360_POWER_POOL_TAG);
+        }
+        return (ULONG)refs;
+    }
+
+    STDMETHODIMP_(void) PowerChangeState(
+        _In_ POWER_STATE NewState
+        ) override
+    {
+        P360_DEVICE_CONTEXT *ctx=m_Context;
+        DEVICE_POWER_STATE target=NewState.DeviceState;
+        NTSTATUS status=STATUS_SUCCESS;
+
+        if (!ctx || target<PowerDeviceD0 || target>PowerDeviceD3)
+            return;
+
+        if (target==m_PowerState)
+            return;
+
+        /*
+         * PortCls pauses active streams before a sleep transition. Thus the
+         * WaveRT stream has already executed MAX mute -> SOF STOP -> HDA STOP
+         * before we shut down the DSP here.
+         */
+        if (target==PowerDeviceD0) {
+            status=p360_host_d0_entry(ctx);
+        } else if (m_PowerState==PowerDeviceD0) {
+            status=p360_host_d0_exit(ctx);
+        }
+
+        if (!NT_SUCCESS(status)) {
+            p360_state_fail(
+                &ctx->State,
+                P360_FAIL_FIRMWARE);
+        }
+
+        /*
+         * PowerChangeState has no return status: cache the state requested by
+         * PortCls even on a driver fault and keep the audio path fail-closed.
+         */
+        m_PowerState=target;
+    }
+
+    STDMETHODIMP_(NTSTATUS) QueryPowerChangeState(
+        _In_ POWER_STATE NewStateQuery
+        ) override
+    {
+        DEVICE_POWER_STATE target=NewStateQuery.DeviceState;
+
+        if (!m_Context)
+            return STATUS_DELETE_PENDING;
+        if (target<PowerDeviceD0 || target>PowerDeviceD3)
+            return STATUS_INVALID_PARAMETER;
+
+        return STATUS_SUCCESS;
+    }
+
+    STDMETHODIMP_(NTSTATUS) QueryDeviceCapabilities(
+        _Inout_updates_bytes_(sizeof(DEVICE_CAPABILITIES))
+            PDEVICE_CAPABILITIES PowerDeviceCaps
+        ) override
+    {
+        return PowerDeviceCaps ?
+            STATUS_SUCCESS :
+            STATUS_INVALID_PARAMETER;
+    }
+
+    VOID DetachContext()
+    {
+        m_Context=NULL;
+    }
+
+    static NTSTATUS Create(
+        _Inout_ P360_DEVICE_CONTEXT *Context,
+        _Outptr_ PUNKNOWN *Unknown
+        )
+    {
+        PVOID memory;
+        P360AdapterPowerManagement *object;
+
+        if (!Context || !Unknown)
+            return STATUS_INVALID_PARAMETER;
+        *Unknown=NULL;
+
+        memory=ExAllocatePool2(
+            POOL_FLAG_NON_PAGED,
+            sizeof(P360AdapterPowerManagement),
+            P360_POWER_POOL_TAG);
+        if (!memory)
+            return STATUS_INSUFFICIENT_RESOURCES;
+
+        object=new(memory) P360AdapterPowerManagement(Context);
+        *Unknown=static_cast<IAdapterPowerManagement *>(object);
+        return STATUS_SUCCESS;
+    }
+
+private:
+    volatile LONG m_Refs;
+    P360_DEVICE_CONTEXT *m_Context;
+    DEVICE_POWER_STATE m_PowerState;
+};
+
+static VOID
+p360_portcls_detach_power(
+    _Inout_ P360_DEVICE_CONTEXT *Context
+    )
+{
+    P360AdapterPowerManagement *power;
+
+    if (!Context || !Context->AdapterPowerManager)
+        return;
+
+    power=reinterpret_cast<P360AdapterPowerManagement *>(
+        Context->AdapterPowerManager);
+    Context->AdapterPowerManager=NULL;
+    power->DetachContext();
+    power->Release();
+}
+
 static BOOLEAN
 p360_speaker_endpoint_policy_enabled(VOID)
 {
@@ -144,6 +308,8 @@ p360_portcls_cleanup_instance(
         ctx->SpeakerEndpointInstalled=FALSE;
     }
 
+    p360_portcls_detach_power(ctx);
+
     d0Status=p360_host_d0_exit(ctx);
     releaseStatus=p360_host_release(ctx);
 
@@ -242,6 +408,30 @@ P360PortClsStartDevice(
 
     d0Entered=TRUE;
 
+    {
+        PUNKNOWN powerUnknown=NULL;
+
+        status=P360AdapterPowerManagement::Create(
+            ctx,
+            &powerUnknown);
+        if (!NT_SUCCESS(status))
+            goto fail;
+
+        status=PcRegisterAdapterPowerManagement(
+            powerUnknown,
+            DeviceObject);
+        if (!NT_SUCCESS(status)) {
+            powerUnknown->Release();
+            goto fail;
+        }
+
+        /*
+         * Keep our own reference until final cleanup. PortCls holds its own
+         * registration reference for the adapter lifetime.
+         */
+        ctx->AdapterPowerManager=powerUnknown;
+    }
+
     if (p360_speaker_endpoint_policy_enabled()) {
         status=p360_speaker_endpoint_install(
             DeviceObject,
@@ -274,6 +464,9 @@ fail:
             &ctx->SpeakerWavePort);
         ctx->SpeakerEndpointInstalled=FALSE;
     }
+
+    if (ctx)
+        p360_portcls_detach_power(ctx);
 
     if (d0Entered)
         (void)p360_host_d0_exit(ctx);
