@@ -108,10 +108,14 @@ function Get-AmpDevice {
     return $amp
 }
 
-function Get-SignedDriver([string]$InstanceId) {
-    $driver = Get-CimInstance Win32_PnPSignedDriver | Where-Object {
+function Get-SignedDriverOrNull([string]$InstanceId) {
+    return (Get-CimInstance Win32_PnPSignedDriver | Where-Object {
         $_.DeviceID -eq $InstanceId
-    } | Select-Object -First 1
+    } | Select-Object -First 1)
+}
+
+function Get-SignedDriver([string]$InstanceId) {
+    $driver = Get-SignedDriverOrNull $InstanceId
     if (-not $driver) {
         throw "No signed-driver record found for $InstanceId."
     }
@@ -307,7 +311,30 @@ function Assert-CatalogSignature([string]$Folder) {
 }
 
 function Backup-OriginalDriver([string]$InstanceId) {
-    $driver = Get-SignedDriver $InstanceId
+    $device = Get-CimInstance Win32_PnPEntity | Where-Object {
+        $_.PNPDeviceID -eq $InstanceId
+    } | Select-Object -First 1
+    if (-not $device) {
+        throw "Target disappeared before baseline capture."
+    }
+
+    $script:State.OriginalProblemCode = [int]$device.ConfigManagerErrorCode
+    $script:State.OriginalService = [string]$device.Service
+    $script:State.OriginalName = [string]$device.Name
+
+    $driver = Get-SignedDriverOrNull $InstanceId
+    if (-not $driver) {
+        $script:State.OriginalHadDriver = $false
+        $script:State.OriginalInfName = ""
+        $script:State.OriginalDriverVersion = ""
+        $script:State.OriginalProvider = ""
+        $script:State.OriginalExportedInf = ""
+        Save-State
+        Write-RunLog ("ORIGINAL_DRIVER=UNBOUND CODE={0} SERVICE={1}" -f
+            $script:State.OriginalProblemCode,$script:State.OriginalService)
+        return
+    }
+
     $inf = [string]$driver.InfName
     if ($inf -notmatch "(?i)^oem\d+\.inf$") {
         throw "Current driver '$inf' is not exportable as an OEM package; refusing destructive swap."
@@ -322,11 +349,16 @@ function Backup-OriginalDriver([string]$InstanceId) {
         throw "Original driver export did not produce an INF."
     }
 
+    $script:State.OriginalHadDriver = $true
     $script:State.OriginalInfName = $inf
     $script:State.OriginalDriverVersion = [string]$driver.DriverVersion
     $script:State.OriginalProvider = [string]$driver.DriverProviderName
     $script:State.OriginalExportedInf = $exportedInf.FullName
     Save-State
+    Write-RunLog ("ORIGINAL_DRIVER=BOUND INF={0} VERSION={1} PROVIDER={2}" -f
+        $script:State.OriginalInfName,
+        $script:State.OriginalDriverVersion,
+        $script:State.OriginalProvider)
 }
 
 function Install-Firmware([string]$Firmware) {
@@ -381,14 +413,28 @@ function Restart-Target([string]$InstanceId) {
     }
 }
 
-function Wait-TargetHealthy([string]$InstanceId,[int]$Seconds=12) {
+function Wait-TargetPresent([string]$InstanceId,[int]$Seconds=12) {
     $deadline = (Get-Date).AddSeconds($Seconds)
     do {
         Start-Sleep -Milliseconds 500
-        $dev = Get-CimInstance Win32_PnPEntity | Where-Object { $_.PNPDeviceID -eq $InstanceId } | Select-Object -First 1
-        if ($dev -and [int]$dev.ConfigManagerErrorCode -eq 0) {
+        $dev = Get-CimInstance Win32_PnPEntity | Where-Object {
+            $_.PNPDeviceID -eq $InstanceId
+        } | Select-Object -First 1
+        if ($dev) {
             return $dev
         }
+    } while ((Get-Date) -lt $deadline)
+    throw "Target did not reappear within $Seconds seconds."
+}
+
+function Wait-TargetHealthy([string]$InstanceId,[int]$Seconds=12) {
+    $deadline = (Get-Date).AddSeconds($Seconds)
+    do {
+        $dev = Wait-TargetPresent $InstanceId 2
+        if ([int]$dev.ConfigManagerErrorCode -eq 0) {
+            return $dev
+        }
+        Start-Sleep -Milliseconds 250
     } while ((Get-Date) -lt $deadline)
     throw "Target did not return healthy within $Seconds seconds."
 }
@@ -516,23 +562,61 @@ function Restore-OriginalDriver([string]$InstanceId) {
         Save-State
     }
 
-    if ($script:State.OriginalExportedInf -and (Test-Path -LiteralPath $script:State.OriginalExportedInf)) {
-        Invoke-Tool -Exe "pnputil.exe" -Arguments @("/add-driver",[string]$script:State.OriginalExportedInf,"/install") | Out-Null
-    }
-
     Invoke-Tool -Exe "pnputil.exe" -Arguments @("/enable-device",$InstanceId) -AllowFailure | Out-Null
-    try { Restart-Target $InstanceId } catch { Write-RunLog "Restore restart warning: $($_.Exception.Message)" }
-    Wait-TargetHealthy $InstanceId | Out-Null
 
-    $driver=Get-SignedDriver $InstanceId
-    if ($script:State.OriginalDriverVersion -and
-        [string]$driver.DriverVersion -ne [string]$script:State.OriginalDriverVersion) {
-        throw "Restore verification failed: current driver version $($driver.DriverVersion), expected $($script:State.OriginalDriverVersion)."
+    if ([bool]$script:State.OriginalHadDriver) {
+        if (-not $script:State.OriginalExportedInf -or
+            -not (Test-Path -LiteralPath $script:State.OriginalExportedInf)) {
+            throw "Original driver backup is missing."
+        }
+
+        Invoke-Tool -Exe "pnputil.exe" -Arguments @(
+            "/add-driver",
+            [string]$script:State.OriginalExportedInf,
+            "/install") | Out-Null
+
+        try {
+            Restart-Target $InstanceId
+        } catch {
+            Write-RunLog "Restore restart warning: $($_.Exception.Message)"
+        }
+        Wait-TargetHealthy $InstanceId | Out-Null
+
+        $driver=Get-SignedDriver $InstanceId
+        if ([string]$driver.DriverVersion -ne [string]$script:State.OriginalDriverVersion) {
+            throw "Restore verification failed: current driver version $($driver.DriverVersion), expected $($script:State.OriginalDriverVersion)."
+        }
+        if ([string]$driver.DriverProviderName -ne [string]$script:State.OriginalProvider) {
+            throw "Restore verification failed: current provider $($driver.DriverProviderName), expected $($script:State.OriginalProvider)."
+        }
+        Write-RunLog "RESTORE_BOUND_BASELINE=PASS"
+    } else {
+        # The original DSP may legitimately be an unbound Code 28 child.
+        # Removing our test package must return it to that exact baseline;
+        # healthy Code 0 is NOT required in this branch.
+        Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure | Out-Null
+        $dev=Wait-TargetPresent $InstanceId
+
+        $driver=Get-SignedDriverOrNull $InstanceId
+        if ($driver) {
+            throw ("Restore verification failed: originally-unbound target acquired driver INF={0}, provider={1}, version={2}." -f
+                $driver.InfName,$driver.DriverProviderName,$driver.DriverVersion)
+        }
+
+        if ([int]$dev.ConfigManagerErrorCode -ne [int]$script:State.OriginalProblemCode) {
+            throw ("Restore verification failed: originally-unbound target problem code is {0}, expected {1}." -f
+                [int]$dev.ConfigManagerErrorCode,[int]$script:State.OriginalProblemCode)
+        }
+
+        if ([string]$dev.Service -ne [string]$script:State.OriginalService) {
+            throw ("Restore verification failed: originally-unbound target service is '{0}', expected '{1}'." -f
+                [string]$dev.Service,[string]$script:State.OriginalService)
+        }
+
+        Write-RunLog ("RESTORE_UNBOUND_BASELINE=PASS CODE={0}" -f
+            [int]$dev.ConfigManagerErrorCode)
     }
-    if ($script:State.OriginalProvider -and
-        [string]$driver.DriverProviderName -ne [string]$script:State.OriginalProvider) {
-        throw "Restore verification failed: current provider $($driver.DriverProviderName), expected $($script:State.OriginalProvider)."
-    }
+
     $script:State.RestoreVerified = $true
     Save-State
 }
@@ -603,6 +687,9 @@ function Write-Report([string]$Result,[object]$Telemetry) {
         Result=$Result
         Session=$script:Session
         TargetInstanceId=$script:State.TargetInstanceId
+        OriginalHadDriver=$script:State.OriginalHadDriver
+        OriginalProblemCode=$script:State.OriginalProblemCode
+        OriginalService=$script:State.OriginalService
         OriginalInfName=$script:State.OriginalInfName
         OriginalDriverVersion=$script:State.OriginalDriverVersion
         RestoreVerified=$script:State.RestoreVerified
@@ -642,6 +729,10 @@ $targetId=[string]$target.PNPDeviceID
 
 $script:State=[pscustomobject]@{
     TargetInstanceId=$targetId
+    OriginalHadDriver=$false
+    OriginalProblemCode=[int]$target.ConfigManagerErrorCode
+    OriginalService=[string]$target.Service
+    OriginalName=[string]$target.Name
     OriginalInfName=""
     OriginalDriverVersion=""
     OriginalProvider=""
@@ -658,6 +749,10 @@ $script:State=[pscustomobject]@{
 Save-State
 
 Write-RunLog "TARGET=$targetId"
+Write-RunLog ("TARGET_NAME={0} CODE={1} SERVICE={2}" -f
+    [string]$target.Name,
+    [int]$target.ConfigManagerErrorCode,
+    [string]$target.Service)
 Write-RunLog "BUS=$($bus.PNPDeviceID) SERVICE=$($bus.Service)"
 Assert-TestSigning
 
