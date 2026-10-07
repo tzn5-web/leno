@@ -385,6 +385,7 @@ jobs:
             FinalSpeakerToneBlocks125us = 16000
             FinalSpeakerAmplitudeQ1_31 = "10737418"
             FinalSpeakerAmplitudePercent = 0.5
+            FinalSpeakerToneBlocks125us = 16000
             FirmwareBytes = 246528
             FirmwareSha256 = "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab"
           } | ConvertTo-Json |
