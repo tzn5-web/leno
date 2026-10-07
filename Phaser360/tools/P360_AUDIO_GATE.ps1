@@ -418,18 +418,23 @@ function Install-TestPackage([string]$RunMode,$Info,[string]$InstanceId) {
     $wantVersion = Get-InfVersion $inf
     Assert-NoStaleTestPackage
 
-    Invoke-Tool -Exe "pnputil.exe" -Arguments @("/add-driver",$inf,"/install") | Out-Null
+    $addResult = Invoke-Tool -Exe "pnputil.exe" -Arguments @("/add-driver",$inf,"/install") -AllowFailure
 
     $store = @(Get-P360StoreEntries | Where-Object {
         [string]$_.Version -eq $wantVersion
     })
+    if ($store.Count -eq 1) {
+        $script:State.TestInfName = [string]$store[0].Driver
+        $script:State.TestDriverVersion = $wantVersion
+        Save-State
+    }
+
+    if ($addResult.ExitCode -ne 0) {
+        throw "pnputil failed while staging/installing $RunMode; rollback will remove any identified test package."
+    }
     if ($store.Count -ne 1) {
         throw "Could not identify exactly one staged $RunMode package in Driver Store."
     }
-
-    $script:State.TestInfName = [string]$store[0].Driver
-    $script:State.TestDriverVersion = $wantVersion
-    Save-State
 
     Restart-Target $InstanceId
     Wait-TargetHealthy $InstanceId | Out-Null
