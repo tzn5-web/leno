@@ -134,7 +134,14 @@ int wmain(void)
     for (frame=0;frame<P360_FRAMES;++frame) {
         double phase=(2.0*3.14159265358979323846*P360_TONE_HZ*
                       (double)frame)/(double)P360_RATE;
-        int32_t v=(int32_t)(sin(phase)*P360_AMPLITUDE);
+        /*
+         * WAVEFORMATEXTENSIBLE requires valid bits to be left-aligned in the
+         * container. Quantize at 16-bit precision first, then shift into the
+         * upper 16 bits of the 32-bit container. Peak is floor(32767*0.005)
+         * = 163, i.e. strictly below 0.5% full-scale.
+         */
+        int32_t q16=(int32_t)(sin(phase)*163.0);
+        int32_t v=q16 << 16;
         samples[frame*2u]=v;
         samples[frame*2u+1u]=v;
     }
