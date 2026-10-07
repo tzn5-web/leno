@@ -266,6 +266,9 @@ function Get-PackageFolder([string]$RunMode) {
     if ($RunMode -eq "BoundedSpeaker") {
         return Join-Path $PackageRoot "bounded"
     }
+    if ($RunMode -eq "FinalSpeaker") {
+        return Join-Path $PackageRoot "final"
+    }
     throw "No driver package for mode $RunMode."
 }
 
@@ -279,8 +282,10 @@ function Assert-Package([string]$RunMode,$Info) {
     $sysHash = (Get-FileHash -LiteralPath (Join-Path $folder "P360SofAudio.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
     $want = if ($RunMode -eq "PreAudio") {
         [string]$Info.PreAudioSysSha256
-    } else {
+    } elseif ($RunMode -eq "BoundedSpeaker") {
         [string]$Info.BoundedSysSha256
+    } else {
+        [string]$Info.FinalSpeakerSysSha256
     }
     if ($sysHash -ne $want.ToLowerInvariant()) {
         throw "$RunMode SYS hash mismatch: $sysHash != $want"
@@ -703,7 +708,7 @@ function Get-P360StoreEntries {
 }
 
 function Test-IsReservedGateVersion([string]$Version) {
-    return $Version -in @("2.0.100.1","2.0.101.1","2.0.200.1","2.0.201.1")
+    return $Version -in @("2.0.100.1","2.0.101.1","2.0.200.1","2.0.201.1","2.0.301.1")
 }
 
 function Assert-NoStaleTestPackage {
@@ -1279,7 +1284,7 @@ try {
 New-RunSession "Audio" | Out-Null
 Write-RunLog "PHASER360 AUDIO ONE-SHOT"
 Write-RunLog "MODE=Audio"
-Write-RunLog "PREAUDIO_REQUIRED_BEFORE_SPEAKER=YES"
+Write-RunLog "DIRECT_FINAL_SPEAKER_TEST=YES"
 Write-RunLog "NO_AUTO_REBOOT=YES"
 
 $info=Read-PackageInfo
@@ -1328,8 +1333,7 @@ $firmware=Resolve-Firmware $FirmwarePath
 Write-RunLog "FIRMWARE=$firmware"
 Write-RunLog "FIRMWARE_SHA256=$ExpectedFirmwareSha256"
 
-$preFolder=Assert-Package "PreAudio" $info
-$boundedFolder=Assert-Package "BoundedSpeaker" $info
+$finalFolder=Assert-Package "FinalSpeaker" $info
 Write-RunLog "PACKAGE_HEAD=$($info.HeadSha)"
 
 $telemetry=$null
@@ -1340,66 +1344,28 @@ try {
     Install-Firmware $firmware
     Import-TestCertificate $info | Out-Null
 
-    # PHASE 1: minimal PRE-AUDIO. No Tone topology and no speaker gate compiled.
-    Write-RunLog "PREAUDIO_PHASE=BEGIN"
-    Install-TestPackage "PreAudio" $info $targetId
-
-    $telemetry=Wait-Telemetry -ExpectedFlags 3 -MinimumStage 50 -Seconds 20
-    if ($telemetry.BootEpoch -lt 1) {
-        throw "PRE-AUDIO telemetry has no fresh boot epoch."
-    }
-    if ($telemetry.FirmwareError -ne -22 -or $telemetry.ReplyBytes -ne 12) {
-        throw "IPC3 proof reply mismatch: error=$($telemetry.FirmwareError), bytes=$($telemetry.ReplyBytes)."
-    }
-
-    $script:State.PreAudioPassed=$true
-    Save-State
-    Write-RunLog "PREAUDIO_FW_READY_IRQ_IPC=PASS"
-
-    $null=Disable-TargetAndProveStop $targetId 3
-    $script:State.PreAudioStopProved=$true
-    Save-State
-    Write-RunLog "PREAUDIO_STOP=PASS"
-
-    # Return to the exact proven baseline before changing to the speaker build.
-    Restore-OriginalDriver $targetId
-    if (-not $script:State.RestoreVerified) {
-        throw "PRE-AUDIO baseline restore was not verified."
-    }
-    Write-RunLog "PREAUDIO_BASELINE_RESTORE=PASS"
-    Assert-SafeBaselineBeforeNewTest $targetId
-
-    if (-not $script:State.PreAudioPassed -or -not $script:State.PreAudioStopProved) {
-        throw "Speaker phase blocked: PRE-AUDIO proof or STOP is missing."
-    }
-
-    # Prepare final cleanup state for the bounded speaker phase.
-    $script:State.RestoreVerified=$false
-    $script:State.StopProved=$false
-    Save-State
-
-    # PHASE 2: bounded speaker. The amplifier is required only here; PRE-AUDIO
-    # remains independent from the physical speaker path.
+    # Single final path. The driver itself performs FW_READY -> IRQ -> IPC3 ->
+    # Tone/SSP1 setup -> sub-1pct 2s speaker proof. No separate PRE-AUDIO swap.
     $amp=Get-AmpDevice
     Write-RunLog "AMP=$($amp.PNPDeviceID) SERVICE=$($amp.Service)"
-    Write-RunLog "SPEAKER_PHASE=BEGIN"
+    Write-RunLog "FINAL_SPEAKER_PHASE=BEGIN"
     $script:State.SpeakerAttempted=$true
     Save-State
 
-    Install-TestPackage "BoundedSpeaker" $info $targetId
-    $telemetry=Wait-Telemetry -ExpectedFlags 31 -MinimumStage 110 -Seconds 20
+    Install-TestPackage "FinalSpeaker" $info $targetId
+    $telemetry=Wait-Telemetry -ExpectedFlags 31 -MinimumStage 110 -Seconds 25
     if ($telemetry.BootEpoch -lt 1 -or $telemetry.Stage -ne 110) {
-        throw "Bounded speaker proof did not reach fresh TONE_COMPLETE."
+        throw "Final speaker test did not reach fresh TONE_COMPLETE."
     }
 
     $script:State.SpeakerPassed=$true
     Save-State
-    Write-RunLog "BOUNDED_TONE_250MS=PASS"
+    Write-RunLog "FINAL_TONE_2000MS_MAX_0P78125PCT=PASS"
 
     $null=Disable-TargetAndProveStop $targetId 31
     $script:State.SpeakerStopProved=$true
     Save-State
-    Write-RunLog "SPEAKER_STOP_MUTE=PASS"
+    Write-RunLog "FINAL_SPEAKER_STOP_MUTE=PASS"
 
     $success=$true
 } catch {
@@ -1445,9 +1411,7 @@ try {
 }
 
 if ($success) {
-    if (-not $script:State.PreAudioPassed -or
-        -not $script:State.PreAudioStopProved -or
-        -not $script:State.SpeakerAttempted -or
+    if (-not $script:State.SpeakerAttempted -or
         -not $script:State.SpeakerPassed -or
         -not $script:State.SpeakerStopProved -or
         -not $script:State.RestoreVerified) {
