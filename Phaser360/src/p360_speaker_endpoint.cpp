@@ -30,6 +30,28 @@ operator delete(
 {
 }
 
+/*
+ * MSVC emits scalar deleting destructors for these COM-style C++ objects even
+ * though normal lifetime is controlled by Release(). Provide the matching CRT
+ * delete entry points so /kernel never pulls the user-mode C++ runtime.
+ * They intentionally do not free memory: Release() runs the destructor and
+ * ExFreePoolWithTag() exactly once.
+ */
+void __cdecl
+operator delete(
+    void *
+    ) noexcept
+{
+}
+
+void __cdecl
+operator delete(
+    void *,
+    size_t
+    ) noexcept
+{
+}
+
 #define P360_SPEAKER_POOL_TAG ((ULONG)'S63P')
 #define P360_WAVE_SYSTEM_PIN 0u
 #define P360_WAVE_BRIDGE_PIN 1u
