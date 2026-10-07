@@ -110,6 +110,23 @@ int main(void)
     assert(m.data[92]==P360_IPC3_CHMAP_FL);
     assert(m.data[94]==P360_IPC3_CHMAP_FR);
 
+    assert(p360_ipc3_build_tone_amplitude(
+        &m,ids.tone_id,P360_IPC3_TONE_AMPLITUDE_SAFE_Q1_31,
+        P360_SPEAKER_CHANNELS)==0);
+    assert(m.bytes==108u && u32(m.data)==108u);
+    assert(u32(m.data+4)==0x50030000u);
+    assert(u32(m.data+8)==0u && u32(m.data+12)==ids.tone_id);
+    assert(u32(m.data+16)==3u && u32(m.data+20)==1u);
+    assert(u32(m.data+24)==1u && u32(m.data+28)==28u);
+    assert(u32(m.data+56)==2u);
+    assert(u32(m.data+92)==0u);
+    assert(u32(m.data+96)==P360_IPC3_TONE_AMPLITUDE_SAFE_Q1_31);
+    assert(u32(m.data+100)==1u);
+    assert(u32(m.data+104)==P360_IPC3_TONE_AMPLITUDE_SAFE_Q1_31);
+    assert(p360_ipc3_build_tone_amplitude(
+        &m,ids.tone_id,P360_IPC3_TONE_AMPLITUDE_MAX_Q1_31+1u,
+        P360_SPEAKER_CHANNELS)!=0);
+
     assert(p360_ipc3_build_stream_trigger(&m,100u,1)==0);
     assert(m.bytes==12u && u32(m.data+4)==0x60040000u);
     assert(u32(m.data+8)==100u);
