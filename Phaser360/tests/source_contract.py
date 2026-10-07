@@ -211,7 +211,11 @@ for token in (
     "#define P360_SPEAKER_CHANNELS 2u",
     "#define P360_SPEAKER_CONTAINER_BITS 32u",
     "#define P360_SPEAKER_PCM_VALID_BITS 16u",
-    "#define P360_SPEAKER_DAI_VALID_BITS 24u",
+    "#define P360_SPEAKER_DAI_VALID_BITS 16u",
+    "#define P360_SPEAKER_DAI_SLOT_BITS 16u",
+    "#define P360_SPEAKER_SSP1_BCLK_HZ 1536000u",
+    "#define P360_SPEAKER_SSP1_MCLK_HZ 19200000u",
+    "#define P360_SPEAKER_SSP1_MCLK_ID 1u",
 ):
     if token not in board_h:
         raise SystemExit(f"Phaser360 PCM/SSP1 width contract missing: {token}")
@@ -339,13 +343,15 @@ if "tests/ipc3_tx_regression.c" not in run_b4:
 
 for token in (
     "P360_IPC3_TONE_NEW_BYTES       100u",
-    "P360_IPC3_DAI_CONFIG_BYTES     112u",
+    "P360_IPC3_DAI_CONFIG_BYTES     216u",
+    "P360_IPC3_PCM_PARAMS_BYTES     108u",
     "P360_IPC3_COMP_TONE  10u",
     "P360_IPC3_FRAME_S24_4LE 1u",
     "P360_IPC3_DAI_INTEL_SSP   1u",
     "p360_ipc3_build_tone_new(",
     "p360_ipc3_build_dai_new(",
     "p360_ipc3_build_ssp1_config(",
+    "p360_ipc3_build_pcm_params(",
     "p360_ipc3_build_stream_trigger(",
 ):
     if token not in (ipc3_topology_h + "\n" + ipc3_topology):
@@ -353,6 +359,27 @@ for token in (
 
 if "tests/ipc3_topology_regression.c" not in run_b4:
     raise SystemExit("IPC3 speaker topology regression is not in the B4 gate")
+
+for token in (
+    "put_config(d+28,2u,0u,P360_IPC3_FRAME_S32_LE)",
+    "put_config(d+28,0u,2u,P360_IPC3_FRAME_S16_LE)",
+    "P360_IPC3_GLB_STREAM_MSG|P360_IPC3_STREAM_PCM_PARAMS",
+    "put32(d+24,84u)",
+    "put32(d+28,28u)",
+    "put16(d+76,4u)",
+    "put16(d+78,4u)",
+):
+    if token not in ipc3_topology:
+        raise SystemExit(f"corrected IPC3 speaker runtime contract missing: {token}")
+
+for forbidden in (
+    "P360_IPC3_DAI_CONFIG_BYTES     112u",
+    "P360_SPEAKER_DAI_VALID_BITS 24u",
+    "p->sample_valid_bits!=24u",
+    "p->tdm_slot_width!=32u",
+):
+    if forbidden in ipc3_topology_h + "\n" + ipc3_topology + "\n" + board_h:
+        raise SystemExit(f"stale GLK/MAX98357A speaker ABI reintroduced: {forbidden}")
 
 
 driver=(ROOT/"driver/p360_driver.c").read_text()
