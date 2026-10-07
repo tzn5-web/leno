@@ -333,6 +333,48 @@ int p360_ipc3_build_tone_amplitude_control(struct p360_ipc3_message *out,
     return P360_IPC3_TOPOLOGY_OK;
 }
 
+int p360_ipc3_build_tone_amplitude(struct p360_ipc3_message *out,
+    uint32_t comp_id,uint32_t amplitude_q1_31,uint16_t channels)
+{
+    uint8_t *d;
+
+    if (!out || !comp_id || channels!=P360_SPEAKER_CHANNELS ||
+        !amplitude_q1_31 || amplitude_q1_31>P360_IPC3_TONE_HALF_PERCENT_Q1_31)
+        return P360_IPC3_TOPOLOGY_ARGUMENT;
+
+    zero_message(out);
+    d=out->data;
+
+    /* struct sof_ipc_ctrl_data */
+    put32(d,P360_IPC3_TONE_CONTROL_BYTES);
+    put32(d+4,P360_IPC3_GLB_COMP_MSG|P360_IPC3_COMP_SET_DATA);
+    put32(d+8,0u); /* reply error */
+    put32(d+12,comp_id);
+    put32(d+16,P360_IPC3_CTRL_TYPE_DATA_SET);
+    put32(d+20,P360_IPC3_CTRL_CMD_ENUM);
+    put32(d+24,P360_IPC3_TONE_IDX_AMPLITUDE);
+
+    /* struct sof_ipc_host_buffer: no external DMA payload. */
+    put32(d+28,28u);
+    put32(d+56,channels);
+    put32(d+60,0u);
+    put32(d+64,0u);
+
+    /* struct sof_abi_hdr followed by two sof_ipc_ctrl_value_comp values. */
+    put32(d+92,P360_IPC3_SOF_ABI_MAGIC);
+    put32(d+96,0u);
+    put32(d+100,(uint32_t)channels * 8u);
+    put32(d+104,P360_IPC3_SOF_ABI_3_20_0);
+
+    put32(d+124,0u);
+    put32(d+128,amplitude_q1_31);
+    put32(d+132,1u);
+    put32(d+136,amplitude_q1_31);
+
+    out->bytes=P360_IPC3_TONE_CONTROL_BYTES;
+    return P360_IPC3_TOPOLOGY_OK;
+}
+
 int p360_ipc3_build_stream_trigger(struct p360_ipc3_message *out,
     uint32_t comp_id,int start)
 {
