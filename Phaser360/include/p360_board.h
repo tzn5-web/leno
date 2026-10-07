@@ -8,7 +8,15 @@
 #define P360_SPEAKER_CHANNELS 2u
 #define P360_SPEAKER_CONTAINER_BITS 32u
 #define P360_SPEAKER_PCM_VALID_BITS 16u
-#define P360_SPEAKER_DAI_VALID_BITS 24u
+/*
+ * Windows/CoolStar keeps a forced 32-bit output container, but the pinned
+ * GLK SOF topology explicitly overrides the SSP1 backend to s16le.
+ */
+#define P360_SPEAKER_DAI_VALID_BITS 16u
+#define P360_SPEAKER_DAI_SLOT_BITS 16u
+#define P360_SPEAKER_SSP1_BCLK_HZ 1536000u
+#define P360_SPEAKER_SSP1_MCLK_HZ 19200000u
+#define P360_SPEAKER_SSP1_MCLK_ID 1u
 
 typedef enum P360_ENDPOINT {
     P360_ENDPOINT_HEADPHONE = 0,
