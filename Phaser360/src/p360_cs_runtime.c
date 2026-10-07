@@ -937,24 +937,35 @@ p360_cs_runtime_bind_live(
 }
 
 NTSTATUS
-p360_cs_runtime_probe_ipc(
+p360_cs_runtime_send_ipc(
     P360_CS_RUNTIME *rt,
-    LONG *FirmwareError
+    const UCHAR *Message,
+    ULONG MessageBytes,
+    ULONG TimeoutMs,
+    LONG *FirmwareError,
+    ULONG *ReplyBytes
     )
 {
-    UCHAR message[8];
     struct p360_ipc3_tx_result tx;
     LARGE_INTEGER delay;
     int32_t firmwareError=0;
     uint32_t replyBytes=0;
     NTSTATUS status=STATUS_DEVICE_NOT_READY;
-    int rc;
+    ULONG loops;
     ULONG i;
+    int rc;
 
     if (FirmwareError)
         *FirmwareError=0;
+    if (ReplyBytes)
+        *ReplyBytes=0;
 
-    if (!rt || !rt->Created || !rt->Bound ||
+    if (!rt || !Message ||
+        MessageBytes<8u ||
+        MessageBytes>P360_IPC3_MAX_MESSAGE_BYTES ||
+        (MessageBytes&3u) ||
+        !TimeoutMs || TimeoutMs>400u ||
+        !rt->Created || !rt->Bound ||
         !rt->DispatcherPrepared || !rt->Epoch ||
         !rt->Boot || !rt->Boot->LiveDsp ||
         !InterlockedCompareExchange(&rt->Active,0,0) ||
@@ -964,37 +975,44 @@ p360_cs_runtime_probe_ipc(
         return STATUS_INVALID_DEVICE_STATE;
     }
 
-    rc=p360_ipc3_build_proof(message);
-    if (rc!=P360_IPC3_TX_OK)
-        return STATUS_INVALID_PARAMETER;
+    RtlZeroMemory(&tx,sizeof(tx));
 
     WdfSpinLockAcquire(rt->DispatchLock);
     rc=p360_ipc3_tx_begin(
         &rt->Dispatch,
         &g_p360_rt_tx_io,
         rt,
-        message,
-        sizeof(message),
-        100u,
+        Message,
+        MessageBytes,
+        TimeoutMs,
         &tx);
     WdfSpinLockRelease(rt->DispatchLock);
 
     if (rc!=P360_IPC3_TX_OK) {
-        if (tx.poison_required)
-            InterlockedExchange(&rt->Fault,1);
-        return rc==P360_IPC3_TX_PENDING ?
-            STATUS_DEVICE_BUSY :
-            STATUS_DEVICE_NOT_READY;
+        if (rc==P360_IPC3_TX_PENDING)
+            return STATUS_DEVICE_BUSY;
+
+        /*
+         * Any other publication failure invalidates this boot's command
+         * channel. Even a pre-doorbell mailbox failure leaves the dispatcher
+         * offline by design, so require a normal stop/fresh boot.
+         */
+        InterlockedExchange(&rt->Fault,1);
+        (void)p360_rt_mask(rt);
+        return STATUS_DEVICE_NOT_READY;
     }
 
     delay.QuadPart=-10*1000; /* 1 ms */
+    loops=TimeoutMs+50u;
 
-    for (i=0;i<150u;++i) {
+    for (i=0;i<loops;++i) {
         int state;
         int expired=0;
 
-        if (InterlockedCompareExchange(&rt->Fault,0,0))
-            break;
+        if (InterlockedCompareExchange(&rt->Fault,0,0)) {
+            status=STATUS_DEVICE_HARDWARE_ERROR;
+            goto fail;
+        }
 
         WdfSpinLockAcquire(rt->DispatchLock);
         state=rt->Dispatch.ipc.state;
@@ -1006,20 +1024,18 @@ p360_cs_runtime_probe_ipc(
                 &replyBytes);
             WdfSpinLockRelease(rt->DispatchLock);
 
-            if (rc!=0)
-                break;
+            if (rc!=0) {
+                InterlockedExchange(&rt->Fault,1);
+                status=STATUS_DATA_ERROR;
+                goto fail;
+            }
 
             if (FirmwareError)
                 *FirmwareError=(LONG)firmwareError;
+            if (ReplyBytes)
+                *ReplyBytes=(ULONG)replyBytes;
 
-            if (replyBytes==12u &&
-                firmwareError==P360_IPC3_PROOF_ERROR) {
-                return STATUS_SUCCESS;
-            }
-
-            InterlockedExchange(&rt->Fault,1);
-            status=STATUS_DATA_ERROR;
-            goto fail;
+            return STATUS_SUCCESS;
         }
 
         if (state==P360_IPC_PENDING) {
@@ -1037,8 +1053,11 @@ p360_cs_runtime_probe_ipc(
         }
 
         if (state==P360_IPC_POISONED ||
-            state==P360_IPC_OFFLINE)
-            break;
+            state==P360_IPC_OFFLINE) {
+            InterlockedExchange(&rt->Fault,1);
+            status=STATUS_DEVICE_NOT_READY;
+            goto fail;
+        }
 
         (void)KeDelayExecutionThread(
             KernelMode,
@@ -1046,14 +1065,54 @@ p360_cs_runtime_probe_ipc(
             &delay);
     }
 
-    if (!InterlockedCompareExchange(&rt->Fault,0,0))
-        InterlockedExchange(&rt->Fault,1);
-
+    InterlockedExchange(&rt->Fault,1);
     status=STATUS_IO_TIMEOUT;
 
 fail:
     (void)p360_rt_mask(rt);
     return status;
+}
+
+NTSTATUS
+p360_cs_runtime_probe_ipc(
+    P360_CS_RUNTIME *rt,
+    LONG *FirmwareError
+    )
+{
+    UCHAR message[8];
+    LONG firmwareError=0;
+    ULONG replyBytes=0;
+    NTSTATUS status;
+    int rc;
+
+    if (FirmwareError)
+        *FirmwareError=0;
+
+    rc=p360_ipc3_build_proof(message);
+    if (rc!=P360_IPC3_TX_OK)
+        return STATUS_INVALID_PARAMETER;
+
+    status=p360_cs_runtime_send_ipc(
+        rt,
+        message,
+        sizeof(message),
+        100u,
+        &firmwareError,
+        &replyBytes);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    if (FirmwareError)
+        *FirmwareError=firmwareError;
+
+    if (replyBytes!=12u ||
+        firmwareError!=P360_IPC3_PROOF_ERROR) {
+        InterlockedExchange(&rt->Fault,1);
+        (void)p360_rt_mask(rt);
+        return STATUS_DATA_ERROR;
+    }
+
+    return STATUS_SUCCESS;
 }
 
 static NTSTATUS
