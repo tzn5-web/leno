@@ -10,8 +10,7 @@ The launcher requests Administrator rights and performs one transaction only:
   3. Bind the final P360SofAudio test driver.
   4. Boot SOF and establish IRQ + IPC3.
   5. Build the proven Tone -> SSP1 -> MAX98357A path.
-  6. Before PCM prepare, force both SOF Tone channels to Q1.31 0x01000000,
-     exactly 1/128 = 0.78125% full-scale (~ -42.14 dBFS).
+  6. Before PCM prepare, force both SOF Tone channels to Q1.31 10737418, exactly 0.5% full-scale (about -46 dBFS).
   7. Play the internal-speaker diagnostic for exactly 2000 ms.
   8. Mute/STOP MAX98357A, stop the SOF stream and prove D0 STOP.
   9. Restore the original driver, firmware state and temporary test certificate.
@@ -32,7 +31,7 @@ Safety:
 - no automatic reboot;
 - no automatic retry of the physical speaker phase;
 - amplifier STOP/mute is issued before DSP teardown;
-- final diagnostic amplitude is below 1% digital full-scale;
+- final diagnostic amplitude is 0.5% digital full-scale;
 - final diagnostic duration is 2 seconds;
 - baseline restore is verified at the end.
 
