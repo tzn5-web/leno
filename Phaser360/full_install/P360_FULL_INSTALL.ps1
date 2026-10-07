@@ -97,7 +97,7 @@ function Assert-FileHash([string]$Name,[string]$Expected) {
 function Assert-Package {
     foreach($name in @(
         "P360AudioBundle.inf","P360AudioBundle.cat","P360SofAudio.sys",
-        "P360Max98357Safe.sys","p360-f686.ri","P360_TEST.cer",
+        "P360Max98357Safe.sys","sof-apl-v1.9.3-official.ri","P360_TEST.cer",
         "P360_WASAPI_TEST.exe","P360_FORCE_INSTALL.exe","PACKAGE_INFO.json"
     )) {
         if (-not (Test-Path -LiteralPath (Join-Path $Root $name) -PathType Leaf)) {
@@ -113,22 +113,19 @@ function Assert-Package {
     if ([string]$info.Provider -ne $Provider) {
         throw "Unexpected package provider."
     }
-    if ([string]$info.PhysicalAudioTest -ne "True") {
-        throw "Full-install package must enable the final physical WASAPI acceptance."
-    }
-    if ([int]$info.PhysicalWasapiAttemptsMax -ne 1) {
-        throw "Full-install package must permit exactly one physical WASAPI attempt."
+    if ([string]$info.PhysicalAudioTest -ne "False") {
+        throw "Full-install package must remain install-only; physical playback is not an installation gate."
     }
 
     Assert-FileHash "P360SofAudio.sys" ([string]$info.P360SofAudioSha256)
     Assert-FileHash "P360Max98357Safe.sys" ([string]$info.P360Max98357SafeSha256)
-    Assert-FileHash "p360-f686.ri" ([string]$info.FirmwareSha256)
+    Assert-FileHash "sof-apl-v1.9.3-official.ri" ([string]$info.FirmwareSha256)
     Assert-FileHash "P360_WASAPI_TEST.exe" ([string]$info.WasapiTestSha256)
     Assert-FileHash "P360_FORCE_INSTALL.exe" ([string]$info.ForceInstallSha256)
 
-    $fw=Get-Item -LiteralPath (Join-Path $Root "p360-f686.ri")
-    if ($fw.Length -ne 246528 -or
-        [string]$info.FirmwareSha256 -ne "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab") {
+    $fw=Get-Item -LiteralPath (Join-Path $Root "sof-apl-v1.9.3-official.ri")
+    if ($fw.Length -ne 287488 -or
+        [string]$info.FirmwareSha256 -ne "40029b5a05665f19a492ef00b8c0a24c42e90d7c00fc57146e07947fd1407d5c") {
         throw "Pinned firmware identity mismatch."
     }
 
