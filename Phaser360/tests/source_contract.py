@@ -565,7 +565,6 @@ for token in (
     "STREAM_STOP_AND_AMP_MUTE=PASS",
     "PERSISTENT_FINAL_STACK=YES",
     "ROLLBACK_ON_SUCCESS=NO",
-    "AUTOMATIC_ROLLBACK=NO",
     "PERSISTENT_REPAIR_STATE=YES",
     "PERSISTENT_REPAIR_SESSION_RESUMED=YES",
     "Ensure-FinalCoreReady",
@@ -975,7 +974,6 @@ for function_name in (
     "Restart-WindowsAudio",
     "Run-WasapiPreflight",
     "Reset-WasapiEndpointFormat",
-    "Run-WasapiPhysicalOnce",
     "Remove-StaleProjectPackages",
     "Install-FullStack",
     "Write-ResultZip",
@@ -987,38 +985,22 @@ for function_name in (
 
 for token in (
     "PHASER360 FULL AUDIO DRIVER INSTALL",
-    "PHYSICAL_AUDIO_TEST=ONE_SHOT_WASAPI_SHARED",
+    "PHYSICAL_AUDIO_TEST=NO",
     "P360_FORCE_INSTALL.exe",
     "FULL_INSTALL_ROUND=",
     "WINDOWS_AUDIO_ENDPOINT=PASS",
     "WASAPI_DEVICE_FORMAT_RESET=PASS",
     "NOT_AUDIO_BLOCKER=YES",
-    "ORIGINAL_BACKUP=SKIPPED_ALREADY_PRODUCTION",
     "FULL_DRIVER_INSTALL=PASS",
-    "WINDOWS_AUDIO_ENDPOINT=PREFLIGHT_READY",
-    "PHYSICAL_WASAPI_ATTEMPTS_MAX=1",
-    "PHYSICAL_WASAPI_ATTEMPT=1",
-    "WASAPI_SHARED_PHYSICAL_PLAYBACK=PASS",
-    "FINAL_ACCEPTANCE=WASAPI_SHARED_ENDPOINT_FUNCTIONAL",
     "AUTOMATIC_ROLLBACK=NO",
-    "AUTOMATIC_PHYSICAL_REPLAY=NO",
     "AUDIO_DRIVER_READY=YES",
 ):
     if token not in full_installer:
         raise SystemExit(f"full installer convergence contract missing: {token}")
 
-if full_installer.count("Run-WasapiPhysicalOnce") != 2:
-    raise SystemExit("full installer must define and invoke the physical WASAPI path exactly once")
-install_stack_begin=full_installer.index("function Install-FullStack")
-install_stack_end=full_installer.index("function Write-ResultZip",install_stack_begin)
-if "Run-WasapiPhysicalOnce" in full_installer[install_stack_begin:install_stack_end]:
-    raise SystemExit("physical playback leaked into automatic repair/preflight loop")
-physical_call=full_installer.index("if (-not (Run-WasapiPhysicalOnce))")
-full_install_call=full_installer.index("Install-FullStack $info")
-if physical_call <= full_install_call:
-    raise SystemExit("physical playback must occur only after the full no-sound stack converges")
-
 for forbidden in (
+    "Run-WasapiPhysicalOnce",
+    "PHYSICAL_WASAPI_ATTEMPT",
     "P360_WAVERT_TEST.exe",
 ):
     if forbidden in full_installer:
