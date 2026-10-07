@@ -510,7 +510,7 @@ restore_cmd=(ROOT/"tools/RESTORE_LAST_SESSION.cmd").read_text()
 
 for token in (
     "successful run ends with working PHASER360 audio installed",
-    "there is no automatic baseline rollback",
+    "There is no automatic baseline rollback",
     "Only a proved quiesced stack may be",
     "NEEDS_DRIVER_PATCH",
     "Restore is manual only",
