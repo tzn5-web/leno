@@ -209,6 +209,19 @@ p360_runtime_prepare_tone_topology(
             &ids),
         12u);
 
+    /*
+     * SOF 1.9.3 resets Tone amplitude to its 0.1 (-20 dB) firmware
+     * default during component creation.  Override it explicitly before any
+     * stream trigger. The builder itself rejects values above 1% full-scale.
+     */
+    P360_BUILD_AND_SEND(
+        p360_ipc3_build_tone_amplitude(
+            &message,
+            ids.tone_id,
+            P360_BOUNDED_TONE_AMPLITUDE_Q1_31,
+            P360_SPEAKER_CHANNELS),
+        12u);
+
 #undef P360_BUILD_AND_SEND
 
     ctx->State.topology_ready=1;
@@ -338,9 +351,9 @@ p360_runtime_run_bounded_tone(
         goto cleanup;
 
     /*
-     * The SOF v1.9.3 Tone component defaults to ~997 Hz at -20 dB when the
-     * optional tone fields are zero. Keep the first physical proof short and
-     * non-alertable, then mute the amplifier before stopping SSP1.
+     * Tone frequency remains the SOF v1.9.3 ~997 Hz default, but amplitude
+     * was explicitly clamped through IPC3 before STREAM_START. Keep the
+     * physical exposure bounded, then mute the amplifier before stopping SSP1.
      */
     delay.QuadPart=-(LONGLONG)P360_BOUNDED_TONE_DURATION_MS * 10 * 1000;
     status=KeDelayExecutionThread(
