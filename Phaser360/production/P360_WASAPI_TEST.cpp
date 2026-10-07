@@ -1,6 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+#include <initguid.h>
 #include <mmdeviceapi.h>
 #include <audioclient.h>
 #include <audioendpoints.h>
