@@ -315,12 +315,12 @@ jobs:
           New-P360Catalog `
             "Phaser360\driver\out\Release\P360SofAudio-preaudio-ipc3.sys" `
             $preDir `
-            "2.0.100.1"
+            "2.0.101.1"
 
           New-P360Catalog `
             "Phaser360\driver\out\Release\P360SofAudio-bounded-tone-test.sys" `
             $boundedDir `
-            "2.0.200.1"
+            "2.0.201.1"
 
       - name: Sign hardware gate catalogs
         shell: pwsh
@@ -366,8 +366,8 @@ jobs:
             HeadSha = "${env:GITHUB_SHA}"
             WorkflowRunId = "${env:GITHUB_RUN_ID}"
             CertificateThumbprint = "${env:P360_CERT_THUMBPRINT}"
-            PreAudioDriverVersion = "2.0.100.1"
-            BoundedDriverVersion = "2.0.200.1"
+            PreAudioDriverVersion = "2.0.101.1"
+            BoundedDriverVersion = "2.0.201.1"
             PreAudioSysSha256 = $preHash
             BoundedSysSha256 = $boundedHash
             FirmwareBytes = 246528

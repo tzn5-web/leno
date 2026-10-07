@@ -831,7 +831,6 @@ p360_host_prepare(
         Device,
         &ctx->Bus,
         &ctx->Boot);
-    (void)p360_telemetry_prepare(P360_PREP_STEP_RUNTIME_CREATE,0,status);
     if (!NT_SUCCESS(status))
         goto cleanup;
     ctx->RuntimeInitialized=TRUE;

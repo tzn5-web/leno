@@ -71,6 +71,11 @@
 #define P360_PREP_NHLT_SSP2_RENDER        (1u << 18)
 #define P360_PREP_NHLT_SSP2_CAPTURE       (1u << 19)
 
+/* RUNTIME_CREATE PrepareDetail values. */
+#define P360_PREP_RUNTIME_SPINLOCK_CREATE  1u
+#define P360_PREP_RUNTIME_DPC_CREATE       2u
+#define P360_PREP_RUNTIME_COMPLETE         3u
+
 #define P360_TELEM_FLAG_RUNTIME_BOOT     (1u << 0)
 #define P360_TELEM_FLAG_IPC_PROBE        (1u << 1)
 #define P360_TELEM_FLAG_TONE_TOPOLOGY    (1u << 2)

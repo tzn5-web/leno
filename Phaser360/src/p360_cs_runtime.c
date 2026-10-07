@@ -1,4 +1,5 @@
 #include "../include/p360_cs_runtime.h"
+#include "../include/p360_telemetry.h"
 
 typedef struct P360_RUNTIME_DPC_LINK {
     P360_CS_RUNTIME *Owner;
@@ -780,8 +781,13 @@ p360_cs_runtime_create(
     status = WdfSpinLockCreate(
         &attributes,
         &rt->DispatchLock);
-    if (!NT_SUCCESS(status))
+    if (!NT_SUCCESS(status)) {
+        (void)p360_telemetry_prepare(
+            P360_PREP_STEP_RUNTIME_CREATE,
+            P360_PREP_RUNTIME_SPINLOCK_CREATE,
+            status);
         return status;
+    }
 
     WDF_DPC_CONFIG_INIT(
         &dpcConfig,
@@ -792,7 +798,13 @@ p360_cs_runtime_create(
         &attributes,
         P360_RUNTIME_DPC_LINK);
     attributes.ParentObject = Device;
-    attributes.ExecutionLevel = WdfExecutionLevelDispatch;
+    /*
+     * WDFDPC has a framework-defined execution level.  Supplying an explicit
+     * WDF_OBJECT_ATTRIBUTES.ExecutionLevel is invalid for this object type and
+     * returns STATUS_WDF_EXECUTION_LEVEL_INVALID (0xC0200211).
+     * AutomaticSerialization is already FALSE, so leave execution level
+     * inherited/default and keep only the explicitly supported sync scope.
+     */
     attributes.SynchronizationScope = WdfSynchronizationScopeNone;
 
     status = WdfDpcCreate(
@@ -800,6 +812,10 @@ p360_cs_runtime_create(
         &attributes,
         &rt->Dpc);
     if (!NT_SUCCESS(status)) {
+        (void)p360_telemetry_prepare(
+            P360_PREP_STEP_RUNTIME_CREATE,
+            P360_PREP_RUNTIME_DPC_CREATE,
+            status);
         WdfObjectDelete(rt->DispatchLock);
         RtlZeroMemory(rt,sizeof(*rt));
         return status;
@@ -807,6 +823,10 @@ p360_cs_runtime_create(
 
     P360GetRuntimeDpcLink(rt->Dpc)->Owner = rt;
     rt->Created = TRUE;
+    (void)p360_telemetry_prepare(
+        P360_PREP_STEP_RUNTIME_CREATE,
+        P360_PREP_RUNTIME_COMPLETE,
+        STATUS_SUCCESS);
     return STATUS_SUCCESS;
 }
 

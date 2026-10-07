@@ -68,3 +68,17 @@ Emergency/manual recovery only:
 
 Results:
   Desktop\P360_AUDIO_SAFE\
+
+
+Hardware finding 2026-10-07 / runtime-create fix:
+- Physical PRE-AUDIO reached PrepareStep=RUNTIME_CREATE and returned
+  0xC0200211 (STATUS_WDF_EXECUTION_LEVEL_INVALID).
+- Root cause in p360_cs_runtime_create was an explicit
+  WDF_OBJECT_ATTRIBUTES.ExecutionLevel on the WDFDPC object. WDFDPC defines
+  its execution behavior; the explicit attribute is invalid and is removed.
+- Runtime creation now reports whether WdfSpinLockCreate or WdfDpcCreate
+  failed, and the runner prints the symbolic WDF NTSTATUS.
+- Live driver binding verification uses DEVPKEY_Device_DriverInfPath,
+  DriverVersion and DriverProvider before falling back to Win32_PnPSignedDriver.
+- New gate package versions are 2.0.101.1 (PRE-AUDIO) and 2.0.201.1
+  (bounded speaker); cleanup also recognizes the older 2.0.100.1/2.0.200.1.

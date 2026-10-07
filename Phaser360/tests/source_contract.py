@@ -915,6 +915,12 @@ for token in (
     "TARGET_START_REPAIR=BEGIN",
     "Get-DeviceProblemStatusHex",
     "Get-PrepareStepName",
+    "Get-PrepareDetailText",
+    "Get-NtStatusName",
+    "Get-LiveDriverIdentityOrNull",
+    "DEVPKEY_Device_DriverInfPath",
+    "DEVPKEY_Device_DriverVersion",
+    "DEVPKEY_Device_DriverProvider",
     "FAIL_DIAGNOSTIC=",
     "PrepareNtStatus",
 ):
@@ -927,5 +933,17 @@ amp_i=runner.index("$amp=Get-AmpDevice",pre_restore_i)
 speaker_phase_i=runner.index('Write-RunLog "SPEAKER_PHASE=BEGIN"',amp_i)
 if not (pre_phase_i < pre_restore_i < amp_i < speaker_phase_i):
     raise SystemExit("MAX98357A dependency leaked back into minimal PRE-AUDIO")
+
+
+if "attributes.ExecutionLevel = WdfExecutionLevelDispatch" in runtime:
+    raise SystemExit("WDFDPC still forces an invalid explicit ExecutionLevel")
+for token in (
+    "P360_PREP_RUNTIME_SPINLOCK_CREATE",
+    "P360_PREP_RUNTIME_DPC_CREATE",
+    "P360_PREP_RUNTIME_COMPLETE",
+    "WdfDpcCreate(",
+):
+    if token not in telemetry_h + "\n" + runtime:
+        raise SystemExit(f"runtime-create exact diagnostic/fix missing: {token}")
 
 print("Phaser360 exact start-failure diagnostic contract: PASS")
