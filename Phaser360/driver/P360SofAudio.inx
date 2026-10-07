@@ -1,7 +1,7 @@
 [Version]
 Signature="$WINDOWS NT$"
-Class=System
-ClassGuid={4D36E97D-E325-11CE-BFC1-08002BE10318}
+Class=MEDIA
+ClassGuid={4D36E96C-E325-11CE-BFC1-08002BE10318}
 Provider=%ProviderName%
 DriverVer=10/06/2026,2.0.0.0
 CatalogFile=P360SofAudio.cat
@@ -23,7 +23,47 @@ P360SofAudio.sys=1
 %DeviceDesc%=P360_Install,CSAUDIO\ADSP&CTLR_VEN_8086&CTLR_DEV_3198
 
 [P360_Install.NT]
+Include=ks.inf,wdmaudio.inf
+Needs=KS.Registration,WDMAUDIO.Registration
 CopyFiles=P360_CopyFiles
+AddReg=P360_Audio.AddReg
+
+[P360_Audio.AddReg]
+HKR,,AssociatedFilters,,"wdmaud"
+HKR,,Driver,,P360SofAudio.sys
+HKR,Drivers,SubClasses,,"wave,mixer"
+HKR,Drivers\wave\wdmaud.drv,Driver,,wdmaud.drv
+HKR,Drivers\mixer\wdmaud.drv,Driver,,wdmaud.drv
+HKR,Drivers\wave\wdmaud.drv,Description,,%DeviceDesc%
+HKR,Drivers\mixer\wdmaud.drv,Description,,%DeviceDesc%
+
+[P360_Install.NT.Interfaces]
+AddInterface=%KSCATEGORY_AUDIO%,%KSNAME_WaveSpeaker%,P360.I.WaveSpeaker
+AddInterface=%KSCATEGORY_RENDER%,%KSNAME_WaveSpeaker%,P360.I.WaveSpeaker
+AddInterface=%KSCATEGORY_REALTIME%,%KSNAME_WaveSpeaker%,P360.I.WaveSpeaker
+AddInterface=%KSCATEGORY_AUDIO%,%KSNAME_TopologySpeaker%,P360.I.TopologySpeaker
+AddInterface=%KSCATEGORY_TOPOLOGY%,%KSNAME_TopologySpeaker%,P360.I.TopologySpeaker
+
+[P360.I.WaveSpeaker]
+AddReg=P360.I.WaveSpeaker.AddReg
+
+[P360.I.WaveSpeaker.AddReg]
+HKR,,CLSID,,%Proxy.CLSID%
+HKR,,FriendlyName,,%WaveSpeakerName%
+
+[P360.I.TopologySpeaker]
+AddReg=P360.I.TopologySpeaker.AddReg
+
+[P360.I.TopologySpeaker.AddReg]
+HKR,,CLSID,,%Proxy.CLSID%
+HKR,,FriendlyName,,%TopologySpeakerName%
+HKR,EP\0,%PKEY_AudioEndpoint_Association%,,%KSNODETYPE_ANY%
+
+[P360_Install.NT.HW]
+AddReg=P360_Audio.HW
+
+[P360_Audio.HW]
+HKR,,DeviceType,0x10001,0x0000001D
 
 [P360_CopyFiles]
 P360SofAudio.sys
@@ -48,5 +88,18 @@ KmdfLibraryVersion=1.15
 ProviderName="PHASER360 Project"
 ManufacturerName="PHASER360 Project"
 DiskName="PHASER360 SOF Windows Port"
-DeviceDesc="PHASER360 Gemini Lake SOF Audio DSP"
+DeviceDesc="PHASER360 Gemini Lake SOF Audio"
 ServiceName="PHASER360 SOF Audio"
+
+KSNAME_WaveSpeaker="WaveSpeaker"
+KSNAME_TopologySpeaker="TopologySpeaker"
+WaveSpeakerName="PHASER360 Speakers Wave"
+TopologySpeakerName="PHASER360 Speakers Topology"
+
+Proxy.CLSID="{17CCA71B-ECD7-11D0-B908-00A0C9223196}"
+KSCATEGORY_AUDIO="{6994AD04-93EF-11D0-A3CC-00A0C9223196}"
+KSCATEGORY_RENDER="{65E8773E-8F56-11D0-A3B9-00A0C9223196}"
+KSCATEGORY_REALTIME="{EB115FFC-10C8-4964-831D-6DCB02E6F23F}"
+KSCATEGORY_TOPOLOGY="{DDA54A40-1E4C-11D1-A050-405705C10000}"
+KSNODETYPE_ANY="{00000000-0000-0000-0000-000000000000}"
+PKEY_AudioEndpoint_Association="{1DA5D803-D492-4EDD-8C23-E0C0FFEE7F0E},2"
