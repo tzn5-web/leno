@@ -1255,11 +1255,15 @@ for token in (
     if token not in runner:
         raise SystemExit(f"hardware gate exact-failure diagnostic missing: {token}")
 
-amp_i=runner.index("$amp=Get-AmpDevice")
-final_phase_i=runner.index('Write-RunLog "FINAL_SPEAKER_PHASE=BEGIN"',amp_i)
-final_install_i=runner.index('Install-TestPackage "FinalSpeaker"',final_phase_i)
-if not (amp_i < final_phase_i < final_install_i):
-    raise SystemExit("final MAX98357A presence gate is not ahead of driver bind")
+amp_install_gate_i=runner.index("Install-SafeAmpPackage $info $ampId")
+amp_ready_gate_i=runner.index("AMP_SAFE_READY=PASS",amp_install_gate_i)
+preaudio_phase_gate_i=runner.index('Write-RunLog "PREAUDIO_PHASE=BEGIN"',amp_ready_gate_i)
+final_install_gate_i=runner.index('Install-TestPackage "FinalSpeaker"',preaudio_phase_gate_i)
+if not (
+    amp_install_gate_i < amp_ready_gate_i <
+    preaudio_phase_gate_i < final_install_gate_i
+):
+    raise SystemExit("safe MAX98357A proof is not ahead of the fresh preaudio driver bind")
 
 
 if "attributes.ExecutionLevel = WdfExecutionLevelDispatch" in runtime:
