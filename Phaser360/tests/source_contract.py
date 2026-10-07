@@ -1017,6 +1017,37 @@ for token in (
     if token not in playback:
         raise SystemExit(f"CoolStar/SOF host DMA bridge missing: {token}")
 
+for token in (
+    "P360_HDA_GCAP_OFFSET",
+    "P360_HDA_SD_BASE",
+    "P360_HDA_SD_INTERVAL",
+    "P360_HDA_SD_CTL_RUN",
+    "READ_REGISTER_USHORT(",
+    "READ_REGISTER_UCHAR(",
+    "captureStreams=(gcap >> 8) & 0x0fu;",
+    "playbackStreams=(gcap >> 12) & 0x0fu;",
+    "streamIndex=captureStreams+(ULONG)p->StreamTag-1u;",
+    "p360_playback_prove_hda_run(p,TRUE)",
+    "p360_playback_prove_hda_run(p,FALSE)",
+    "p->Quarantined=TRUE;",
+):
+    if token not in playback:
+        raise SystemExit(f"HDA RUN readback proof missing: {token}")
+
+start_fn_i=playback.index("p360_playback_stream_start(")
+start_trigger_i=playback.index("TriggerDSP(",start_fn_i)
+start_proof_i=playback.index("p360_playback_prove_hda_run(p,TRUE)",start_trigger_i)
+start_running_i=playback.index("p->Running=TRUE;",start_proof_i)
+if not start_fn_i < start_trigger_i < start_proof_i < start_running_i:
+    raise SystemExit("HDA START is not proved before local Running latch")
+
+stop_fn_i=playback.index("p360_playback_stream_stop(")
+stop_trigger_i=playback.index("TriggerDSP(",stop_fn_i)
+stop_proof_i=playback.index("p360_playback_prove_hda_run(p,FALSE)",stop_trigger_i)
+stop_running_i=playback.index("p->Running=FALSE;",stop_proof_i)
+if not stop_fn_i < stop_trigger_i < stop_proof_i < stop_running_i:
+    raise SystemExit("HDA STOP is not proved before local Running clear")
+
 if "DSPEnableSPIB" in playback:
     raise SystemExit("static SPIB was reintroduced into cyclic WaveRT playback")
 
