@@ -88,8 +88,6 @@ for token in (
     if token not in abi:
         raise SystemExit(f"CoolStar ABI pin missing: {token}")
 
-print("Phaser360 source contract: PASS")
-
 
 runtime_h=(ROOT/"include/p360_cs_runtime.h").read_text()
 runtime=(ROOT/"src/p360_cs_runtime.c").read_text()
@@ -108,6 +106,7 @@ telemetry=(ROOT/"src/p360_telemetry.c").read_text()
 cs_bus=(ROOT/"src/p360_cs_bus.c").read_text()
 state_h=(ROOT/"include/p360_state.h").read_text()
 state=(ROOT/"src/p360_state.c").read_text()
+playback=(ROOT/"src/p360_playback.c").read_text()
 
 for token in (
     r"\\Registry\\Machine\\SYSTEM\\CurrentControlSet\\Services\\P360SofAudio\\Parameters",
@@ -892,7 +891,6 @@ if "#if P360_BOUNDED_TONE_TEST_ENABLED" not in driver:
     raise SystemExit("legacy bounded Tone diagnostic gate disappeared unexpectedly")
 
 playback_h=(ROOT/"include/p360_playback.h").read_text()
-playback=(ROOT/"src/p360_playback.c").read_text()
 
 for token in (
     "P360_PLAYBACK_MAX_BUFFER_BYTES (64u * 1024u)",
@@ -1176,3 +1174,5 @@ for token in (
         raise SystemExit(f"runtime-create exact diagnostic/fix missing: {token}")
 
 print("Phaser360 exact start-failure diagnostic contract: PASS")
+
+print("Phaser360 source contract: PASS")
