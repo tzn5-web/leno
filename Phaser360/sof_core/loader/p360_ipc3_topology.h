@@ -9,10 +9,12 @@
 
 #define P360_IPC3_SPEAKER_PIPELINE_ID 1u
 #define P360_IPC3_SPEAKER_TONE_ID     100u
+#define P360_IPC3_SPEAKER_HOST_ID     100u
 #define P360_IPC3_SPEAKER_BUFFER_ID   101u
 #define P360_IPC3_SPEAKER_DAI_ID      102u
 #define P360_IPC3_SPEAKER_SCHED_ID    103u
 #define P360_IPC3_TONE_NEW_BYTES       100u
+#define P360_IPC3_HOST_NEW_BYTES        76u
 #define P360_IPC3_BUFFER_NEW_BYTES      44u
 #define P360_IPC3_DAI_NEW_BYTES         80u
 #define P360_IPC3_PIPE_NEW_BYTES        48u
@@ -34,6 +36,7 @@
 #define P360_IPC3_TPLG_BUFFER_NEW 0x00200000u
 #define P360_IPC3_COMP_SET_DATA  0x00030000u
 #define P360_IPC3_STREAM_PCM_PARAMS 0x00010000u
+#define P360_IPC3_STREAM_PCM_FREE   0x00030000u
 #define P360_IPC3_STREAM_START   0x00040000u
 #define P360_IPC3_STREAM_STOP    0x00050000u
 #define P360_IPC3_DAI_CONFIG     0x00010000u
@@ -47,6 +50,7 @@
 #define P360_IPC3_TONE_HALF_PERCENT_Q1_31  10737418u
 #define P360_IPC3_TONE_TWO_SECONDS_BLOCKS   16000u
 
+#define P360_IPC3_COMP_HOST   1u
 #define P360_IPC3_COMP_DAI    2u
 #define P360_IPC3_COMP_TONE  10u
 #define P360_IPC3_COMP_BUFFER 12u
@@ -91,6 +95,14 @@ struct p360_ipc3_speaker_ids {
     uint32_t pipe_comp_id;
 };
 
+struct p360_ipc3_playback_ids {
+    uint32_t pipeline_id;
+    uint32_t host_id;
+    uint32_t buffer_id;
+    uint32_t dai_id;
+    uint32_t pipe_comp_id;
+};
+
 struct p360_ipc3_ssp1_profile {
     uint16_t format;
     uint16_t mclk_id;
@@ -118,14 +130,20 @@ struct p360_ipc3_message {
 };
 
 int p360_ipc3_speaker_ids_validate(const struct p360_ipc3_speaker_ids *ids);
+int p360_ipc3_playback_ids_validate(const struct p360_ipc3_playback_ids *ids);
 int p360_ipc3_ssp1_profile_validate(const struct p360_ipc3_ssp1_profile *profile);
 
+int p360_ipc3_build_host_new(struct p360_ipc3_message *out,
+    const struct p360_ipc3_playback_ids *ids);
 int p360_ipc3_build_tone_new(struct p360_ipc3_message *out,
     const struct p360_ipc3_speaker_ids *ids, uint32_t sample_rate);
 int p360_ipc3_build_buffer_new(struct p360_ipc3_message *out,
     const struct p360_ipc3_speaker_ids *ids, uint32_t bytes);
 int p360_ipc3_build_dai_new(struct p360_ipc3_message *out,
     const struct p360_ipc3_speaker_ids *ids, uint32_t dai_index);
+int p360_ipc3_build_playback_pipe_new(struct p360_ipc3_message *out,
+    const struct p360_ipc3_playback_ids *ids, uint32_t period_us,
+    uint32_t frames_per_sched);
 int p360_ipc3_build_pipe_new(struct p360_ipc3_message *out,
     const struct p360_ipc3_speaker_ids *ids, uint32_t period_us,
     uint32_t frames_per_sched);
@@ -133,6 +151,12 @@ int p360_ipc3_build_connect(struct p360_ipc3_message *out,
     uint32_t source_id, uint32_t sink_id);
 int p360_ipc3_build_pipe_complete(struct p360_ipc3_message *out,
     const struct p360_ipc3_speaker_ids *ids);
+int p360_ipc3_build_host_pcm_params(struct p360_ipc3_message *out,
+    uint32_t comp_id, uint32_t page_table_phys, uint32_t pages,
+    uint32_t buffer_bytes, uint32_t period_bytes, uint16_t stream_tag,
+    uint32_t sample_rate, uint16_t channels);
+int p360_ipc3_build_pcm_free(struct p360_ipc3_message *out,
+    uint32_t comp_id);
 int p360_ipc3_build_pcm_params(struct p360_ipc3_message *out,
     uint32_t comp_id, uint32_t sample_rate, uint16_t channels);
 int p360_ipc3_build_tone_amplitude(struct p360_ipc3_message *out,
