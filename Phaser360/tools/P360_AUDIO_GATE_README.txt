@@ -1,51 +1,70 @@
-PHASER360 AUDIO GATE
-====================
+PHASER360 AUDIO ONE-SHOT
+=========================
 
-This package is intentionally fail-closed.
-
-ONE-CLICK PATH:
+Use:
   Double-click START_AUDIO_TEST.cmd.
 
-The CMD launcher requests Administrator rights automatically, checks for the
-latest previous hardware-changing Audio session and restores it first when
-needed, then starts the new Audio transaction. It keeps the window open at the
-end so the result is visible. No PowerShell command needs to be typed manually.
+No PowerShell commands need to be typed.
 
-Audio mode performs PRE-AUDIO proof first and reaches the 250 ms speaker tone
-only when FW_READY + IRQ + IPC3 -22/12 bytes + STOP are all proved in the same run.
+The launcher requests Administrator rights and runs one fail-closed transaction:
 
-If automatic recovery cannot prove the baseline, Audio does not start. In that
-case use RESTORE_LAST_SESSION.cmd. If its log explicitly says Windows restart
-is required, restart Windows once and double-click START_AUDIO_TEST.cmd again.
+  1. Recover/verify the known baseline:
+       service P360AdspProbe
+       provider PHASER360 Project
+       version 1.1.0.0
+       device problem code 0
 
-The separate Audit / PreAudio / BoundedSpeaker modes remain available only for diagnosis.
+  2. PRE-AUDIO only:
+       exact f686 firmware
+       FW_READY
+       IRQ/runtime bind
+       IPC3 proof reply -22 / 12 bytes
+       D0 STOP proof
+     This build has NO Tone topology, NO internal-speaker gate,
+     NO bounded-tone gate and NO Windows speaker endpoint.
 
-The runner:
-- never changes BIOS/UEFI;
-- never enables TestSigning;
-- never reboots automatically;
-- verifies the exact Phaser360 target and SklHDAudBus;
-- requires exact f686 firmware: 246528 bytes,
+  3. Restore and re-verify the baseline.
+
+  4. Only if PRE-AUDIO and PRE-AUDIO STOP passed in this same run:
+       load the separate bounded speaker build
+       prepare the reviewed Tone -> SSP1 path
+       start the SOF stream
+       arm speaker policy
+       start MAX98357A through CSAudio
+       emit at most 250 ms of the SOF Tone diagnostic
+       stop/mute MAX98357A
+       disarm speaker policy
+       stop the SOF stream
+       prove D0 STOP
+
+  5. Restore the original driver, firmware state and test certificate.
+
+Safety rules:
+- no BIOS/UEFI changes;
+- no BCD changes;
+- no automatic reboot;
+- no speaker phase if PRE-AUDIO fails;
+- no speaker phase if PRE-AUDIO STOP fails;
+- no speaker phase from a saved proof from an older run;
+- no normal Windows WaveRT playback is enabled by this test;
+- exact firmware required: 246528 bytes,
   SHA256 f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab;
-- exports the currently bound OEM driver before any swap;
-- backs up any existing P360 firmware;
-- installs only the test-signed package included here;
-- reads proof telemetry written by P360SofAudio;
-- PRE-AUDIO requires FW_READY + IRQ + IPC3 reply -22/12 bytes;
-- disables the device and requires STOP_COMPLETE before cleanup;
-- restores the original driver, firmware and certificate;
-- refuses BoundedSpeaker unless a matching PRE-AUDIO PASS exists;
-- Audio mode performs PRE-AUDIO and bounded speaker sequentially in one transaction;
-- Audio never reaches speaker START unless PRE-AUDIO proof and STOP succeeded first;
-- BoundedSpeaker/Audio emit at most the compiled 250 ms SOF Tone diagnostic.
+- MAX98357A must be present, healthy and bound before speaker phase;
+- the bounded tone build is compiled for a one-shot maximum of 250 ms.
 
-Recovery is available through RESTORE_LAST_SESSION.cmd; no manual PowerShell
-command is required.
+The runner automatically searches the audited firmware locations under
+D:\PHASER360_WORK and validates size/hash before use.
 
-Firmware discovery is automatic. The runner checks the audited known
-D:\PHASER360_WORK locations first, then the package folder, Desktop, Downloads
-and D:\PHASER360_WORK recursively. Every candidate is accepted only if it is
-exactly 246528 bytes with the pinned f686 SHA256.
+If an earlier interrupted test left P360SofAudio selected, START_AUDIO_TEST.cmd
+uses the saved P360_AUDIO_SAFE baseline to repair it before starting a new test.
 
-Results are written under:
+If Windows itself still requires one restart to clear a pending PnP operation,
+the runner does NOT reboot automatically. It schedules START_AUDIO_TEST.cmd to
+reopen after the next normal Windows restart and exits without starting speaker
+audio.
+
+Emergency/manual recovery only:
+  Double-click RESTORE_LAST_SESSION.cmd.
+
+Results:
   Desktop\P360_AUDIO_SAFE\
