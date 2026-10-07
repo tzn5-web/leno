@@ -329,40 +329,6 @@ jobs:
           "P360_CERT_PFX=$pfx" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "P360_CERT_PFX_PASSWORD=$pfxPasswordText" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Acquire pinned SOF 1.9.3 firmware
-        shell: pwsh
-        timeout-minutes: 2
-        run: |
-          $ErrorActionPreference = "Stop"
-          $root = "Phaser360\package\P360_AUDIO_GATE"
-          $firmwareDir = Join-Path $root "firmware"
-          New-Item -ItemType Directory -Path $firmwareDir -Force | Out-Null
-
-          $sofCommit = "fcd5ae85ead7ecd67ff199335b61fac825843ca0"
-          $fwUrl = "https://raw.githubusercontent.com/thesofproject/sof-bin/$sofCommit/v1.9.x/sof-v1.9.3/sof-apl.ri"
-          $licenseUrl = "https://raw.githubusercontent.com/thesofproject/sof-bin/$sofCommit/LICENCE.Intel"
-          $fw = Join-Path $firmwareDir "p360-f686.ri"
-          $license = Join-Path $firmwareDir "LICENCE.Intel"
-
-          Invoke-WebRequest -UseBasicParsing -Uri $fwUrl -OutFile $fw
-          Invoke-WebRequest -UseBasicParsing -Uri $licenseUrl -OutFile $license
-
-          $expectedBytes = 246528
-          $expectedSha = "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab"
-          $actualBytes = (Get-Item $fw).Length
-          $actualSha = (Get-FileHash $fw -Algorithm SHA256).Hash.ToLowerInvariant()
-
-          if ($actualBytes -ne $expectedBytes) {
-            throw "Pinned SOF firmware size mismatch: $actualBytes != $expectedBytes"
-          }
-          if ($actualSha -ne $expectedSha) {
-            throw "Pinned SOF firmware SHA256 mismatch: $actualSha != $expectedSha"
-          }
-
-          Write-Host "P360_PINNED_FIRMWARE=PASS"
-          Write-Host "P360_PINNED_FIRMWARE_COMMIT=$sofCommit"
-          Write-Host "P360_PINNED_FIRMWARE_SHA256=$actualSha"
-
       - name: Build hardware gate catalogs
         shell: pwsh
         timeout-minutes: 2
@@ -504,8 +470,6 @@ jobs:
             LegacyBoundedToneDiagnosticRetained = $true
             FirmwareBytes = 246528
             FirmwareSha256 = "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab"
-            FirmwareSource = "thesofproject/sof-bin v1.9.3 sof-apl.ri"
-            FirmwareSourceCommit = "fcd5ae85ead7ecd67ff199335b61fac825843ca0"
           } | ConvertTo-Json |
             Set-Content (Join-Path $root "PACKAGE_INFO.json") -Encoding utf8
 
@@ -528,9 +492,7 @@ jobs:
             "final\P360SofAudio.sys",
             "amp\P360Max98357Safe.inf",
             "amp\P360Max98357Safe.cat",
-            "amp\P360Max98357Safe.sys",
-            "firmware\p360-f686.ri",
-            "firmware\LICENCE.Intel"
+            "amp\P360Max98357Safe.sys"
           )) {
             if (-not (Test-Path (Join-Path $root $required))) {
               throw "Final hardware gate package missing: $required"
