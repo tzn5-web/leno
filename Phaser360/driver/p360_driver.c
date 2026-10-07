@@ -180,7 +180,7 @@ p360_runtime_prepare_host_topology(
         p360_ipc3_build_playback_buffer_new(
             &message,
             &ids,
-            384u), /* two 1 ms stereo S16 periods */
+            768u), /* two 1 ms stereo S32-container periods */
         20u);
 
     P360_HOST_BUILD_AND_SEND(
