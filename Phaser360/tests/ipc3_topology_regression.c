@@ -92,6 +92,20 @@ int main(void)
     for (size_t i=112;i<216;i++)
         assert(m.data[i]==0u);
 
+    assert(p360_ipc3_build_tone_amplitude_control(
+        &m,ids.tone_id,0x01000000)==0);
+    assert(m.bytes==140u && u32(m.data)==140u);
+    assert(u32(m.data+4)==0x50030000u);
+    assert(u32(m.data+12)==ids.tone_id);
+    assert(u32(m.data+16)==3u && u32(m.data+20)==1u);
+    assert(u32(m.data+24)==1u && u32(m.data+56)==2u);
+    assert(u32(m.data+92)==0x00464f53u);
+    assert(u32(m.data+100)==16u && u32(m.data+104)==0x03014000u);
+    assert(u32(m.data+124)==0u && u32(m.data+128)==0x01000000u);
+    assert(u32(m.data+132)==1u && u32(m.data+136)==0x01000000u);
+    assert(p360_ipc3_build_tone_amplitude_control(
+        &m,ids.tone_id,0x0147ae15)!=0);
+
     assert(p360_ipc3_build_pcm_params(
         &m,ids.tone_id,P360_SAMPLE_RATE,P360_SPEAKER_CHANNELS)==0);
     assert(m.bytes==108u && u32(m.data)==108u);
