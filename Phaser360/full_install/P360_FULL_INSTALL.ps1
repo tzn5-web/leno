@@ -206,6 +206,28 @@ function Ensure-OriginalBackup {
     Log "ORIGINAL_BACKUP=PASS"
 }
 
+function Assert-PlatformPrerequisites {
+    $bus=@(Get-CimInstance Win32_PnPEntity | Where-Object {
+        $_.PNPDeviceID -and
+        $_.PNPDeviceID.StartsWith("PCI\VEN_8086&DEV_3198",[StringComparison]::OrdinalIgnoreCase)
+    })
+    if ($bus.Count -ne 1) {
+        throw "Expected exactly one Intel 8086:3198 audio controller; found $($bus.Count)."
+    }
+    if ([int]$bus[0].ConfigManagerErrorCode -ne 0 -or
+        [string]$bus[0].Service -ne "SklHDAudBus") {
+        throw ("CoolStar SklHDAudBus prerequisite is not healthy: service={0} code={1}" -f
+            [string]$bus[0].Service,[int]$bus[0].ConfigManagerErrorCode)
+    }
+
+    $adsp=Get-OneDevice $AdspPrefix
+    $amp=Get-OneDevice $AmpPrefix
+    Log ("COOLSTAR_BUS=PASS SERVICE={0} CODE={1}" -f
+        [string]$bus[0].Service,[int]$bus[0].ConfigManagerErrorCode)
+    Log ("ADSP_CHILD=PASS ID="+[string]$adsp.PNPDeviceID)
+    Log ("MAX98357A_ACPI=PASS ID="+[string]$amp.PNPDeviceID)
+}
+
 function Report-NonAudioBoot0000 {
     $items=@(Get-CimInstance Win32_PnPEntity | Where-Object {
         $_.PNPDeviceID -and
@@ -255,6 +277,7 @@ function Wait-FullBinding([object]$Info,[int]$Seconds=25) {
                     [string]$adspDrv.InfName,[string]$adspDrv.DriverVersion)
                 Log ("AMP_BIND=PASS INF={0} VERSION={1}" -f
                     [string]$ampDrv.InfName,[string]$ampDrv.DriverVersion)
+                Log "AMP_GPIO_RESOURCE=PASS_BY_DEVICE_START"
                 return $true
             }
         } catch {}
@@ -425,6 +448,7 @@ try {
         $FinalStatus="RESTORE_COMPLETE"
     } else {
         $info=Assert-Package
+        Assert-PlatformPrerequisites
         Ensure-OriginalBackup
         Import-PackageCertificate
         Report-NonAudioBoot0000
