@@ -8,6 +8,7 @@ on:
   push:
     branches:
       - phaser360-sof-windows-port
+      - phaser360-max-safe-wip
     paths:
       - "Phaser360/**"
       - ".github/workflows/phaser360-windows.yml"
