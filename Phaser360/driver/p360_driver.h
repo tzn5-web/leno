@@ -108,6 +108,7 @@ typedef struct _P360_DEVICE_CONTEXT {
     BOOLEAN SpeakerEndpointInstalled;
     BOOLEAN BoundedToneConsumed;
     BOOLEAN Prepared;
+    volatile PVOID ActivePlayback;
     volatile LONG Removing;
 } P360_DEVICE_CONTEXT;
 
