@@ -183,7 +183,7 @@ p360_playback_stream_bind_buffer(
 
     if (!bufferBytes ||
         bufferBytes>P360_PLAYBACK_MAX_BUFFER_BYTES ||
-        (bufferBytes % (P360_SPEAKER_CHANNELS * 2u))!=0 ||
+        (bufferBytes % (P360_SPEAKER_CHANNELS * (P360_SPEAKER_CONTAINER_BITS / 8u)))!=0 ||
         !periodBytes || periodBytes>bufferBytes ||
         (bufferBytes % periodBytes)!=0) {
         return STATUS_INVALID_BUFFER_SIZE;
