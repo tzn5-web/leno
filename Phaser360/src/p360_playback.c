@@ -240,6 +240,7 @@ p360_playback_stream_bind_buffer(
     PHYSICAL_ADDRESS pageTablePhysical;
     ULONG pages;
     NTSTATUS status;
+    NTSTATUS cleanupStatus;
 
     if (!p || !p->Bus || !p->Bus->resources_valid ||
         !audioMdl || p->StreamOwned || p->StreamPrepared ||
@@ -361,7 +362,9 @@ p360_playback_stream_bind_buffer(
     return STATUS_SUCCESS;
 
 fail:
-    (void)p360_playback_stream_retire(p);
+    cleanupStatus=p360_playback_stream_retire(p);
+    if (!NT_SUCCESS(cleanupStatus))
+        return cleanupStatus;
     return status;
 }
 
