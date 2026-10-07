@@ -12,6 +12,7 @@
 #include "../include/p360_firmware.h"
 #include "../include/p360_telemetry.h"
 #include "../include/p360_csaudio.h"
+#include "../include/p360_playback.h"
 #include "../include/p360_safety.h"
 #include "../sof_core/loader/p360_loader.h"
 #include "../sof_core/loader/p360_ipc3_topology.h"
@@ -39,6 +40,14 @@
 
 #ifndef P360_SPEAKER_ENDPOINT_ENABLED
 #define P360_SPEAKER_ENDPOINT_ENABLED 0
+#endif
+
+/*
+ * Real Windows playback path:
+ * WaveRT HOST -> CoolStar HDA render DMA -> SOF HOST -> SSP1 -> MAX98357A.
+ */
+#ifndef P360_HOST_PLAYBACK_ENABLED
+#define P360_HOST_PLAYBACK_ENABLED 0
 #endif
 
 /*
@@ -116,6 +125,22 @@ NTSTATUS p360_host_d0_entry(
     _Inout_ P360_DEVICE_CONTEXT *ctx);
 NTSTATUS p360_host_d0_exit(
     _Inout_ P360_DEVICE_CONTEXT *ctx);
+
+NTSTATUS p360_host_playback_prepare(
+    _Inout_ P360_DEVICE_CONTEXT *ctx,
+    _Inout_ P360_PLAYBACK_STREAM *playback,
+    _In_ PMDL audioMdl,
+    _In_ ULONG bufferBytes,
+    _In_ ULONG periodBytes);
+NTSTATUS p360_host_playback_start(
+    _Inout_ P360_DEVICE_CONTEXT *ctx,
+    _Inout_ P360_PLAYBACK_STREAM *playback);
+NTSTATUS p360_host_playback_stop(
+    _Inout_ P360_DEVICE_CONTEXT *ctx,
+    _Inout_ P360_PLAYBACK_STREAM *playback);
+NTSTATUS p360_host_playback_release(
+    _Inout_ P360_DEVICE_CONTEXT *ctx,
+    _Inout_ P360_PLAYBACK_STREAM *playback);
 
 NTSTATUS p360_portcls_driver_initialize(
     _In_ PDRIVER_OBJECT DriverObject,
