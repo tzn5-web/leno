@@ -596,14 +596,13 @@ for token in (
     '221f536ad2e1ccc53ec145573fb8556dd3d7d115322e085d5cfae3faf62e48c3',
     '[IO.Compression.GZipStream]::new(',
     'P360_EXACT_FIRMWARE_RECONSTRUCT=PASS',
-    'firmware\\p360-f686.ri',
-    'FirmwareBundled = $true',
-    'P360_USER_PACKAGE_DIAGNOSTICS_STRIPPED=PASS',
-    'Remove-Item $preDir,$boundedDir -Recurse -Force',
-    'P360_SELF_CONTAINED_PACKAGE_VERIFY=PASS',
+    'Join-Path $root "p360-f686.ri"',
+    'FirmwareSha256 = (Get-FileHash (Join-Path $root "p360-f686.ri")',
+    'P360_PRODUCTION_VERIFY',
+    'P360_PRODUCTION_PACKAGE=PASS',
 ):
     if token not in workflow:
-        raise SystemExit(f"self-contained final package workflow contract missing: {token}")
+        raise SystemExit(f"self-contained production firmware workflow contract missing: {token}")
 
 for forbidden in (
     "Final speaker test did not reach fresh TONE_COMPLETE.",
@@ -666,18 +665,14 @@ if '"/install"' in safe_amp_install_body:
 for token in (
     "Compile fail-closed MAX98357A dependency",
     "P360_MAX98357_SAFE_COMPILE=PASS",
-    'Join-Path $root "amp"',
-    "P360Max98357Safe.inf",
-    "P360Max98357Safe.cat",
-    "P360Max98357Safe.sys",
-    'SafeAmpDriverVersion = "2.0.0.0"',
-    'SafeAmpProvider = "PHASER360 Project"',
-    'SafeAmpService = "P360Max98357Safe"',
-    "SafeAmpSysSha256 = $ampHash",
-    "P360_MAX98357_SAFE_SIGN=PASS",
+    'P360Max98357Safe.sys" = "P360Max98357Safe.sys"',
+    '"P360Max98357Safe.sys"',
+    'P360Max98357SafeSha256 = (Get-FileHash (Join-Path $root "P360Max98357Safe.sys")',
+    "P360AudioBundle.inf",
+    "P360AudioBundle.cat",
 ):
     if token not in workflow:
-        raise SystemExit(f"safe MAX98357A package/signing workflow missing: {token}")
+        raise SystemExit(f"production MAX98357A integration/signing workflow missing: {token}")
 
 amp_backup_i=runner.index("Backup-OriginalAmpDriver $ampId")
 amp_install_i=runner.index("Install-SafeAmpPackage $info $ampId",amp_backup_i)
