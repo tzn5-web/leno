@@ -336,25 +336,23 @@ p360_csaudio_speaker_stop(
     return STATUS_SUCCESS;
 }
 
-VOID
+NTSTATUS
 p360_csaudio_close(
     P360_CSAUDIO_LINK *link
     )
 {
+    NTSTATUS status=STATUS_SUCCESS;
+
     if (!link)
-        return;
+        return STATUS_INVALID_PARAMETER;
 
     if (link->Open && link->Callback &&
         InterlockedCompareExchange(
             &link->SpeakerRegistered,0,0)) {
-        p360_csaudio_notify(
-            link,
-            P360_CSAUDIO_ENDPOINT_SPEAKER,
-            P360_CSAUDIO_ENDPOINT_STOP,
-            p360_csaudio_next_generation(link));
+        status=p360_csaudio_speaker_stop(link);
+        if (!NT_SUCCESS(status))
+            return status;
     }
-
-    InterlockedExchange(&link->SpeakerStarted,0);
 
     if (link->Registration) {
         ExUnregisterCallback(link->Registration);
@@ -366,5 +364,7 @@ p360_csaudio_close(
         link->Callback=NULL;
     }
 
+    InterlockedExchange(&link->SpeakerStarted,0);
     link->Open=FALSE;
+    return STATUS_SUCCESS;
 }
