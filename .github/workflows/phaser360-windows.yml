@@ -68,6 +68,13 @@ jobs:
             }
           }
 
+      - name: Parse hardware gate runner
+        shell: pwsh
+        run: |
+          $text = Get-Content Phaser360\tools\P360_AUDIO_GATE.ps1 -Raw
+          $null = [scriptblock]::Create($text)
+          Write-Host "P360_AUDIO_GATE_PARSE=PASS"
+
       - name: Build integrated KMDF baseline
         shell: pwsh
         run: |
@@ -165,6 +172,116 @@ jobs:
           $pdb = "Phaser360\driver\out\Release\P360SofAudio.pdb"
           if (Test-Path $pdb) { Remove-Item $pdb -Force }
 
+      - name: Build test-signed hardware gate package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          function Find-Tool([string]$Name) {
+            $roots = @(
+              "Phaser360\packages",
+              "${env:ProgramFiles(x86)}\Windows Kits\10\bin",
+              "${env:ProgramFiles}\Windows Kits\10\bin"
+            )
+            foreach ($root in $roots) {
+              if (-not (Test-Path $root)) { continue }
+              $hit = Get-ChildItem $root -Recurse -File -Filter $Name -ErrorAction SilentlyContinue |
+                Sort-Object FullName -Descending |
+                Select-Object -First 1
+              if ($hit) { return $hit.FullName }
+            }
+            throw "Required signing tool not found: $Name"
+          }
+
+          $inf2cat = Find-Tool "inf2cat.exe"
+          $signtool = Find-Tool "signtool.exe"
+          Write-Host "INF2CAT=$inf2cat"
+          Write-Host "SIGNTOOL=$signtool"
+
+          $root = "Phaser360\package\P360_AUDIO_GATE"
+          $certDir = Join-Path $root "cert"
+          $preDir = Join-Path $root "preaudio"
+          $boundedDir = Join-Path $root "bounded"
+          Remove-Item "Phaser360\package" -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $certDir,$preDir,$boundedDir -Force | Out-Null
+
+          Copy-Item Phaser360\tools\P360_AUDIO_GATE.ps1 (Join-Path $root "P360_AUDIO_GATE.ps1") -Force
+          Copy-Item Phaser360\tools\P360_AUDIO_GATE_README.txt (Join-Path $root "README.txt") -Force
+          Copy-Item Phaser360\firmware\P360_FIRMWARE_MANIFEST.txt (Join-Path $root "P360_FIRMWARE_MANIFEST.txt") -Force
+
+          $cert = New-SelfSignedCertificate `
+            -Type CodeSigningCert `
+            -Subject "CN=PHASER360 Project CI Test" `
+            -CertStoreLocation "Cert:\CurrentUser\My" `
+            -HashAlgorithm SHA256 `
+            -KeyExportPolicy Exportable `
+            -NotAfter (Get-Date).AddYears(1)
+
+          $cer = Join-Path $certDir "P360_TEST.cer"
+          Export-Certificate -Cert $cert -FilePath $cer | Out-Null
+          certutil.exe -user -addstore -f Root $cer | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Failed to trust CI test certificate in CurrentUser Root" }
+          certutil.exe -user -addstore -f TrustedPublisher $cer | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Failed to trust CI test certificate in CurrentUser TrustedPublisher" }
+
+          function New-P360Package(
+            [string]$SourceSys,
+            [string]$Destination,
+            [string]$DriverVersion
+          ) {
+            Copy-Item $SourceSys (Join-Path $Destination "P360SofAudio.sys") -Force
+
+            $inf = Get-Content Phaser360\driver\P360SofAudio.inx -Raw
+            $inf = $inf.Replace(
+              "DriverVer=10/06/2026,2.0.0.0",
+              "DriverVer=10/07/2026,$DriverVersion")
+            Set-Content (Join-Path $Destination "P360SofAudio.inf") -Value $inf -Encoding ascii
+
+            & $inf2cat "/driver:$Destination" "/os:10_VB_X64" "/uselocaltime"
+            if ($LASTEXITCODE -ne 0) { throw "Inf2Cat failed for $Destination" }
+
+            $cat = Join-Path $Destination "P360SofAudio.cat"
+            if (-not (Test-Path $cat)) { throw "Inf2Cat did not create $cat" }
+
+            & $signtool sign /fd SHA256 /s My /sha1 $cert.Thumbprint /v $cat
+            if ($LASTEXITCODE -ne 0) { throw "SignTool sign failed for $cat" }
+
+            & $signtool verify /pa /v $cat
+            if ($LASTEXITCODE -ne 0) { throw "SignTool verify failed for $cat" }
+          }
+
+          New-P360Package `
+            "Phaser360\driver\out\Release\P360SofAudio-preaudio-ipc3.sys" `
+            $preDir `
+            "2.0.100.1"
+
+          New-P360Package `
+            "Phaser360\driver\out\Release\P360SofAudio-bounded-tone-test.sys" `
+            $boundedDir `
+            "2.0.200.1"
+
+          $preHash = (Get-FileHash (Join-Path $preDir "P360SofAudio.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
+          $boundedHash = (Get-FileHash (Join-Path $boundedDir "P360SofAudio.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
+
+          [ordered]@{
+            HeadSha = "${env:GITHUB_SHA}"
+            WorkflowRunId = "${env:GITHUB_RUN_ID}"
+            CertificateThumbprint = $cert.Thumbprint
+            PreAudioDriverVersion = "2.0.100.1"
+            BoundedDriverVersion = "2.0.200.1"
+            PreAudioSysSha256 = $preHash
+            BoundedSysSha256 = $boundedHash
+            FirmwareBytes = 246528
+            FirmwareSha256 = "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab"
+          } | ConvertTo-Json |
+            Set-Content (Join-Path $root "PACKAGE_INFO.json") -Encoding utf8
+
+          $zip = "Phaser360\package\P360_AUDIO_GATE.zip"
+          Compress-Archive -Path "$root\*" -DestinationPath $zip -Force
+          $zipHash = (Get-FileHash $zip -Algorithm SHA256).Hash
+          Write-Host "P360_AUDIO_GATE_PACKAGE=PASS"
+          Write-Host "P360_AUDIO_GATE_ZIP_SHA256=$zipHash"
+
       - name: Prove driver images exist
         shell: pwsh
         run: |
@@ -186,6 +303,13 @@ jobs:
             Write-Host "BYTES=$($f.Length)"
             Write-Host "SHA256=$($h.Hash)"
           }
+
+      - name: Upload hardware gate package
+        uses: actions/upload-artifact@v4
+        with:
+          name: P360-AUDIO-GATE-${{ github.sha }}
+          path: Phaser360/package/P360_AUDIO_GATE.zip
+          if-no-files-found: error
 
       - name: Upload unsigned compile artifact
         uses: actions/upload-artifact@v4
