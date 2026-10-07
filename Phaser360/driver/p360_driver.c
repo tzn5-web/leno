@@ -973,6 +973,25 @@ p360_runtime_boot_start(
         epoch,
         &result);
 
+    /*
+     * Always persist the low-level loader result before translating it into a
+     * generic NTSTATUS. This prevents a future Code 10 from hiding the actual
+     * ROM phase or ADSPCS state as the old PCI_IDENTITY-only telemetry did.
+     */
+    cleanupStatus=p360_telemetry_loader(
+        (ULONG)result.phase,
+        (LONG)result.error,
+        (LONG)result.cleanup_error,
+        result.entry_adspcs,
+        result.normalized_adspcs,
+        result.adspcs,
+        result.rom_status,
+        result.rom_error);
+    if (!NT_SUCCESS(cleanupStatus)) {
+        status=cleanupStatus;
+        goto fail;
+    }
+
     if (rc!=P360_L_OK) {
         status=p360_loader_status_to_ntstatus(rc);
         goto fail;
