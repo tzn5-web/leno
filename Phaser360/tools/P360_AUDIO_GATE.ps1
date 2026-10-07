@@ -431,54 +431,111 @@ function Get-BoundDriverOrNull([string]$InstanceId) {
     return Get-SignedDriverOrNull $InstanceId
 }
 
+function Get-TargetByIdOrNull([string]$InstanceId) {
+    return (Get-CimInstance Win32_PnPEntity | Where-Object {
+        $_.PNPDeviceID -eq $InstanceId
+    } | Select-Object -First 1)
+}
+
 function Test-BoundDriver(
     [string]$InstanceId,
     [string]$Version,
-    [string]$Provider
+    [string]$Provider,
+    [string]$Service
 ) {
+    $device=Get-TargetByIdOrNull $InstanceId
+    if (-not $device) {
+        return $false
+    }
+    if ([string]$device.Service -ne $Service) {
+        return $false
+    }
+
     $driver=Get-BoundDriverOrNull $InstanceId
     if (-not $driver) {
         return $false
     }
+
     return (
         [string]$driver.DriverVersion -eq $Version -and
         [string]$driver.DriverProviderName -eq $Provider)
 }
 
-function Rebind-TestTarget(
+function Clear-TestTelemetry {
+    if (Test-Path $TelemetryPath) {
+        Remove-Item -Path $TelemetryPath -Recurse -Force -ErrorAction Stop
+        Write-RunLog "STALE_TELEMETRY_CLEARED=YES"
+    } else {
+        Write-RunLog "STALE_TELEMETRY_CLEARED=NOT_PRESENT"
+    }
+}
+
+function Remove-And-RescanTarget(
     [string]$InstanceId,
-    [string]$Version
+    [string]$ExpectedVersion,
+    [string]$ExpectedProvider,
+    [string]$ExpectedService,
+    [int]$Seconds=20
 ) {
-    $null=Restart-Target $InstanceId
-    Start-Sleep -Milliseconds 750
-    if (Test-BoundDriver $InstanceId $Version "PHASER360 Project") {
-        Write-RunLog "TEST_BIND_AFTER_RESTART=PASS"
-        return
+    Write-RunLog "TARGET_REENUM_BEGIN=$InstanceId"
+
+    $remove=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/remove-device",$InstanceId) -AllowFailure
+    if ($remove.ExitCode -ne 0) {
+        throw "Exact ADSP child removal failed with exit code $($remove.ExitCode). No parent device was touched."
     }
 
-    Write-RunLog "TEST_BIND_AFTER_RESTART=NOT_BOUND; trying child disable/enable"
-    $disable=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/disable-device",$InstanceId) -AllowFailure
-    Write-RunLog "PNP_DISABLE_EXIT=$($disable.ExitCode)"
-    Start-Sleep -Milliseconds 500
-    $enable=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/enable-device",$InstanceId) -AllowFailure
-    Write-RunLog "PNP_ENABLE_EXIT=$($enable.ExitCode)"
-    Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure | Out-Null
-
-    $deadline=(Get-Date).AddSeconds(15)
+    $deadline=(Get-Date).AddSeconds(8)
     do {
-        Start-Sleep -Milliseconds 500
-        if (Test-BoundDriver $InstanceId $Version "PHASER360 Project") {
-            Write-RunLog "TEST_BIND_AFTER_DISABLE_ENABLE=PASS"
-            return
+        Start-Sleep -Milliseconds 250
+        if (-not (Get-TargetByIdOrNull $InstanceId)) {
+            break
         }
     } while ((Get-Date) -lt $deadline)
 
-    $driver=Get-BoundDriverOrNull $InstanceId
-    if ($driver) {
-        throw ("Test package is staged but did not bind without a full reboot. Current INF={0}, Provider={1}, Version={2}. No automatic reboot will be attempted." -f
-            $driver.InfName,$driver.DriverProviderName,$driver.DriverVersion)
+    if (Get-TargetByIdOrNull $InstanceId) {
+        throw "Exact ADSP child did not disappear after remove-device."
     }
-    throw "Test package is staged but target has no bound driver after controlled rebind. No automatic reboot will be attempted."
+
+    $scan=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure
+    if ($scan.ExitCode -ne 0) {
+        throw "PnP rescan failed with exit code $($scan.ExitCode)."
+    }
+
+    $deadline=(Get-Date).AddSeconds($Seconds)
+    do {
+        Start-Sleep -Milliseconds 500
+        $device=Get-TargetByIdOrNull $InstanceId
+        if ($device) {
+            if ([string]$device.Service -eq $ExpectedService) {
+                $driver=Get-BoundDriverOrNull $InstanceId
+                if ($driver -and
+                    [string]$driver.DriverVersion -eq $ExpectedVersion -and
+                    [string]$driver.DriverProviderName -eq $ExpectedProvider) {
+                    Write-RunLog ("TARGET_REENUM_BIND=PASS SERVICE={0} VERSION={1} INF={2}" -f
+                        [string]$device.Service,
+                        [string]$driver.DriverVersion,
+                        [string]$driver.InfName)
+                    return $device
+                }
+            }
+        }
+    } while ((Get-Date) -lt $deadline)
+
+    $device=Get-TargetByIdOrNull $InstanceId
+    $driver=Get-BoundDriverOrNull $InstanceId
+    if ($device -and $driver) {
+        throw ("Target re-enumerated with wrong binding: service={0}, inf={1}, provider={2}, version={3}." -f
+            [string]$device.Service,
+            [string]$driver.InfName,
+            [string]$driver.DriverProviderName,
+            [string]$driver.DriverVersion)
+    }
+    if ($device) {
+        throw ("Target re-enumerated without expected driver: service={0}, code={1}." -f
+            [string]$device.Service,
+            [int]$device.ConfigManagerErrorCode)
+    }
+    throw "Target did not re-enumerate after exact child removal/rescan."
 }
 
 function Wait-TargetPresent([string]$InstanceId,[int]$Seconds=12) {
@@ -552,7 +609,9 @@ function Install-TestPackage([string]$RunMode,$Info,[string]$InstanceId) {
     $wantVersion = Get-InfVersion $inf
     Assert-NoStaleTestPackage
 
-    $addResult = Invoke-Tool -Exe "pnputil.exe" -Arguments @("/add-driver",$inf,"/install") -AllowFailure
+    Clear-TestTelemetry
+
+    $addResult = Invoke-Tool -Exe "pnputil.exe" -Arguments @("/add-driver",$inf) -AllowFailure
 
     $store = @(Get-P360StoreEntries | Where-Object {
         [string]$_.Version -eq $wantVersion
@@ -566,21 +625,17 @@ function Install-TestPackage([string]$RunMode,$Info,[string]$InstanceId) {
     if ($store.Count -ne 1) {
         throw "Could not identify exactly one staged $RunMode package in Driver Store."
     }
-
     if ($addResult.ExitCode -ne 0) {
-        Write-RunLog "PNPUTIL_ADD_EXIT=$($addResult.ExitCode) -- package is staged; continuing by verified postconditions"
+        throw "Driver staging failed with exit code $($addResult.ExitCode)."
     }
     if ($addResult.Output -match "(?i)reboot is needed|restart is needed") {
-        Write-RunLog "PNPUTIL_REBOOT_REPORTED=YES"
+        throw "Driver staging unexpectedly requested a reboot; refusing hardware execution."
     }
 
-    Rebind-TestTarget $InstanceId $wantVersion
-    Wait-TargetPresent $InstanceId | Out-Null
+    Remove-And-RescanTarget $InstanceId $wantVersion "PHASER360 Project" "P360SofAudio" | Out-Null
 
-    $driver = Get-SignedDriver $InstanceId
-    if ([string]$driver.DriverVersion -ne $wantVersion -or
-        [string]$driver.DriverProviderName -ne "PHASER360 Project") {
-        throw "PnP did not bind the requested $RunMode package. Current: INF=$($driver.InfName), Version=$($driver.DriverVersion), Provider=$($driver.DriverProviderName)"
+    if (-not (Test-BoundDriver $InstanceId $wantVersion "PHASER360 Project" "P360SofAudio")) {
+        throw "Freshly re-enumerated target is not bound to the requested P360SofAudio package."
     }
 }
 
