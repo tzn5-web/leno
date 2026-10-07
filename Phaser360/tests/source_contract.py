@@ -865,32 +865,32 @@ for token in (
     "P360SofAudio-host-playback.sys",
     "Compile WASAPI shared acceptance utility",
     "P360_WASAPI_SHARED_TEST_COMPILE=PASS",
-    "P360_WASAPI_TEST.cpp",
-    "Prepare single production package inputs",
-    "P360_PRODUCTION_INSTALL.ps1",
-    "START_P360_PRODUCTION.cmd",
-    "RESTORE_P360_PRODUCTION.cmd",
-    "Build and audit single production package",
-    "PKEY_AudioEngine_OEMFormat",
-    "KSNODETYPE_SPEAKER",
-    "P360_PRODUCTION_PACKAGE=PASS",
-    "P360_SINGLE_INSTALLABLE_VERSION=PASS",
-    "P360_FINAL_ACCEPTANCE=WASAPI_SHARED",
-    "P360_PRODUCTION_AUDIO.zip",
-    "Upload production audio package",
-    "P360-PRODUCTION-AUDIO-${{ github.sha }}",
+    "Compile forced full-driver installer helper",
+    "P360_FORCE_INSTALL_COMPILE=PASS",
+    "P360_FORCE_INSTALL.cpp",
+    "Prepare full-install audio package",
+    "P360_FULL_INSTALL.ps1",
+    "INSTALL_PHASER360_AUDIO.cmd",
+    "RESTORE_PHASER360_AUDIO.cmd",
+    "Build and audit full-install driver package",
+    "P360_FULL_INSTALL_PACKAGE=PASS",
+    "P360_FORCE_BINDING=PASS",
+    "P360_FULL_INSTALL.zip",
+    "Upload full-install audio driver",
+    "P360-FULL-INSTALL-${{ github.sha }}",
 ):
     if token not in workflow:
-        raise SystemExit(f"single production audio CI contract missing: {token}")
+        raise SystemExit(f"full-install audio CI contract missing: {token}")
 
 for forbidden in (
     "P360-AUDIO-GATE-${{ github.sha }}",
+    "P360-PRODUCTION-AUDIO-${{ github.sha }}",
     "Upload hardware gate package",
+    "Upload production audio package",
     "Upload unsigned compile artifact",
-    "P360_AUDIO_GATE.zip",
 ):
     if forbidden in workflow:
-        raise SystemExit(f"legacy install/debug artifact is still public: {forbidden}")
+        raise SystemExit(f"obsolete install/debug artifact is still public: {forbidden}")
 
 pre_step_begin=workflow.index("- name: Compile pre-audio IPC3 proof path")
 pre_step_end=workflow.index("- name: Compile hostless Tone topology proof",pre_step_begin)
@@ -950,21 +950,24 @@ for forbidden in (
         raise SystemExit(f"real HOST WaveRT final build depends on legacy Tone path: {forbidden}")
 
 production_inf=(ROOT/"production/P360AudioBundle.inx").read_text()
-production_runner=(ROOT/"production/P360_PRODUCTION_INSTALL.ps1").read_text()
+full_installer=(ROOT/"full_install/P360_FULL_INSTALL.ps1").read_text()
+force_installer=(ROOT/"full_install/P360_FORCE_INSTALL.cpp").read_text()
 wasapi_shared=(ROOT/"production/P360_WASAPI_TEST.cpp").read_text()
 
 for token in (
     "DriverVer=10/07/2026,4.2.0.0",
+    r"CSAUDIO\ADSP&CTLR_VEN_8086&CTLR_DEV_3198",
+    r"ACPI\MX98357A",
     "PKEY_AudioEngine_OEMFormat",
     "KSNODETYPE_SPEAKER",
     "FE,FF,02,00,80,BB,00,00,00,DC,05,00,08,00,20,00,16,00,10,00",
 ):
     if token not in production_inf:
-        raise SystemExit(f"production shared-mode INF contract missing: {token}")
+        raise SystemExit(f"full-install INF contract missing: {token}")
 if "PKEY_AudioEndpoint_Supports_EventDriven_Mode" in production_inf:
-    raise SystemExit("production INF advertises unsupported event-driven WaveRT")
+    raise SystemExit("full-install INF advertises unsupported event-driven WaveRT")
 if "PKEY_AudioEndpoint_Association%,,%KSNODETYPE_ANY%" in production_inf:
-    raise SystemExit("production speaker endpoint is still classified as KSNODETYPE_ANY")
+    raise SystemExit("full-install speaker endpoint is still generic")
 
 for token in (
     "PKEY_AudioEngine_OEMFormat",
@@ -974,95 +977,98 @@ for token in (
     "ResetToDefault(0)",
     "MIX_INTERNAL_ENGINE_FORMAT=OBSERVED",
     "AUDCLNT_SHAREMODE_SHARED",
-    "IAudioRenderClient",
-    "IAudioClock",
     "WASAPI_SHARED_PREFLIGHT=PASS",
-    "WASAPI_SHARED_PLAYBACK=PASS",
 ):
     if token not in wasapi_shared:
-        raise SystemExit(f"WASAPI shared acceptance contract missing: {token}")
+        raise SystemExit(f"WASAPI no-sound endpoint verification missing: {token}")
 
 for forbidden in (
     "WASAPI_TEST=FAIL stage=MixFormat",
     "MIX_EXACT_P360=",
 ):
     if forbidden in wasapi_shared:
-        raise SystemExit(f"internal engine mix format is incorrectly treated as hardware format: {forbidden}")
+        raise SystemExit(f"internal Audio Engine format is incorrectly treated as device format: {forbidden}")
+
+for token in (
+    "UpdateDriverForPlugAndPlayDevicesW(",
+    "INSTALLFLAG_FORCE",
+    "FULL_DRIVER_BIND=PASS",
+    "REBOOT_REQUIRED=",
+):
+    if token not in force_installer:
+        raise SystemExit(f"forced driver binding helper missing: {token}")
 
 for function_name in (
-    "Install-Bundle",
-    "Wait-ProductionBinding",
-    "Assert-ProductionBinding",
-    "Remove-StaleProjectPackages",
-    "Restart-ExactProductionDevices",
-    "Reenumerate-Adsp",
+    "Assert-Package",
+    "Ensure-OriginalBackup",
+    "Report-NonAudioBoot0000",
+    "Force-FullDriverBinding",
+    "Wait-FullBinding",
+    "Restart-ExactDevices",
     "Restart-WindowsAudio",
-    "Run-Wasapi",
+    "Run-WasapiPreflight",
     "Reset-WasapiEndpointFormat",
+    "Remove-StaleProjectPackages",
+    "Install-FullStack",
     "Write-ResultZip",
     "Restore-Original",
 ):
     marker=f"function {function_name}"
-    if production_runner.count(marker) != 1:
-        raise SystemExit(
-            f"production runner function must exist exactly once: {function_name}")
-
-if "COINIT_APARTMENTTHREADED" not in wasapi_shared:
-    raise SystemExit("WASAPI acceptance utility must initialize COM in STA")
-if "COINIT_MULTITHREADED" in wasapi_shared:
-    raise SystemExit("WASAPI acceptance utility regressed to MTA first-use initialization")
+    if full_installer.count(marker) != 1:
+        raise SystemExit(f"full installer function must exist exactly once: {function_name}")
 
 for token in (
-    "Report-NonAudioBoot0000",
-    "NOT_AUDIO_BLOCKER=YES",
-    "Remove-StaleProjectPackages",
-    "Reset-WasapiEndpointFormat",
+    "PHASER360 FULL AUDIO DRIVER INSTALL",
+    "PHYSICAL_AUDIO_TEST=NO",
+    "P360_FORCE_INSTALL.exe",
+    "FULL_INSTALL_ROUND=",
+    "WINDOWS_AUDIO_ENDPOINT=PASS",
     "WASAPI_DEVICE_FORMAT_RESET=PASS",
-    "PREFLIGHT_REPAIR_ROUND=",
-    "PHYSICAL_WASAPI_ATTEMPTS_MAX=1",
-    "PHYSICAL_WASAPI_ATTEMPT=1",
-    "One-shot WASAPI shared playback failed. No automatic physical replay is permitted.",
-    "AUTOMATIC_ROLLBACK=NO",
-    "ALTERNATE_DRIVER_SWAP=NO",
+    "NOT_AUDIO_BLOCKER=YES",
+    "FULL_DRIVER_INSTALL=PASS",
+    "AUDIO_DRIVER_READY=YES",
 ):
-    if token not in production_runner:
-        raise SystemExit(f"production self-healing runner contract missing: {token}")
+    if token not in full_installer:
+        raise SystemExit(f"full installer convergence contract missing: {token}")
 
-preflight_loop_i=production_runner.index("for($round=1;$round -le 3;$round++)")
-preflight_call_i=production_runner.index("Run-Wasapi -Preflight",preflight_loop_i)
-physical_i=production_runner.index('Log "PHYSICAL_WASAPI_ATTEMPT=1"',preflight_call_i)
-physical_call_i=production_runner.index("Run-Wasapi)",physical_i)
-if not preflight_loop_i < preflight_call_i < physical_i < physical_call_i:
-    raise SystemExit("physical WASAPI playback is not strictly after all preflight repair rounds")
-if "Run-Wasapi)" in production_runner[preflight_loop_i:physical_i]:
-    raise SystemExit("physical WASAPI playback can still occur inside a repair loop")
+for forbidden in (
+    'Run-Wasapi")',
+    "PHYSICAL_WASAPI_ATTEMPT",
+    "P360_WAVERT_TEST.exe",
+):
+    if forbidden in full_installer:
+        raise SystemExit(f"physical/legacy test leaked into full installer: {forbidden}")
 
-prod_prepare_begin=workflow.index("- name: Prepare single production package inputs")
-prod_build_begin=workflow.index("- name: Build and audit single production package",prod_prepare_begin)
-prod_prepare=workflow[prod_prepare_begin:prod_build_begin]
+full_prepare_begin=workflow.index("- name: Prepare full-install audio package")
+full_build_begin=workflow.index("- name: Build and audit full-install driver package",full_prepare_begin)
+full_prepare=workflow[full_prepare_begin:full_build_begin]
 for token in (
     'P360SofAudio-host-playback.sys" = "P360SofAudio.sys"',
+    'P360Max98357Safe.sys" = "P360Max98357Safe.sys"',
     '"P360_WASAPI_TEST.exe"',
-    '"P360_PRODUCTION_INSTALL.ps1"',
-    '"START_P360_PRODUCTION.cmd"',
-    '"RESTORE_P360_PRODUCTION.cmd"',
+    '"P360_FORCE_INSTALL.exe"',
+    '"P360_FULL_INSTALL.ps1"',
+    '"INSTALL_PHASER360_AUDIO.cmd"',
+    '"RESTORE_PHASER360_AUDIO.cmd"',
     "p360-f686.ri",
 ):
-    if token not in prod_prepare:
-        raise SystemExit(f"production input assembly missing: {token}")
+    if token not in full_prepare:
+        raise SystemExit(f"full-install input assembly missing: {token}")
 
-prod_upload_begin=workflow.index("- name: Upload production audio package",prod_build_begin)
-prod_build=workflow[prod_build_begin:prod_upload_begin]
+full_upload_begin=workflow.index("- name: Upload full-install audio driver",full_build_begin)
+full_build=workflow[full_build_begin:full_upload_begin]
 for token in (
-    "DriverVersion = $driverVersion",
-    "PhysicalWasapiAttemptsMax = 1",
-    'Boot0000Role = "coreboot-table/non-audio"',
+    'InstallerMode = "FullInstall"',
+    'ForceBindingApi = "UpdateDriverForPlugAndPlayDevices/INSTALLFLAG_FORCE"',
+    "PhysicalAudioTest = $false",
     "P360SofAudioSha256",
+    "P360Max98357SafeSha256",
     "WasapiTestSha256",
-    "P360_SINGLE_INSTALLABLE_VERSION=PASS",
+    "ForceInstallSha256",
+    "P360_FULL_INSTALL_PACKAGE=PASS",
 ):
-    if token not in prod_build:
-        raise SystemExit(f"production package manifest/audit missing: {token}")
+    if token not in full_build:
+        raise SystemExit(f"full-install manifest/audit missing: {token}")
 
 for token in (
     "WdfDriverInitNoDispatchOverride",
