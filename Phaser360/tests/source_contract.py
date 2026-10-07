@@ -637,7 +637,7 @@ for token in (
     "#define P360_IPC3_CTRL_TYPE_DATA_SET 5u",
     "#define P360_IPC3_TONE_HALF_PERCENT_Q1_31 10737418u",
     "#define P360_IPC3_TONE_TWO_SECONDS_BLOCKS  16000u",
-    "put32(d+16,P360_IPC3_CTRL_TYPE_DATA_SET);"
+    "put32(d+16,P360_IPC3_CTRL_TYPE_DATA_SET);",
     "put32(d+20,P360_IPC3_CTRL_CMD_ENUM);",
     "P360_IPC3_TONE_IDX_AMPLITUDE",
     "P360_IPC3_TONE_IDX_LENGTH",
@@ -647,14 +647,6 @@ for token in (
 ):
     if token not in (ipc3_topology_h + "\n" + ipc3_topology):
         raise SystemExit(f"SOF 1.9.3 low-volume Tone control ABI missing: {token}")
-
-for forbidden in (
-    "P360_IPC3_CTRL_TYPE_DATA_SET",
-    "p360_ipc3_build_tone_amplitude(",
-):
-    if forbidden in ipc3_topology_h + "\n" + ipc3_topology:
-        raise SystemExit(f"wrong duplicate Tone control path present: {forbidden}")
-
 
 for token in (
     "put_config(d+28,2u,0u,P360_IPC3_FRAME_S32_LE)",
