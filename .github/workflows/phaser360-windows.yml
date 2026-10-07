@@ -173,6 +173,7 @@ jobs:
             "Phaser360\production\P360AudioBundle.inx" = "P360AudioBundle.inf"
             "Phaser360\full_install\P360_FULL_INSTALL.ps1" = "P360_FULL_INSTALL.ps1"
             "Phaser360\full_install\INSTALL_PHASER360_AUDIO.cmd" = "INSTALL_PHASER360_AUDIO.cmd"
+            "Phaser360\full_install\TEST_PHASER360_AUDIO.cmd" = "TEST_PHASER360_AUDIO.cmd"
             "Phaser360\full_install\RESTORE_PHASER360_AUDIO.cmd" = "RESTORE_PHASER360_AUDIO.cmd"
             "Phaser360\full_install\README.txt" = "README.txt"
           }
@@ -283,6 +284,9 @@ jobs:
             AmpHardwareId="ACPI\MX98357A"
             ForceBindingApi="UpdateDriverForPlugAndPlayDevices/INSTALLFLAG_FORCE"
             PhysicalAudioTest=$false
+            ManualAcceptance="TEST_PHASER360_AUDIO.cmd"
+            ManualAcceptanceMode="WASAPI_SHARED_ONE_SHOT"
+            ManualPhysicalWasapiAttempts=1
             P360SofAudioSha256=(Get-FileHash (Join-Path $root "P360SofAudio.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
             P360Max98357SafeSha256=(Get-FileHash (Join-Path $root "P360Max98357Safe.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
             FirmwareSha256=(Get-FileHash (Join-Path $root "p360-f686.ri") -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -295,7 +299,8 @@ jobs:
             "P360SofAudio.sys","P360Max98357Safe.sys","p360-f686.ri",
             "P360_TEST.cer","P360_WASAPI_TEST.exe","P360_FORCE_INSTALL.exe",
             "P360_FULL_INSTALL.ps1","INSTALL_PHASER360_AUDIO.cmd",
-            "RESTORE_PHASER360_AUDIO.cmd","PACKAGE_INFO.json","README.txt"
+            "TEST_PHASER360_AUDIO.cmd","RESTORE_PHASER360_AUDIO.cmd",
+            "PACKAGE_INFO.json","README.txt"
           )) {
             if (-not (Test-Path -LiteralPath (Join-Path $root $required) -PathType Leaf)) {
               throw "Full-install package missing: $required"
@@ -317,8 +322,16 @@ jobs:
           $verify=Join-Path $env:RUNNER_TEMP "P360_FULL_INSTALL_VERIFY"
           Remove-Item $verify -Recurse -Force -ErrorAction SilentlyContinue
           Expand-Archive $zip -DestinationPath $verify -Force
-          if (-not (Test-Path (Join-Path $verify "INSTALL_PHASER360_AUDIO.cmd"))) {
-            throw "ZIP verification failed."
+          foreach($entry in @(
+            "INSTALL_PHASER360_AUDIO.cmd",
+            "TEST_PHASER360_AUDIO.cmd",
+            "P360_WASAPI_TEST.exe",
+            "P360AudioBundle.inf",
+            "P360AudioBundle.cat"
+          )) {
+            if (-not (Test-Path (Join-Path $verify $entry))) {
+              throw "ZIP verification failed; missing $entry"
+            }
           }
 
           Write-Host "P360_FULL_INSTALL_PACKAGE=PASS"
