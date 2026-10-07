@@ -1,79 +1,70 @@
 PHASER360 FULL AUDIO DRIVER
 ===========================
 
-Run INSTALL_PHASER360_AUDIO.cmd as the only installation entry point.
+Run INSTALL_PHASER360_AUDIO.cmd. This is the only installation entry point.
 
-The package contains one combined production driver version/INF/CAT and binds:
-  SklHDAudBus -> CSAUDIO ADSP -> P360SofAudio -> SOF host playback
-  -> SSP1 -> P360Max98357Safe -> MAX98357A -> internal speakers
-  -> PortCls/WaveRT -> Windows Audio / WASAPI shared endpoint.
+The package installs the complete internal-speaker chain:
+  SklHDAudBus
+  -> CSAUDIO ADSP
+  -> P360SofAudio
+  -> SOF firmware / IPC3 host playback
+  -> SSP1
+  -> P360Max98357Safe
+  -> MAX98357A
+  -> PortCls / WaveRT
+  -> Windows Audio speaker endpoint
 
-INSTALL / REPAIR MODEL
-----------------------
+FULL INSTALL / REPAIR
+---------------------
 The installer:
-- validates the signed package and pinned firmware;
-- saves the original ADSP/MAX98357A baseline once, but never records an
-  already-installed PHASER360 production driver as the original baseline;
-- imports the test certificate;
+- validates the signed INF/CAT, binaries and pinned firmware;
+- saves the original ADSP and MAX98357A drivers once for explicit restore;
+- imports the package test certificate;
 - stages the single combined INF;
-- force-binds that exact same INF to both Phaser360 hardware IDs with
-  UpdateDriverForPlugAndPlayDevices + INSTALLFLAG_FORCE so driver ranking
-  cannot silently leave the older driver selected;
-- verifies ADSP and MAX98357A are healthy, use the expected services/provider,
-  and are on the same production version;
+- force-binds that exact INF to both Phaser360 hardware IDs through
+  UpdateDriverForPlugAndPlayDevices + INSTALLFLAG_FORCE, so Windows driver
+  ranking cannot leave an older CoolStar/P360 driver selected;
+- verifies both ADSP and MAX98357A are healthy, use the expected services and
+  provider, and are on the same package version;
 - restarts Windows Audio;
-- performs WASAPI shared preflight without starting playback;
-- repairs a stale endpoint format through
+- verifies the PHASER360 WASAPI shared endpoint without starting playback;
+- repairs a stale endpoint format with
   IAudioEndpointFormatControl::ResetToDefault(0);
-- repeats only no-sound repair/preflight operations;
-- removes stale PHASER360 Project packages only after the active production
-  binding and Windows Audio endpoint are healthy.
+- repeats only installation/repair/preflight operations;
+- removes stale PHASER360 Project packages only after the complete active stack
+  and Windows Audio endpoint are healthy.
 
-FINAL ACCEPTANCE
-----------------
-The installer itself is install-only: it does not start physical playback.
-
-After INSTALL_PHASER360_AUDIO.cmd reports PASS, run
-TEST_PHASER360_AUDIO.cmd when you want the real final acceptance. That command
-performs exactly ONE physical WASAPI shared playback attempt:
-- 48 kHz stereo PCM;
-- 32-bit container / 16 valid bits;
-- 997 Hz;
-- 2000 ms;
-- less than 0.5 percent amplitude.
-
-There is no automatic second physical attempt. The test result does not swap
-drivers or roll back the installed production stack.
-
-The legacy waveOut utility is not part of the full-install package and is not
-used as production acceptance.
+The installer does not use waveOut and does not start a physical speaker tone.
+Its job is to leave the complete driver stack installed and the Windows Audio
+endpoint ready for normal applications.
 
 WINDOWS AUDIO FORMAT
 --------------------
-PKEY_AudioEngine_OEMFormat defines the manufacturer default endpoint format.
-PKEY_AudioEngine_DeviceFormat must resolve to the exact production format
-before playback. GetMixFormat is only the Windows Audio Engine internal mix
-format and may be floating-point; it is observed but not mistaken for the
-hardware/device format.
+PKEY_AudioEngine_OEMFormat defines the endpoint manufacturer default:
+48 kHz, stereo PCM, 32-bit container, 16 valid bits.
 
-The driver deliberately does not advertise event-driven WaveRT. The Phaser360
-ADSP child exposes CoolStar GUID_ADSP_BUS_INTERFACE, while HDAUDIO V2/V3
-notification interfaces belong to codec children. The current production path
-therefore uses WaveRT position polling.
+PKEY_AudioEngine_DeviceFormat is checked as the active shared-mode device
+format. GetMixFormat is only the Windows Audio Engine internal processing
+format and may be floating-point.
 
-HARDWARE TOPOLOGY
------------------
-The speaker path follows the Linux/CoolStar topology:
-- SSP1: MAX98357A internal speaker amplifier;
-- SSP2: DA7219 headset codec;
+The driver does not advertise event-driven WaveRT because the Phaser360 ADSP
+child exposes CoolStar GUID_ADSP_BUS_INTERFACE rather than the HDAUDIO
+notification interfaces exposed on codec children. The current driver uses
+WaveRT position polling.
+
+HARDWARE ROUTING
+----------------
+- SSP1: MAX98357A internal speaker amplifier.
+- SSP2: DA7219 headset codec.
 - DMIC: separate capture path.
 
-DA7219 is not a dependency of internal-speaker rendering.
+DA7219 is not required for internal-speaker rendering.
 
-ACPI\BOOT0000 Code 28 is logged as NOT_AUDIO_BLOCKER. It is the coreboot table
-/debug ACPI device and is not part of the speaker dependency chain.
+ACPI\BOOT0000 Code 28 is logged as NOT_AUDIO_BLOCKER. BOOT0000 is the
+coreboot-table/debug ACPI device and is not part of the speaker dependency
+chain.
 
 RESTORE
 -------
-RESTORE_PHASER360_AUDIO.cmd is manual. It restores the exported original ADSP
-and MAX98357A drivers only when a real original baseline was saved.
+RESTORE_PHASER360_AUDIO.cmd restores the exported original ADSP and MAX98357A
+drivers when a saved original baseline exists.
