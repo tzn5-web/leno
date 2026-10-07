@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define P360_IPC3_TOPOLOGY_MAX_MESSAGE 112u
+#define P360_IPC3_TOPOLOGY_MAX_MESSAGE 216u
 #define P360_IPC3_TONE_NEW_BYTES       100u
 #define P360_IPC3_BUFFER_NEW_BYTES      44u
 #define P360_IPC3_DAI_NEW_BYTES         80u
@@ -13,7 +13,8 @@
 #define P360_IPC3_CONNECT_BYTES         16u
 #define P360_IPC3_PIPE_READY_BYTES      12u
 #define P360_IPC3_STREAM_BYTES          12u
-#define P360_IPC3_DAI_CONFIG_BYTES     112u
+#define P360_IPC3_DAI_CONFIG_BYTES     216u
+#define P360_IPC3_PCM_PARAMS_BYTES     108u
 
 #define P360_IPC3_GLB_TPLG_MSG   0x30000000u
 #define P360_IPC3_GLB_STREAM_MSG 0x60000000u
@@ -23,6 +24,7 @@
 #define P360_IPC3_TPLG_PIPE_NEW  0x00100000u
 #define P360_IPC3_TPLG_PIPE_DONE 0x00130000u
 #define P360_IPC3_TPLG_BUFFER_NEW 0x00200000u
+#define P360_IPC3_STREAM_PCM_PARAMS 0x00010000u
 #define P360_IPC3_STREAM_START   0x00040000u
 #define P360_IPC3_STREAM_STOP    0x00050000u
 #define P360_IPC3_DAI_CONFIG     0x00010000u
@@ -39,6 +41,11 @@
 #define P360_IPC3_DAI_INTEL_SSP   1u
 #define P360_IPC3_TIME_DMA         0u
 #define P360_IPC3_TIME_TIMER       1u
+#define P360_IPC3_BUFFER_INTERLEAVED 0u
+#define P360_IPC3_MCLK_CODEC_INPUT 1u
+#define P360_IPC3_CHMAP_UNKNOWN 0u
+#define P360_IPC3_CHMAP_FL 3u
+#define P360_IPC3_CHMAP_FR 4u
 
 #define P360_IPC3_DAI_FMT_I2S      0x0001u
 #define P360_IPC3_DAI_FMT_CONT     0x0010u
@@ -105,6 +112,8 @@ int p360_ipc3_build_connect(struct p360_ipc3_message *out,
     uint32_t source_id, uint32_t sink_id);
 int p360_ipc3_build_pipe_complete(struct p360_ipc3_message *out,
     const struct p360_ipc3_speaker_ids *ids);
+int p360_ipc3_build_pcm_params(struct p360_ipc3_message *out,
+    uint32_t comp_id, uint32_t sample_rate, uint16_t channels);
 int p360_ipc3_build_stream_trigger(struct p360_ipc3_message *out,
     uint32_t comp_id, int start);
 int p360_ipc3_build_ssp1_config(struct p360_ipc3_message *out,
