@@ -21,10 +21,12 @@
 #define P360_IPC3_STREAM_BYTES          12u
 #define P360_IPC3_DAI_CONFIG_BYTES     216u
 #define P360_IPC3_PCM_PARAMS_BYTES     108u
+#define P360_IPC3_TONE_CONTROL_BYTES   108u
 
 #define P360_IPC3_GLB_TPLG_MSG   0x30000000u
 #define P360_IPC3_GLB_STREAM_MSG 0x60000000u
 #define P360_IPC3_GLB_DAI_MSG    0x80000000u
+#define P360_IPC3_GLB_COMP_MSG   0x50000000u
 #define P360_IPC3_TPLG_COMP_NEW  0x00010000u
 #define P360_IPC3_TPLG_CONNECT   0x00030000u
 #define P360_IPC3_TPLG_PIPE_NEW  0x00100000u
@@ -34,6 +36,13 @@
 #define P360_IPC3_STREAM_START   0x00040000u
 #define P360_IPC3_STREAM_STOP    0x00050000u
 #define P360_IPC3_DAI_CONFIG     0x00010000u
+#define P360_IPC3_COMP_SET_DATA  0x00030000u
+
+#define P360_IPC3_CTRL_TYPE_VALUE_COMP_SET 3u
+#define P360_IPC3_CTRL_CMD_ENUM             1u
+#define P360_IPC3_TONE_IDX_AMPLITUDE        1u
+#define P360_IPC3_TONE_AMPLITUDE_MAX_Q1_31  21474836u
+#define P360_IPC3_TONE_AMPLITUDE_SAFE_Q1_31 10737418u
 
 #define P360_IPC3_COMP_DAI    2u
 #define P360_IPC3_COMP_TONE  10u
@@ -124,6 +133,8 @@ int p360_ipc3_build_pcm_params(struct p360_ipc3_message *out,
     uint32_t comp_id, uint32_t sample_rate, uint16_t channels);
 int p360_ipc3_build_stream_trigger(struct p360_ipc3_message *out,
     uint32_t comp_id, int start);
+int p360_ipc3_build_tone_amplitude(struct p360_ipc3_message *out,
+    uint32_t comp_id, uint32_t amplitude_q1_31, uint16_t channels);
 int p360_ipc3_build_ssp1_config(struct p360_ipc3_message *out,
     uint32_t dai_index, const struct p360_ipc3_ssp1_profile *profile);
 
