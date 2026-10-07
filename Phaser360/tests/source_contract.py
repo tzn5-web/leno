@@ -1028,12 +1028,16 @@ full_build=workflow[full_build_begin:full_upload_begin]
 for token in (
     'InstallerMode="FullInstall"',
     'ForceBindingApi="UpdateDriverForPlugAndPlayDevices/INSTALLFLAG_FORCE"',
-    "PhysicalAudioTest=$false",
+    "PhysicalAudioTest=$true",
+    "PhysicalWasapiAttemptsMax=1",
+    'FinalAcceptance="WASAPI_SHARED_ENDPOINT_FUNCTIONAL"',
     "P360SofAudioSha256=",
     "P360Max98357SafeSha256=",
     "WasapiTestSha256=",
     "ForceInstallSha256=",
     "P360_FULL_INSTALL_PACKAGE=PASS",
+    "P360_FINAL_ACCEPTANCE=WASAPI_SHARED_ONE_SHOT",
+    "P360_PHYSICAL_WASAPI_ATTEMPTS_MAX=1",
 ):
     if token not in full_build:
         raise SystemExit(f"full-install manifest/audit missing: {token}")
