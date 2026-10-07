@@ -409,8 +409,63 @@ function Get-InfVersion([string]$InfPath) {
 function Restart-Target([string]$InstanceId) {
     $res = Invoke-Tool -Exe "pnputil.exe" -Arguments @("/restart-device",$InstanceId) -AllowFailure
     if ($res.ExitCode -ne 0) {
-        throw "PnP restart failed. No automatic reboot will be attempted."
+        Write-RunLog "PNP_RESTART_EXIT=$($res.ExitCode) -- verifying postcondition instead of trusting pnputil exit code"
     }
+    return $res
+}
+
+function Get-BoundDriverOrNull([string]$InstanceId) {
+    return Get-SignedDriverOrNull $InstanceId
+}
+
+function Test-BoundDriver(
+    [string]$InstanceId,
+    [string]$Version,
+    [string]$Provider
+) {
+    $driver=Get-BoundDriverOrNull $InstanceId
+    if (-not $driver) {
+        return $false
+    }
+    return (
+        [string]$driver.DriverVersion -eq $Version -and
+        [string]$driver.DriverProviderName -eq $Provider)
+}
+
+function Rebind-TestTarget(
+    [string]$InstanceId,
+    [string]$Version
+) {
+    $null=Restart-Target $InstanceId
+    Start-Sleep -Milliseconds 750
+    if (Test-BoundDriver $InstanceId $Version "PHASER360 Project") {
+        Write-RunLog "TEST_BIND_AFTER_RESTART=PASS"
+        return
+    }
+
+    Write-RunLog "TEST_BIND_AFTER_RESTART=NOT_BOUND; trying child disable/enable"
+    $disable=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/disable-device",$InstanceId) -AllowFailure
+    Write-RunLog "PNP_DISABLE_EXIT=$($disable.ExitCode)"
+    Start-Sleep -Milliseconds 500
+    $enable=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/enable-device",$InstanceId) -AllowFailure
+    Write-RunLog "PNP_ENABLE_EXIT=$($enable.ExitCode)"
+    Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure | Out-Null
+
+    $deadline=(Get-Date).AddSeconds(15)
+    do {
+        Start-Sleep -Milliseconds 500
+        if (Test-BoundDriver $InstanceId $Version "PHASER360 Project") {
+            Write-RunLog "TEST_BIND_AFTER_DISABLE_ENABLE=PASS"
+            return
+        }
+    } while ((Get-Date) -lt $deadline)
+
+    $driver=Get-BoundDriverOrNull $InstanceId
+    if ($driver) {
+        throw ("Test package is staged but did not bind without a full reboot. Current INF={0}, Provider={1}, Version={2}. No automatic reboot will be attempted." -f
+            $driver.InfName,$driver.DriverProviderName,$driver.DriverVersion)
+    }
+    throw "Test package is staged but target has no bound driver after controlled rebind. No automatic reboot will be attempted."
 }
 
 function Wait-TargetPresent([string]$InstanceId,[int]$Seconds=12) {
@@ -477,14 +532,18 @@ function Install-TestPackage([string]$RunMode,$Info,[string]$InstanceId) {
         Save-State
     }
 
-    if ($addResult.ExitCode -ne 0) {
-        throw "pnputil failed while staging/installing $RunMode; rollback will remove any identified test package."
-    }
     if ($store.Count -ne 1) {
         throw "Could not identify exactly one staged $RunMode package in Driver Store."
     }
 
-    Restart-Target $InstanceId
+    if ($addResult.ExitCode -ne 0) {
+        Write-RunLog "PNPUTIL_ADD_EXIT=$($addResult.ExitCode) -- package is staged; continuing by verified postconditions"
+    }
+    if ($addResult.Output -match "(?i)reboot is needed|restart is needed") {
+        Write-RunLog "PNPUTIL_REBOOT_REPORTED=YES"
+    }
+
+    Rebind-TestTarget $InstanceId $wantVersion
     Wait-TargetHealthy $InstanceId | Out-Null
 
     $driver = Get-SignedDriver $InstanceId
@@ -572,16 +631,15 @@ function Restore-OriginalDriver([string]$InstanceId) {
             throw "Original driver backup is missing."
         }
 
-        Invoke-Tool -Exe "pnputil.exe" -Arguments @(
+        $restoreAdd=Invoke-Tool -Exe "pnputil.exe" -Arguments @(
             "/add-driver",
             [string]$script:State.OriginalExportedInf,
-            "/install") | Out-Null
-
-        try {
-            Restart-Target $InstanceId
-        } catch {
-            Write-RunLog "Restore restart warning: $($_.Exception.Message)"
+            "/install") -AllowFailure
+        if ($restoreAdd.ExitCode -ne 0) {
+            Write-RunLog "RESTORE_PNPUTIL_ADD_EXIT=$($restoreAdd.ExitCode) -- verifying actual binding"
         }
+
+        $null=Restart-Target $InstanceId
         Wait-TargetHealthy $InstanceId | Out-Null
 
         $driver=Get-SignedDriver $InstanceId
