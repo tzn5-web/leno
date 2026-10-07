@@ -139,6 +139,8 @@ int p360_ipc3_build_tone_amplitude(struct p360_ipc3_message *out,
     uint32_t comp_id, uint32_t amplitude_q1_31, uint16_t channels);
 int p360_ipc3_build_tone_amplitude_control(struct p360_ipc3_message *out,
     uint32_t comp_id, int32_t amplitude_q1_31);
+int p360_ipc3_build_tone_length_control(struct p360_ipc3_message *out,
+    uint32_t comp_id, uint32_t blocks_125us);
 int p360_ipc3_build_stream_trigger(struct p360_ipc3_message *out,
     uint32_t comp_id, int start);
 int p360_ipc3_build_ssp1_config(struct p360_ipc3_message *out,
