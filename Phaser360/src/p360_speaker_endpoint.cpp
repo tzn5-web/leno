@@ -888,7 +888,13 @@ P360WaveStream::SetState(
 
     switch (State) {
     case KSSTATE_STOP:
-        status=p360_host_playback_stop(
+        /*
+         * STOP is a transport reset, not a pause. Release PCM/HDA ownership
+         * so the next STOP->ACQUIRE transition receives a freshly reset HDA
+         * descriptor and starts at byte zero. The WaveRT MDL remains owned by
+         * PortCls and is rebound lazily by EnsurePlaybackPrepared().
+         */
+        status=p360_host_playback_release(
             m_Context,
             &m_Playback);
         if (NT_SUCCESS(status))
@@ -946,6 +952,12 @@ P360WaveStream::GetPosition(
 
     if (!Position)
         return STATUS_INVALID_PARAMETER;
+
+    if (m_State==KSSTATE_STOP) {
+        Position->PlayOffset=0;
+        Position->WriteOffset=0;
+        return STATUS_SUCCESS;
+    }
 
     if (!m_BufferBytes || !m_Playback.StreamOwned) {
         Position->PlayOffset=0;
