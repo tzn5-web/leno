@@ -372,7 +372,7 @@ final_phase_i=runner.index('Write-RunLog "FINAL_SPEAKER_PHASE=BEGIN"')
 final_attempt_i=runner.index("$script:State.SpeakerAttempted=$true",final_phase_i)
 final_install_i=runner.index('Install-TestPackage "FinalSpeaker"',final_attempt_i)
 final_wait_i=runner.index("Wait-Telemetry -ExpectedFlags 31",final_install_i)
-final_pass_i=runner.index('Write-RunLog "FINAL_TONE_2000MS_MAX_0P78125PCT=PASS"',final_wait_i)
+final_pass_i=runner.index('Write-RunLog "FINAL_TONE_2000MS_MAX_0P5PCT=PASS"',final_wait_i)
 final_stop_call_i=runner.index("Disable-TargetAndProveStop $targetId 31",final_pass_i)
 final_stop_i=runner.index('Write-RunLog "FINAL_SPEAKER_STOP_MUTE=PASS"',final_stop_call_i)
 if not (
