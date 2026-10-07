@@ -151,6 +151,26 @@ for token in (
     if token not in csaudio_h + "\n" + csaudio:
         raise SystemExit(f"CoolStar CSAudio bridge contract missing: {token}")
 
+csa_start_i=csaudio.index("p360_csaudio_speaker_start(")
+csa_start_ack_i=csaudio.index(
+    "P360_CSAUDIO_ENDPOINT_START_ACK",
+    csa_start_i)
+csa_rollback_stop_i=csaudio.index(
+    "P360_CSAUDIO_ENDPOINT_STOP",
+    csa_start_ack_i)
+csa_rollback_ack_i=csaudio.index(
+    "P360_CSAUDIO_ENDPOINT_STOP_ACK",
+    csa_rollback_stop_i)
+csa_keep_latch_i=csaudio.index(
+    "InterlockedExchange(&link->SpeakerStarted,1);",
+    csa_rollback_ack_i)
+if not (
+    csa_start_i < csa_start_ack_i < csa_rollback_stop_i <
+    csa_rollback_ack_i < csa_keep_latch_i
+):
+    raise SystemExit(
+        "ambiguous MAX START no longer forces STOP_ACK or retains ownership")
+
 for p in ROOT.rglob("*"):
     if p.suffix.lower() not in (".c",".h",".cpp"):
         continue
@@ -1134,10 +1154,23 @@ if not (
 host_start_i=driver.index("p360_host_playback_start(")
 dma_start_i=driver.index("p360_playback_stream_start(playback)",host_start_i)
 sof_start_i=driver.index("p360_ipc3_build_stream_trigger(",dma_start_i)
-speaker_arm_i=driver.index("p360_state_speaker_arm(&ctx->State)",sof_start_i)
+sof_running_latch_i=driver.index("playback->SofRunning=TRUE;",sof_start_i)
+sof_start_send_i=driver.index("p360_runtime_send_zero_error(",sof_running_latch_i)
+speaker_arm_i=driver.index("p360_state_speaker_arm(&ctx->State)",sof_start_send_i)
 amp_start_i=driver.index("p360_csaudio_speaker_start(&ctx->CsAudio)",speaker_arm_i)
-if not host_start_i < dma_start_i < sof_start_i < speaker_arm_i < amp_start_i:
-    raise SystemExit("HOST playback START ordering is not DMA -> SOF -> arm -> MAX98357A")
+amp_mirror_i=driver.index(
+    "ctx->CsAudio.SpeakerStarted",
+    amp_start_i)
+amp_fail_stop_i=driver.index(
+    "p360_host_playback_stop(",
+    amp_mirror_i)
+if not (
+    host_start_i < dma_start_i < sof_start_i < sof_running_latch_i <
+    sof_start_send_i < speaker_arm_i < amp_start_i < amp_mirror_i <
+    amp_fail_stop_i
+):
+    raise SystemExit(
+        "HOST START ambiguity contract drifted: ownership must latch before IPC and MAX failure must stop")
 
 host_stop_i=driver.index("p360_host_playback_stop(")
 amp_stop_i=driver.index("p360_csaudio_speaker_stop(&ctx->CsAudio)",host_stop_i)
