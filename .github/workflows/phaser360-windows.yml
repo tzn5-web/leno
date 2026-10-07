@@ -200,14 +200,7 @@ jobs:
               }
             }
 
-            $wdk = "Phaser360\packages\Microsoft.Windows.WDK.x64.10.0.26100.6584"
-            if (Test-Path $wdk) {
-              $hit = Get-ChildItem $wdk -Recurse -File -Filter $Name -ErrorAction SilentlyContinue |
-                Select-Object -First 1
-              if ($hit) { return $hit.FullName }
-            }
-
-            throw "Required signing tool not found: $Name"
+            throw "Required signing tool not found in PATH or Windows Kits: $Name"
           }
 
           $inf2cat = Find-Tool "inf2cat.exe"
