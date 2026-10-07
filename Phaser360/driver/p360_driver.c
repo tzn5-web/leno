@@ -504,7 +504,8 @@ p360_runtime_boot_start(
     }
 
 #if P360_BOUNDED_TONE_TEST_ENABLED
-    if (p360_bounded_tone_policy_enabled()) {
+    if (p360_bounded_tone_policy_enabled() &&
+        !ctx->BoundedToneConsumed) {
         status=p360_runtime_run_bounded_tone(
             ctx,
             &failure);
