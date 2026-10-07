@@ -86,6 +86,7 @@
     <ClCompile Include="..\src\p360_cs_runtime.c" />
     <ClCompile Include="..\src\p360_csaudio.c" />
     <ClCompile Include="..\src\p360_firmware.c" />
+    <ClCompile Include="..\src\p360_telemetry.c" />
     <ClCompile Include="..\src\p360_portcls_bridge.cpp" />
     <ClCompile Include="..\src\p360_portcls_shell.cpp" />
     <ClCompile Include="..\src\p360_speaker_endpoint.cpp" />
@@ -114,6 +115,7 @@
     <ClInclude Include="..\include\p360_cs_runtime.h" />
     <ClInclude Include="..\include\p360_csaudio.h" />
     <ClInclude Include="..\include\p360_firmware.h" />
+    <ClInclude Include="..\include\p360_telemetry.h" />
     <ClInclude Include="..\include\p360_portcls_bridge.h" />
     <ClInclude Include="..\include\p360_speaker_endpoint.h" />
     <ClInclude Include="..\sof_core\p360_transport_core.h" />
