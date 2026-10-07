@@ -249,7 +249,7 @@ int wmain(int argc,wchar_t **argv)
         return 40;
     }
 
-    cohr=CoInitializeEx(NULL,COINIT_MULTITHREADED);
+    cohr=CoInitializeEx(NULL,COINIT_APARTMENTTHREADED);
     if (FAILED(cohr) && cohr!=RPC_E_CHANGED_MODE) {
         wprintf(L"WASAPI_TEST=FAIL stage=CoInitialize hr=0x%08lX\n",(unsigned long)cohr);
         return 41;
