@@ -192,7 +192,7 @@ function Ensure-OriginalBackup {
     if ($adspDrv -and
         [string]$adspDrv.DriverProviderName -eq $Provider -and
         [string]$adsp.Service -eq $AdspService) {
-        Log "ORIGINAL_BACKUP=SKIPPED_ALREADY_PRODUCTION"
+        Log "ORIGINAL_BACKUP=SKIPPED_ALREADY_P360"
         return
     }
 
