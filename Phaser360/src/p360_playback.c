@@ -221,7 +221,15 @@ p360_playback_stream_bind_buffer(
 
     RtlZeroMemory(&format,sizeof(format));
     format.SampleRate=P360_SAMPLE_RATE;
-    format.ValidBitsPerSample=P360_SPEAKER_PCM_VALID_BITS;
+    /*
+     * CoolStar SklHDAudBus currently derives HDA SD_FORMAT from
+     * ValidBitsPerSample and ignores ContainerSize. The Windows/SOF host ring
+     * is 32-bit containers with 16 valid bits, so request 32 here solely to
+     * make the HDA descriptor consume 4 bytes/sample. SOF PCM_PARAMS still
+     * carries sample_valid_bytes=2 and sample_container_bytes=4, and SSP1 is
+     * independently configured as S16.
+     */
+    format.ValidBitsPerSample=P360_SPEAKER_CONTAINER_BITS;
     format.ContainerSize=P360_SPEAKER_CONTAINER_BITS;
     format.NumberOfChannels=P360_SPEAKER_CHANNELS;
 
@@ -271,13 +279,17 @@ p360_playback_stream_bind_buffer(
     if (!NT_SUCCESS(status))
         goto fail;
 
-    if (p->Bus->iface.DSPEnableSPIB) {
-        p->Bus->iface.DSPEnableSPIB(
+    /*
+     * Keep SPIB disabled. Linux only enables SPIB in its no-rewind mode and
+     * then updates the SPIB value on every application-pointer ACK. WaveRT
+     * does not provide that ACK path here; a one-time SPIB=bufferBytes would
+     * cap the HDA DMA after the first ring traversal.
+     */
+    if (p->Bus->iface.DSPDisableSPIB)
+        p->Bus->iface.DSPDisableSPIB(
             p->Bus->iface.Context,
-            p->Stream,
-            bufferBytes);
-        p->SpibEnabled=TRUE;
-    }
+            p->Stream);
+    p->SpibEnabled=FALSE;
 
     return STATUS_SUCCESS;
 
