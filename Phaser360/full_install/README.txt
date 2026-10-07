@@ -17,7 +17,9 @@ The package installs the complete internal-speaker chain:
 FULL INSTALL / REPAIR
 ---------------------
 The installer:
-- validates the signed INF/CAT, binaries and pinned firmware;
+- validates the signed INF/CAT, binaries and official SOF 1.9.3 firmware;
+- verifies the Intel 8086:3198 controller is healthy on SklHDAudBus and that
+  the CSAUDIO ADSP child plus ACPI\MX98357A device are present;
 - saves the original ADSP and MAX98357A drivers once for explicit restore;
 - imports the package test certificate;
 - stages the single combined INF;
@@ -26,6 +28,8 @@ The installer:
   ranking cannot leave an older CoolStar/P360 driver selected;
 - verifies both ADSP and MAX98357A are healthy, use the expected services and
   provider, and are on the same package version;
+- treats a healthy P360Max98357Safe start as proof that its ACPI GPIO
+  connection resource opened successfully;
 - restarts Windows Audio;
 - verifies the PHASER360 WASAPI shared endpoint without starting playback;
 - repairs a stale endpoint format with
@@ -68,3 +72,14 @@ RESTORE
 -------
 RESTORE_PHASER360_AUDIO.cmd restores the exported original ADSP and MAX98357A
 drivers when a saved original baseline exists.
+
+
+FIRMWARE
+--------
+The package uses the official Intel-signed SOF 1.9.3 Apollo Lake image used by
+Gemini Lake in this release:
+  sof-apl-v1.9.3-official.ri
+  size: 287488 bytes
+  SHA-256: 40029b5a05665f19a492ef00b8c0a24c42e90d7c00fc57146e07947fd1407d5c
+
+The former p360-f686 diagnostic firmware is not part of this package.
