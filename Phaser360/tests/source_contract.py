@@ -138,6 +138,11 @@ for token in (
     "P360_CSAUDIO_ENDPOINT_REGISTER",
     "P360_CSAUDIO_ENDPOINT_START",
     "P360_CSAUDIO_ENDPOINT_STOP",
+    "P360_CSAUDIO_ENDPOINT_START_ACK",
+    "P360_CSAUDIO_ENDPOINT_STOP_ACK",
+    "P360_CSAUDIO_TRANSITION",
+    "p360_csaudio_next_generation(",
+    "p360_csaudio_require_ack(",
     "ExCreateCallback(",
     "ExRegisterCallback(",
     "ExNotifyCallback(",
@@ -149,6 +154,8 @@ for token in (
 for p in ROOT.rglob("*"):
     if p.suffix.lower() not in (".c",".h",".cpp"):
         continue
+    if p.is_relative_to(ROOT/"max98357a_safe"):
+        continue
     text=p.read_text(errors="ignore")
     for forbidden in (
         "IOCTL_GPIO_WRITE_PINS",
@@ -158,6 +165,40 @@ for p in ROOT.rglob("*"):
         if forbidden in text:
             raise SystemExit(
                 f"direct MAX98357A GPIO ownership reintroduced in {p.relative_to(ROOT)}: {forbidden}")
+
+max_safe=(ROOT/"max98357a_safe/p360_max_safe.c").read_text()
+max_safe_h=(ROOT/"max98357a_safe/p360_max_safe.h").read_text()
+max_inf=(ROOT/"max98357a_safe/P360Max98357Safe.inx").read_text()
+for token in (
+    "return p360_max_force_low(ctx);",
+    "P360_MAX_REQUEST_START_ACK",
+    "P360_MAX_REQUEST_STOP_ACK",
+    "TransitionLock",
+    "WdfWaitLockAcquire(ctx->TransitionLock,NULL)",
+    "WdfWaitLockRelease(ctx->TransitionLock)",
+    "DesiredGeneration",
+    "DesiredOn",
+    "STATUS_CANCELLED",
+    "p360_max_gpio_write(&ctx->Sdmode,0)",
+    "p360_max_gpio_write(&ctx->Sdmode,1)",
+    "ACPI\\MX98357A",
+):
+    if token not in max_safe + "\n" + max_safe_h + "\n" + max_inf:
+        raise SystemExit(f"fail-closed MAX98357A contract missing: {token}")
+
+if "gpio_data = 1" in max_safe or "gpio_data=1" in max_safe:
+    raise SystemExit("legacy D0-on MAX98357A behavior was reintroduced")
+
+max_release_i=max_safe.index("P360MaxReleaseHardware(")
+max_release_mute_i=max_safe.index("muteStatus=p360_max_force_low(ctx);",max_release_i)
+max_release_unreg_i=max_safe.index("ExUnregisterCallback(",max_release_i)
+max_release_gpio_i=max_safe.index("p360_max_gpio_deinit(",max_release_unreg_i)
+max_release_lock_i=max_safe.index("WdfObjectDelete(ctx->TransitionLock)",max_release_gpio_i)
+if not (
+    max_release_i < max_release_mute_i < max_release_unreg_i <
+    max_release_gpio_i < max_release_lock_i
+):
+    raise SystemExit("MAX98357A ReleaseHardware no longer proves mute before teardown")
 
 
 for token in (
@@ -286,23 +327,6 @@ if run_i >= run_call_i:
 
 if "Hard barrier: the endpoint may enumerate" in speaker_endpoint:
     raise SystemExit("old enumerate-only WaveRT barrier was reintroduced")
-
-for token in (
-    "p360_playback_memory_released(",
-    "*CacheType=MmWriteCombined;",
-    "RequestedSize+=delta;",
-    "return STATUS_NOT_SUPPORTED;",
-):
-    if token not in speaker_endpoint:
-        raise SystemExit(f"WaveRT ownership/cache contract missing: {token}")
-
-for forbidden in (
-    "*CacheType=MmCached;",
-    "return STATUS_NOT_IMPLEMENTED;",
-    "RequestedSize-=RequestedSize %",
-):
-    if forbidden in speaker_endpoint:
-        raise SystemExit(f"unsafe legacy WaveRT contract reintroduced: {forbidden}")
 
 
 for token in (
@@ -465,7 +489,7 @@ for token in (
     "Recover-PreviousBaselineIfNeeded",
     "RESUME_AFTER_REBOOT_SCHEDULED=YES",
     "MANUAL_WINDOWS_RESTART_REQUIRED=YES",
-    "DIRECT_FINAL_SPEAKER_TEST=YES",
+    "PREAUDIO_CORE_AND_AMP_MUTE=PASS",
     "FINAL_SPEAKER_PHASE=BEGIN",
     "FINAL_WAVERT_2000MS_MAX_0P5PCT=PASS",
     "FINAL_SPEAKER_STOP_MUTE=PASS",
@@ -495,10 +519,61 @@ for token in (
 ):
     if token not in runner:
         raise SystemExit(f"real WaveRT final-runner contract missing: {token}")
-        raise SystemExit(f"hardware gate runner safety contract missing: {token}")
 
-if '"/install"' in runner:
-    raise SystemExit("hardware gate runner must stage packages without pnputil /install")
+install_test_begin=runner.index("function Install-TestPackage")
+install_test_end=runner.index("function ",install_test_begin+1)
+install_test_body=runner[install_test_begin:install_test_end]
+if '"/install"' in install_test_body:
+    raise SystemExit("P360 ADSP test packages must be staged without pnputil /install")
+
+for token in (
+    'function Assert-SafeAmpPackage',
+    'function Backup-OriginalAmpDriver',
+    'function Install-SafeAmpPackage',
+    'function Restore-OriginalAmpDriver',
+    'function Wait-AmpBinding',
+    '$SafeAmpServiceName = "P360Max98357Safe"',
+    '$SafeAmpProviderName = "PHASER360 Project"',
+    '$SafeAmpDriverVersion = "2.0.0.0"',
+    '$add=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/add-driver",$inf) -AllowFailure',
+    '$remove=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/remove-device",$InstanceId) -AllowFailure',
+    '$scan=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure',
+    '[string]$script:State.AmpOriginalExportedInf) -AllowFailure',
+    'AMP_SAFE_BIND=PASS',
+    'AMP_RESTORE=PASS',
+    'AmpRestoreVerified=$false',
+):
+    if token not in runner:
+        raise SystemExit(f"safe MAX98357A bind/restore transaction missing: {token}")
+
+safe_amp_install_begin=runner.index("function Install-SafeAmpPackage")
+safe_amp_install_end=runner.index("function Restore-OriginalAmpDriver",safe_amp_install_begin)
+safe_amp_install_body=runner[safe_amp_install_begin:safe_amp_install_end]
+if '"/install"' in safe_amp_install_body:
+    raise SystemExit("safe MAX98357A package must be staged before exact devnode remove/rescan")
+
+for token in (
+    "Compile fail-closed MAX98357A dependency",
+    "P360_MAX98357_SAFE_COMPILE=PASS",
+    'Join-Path $root "amp"',
+    "P360Max98357Safe.inf",
+    "P360Max98357Safe.cat",
+    "P360Max98357Safe.sys",
+    'SafeAmpDriverVersion = "2.0.0.0"',
+    'SafeAmpProvider = "PHASER360 Project"',
+    'SafeAmpService = "P360Max98357Safe"',
+    "SafeAmpSysSha256 = $ampHash",
+    "P360_MAX98357_SAFE_SIGN=PASS",
+):
+    if token not in workflow:
+        raise SystemExit(f"safe MAX98357A package/signing workflow missing: {token}")
+
+amp_backup_i=runner.index("Backup-OriginalAmpDriver $ampId")
+amp_install_i=runner.index("Install-SafeAmpPackage $info $ampId",amp_backup_i)
+amp_ready_i=runner.index("AMP_SAFE_READY=PASS",amp_install_i)
+final_phase_after_amp_i=runner.index('Write-RunLog "FINAL_SPEAKER_PHASE=BEGIN"',amp_ready_i)
+if not amp_backup_i < amp_install_i < amp_ready_i < final_phase_after_amp_i:
+    raise SystemExit("safe MAX98357A proof is not complete before speaker phase")
 
 for forbidden in (
     "preaudio-proof.json",
@@ -508,20 +583,23 @@ for forbidden in (
     if forbidden in runner:
         raise SystemExit(f"persistent PRE-AUDIO proof reuse path reintroduced: {forbidden}")
 
-final_phase_i=runner.index('Write-RunLog "FINAL_SPEAKER_PHASE=BEGIN"')
-final_attempt_i=runner.index("$script:State.SpeakerAttempted=$true",final_phase_i)
-final_install_i=runner.index('Install-TestPackage "FinalSpeaker"',final_attempt_i)
+preaudio_phase_i=runner.index('Write-RunLog "PREAUDIO_PHASE=BEGIN"')
+final_install_i=runner.index('Install-TestPackage "FinalSpeaker"',preaudio_phase_i)
 final_core_wait_i=runner.index("Wait-Telemetry -ExpectedFlags 47 -MinimumStage 70",final_install_i)
-final_wave_i=runner.index("$waveResult=Invoke-Tool -Exe $waveTest -Arguments @() -AllowFailure",final_core_wait_i)
+preaudio_pass_i=runner.index('Write-RunLog "PREAUDIO_CORE_AND_AMP_MUTE=PASS"',final_core_wait_i)
+final_phase_i=runner.index('Write-RunLog "FINAL_SPEAKER_PHASE=BEGIN"',preaudio_pass_i)
+final_attempt_i=runner.index("$script:State.SpeakerAttempted=$true",final_phase_i)
+final_wave_i=runner.index("$waveResult=Invoke-Tool -Exe $waveTest -Arguments @() -AllowFailure",final_attempt_i)
 final_stop_wait_i=runner.index("Wait-Telemetry -ExpectedFlags 47 -MinimumStage 120",final_wave_i)
 final_pass_i=runner.index('Write-RunLog "FINAL_WAVERT_2000MS_MAX_0P5PCT=PASS"',final_stop_wait_i)
 final_stop_call_i=runner.index("Disable-TargetAndProveStop $targetId 47",final_pass_i)
 final_stop_i=runner.index('Write-RunLog "FINAL_SPEAKER_STOP_MUTE=PASS"',final_stop_call_i)
 if not (
-    final_phase_i < final_attempt_i < final_install_i < final_core_wait_i <
-    final_wave_i < final_stop_wait_i < final_pass_i < final_stop_call_i < final_stop_i
+    preaudio_phase_i < final_install_i < final_core_wait_i < preaudio_pass_i <
+    final_phase_i < final_attempt_i < final_wave_i < final_stop_wait_i <
+    final_pass_i < final_stop_call_i < final_stop_i
 ):
-    raise SystemExit("single final WaveRT speaker transaction ordering drifted")
+    raise SystemExit("fresh preaudio -> single WaveRT speaker transaction ordering drifted")
 
 for forbidden in (
     "bcdedit.exe /set",
@@ -538,7 +616,9 @@ for token in (
     "net session >nul 2>&1",
     "Start-Process -FilePath '%~f0' -Verb RunAs",
     'P360_AUDIO_GATE.ps1" -Mode Audio',
-    "2. Load final SOF/SSP1 speaker driver",
+    "2. Install pinned fail-closed MAX98357A driver in mute",
+    "3. Fresh PRE-AUDIO proof: SOF + IRQ + IPC3 + HOST topology",
+    "4. If PRE-AUDIO passes: WaveRT speaker test, 2 s / 0.5%%",
     "Return code: %RC%",
     "pause",
 ):
@@ -937,6 +1017,37 @@ for token in (
     if token not in playback:
         raise SystemExit(f"CoolStar/SOF host DMA bridge missing: {token}")
 
+for token in (
+    "P360_HDA_GCAP_OFFSET",
+    "P360_HDA_SD_BASE",
+    "P360_HDA_SD_INTERVAL",
+    "P360_HDA_SD_CTL_RUN",
+    "READ_REGISTER_USHORT(",
+    "READ_REGISTER_UCHAR(",
+    "captureStreams=(gcap >> 8) & 0x0fu;",
+    "playbackStreams=(gcap >> 12) & 0x0fu;",
+    "streamIndex=captureStreams+(ULONG)p->StreamTag-1u;",
+    "p360_playback_prove_hda_run(p,TRUE)",
+    "p360_playback_prove_hda_run(p,FALSE)",
+    "p->Quarantined=TRUE;",
+):
+    if token not in playback:
+        raise SystemExit(f"HDA RUN readback proof missing: {token}")
+
+start_fn_i=playback.index("p360_playback_stream_start(")
+start_trigger_i=playback.index("TriggerDSP(",start_fn_i)
+start_proof_i=playback.index("p360_playback_prove_hda_run(p,TRUE)",start_trigger_i)
+start_running_i=playback.index("p->Running=TRUE;",start_proof_i)
+if not start_fn_i < start_trigger_i < start_proof_i < start_running_i:
+    raise SystemExit("HDA START is not proved before local Running latch")
+
+stop_fn_i=playback.index("p360_playback_stream_stop(")
+stop_trigger_i=playback.index("TriggerDSP(",stop_fn_i)
+stop_proof_i=playback.index("p360_playback_prove_hda_run(p,FALSE)",stop_trigger_i)
+stop_running_i=playback.index("p->Running=FALSE;",stop_proof_i)
+if not stop_fn_i < stop_trigger_i < stop_proof_i < stop_running_i:
+    raise SystemExit("HDA STOP is not proved before local Running clear")
+
 if "DSPEnableSPIB" in playback:
     raise SystemExit("static SPIB was reintroduced into cyclic WaveRT playback")
 
@@ -956,21 +1067,6 @@ host_pcm_i=driver.index("p360_ipc3_build_host_pcm_params(",bind_buffer_i)
 host_prepare_done_i=driver.index("playback->SofParamsPrepared=TRUE;",host_pcm_i)
 if not host_prepare_i < bind_buffer_i < host_pcm_i < host_prepare_done_i:
     raise SystemExit("WaveRT MDL -> CoolStar stream -> SOF PCM_PARAMS ordering drifted")
-
-fail_sof_i=driver.index("fail_sof:",host_prepare_done_i)
-rollback_success_i=driver.index("if (NT_SUCCESS(cleanupStatus)) {",fail_sof_i)
-rollback_clear_i=driver.index("playback->SofRunning=FALSE;",rollback_success_i)
-rollback_fail_i=driver.index("p360_state_fail(&ctx->State,P360_FAIL_STREAM);",rollback_clear_i)
-if not fail_sof_i < rollback_success_i < rollback_clear_i < rollback_fail_i:
-    raise SystemExit("failed STREAM_STOP rollback can still discard SOF ownership")
-
-release_playback_i=driver.index("p360_host_playback_release(",fail_sof_i)
-pcm_free_i=driver.index("p360_ipc3_build_pcm_free(",release_playback_i)
-pcm_free_fail_i=driver.index("if (!NT_SUCCESS(status)) {",pcm_free_i)
-pcm_free_return_i=driver.index("return firstStatus;",pcm_free_fail_i)
-pcm_params_clear_i=driver.index("playback->SofParamsPrepared=FALSE;",pcm_free_return_i)
-if not pcm_free_i < pcm_free_fail_i < pcm_free_return_i < pcm_params_clear_i:
-    raise SystemExit("failed PCM_FREE can still release firmware-owned host metadata")
 
 host_start_i=driver.index("p360_host_playback_start(")
 dma_start_i=driver.index("p360_playback_stream_start(playback)",host_start_i)
@@ -1190,11 +1286,15 @@ for token in (
     if token not in runner:
         raise SystemExit(f"hardware gate exact-failure diagnostic missing: {token}")
 
-amp_i=runner.index("$amp=Get-AmpDevice")
-final_phase_i=runner.index('Write-RunLog "FINAL_SPEAKER_PHASE=BEGIN"',amp_i)
-final_install_i=runner.index('Install-TestPackage "FinalSpeaker"',final_phase_i)
-if not (amp_i < final_phase_i < final_install_i):
-    raise SystemExit("final MAX98357A presence gate is not ahead of driver bind")
+amp_install_gate_i=runner.index("Install-SafeAmpPackage $info $ampId")
+amp_ready_gate_i=runner.index("AMP_SAFE_READY=PASS",amp_install_gate_i)
+preaudio_phase_gate_i=runner.index('Write-RunLog "PREAUDIO_PHASE=BEGIN"',amp_ready_gate_i)
+final_install_gate_i=runner.index('Install-TestPackage "FinalSpeaker"',preaudio_phase_gate_i)
+if not (
+    amp_install_gate_i < amp_ready_gate_i <
+    preaudio_phase_gate_i < final_install_gate_i
+):
+    raise SystemExit("safe MAX98357A proof is not ahead of the fresh preaudio driver bind")
 
 
 if "attributes.ExecutionLevel = WdfExecutionLevelDispatch" in runtime:

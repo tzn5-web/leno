@@ -341,7 +341,9 @@ p360_playback_memory_released(
         !Playback->StreamPrepared &&
         !Playback->Running &&
         !Playback->SofRunning &&
-        !Playback->SofParamsPrepared;
+        !Playback->SofParamsPrepared &&
+        !Playback->SpeakerStarted &&
+        !Playback->SpeakerArmed;
 }
 
 class P360TopologyMiniport final : public IMiniportTopology
@@ -792,6 +794,12 @@ P360WaveStream::~P360WaveStream()
         (void)p360_host_playback_release(
             m_Context,
             &m_Playback);
+
+        if (!p360_playback_memory_released(&m_Playback)) {
+            (void)p360_host_playback_force_quiesce(
+                m_Context,
+                &m_Playback);
+        }
     }
 
     if (m_Mdl && !p360_playback_memory_released(&m_Playback)) {
@@ -1084,10 +1092,17 @@ P360WaveStream::FreeAudioBuffer(
     UNREFERENCED_PARAMETER(BufferSize);
 
     if (AudioBufferMdl && AudioBufferMdl==m_Mdl) {
-        if (m_Context)
+        if (m_Context) {
             (void)p360_host_playback_release(
                 m_Context,
                 &m_Playback);
+
+            if (!p360_playback_memory_released(&m_Playback)) {
+                (void)p360_host_playback_force_quiesce(
+                    m_Context,
+                    &m_Playback);
+            }
+        }
 
         if (!p360_playback_memory_released(&m_Playback)) {
             /*

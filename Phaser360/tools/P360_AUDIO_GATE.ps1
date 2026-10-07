@@ -11,6 +11,9 @@ $ErrorActionPreference = "Stop"
 $ExpectedHwIdPrefix = "CSAUDIO\ADSP&CTLR_VEN_8086&CTLR_DEV_3198"
 $ExpectedBusPrefix = "PCI\VEN_8086&DEV_3198"
 $ExpectedAmpPrefix = "ACPI\MX98357A"
+$SafeAmpServiceName = "P360Max98357Safe"
+$SafeAmpProviderName = "PHASER360 Project"
+$SafeAmpDriverVersion = "2.0.0.0"
 $ExpectedFirmwareBytes = 246528
 $ExpectedFirmwareSha256 = "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab"
 $TelemetryPath = "HKLM:\SYSTEM\CurrentControlSet\Services\P360SofAudio\Parameters"
@@ -93,10 +96,10 @@ function Get-AmpDevice {
     $targets = @(Get-CimInstance Win32_PnPEntity | Where-Object {
         $_.PNPDeviceID -and $_.PNPDeviceID.StartsWith($ExpectedAmpPrefix,[StringComparison]::OrdinalIgnoreCase)
     })
-    if ($targets.Count -lt 1) {
-        throw "MAX98357A ACPI device was not found."
+    if ($targets.Count -ne 1) {
+        throw "Expected exactly one MAX98357A ACPI device; found $($targets.Count)."
     }
-    $amp = $targets | Select-Object -First 1
+    $amp = $targets[0]
     if ([int]$amp.ConfigManagerErrorCode -ne 0) {
         throw "MAX98357A is not healthy; ConfigManagerErrorCode=$($amp.ConfigManagerErrorCode), Service=$($amp.Service)."
     }
@@ -293,6 +296,34 @@ function Assert-Package([string]$RunMode,$Info) {
     return $folder
 }
 
+function Assert-SafeAmpPackage($Info) {
+    $folder=Join-Path $PackageRoot "amp"
+    foreach ($name in @("P360Max98357Safe.inf","P360Max98357Safe.cat","P360Max98357Safe.sys")) {
+        if (-not (Test-Path -LiteralPath (Join-Path $folder $name) -PathType Leaf)) {
+            throw "Signed safe-amp package file missing: $folder\$name"
+        }
+    }
+
+    if (-not $Info.SafeAmpSysSha256 -or
+        -not $Info.SafeAmpDriverVersion -or
+        -not $Info.SafeAmpProvider -or
+        -not $Info.SafeAmpService) {
+        throw "PACKAGE_INFO.json is missing safe MAX98357A identity."
+    }
+
+    $sysHash=(Get-FileHash -LiteralPath (Join-Path $folder "P360Max98357Safe.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($sysHash -ne ([string]$Info.SafeAmpSysSha256).ToLowerInvariant()) {
+        throw "Safe MAX98357A SYS hash mismatch."
+    }
+
+    $infVersion=Get-InfVersion (Join-Path $folder "P360Max98357Safe.inf")
+    if ($infVersion -ne [string]$Info.SafeAmpDriverVersion) {
+        throw "Safe MAX98357A INF version mismatch: $infVersion != $($Info.SafeAmpDriverVersion)"
+    }
+
+    return $folder
+}
+
 function Import-TestCertificate($Info) {
     $cer = Join-Path $PackageRoot "cert\P360_TEST.cer"
     if (-not (Test-Path -LiteralPath $cer -PathType Leaf)) {
@@ -325,12 +356,15 @@ function Remove-TestCertificate([string]$Thumbprint) {
     }
 }
 
-function Assert-CatalogSignature([string]$Folder) {
-    $cat = Join-Path $Folder "P360SofAudio.cat"
-    $sig = Get-AuthenticodeSignature -LiteralPath $cat
+function Assert-CatalogSignatureFile([string]$CatalogPath) {
+    $sig = Get-AuthenticodeSignature -LiteralPath $CatalogPath
     if ($sig.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
-        throw "Catalog signature is not valid after certificate import: $($sig.Status)"
+        throw "Catalog signature is not valid after certificate import: $CatalogPath status=$($sig.Status)"
     }
+}
+
+function Assert-CatalogSignature([string]$Folder) {
+    Assert-CatalogSignatureFile (Join-Path $Folder "P360SofAudio.cat")
 }
 
 function Backup-OriginalDriver([string]$InstanceId) {
@@ -382,6 +416,216 @@ function Backup-OriginalDriver([string]$InstanceId) {
         $script:State.OriginalInfName,
         $script:State.OriginalDriverVersion,
         $script:State.OriginalProvider)
+}
+
+function Backup-OriginalAmpDriver([string]$InstanceId) {
+    $amp=Get-AmpDevice
+    if ([string]$amp.PNPDeviceID -ne $InstanceId) {
+        throw "MAX98357A instance changed before baseline capture."
+    }
+
+    $driver=Get-SignedDriverOrNull $InstanceId
+    if (-not $driver) {
+        throw "MAX98357A baseline has no signed-driver record."
+    }
+
+    $inf=[string]$driver.InfName
+    if ($inf -notmatch "(?i)^oem\d+\.inf$") {
+        throw "Current MAX98357A driver '$inf' is not exportable; refusing replacement."
+    }
+
+    $backup=Join-Path $script:Session "original-amp-driver"
+    New-Item -ItemType Directory -Path $backup -Force | Out-Null
+    Invoke-Tool -Exe "pnputil.exe" -Arguments @("/export-driver",$inf,$backup) | Out-Null
+    $exportedInf=Get-ChildItem -LiteralPath $backup -Filter "*.inf" -File -Recurse | Select-Object -First 1
+    if (-not $exportedInf) {
+        throw "Original MAX98357A driver export did not produce an INF."
+    }
+
+    $script:State.AmpInstanceId=$InstanceId
+    $script:State.AmpOriginalService=[string]$amp.Service
+    $script:State.AmpOriginalProblemCode=[int]$amp.ConfigManagerErrorCode
+    $script:State.AmpOriginalInfName=$inf
+    $script:State.AmpOriginalDriverVersion=[string]$driver.DriverVersion
+    $script:State.AmpOriginalProvider=[string]$driver.DriverProviderName
+    $script:State.AmpOriginalExportedInf=$exportedInf.FullName
+    $script:State.AmpRestoreVerified=$false
+    Save-State
+
+    Write-RunLog ("AMP_ORIGINAL=BOUND INF={0} SERVICE={1} VERSION={2} PROVIDER={3}" -f
+        $script:State.AmpOriginalInfName,
+        $script:State.AmpOriginalService,
+        $script:State.AmpOriginalDriverVersion,
+        $script:State.AmpOriginalProvider)
+}
+
+function Wait-AmpBinding(
+    [string]$InstanceId,
+    [string]$Version,
+    [string]$Provider,
+    [string]$Service,
+    [int]$Seconds=15
+) {
+    $deadline=(Get-Date).AddSeconds($Seconds)
+    do {
+        Start-Sleep -Milliseconds 500
+        $dev=Get-TargetByIdOrNull $InstanceId
+        $drv=Get-BoundDriverOrNull $InstanceId
+        if ($dev -and $drv -and
+            [int]$dev.ConfigManagerErrorCode -eq 0 -and
+            [string]$dev.Service -eq $Service -and
+            [string]$drv.DriverVersion -eq $Version -and
+            [string]$drv.DriverProviderName -eq $Provider) {
+            return [pscustomobject]@{ Device=$dev; Driver=$drv }
+        }
+    } while ((Get-Date) -lt $deadline)
+    return $null
+}
+
+function Get-SafeAmpStoreEntries($Info) {
+    return @(Get-WindowsDriver -Online -All | Where-Object {
+        [string]$_.ProviderName -eq [string]$Info.SafeAmpProvider -and
+        [string]$_.Version -eq [string]$Info.SafeAmpDriverVersion
+    })
+}
+
+function Install-SafeAmpPackage($Info,[string]$InstanceId) {
+    $folder=Assert-SafeAmpPackage $Info
+    Assert-CatalogSignatureFile (Join-Path $folder "P360Max98357Safe.cat")
+
+    $inf=Join-Path $folder "P360Max98357Safe.inf"
+    $version=[string]$Info.SafeAmpDriverVersion
+    $provider=[string]$Info.SafeAmpProvider
+    $service=[string]$Info.SafeAmpService
+
+    $disable=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/disable-device",$InstanceId) -AllowFailure
+    if ($disable.ExitCode -ne 0) {
+        throw "Could not disable MAX98357A before safe-driver transition."
+    }
+    $script:State.AmpDisabledByRunner=$true
+    Save-State
+
+    $add=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/add-driver",$inf) -AllowFailure
+    if ($add.ExitCode -ne 0) {
+        throw "Safe MAX98357A staging failed with exit code $($add.ExitCode)."
+    }
+    if ($add.Output -match "(?i)reboot is needed|restart is needed") {
+        throw "Safe MAX98357A staging requested reboot; refusing audio execution."
+    }
+
+    $store=Get-SafeAmpStoreEntries $Info
+    if ($store.Count -ne 1 -or -not $store[0].Driver) {
+        throw "Could not identify exactly one staged safe MAX98357A package."
+    }
+    $script:State.SafeAmpInfName=[string]$store[0].Driver
+    Save-State
+
+    # Old CoolStar is already in D0Exit (SDMODE low). Remove only the exact
+    # amplifier devnode, then let a clean scan select the pinned newer package.
+    $remove=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/remove-device",$InstanceId) -AllowFailure
+    if ($remove.ExitCode -ne 0) {
+        throw "Exact MAX98357A devnode removal failed."
+    }
+
+    $deadline=(Get-Date).AddSeconds(8)
+    do {
+        Start-Sleep -Milliseconds 250
+        if (-not (Get-TargetByIdOrNull $InstanceId)) { break }
+    } while ((Get-Date) -lt $deadline)
+    if (Get-TargetByIdOrNull $InstanceId) {
+        throw "MAX98357A devnode did not disappear after exact removal."
+    }
+
+    $scan=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure
+    if ($scan.ExitCode -ne 0) {
+        throw "PnP rescan failed while selecting safe MAX98357A."
+    }
+
+    $bound=Wait-AmpBinding $InstanceId $version $provider $service 15
+    if (-not $bound) {
+        throw "MAX98357A did not bind to the pinned fail-closed driver."
+    }
+
+    $script:State.SafeAmpInstalled=$true
+    $script:State.AmpDisabledByRunner=$false
+    Save-State
+
+    Write-RunLog ("AMP_SAFE_BIND=PASS SERVICE={0} VERSION={1} PROVIDER={2} INF={3}" -f
+        [string]$bound.Device.Service,
+        [string]$bound.Driver.DriverVersion,
+        [string]$bound.Driver.DriverProviderName,
+        [string]$bound.Driver.InfName)
+}
+
+function Restore-OriginalAmpDriver {
+    if (-not $script:State -or
+        -not $script:State.PSObject.Properties["AmpInstanceId"] -or
+        -not [string]$script:State.AmpInstanceId) {
+        return
+    }
+
+    $instance=[string]$script:State.AmpInstanceId
+
+    # D0Exit of either safe MAX or upstream CoolStar drives SDMODE low.
+    $null=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/disable-device",$instance) -AllowFailure
+
+    $dev=Get-TargetByIdOrNull $instance
+    if ($dev) {
+        $remove=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/remove-device",$instance) -AllowFailure
+        if ($remove.ExitCode -ne 0) {
+            throw "Could not remove exact MAX98357A devnode during restore."
+        }
+        $deadline=(Get-Date).AddSeconds(8)
+        do {
+            Start-Sleep -Milliseconds 250
+            if (-not (Get-TargetByIdOrNull $instance)) { break }
+        } while ((Get-Date) -lt $deadline)
+        if (Get-TargetByIdOrNull $instance) {
+            throw "MAX98357A devnode did not disappear during restore."
+        }
+    }
+
+    if ($script:State.PSObject.Properties["SafeAmpInfName"] -and
+        [string]$script:State.SafeAmpInfName) {
+        $delete=Invoke-Tool -Exe "pnputil.exe" -Arguments @(
+            "/delete-driver",
+            [string]$script:State.SafeAmpInfName,
+            "/force") -AllowFailure
+        Write-RunLog "AMP_SAFE_DELETE_EXIT=$($delete.ExitCode)"
+    }
+
+    if (-not $script:State.AmpOriginalExportedInf -or
+        -not (Test-Path -LiteralPath ([string]$script:State.AmpOriginalExportedInf) -PathType Leaf)) {
+        throw "Original MAX98357A driver backup is missing."
+    }
+
+    $restore=Invoke-Tool -Exe "pnputil.exe" -Arguments @(
+        "/add-driver",
+        [string]$script:State.AmpOriginalExportedInf) -AllowFailure
+    if ($restore.ExitCode -ne 0) {
+        throw "Original MAX98357A staging failed with exit code $($restore.ExitCode)."
+    }
+    Write-RunLog "AMP_RESTORE_STAGE_EXIT=$($restore.ExitCode)"
+
+    $scan=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure
+    if ($scan.ExitCode -ne 0) {
+        throw "MAX98357A baseline rescan failed."
+    }
+
+    $bound=Wait-AmpBinding $instance ([string]$script:State.AmpOriginalDriverVersion) ([string]$script:State.AmpOriginalProvider) ([string]$script:State.AmpOriginalService) 15
+    if (-not $bound) {
+        throw "Original MAX98357A driver was not restored exactly."
+    }
+
+    $script:State.SafeAmpInstalled=$false
+    $script:State.AmpDisabledByRunner=$false
+    $script:State.AmpRestoreVerified=$true
+    Save-State
+
+    Write-RunLog ("AMP_RESTORE=PASS SERVICE={0} VERSION={1} PROVIDER={2}" -f
+        [string]$bound.Device.Service,
+        [string]$bound.Driver.DriverVersion,
+        [string]$bound.Driver.DriverProviderName)
 }
 
 function Install-Firmware([string]$Firmware) {
@@ -724,6 +968,8 @@ function Assert-NoStaleTestPackage {
 function Assert-SafeBaselineBeforeNewTest([string]$InstanceId) {
     $device=Get-TargetByIdOrNull $InstanceId
     $driver=Get-BoundDriverOrNull $InstanceId
+    $amp=Get-AmpDevice
+    $ampDriver=Get-BoundDriverOrNull ([string]$amp.PNPDeviceID)
 
     if (-not $device) {
         throw "ADSP target is missing before test."
@@ -741,6 +987,23 @@ function Assert-SafeBaselineBeforeNewTest([string]$InstanceId) {
         [string]$driver.DriverVersion -ne "1.1.0.0") {
         throw ("ADSP baseline mismatch: provider={0}, version={1}; expected PHASER360 Project 1.1.0.0." -f
             [string]$driver.DriverProviderName,[string]$driver.DriverVersion)
+    }
+
+    if (-not $ampDriver) {
+        throw "MAX98357A baseline has no signed-driver record."
+    }
+    if ([string]$amp.Service -eq $SafeAmpServiceName -or
+        ([string]$ampDriver.DriverProviderName -eq $SafeAmpProviderName -and
+         [string]$ampDriver.DriverVersion -eq $SafeAmpDriverVersion)) {
+        throw "Fail-closed MAX98357A test driver is still active from a previous run."
+    }
+
+    $staleAmp=@(Get-WindowsDriver -Online -All | Where-Object {
+        [string]$_.ProviderName -eq $SafeAmpProviderName -and
+        [string]$_.Version -eq $SafeAmpDriverVersion
+    })
+    if ($staleAmp.Count -ne 0) {
+        throw "Stale fail-closed MAX98357A package remains in Driver Store."
     }
 
     $stale=@(Get-P360StoreEntries | Where-Object {
@@ -1139,6 +1402,24 @@ function Current-BaselineNeedsRecovery([string]$InstanceId) {
     if ($driver -and
         (Test-IsReservedGateVersion ([string]$driver.DriverVersion))) { return $true }
 
+    $amp=$null
+    try { $amp=Get-AmpDevice } catch { $amp=$null }
+    if ($amp -and [string]$amp.Service -eq $SafeAmpServiceName) { return $true }
+
+    $ampDriver=$null
+    if ($amp) { $ampDriver=Get-BoundDriverOrNull ([string]$amp.PNPDeviceID) }
+    if ($ampDriver -and
+        [string]$ampDriver.DriverProviderName -eq $SafeAmpProviderName -and
+        [string]$ampDriver.DriverVersion -eq $SafeAmpDriverVersion) {
+        return $true
+    }
+
+    $staleAmp=@(Get-WindowsDriver -Online -All | Where-Object {
+        [string]$_.ProviderName -eq $SafeAmpProviderName -and
+        [string]$_.Version -eq $SafeAmpDriverVersion
+    })
+    if ($staleAmp.Count -gt 0) { return $true }
+
     return $false
 }
 
@@ -1177,6 +1458,7 @@ function Recover-PreviousBaselineIfNeeded([string]$InstanceId) {
     try {
         Write-RunLog "AUTO_BASELINE_RECOVERY=BEGIN"
         Restore-OriginalDriver $InstanceId
+        Restore-OriginalAmpDriver
         Restore-Firmware
         Remove-TestCertificate ([string]$script:State.CertificateThumbprint)
         Write-RunLog "AUTO_BASELINE_RECOVERY=PASS"
@@ -1236,6 +1518,11 @@ function Write-Report([string]$Result,[object]$Telemetry) {
         OriginalService=$script:State.OriginalService
         OriginalInfName=$script:State.OriginalInfName
         OriginalDriverVersion=$script:State.OriginalDriverVersion
+        AmpInstanceId=$(if ($script:State.PSObject.Properties["AmpInstanceId"]) {[string]$script:State.AmpInstanceId} else {""})
+        AmpOriginalService=$(if ($script:State.PSObject.Properties["AmpOriginalService"]) {[string]$script:State.AmpOriginalService} else {""})
+        AmpOriginalDriverVersion=$(if ($script:State.PSObject.Properties["AmpOriginalDriverVersion"]) {[string]$script:State.AmpOriginalDriverVersion} else {""})
+        SafeAmpInstalled=(Get-StateBool "SafeAmpInstalled")
+        AmpRestoreVerified=(Get-StateBool "AmpRestoreVerified")
         PreAudioPassed=(Get-StateBool "PreAudioPassed")
         PreAudioStopProved=(Get-StateBool "PreAudioStopProved")
         SpeakerAttempted=(Get-StateBool "SpeakerAttempted")
@@ -1256,6 +1543,7 @@ if ($Mode -eq "Restore") {
     $targetId=[string]$script:State.TargetInstanceId
     try {
         Restore-OriginalDriver $targetId
+        Restore-OriginalAmpDriver
         Restore-Firmware
         Remove-TestCertificate ([string]$script:State.CertificateThumbprint)
         Write-RunLog "RESTORE=PASS"
@@ -1284,7 +1572,7 @@ try {
 New-RunSession "Audio" | Out-Null
 Write-RunLog "PHASER360 AUDIO ONE-SHOT"
 Write-RunLog "MODE=Audio"
-Write-RunLog "DIRECT_FINAL_SPEAKER_TEST=YES"
+Write-RunLog "FRESH_PREAUDIO_THEN_SPEAKER=YES"
 Write-RunLog "NO_AUTO_REBOOT=YES"
 
 $info=Read-PackageInfo
@@ -1304,6 +1592,17 @@ $script:State=[pscustomobject]@{
     OriginalExportedInf=""
     TestInfName=""
     TestDriverVersion=""
+    AmpInstanceId=""
+    AmpOriginalService=""
+    AmpOriginalProblemCode=0
+    AmpOriginalInfName=""
+    AmpOriginalDriverVersion=""
+    AmpOriginalProvider=""
+    AmpOriginalExportedInf=""
+    SafeAmpInfName=""
+    SafeAmpInstalled=$false
+    AmpDisabledByRunner=$false
+    AmpRestoreVerified=$false
     CertificateThumbprint=""
     FirmwareHadOriginal=$false
     FirmwareBackup=""
@@ -1334,6 +1633,7 @@ Write-RunLog "FIRMWARE=$firmware"
 Write-RunLog "FIRMWARE_SHA256=$ExpectedFirmwareSha256"
 
 $finalFolder=Assert-Package "FinalSpeaker" $info
+$ampFolder=Assert-SafeAmpPackage $info
 Write-RunLog "PACKAGE_HEAD=$($info.HeadSha)"
 
 $telemetry=$null
@@ -1341,18 +1641,33 @@ $success=$false
 
 try {
     Backup-OriginalDriver $targetId
+
+    $amp=Get-AmpDevice
+    $ampId=[string]$amp.PNPDeviceID
+    Backup-OriginalAmpDriver $ampId
+
     Install-Firmware $firmware
     Import-TestCertificate $info | Out-Null
+    Install-SafeAmpPackage $info $ampId
 
     # Final proof is Windows PCM, not a DSP-generated Tone path:
     # WinMM -> Windows Audio Engine -> WaveRT -> CoolStar HDA DMA ->
     # SOF HOST -> SSP1 -> MAX98357A.
     $amp=Get-AmpDevice
-    Write-RunLog "AMP=$($amp.PNPDeviceID) SERVICE=$($amp.Service)"
-    Write-RunLog "FINAL_SPEAKER_PHASE=BEGIN"
-    $script:State.SpeakerAttempted=$true
-    Save-State
+    $ampDriver=Get-BoundDriverOrNull ([string]$amp.PNPDeviceID)
+    if (-not $ampDriver -or
+        [string]$amp.Service -ne [string]$info.SafeAmpService -or
+        [string]$ampDriver.DriverVersion -ne [string]$info.SafeAmpDriverVersion -or
+        [string]$ampDriver.DriverProviderName -ne [string]$info.SafeAmpProvider) {
+        throw "Fail-closed MAX98357A identity changed before speaker phase."
+    }
+    Write-RunLog ("AMP_SAFE_READY=PASS ID={0} SERVICE={1} VERSION={2} PROVIDER={3}" -f
+        [string]$amp.PNPDeviceID,
+        [string]$amp.Service,
+        [string]$ampDriver.DriverVersion,
+        [string]$ampDriver.DriverProviderName)
 
+    Write-RunLog "PREAUDIO_PHASE=BEGIN"
     Install-TestPackage "FinalSpeaker" $info $targetId
 
     # Final HOST build flags:
@@ -1363,7 +1678,14 @@ try {
     if ($telemetry.BootEpoch -lt 1 -or $telemetry.Stage -lt 70) {
         throw "Final HOST driver did not reach fresh AUDIO_CORE."
     }
+    $script:State.PreAudioPassed=$true
+    Save-State
+    Write-RunLog "PREAUDIO_CORE_AND_AMP_MUTE=PASS"
     Write-RunLog "FINAL_HOST_AUDIO_CORE=PASS"
+
+    Write-RunLog "FINAL_SPEAKER_PHASE=BEGIN"
+    $script:State.SpeakerAttempted=$true
+    Save-State
 
     $waveTest=Join-Path $PackageRoot "P360_WAVERT_TEST.exe"
     if (-not (Test-Path -LiteralPath $waveTest -PathType Leaf)) {
@@ -1423,6 +1745,14 @@ try {
     }
 
     try {
+        Restore-OriginalAmpDriver
+        Write-RunLog "FINAL_AMP_RESTORE=PASS"
+    } catch {
+        Write-RunLog "FINAL_AMP_RESTORE=FAIL $($_.Exception.Message)"
+        $success=$false
+    }
+
+    try {
         Restore-Firmware
         Write-RunLog "FIRMWARE_RESTORE=PASS"
     } catch {
@@ -1452,7 +1782,8 @@ if ($success) {
     if (-not $script:State.SpeakerAttempted -or
         -not $script:State.SpeakerPassed -or
         -not $script:State.SpeakerStopProved -or
-        -not $script:State.RestoreVerified) {
+        -not $script:State.RestoreVerified -or
+        -not $script:State.AmpRestoreVerified) {
         Write-RunLog "FINAL_GATE=FAIL incomplete proof vector"
         $success=$false
     }

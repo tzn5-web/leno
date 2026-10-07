@@ -13,11 +13,12 @@ if not "%errorlevel%"=="0" (
 
 echo ============================================================
 echo PHASER360 AUDIO ONE-SHOT
-echo 1. Recover/verify baseline P360AdspProbe
-echo 2. Load final SOF/SSP1 speaker driver
-echo 3. Internal speaker tone: 2 seconds, 0.5%% full-scale
-echo 4. STOP/mute and verified baseline restore
-echo No automatic reboot.
+echo 1. Recover/verify ADSP + MAX98357A baselines
+echo 2. Install pinned fail-closed MAX98357A driver in mute
+echo 3. Fresh PRE-AUDIO proof: SOF + IRQ + IPC3 + HOST topology
+echo 4. If PRE-AUDIO passes: WaveRT speaker test, 2 s / 0.5%%
+echo 5. Prove STOP/mute and restore both original drivers
+echo No automatic reboot. No automatic speaker retry.
 echo ============================================================
 echo.
 
@@ -34,7 +35,7 @@ if "%RC%"=="0" (
     echo automatically after login; approve the Administrator prompt.
     echo NO SPEAKER TEST WAS STARTED.
 ) else (
-    echo PHASER360 FINAL SPEAKER TEST: FAILED / STOPPED SAFELY
+    echo PHASER360 AUDIO GATE: FAILED / STOPPED SAFELY
     echo The runner attempted no second/retry speaker phase.
 )
 echo Return code: %RC%

@@ -14,7 +14,9 @@ typedef enum P360_CSAUDIO_ENDPOINT_REQUEST {
     P360_CSAUDIO_ENDPOINT_REGISTER = 0,
     P360_CSAUDIO_ENDPOINT_START,
     P360_CSAUDIO_ENDPOINT_STOP,
-    P360_CSAUDIO_ENDPOINT_OVERRIDE_FORMAT
+    P360_CSAUDIO_ENDPOINT_OVERRIDE_FORMAT,
+    P360_CSAUDIO_ENDPOINT_START_ACK,
+    P360_CSAUDIO_ENDPOINT_STOP_ACK
 } P360_CSAUDIO_ENDPOINT_REQUEST;
 
 typedef struct P360_CSAUDIO_FORMAT_OVERRIDE {
@@ -25,16 +27,24 @@ typedef struct P360_CSAUDIO_FORMAT_OVERRIDE {
     LONG force32BitOutputContainer; /* CoolStar BOOL ABI: 32-bit signed */
 } P360_CSAUDIO_FORMAT_OVERRIDE;
 
+typedef struct P360_CSAUDIO_TRANSITION {
+    UINT32 generation;
+    LONG status;
+    UINT32 poweredOn;
+} P360_CSAUDIO_TRANSITION;
+
 typedef struct P360_CSAUDIO_ARG {
     UINT32 argSz;
     P360_CSAUDIO_ENDPOINT_TYPE endpointType;
     P360_CSAUDIO_ENDPOINT_REQUEST endpointRequest;
     union {
         P360_CSAUDIO_FORMAT_OVERRIDE formatOverride;
+        P360_CSAUDIO_TRANSITION transition;
     } Payload;
 } P360_CSAUDIO_ARG;
 
 C_ASSERT(sizeof(P360_CSAUDIO_FORMAT_OVERRIDE) == 12);
+C_ASSERT(sizeof(P360_CSAUDIO_TRANSITION) == 12);
 C_ASSERT(sizeof(P360_CSAUDIO_ARG) == 24);
 
 typedef struct P360_CSAUDIO_LINK {
@@ -44,6 +54,11 @@ typedef struct P360_CSAUDIO_LINK {
     volatile LONG SpeakerRegistered;
     volatile LONG SpeakerFormatSeen;
     volatile LONG SpeakerStarted;
+    volatile LONG SpeakerGeneration;
+    volatile LONG AckGeneration;
+    volatile LONG AckRequest;
+    volatile LONG AckStatus;
+    volatile LONG AckPoweredOn;
     UINT16 SpeakerChannels;
     UINT16 SpeakerFrequency;
     UINT16 SpeakerBitsPerSample;
@@ -67,7 +82,7 @@ p360_csaudio_speaker_stop(
     _Inout_ P360_CSAUDIO_LINK *Link
     );
 
-VOID
+NTSTATUS
 p360_csaudio_close(
     _Inout_ P360_CSAUDIO_LINK *Link
     );

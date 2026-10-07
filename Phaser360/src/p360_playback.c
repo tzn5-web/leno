@@ -1,6 +1,72 @@
 #include "../include/p360_playback.h"
 #include "../include/p360_board.h"
 
+#define P360_HDA_GCAP_OFFSET       0x00u
+#define P360_HDA_SD_BASE           0x80u
+#define P360_HDA_SD_INTERVAL       0x20u
+#define P360_HDA_SD_CTL_OFFSET     0x00u
+#define P360_HDA_SD_CTL_RUN        0x02u
+#define P360_HDA_RUN_POLL_US       10u
+#define P360_HDA_RUN_POLL_COUNT    1000u
+
+static NTSTATUS
+p360_playback_prove_hda_run(
+    _In_ const P360_PLAYBACK_STREAM *p,
+    _In_ BOOLEAN expectedRunning
+    )
+{
+    UINT8 *hda;
+    USHORT gcap;
+    ULONG captureStreams;
+    ULONG playbackStreams;
+    ULONG streamIndex;
+    ULONG ctlOffset;
+    ULONG attempt;
+
+    if (!p || !p->Bus || !p->Bus->resources_valid ||
+        !p->Bus->hda.Base.baseptr ||
+        p->Bus->hda.Len<sizeof(USHORT) ||
+        p->StreamTag<1u) {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+
+    hda=p->Bus->hda.Base.baseptr;
+    gcap=READ_REGISTER_USHORT(
+        (volatile USHORT *)(hda+P360_HDA_GCAP_OFFSET));
+
+    /*
+     * Match the pinned CoolStar stream allocation exactly:
+     * captureIndexOff=0, playbackIndexOff=captureStreams and Intel playback
+     * tags are assigned 1..playbackStreams in descriptor order.
+     */
+    captureStreams=(gcap >> 8) & 0x0fu;
+    playbackStreams=(gcap >> 12) & 0x0fu;
+    if (!playbackStreams ||
+        (ULONG)p->StreamTag>playbackStreams) {
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+    }
+
+    streamIndex=captureStreams+(ULONG)p->StreamTag-1u;
+    ctlOffset=P360_HDA_SD_BASE+
+        P360_HDA_SD_INTERVAL*streamIndex+
+        P360_HDA_SD_CTL_OFFSET;
+    if (ctlOffset>=p->Bus->hda.Len)
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+
+    for (attempt=0;attempt<P360_HDA_RUN_POLL_COUNT;++attempt) {
+        UCHAR ctl=READ_REGISTER_UCHAR(
+            (volatile UCHAR *)(hda+ctlOffset));
+        BOOLEAN running=(ctl&P360_HDA_SD_CTL_RUN) ? TRUE : FALSE;
+
+        if (running==expectedRunning)
+            return STATUS_SUCCESS;
+
+        KeStallExecutionProcessor(P360_HDA_RUN_POLL_US);
+    }
+
+    return STATUS_IO_TIMEOUT;
+}
+
 static ULONG
 p360_playback_page_table_required(
     _In_ ULONG pages
@@ -317,6 +383,34 @@ p360_playback_stream_start(
         TRUE);
     KeMemoryBarrier();
 
+    {
+        NTSTATUS status=p360_playback_prove_hda_run(p,TRUE);
+        if (!NT_SUCCESS(status)) {
+            NTSTATUS stopProof;
+
+            /*
+             * TriggerDSP has a void ABI. If RUN did not latch, synchronously
+             * request STOP and prove RUN=0 before returning the start error.
+             * If even STOP cannot be proved, quarantine the stream so its MDL
+             * can never be released underneath a possibly live HDA engine.
+             */
+            p->Bus->iface.TriggerDSP(
+                p->Bus->iface.Context,
+                p->Stream,
+                FALSE);
+            KeMemoryBarrier();
+            stopProof=p360_playback_prove_hda_run(p,FALSE);
+            if (!NT_SUCCESS(stopProof)) {
+                p->Quarantined=TRUE;
+                p->Running=TRUE;
+                return stopProof;
+            }
+
+            p->Running=FALSE;
+            return status;
+        }
+    }
+
     p->Running=TRUE;
     return STATUS_SUCCESS;
 }
@@ -339,6 +433,21 @@ p360_playback_stream_stop(
         p->Stream,
         FALSE);
     KeMemoryBarrier();
+
+    {
+        NTSTATUS status=p360_playback_prove_hda_run(p,FALSE);
+        if (!NT_SUCCESS(status)) {
+            /*
+             * Never translate the legacy void TriggerDSP ABI into an
+             * unproved local STOP. Keep ownership latched and quarantine the
+             * stream so the WaveRT MDL/page table cannot be freed.
+             */
+            p->Quarantined=TRUE;
+            p->Running=TRUE;
+            return status;
+        }
+    }
+
     p->Running=FALSE;
     return STATUS_SUCCESS;
 }

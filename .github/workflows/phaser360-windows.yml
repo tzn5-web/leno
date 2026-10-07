@@ -8,6 +8,7 @@ on:
   push:
     branches:
       - phaser360-sof-windows-port
+      - phaser360-max-safe-wip
     paths:
       - "Phaser360/**"
       - ".github/workflows/phaser360-windows.yml"
@@ -71,6 +72,17 @@ jobs:
               throw "Missing pinned build dependency: $p"
             }
           }
+
+      - name: Compile fail-closed MAX98357A dependency
+        shell: pwsh
+        run: |
+          msbuild Phaser360\max98357a_safe\P360Max98357Safe.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /v:minimal
+          $sys = "Phaser360\max98357a_safe\out\Release\P360Max98357Safe.sys"
+          if (-not (Test-Path $sys)) {
+            throw "Fail-closed MAX98357A build did not produce P360Max98357Safe.sys"
+          }
+          Write-Host "P360_MAX98357_SAFE_COMPILE=PASS"
+          Write-Host "SHA256=$((Get-FileHash $sys -Algorithm SHA256).Hash)"
 
       - name: Parse hardware gate runner
         shell: pwsh
@@ -254,8 +266,9 @@ jobs:
           $preDir = Join-Path $root "preaudio"
           $boundedDir = Join-Path $root "bounded"
           $finalDir = Join-Path $root "final"
+          $ampDir = Join-Path $root "amp"
           Remove-Item "Phaser360\package" -Recurse -Force -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Path $certDir,$preDir,$boundedDir,$finalDir -Force | Out-Null
+          New-Item -ItemType Directory -Path $certDir,$preDir,$boundedDir,$finalDir,$ampDir -Force | Out-Null
 
           Copy-Item Phaser360\tools\P360_AUDIO_GATE.ps1 (Join-Path $root "P360_AUDIO_GATE.ps1") -Force
           Copy-Item Phaser360\tools\START_AUDIO_TEST.cmd (Join-Path $root "START_AUDIO_TEST.cmd") -Force
@@ -325,6 +338,7 @@ jobs:
           $preDir = Join-Path $root "preaudio"
           $boundedDir = Join-Path $root "bounded"
           $finalDir = Join-Path $root "final"
+          $ampDir = Join-Path $root "amp"
 
           function New-P360Catalog(
             [string]$SourceSys,
@@ -363,6 +377,17 @@ jobs:
             $finalDir `
             "3.0.100.1"
 
+          Copy-Item "Phaser360\max98357a_safe\out\Release\P360Max98357Safe.sys" (Join-Path $ampDir "P360Max98357Safe.sys") -Force
+          $ampInf = Get-Content "Phaser360\max98357a_safe\P360Max98357Safe.inx" -Raw
+          Set-Content (Join-Path $ampDir "P360Max98357Safe.inf") -Value $ampInf -Encoding ascii
+
+          Write-Host "INF2CAT_BEGIN=$ampDir"
+          & $env:P360_INF2CAT "/driver:$ampDir" "/os:10_VB_X64" "/uselocaltime"
+          if ($LASTEXITCODE -ne 0) { throw "Inf2Cat failed for safe MAX98357A package" }
+          $ampCat = Join-Path $ampDir "P360Max98357Safe.cat"
+          if (-not (Test-Path $ampCat)) { throw "Inf2Cat did not create $ampCat" }
+          Write-Host "INF2CAT_PASS=$ampDir"
+
       - name: Sign hardware gate catalogs
         shell: pwsh
         timeout-minutes: 2
@@ -391,6 +416,20 @@ jobs:
             Write-Host "VERIFY_STATUS=$($sig.Status)"
           }
 
+          $ampCat = Join-Path (Join-Path $root "amp") "P360Max98357Safe.cat"
+          Write-Host "SIGN_BEGIN=$ampCat"
+          & $env:P360_SIGNTOOL sign /fd SHA256 /f $env:P360_CERT_PFX /p $env:P360_CERT_PFX_PASSWORD /v $ampCat
+          if ($LASTEXITCODE -ne 0) { throw "SignTool sign failed for $ampCat" }
+          $ampSig = Get-AuthenticodeSignature -LiteralPath $ampCat
+          if (-not $ampSig.SignerCertificate -or
+              $ampSig.SignerCertificate.Thumbprint -ne $env:P360_CERT_THUMBPRINT) {
+            throw "Safe MAX98357A catalog signer mismatch"
+          }
+          if (@("Valid","NotTrusted","UnknownError") -notcontains [string]$ampSig.Status) {
+            throw "Safe MAX98357A catalog integrity check failed: $($ampSig.Status)"
+          }
+          Write-Host "P360_MAX98357_SAFE_SIGN=PASS"
+
       - name: Finalize hardware gate package
         shell: pwsh
         timeout-minutes: 2
@@ -400,10 +439,12 @@ jobs:
           $preDir = Join-Path $root "preaudio"
           $boundedDir = Join-Path $root "bounded"
           $finalDir = Join-Path $root "final"
+          $ampDir = Join-Path $root "amp"
 
           $preHash = (Get-FileHash (Join-Path $preDir "P360SofAudio.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
           $boundedHash = (Get-FileHash (Join-Path $boundedDir "P360SofAudio.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
           $finalHash = (Get-FileHash (Join-Path $finalDir "P360SofAudio.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
+          $ampHash = (Get-FileHash (Join-Path $ampDir "P360Max98357Safe.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
 
           [ordered]@{
             HeadSha = "${env:GITHUB_SHA}"
@@ -412,9 +453,13 @@ jobs:
             PreAudioDriverVersion = "2.0.101.1"
             BoundedDriverVersion = "2.0.201.1"
             FinalSpeakerDriverVersion = "3.0.100.1"
+            SafeAmpDriverVersion = "2.0.0.0"
+            SafeAmpProvider = "PHASER360 Project"
+            SafeAmpService = "P360Max98357Safe"
             PreAudioSysSha256 = $preHash
             BoundedSysSha256 = $boundedHash
             FinalSpeakerSysSha256 = $finalHash
+            SafeAmpSysSha256 = $ampHash
             FinalArchitecture = "WaveRT->CoolStar HDA DMA->SOF HOST->SSP1->MAX98357A"
             FinalWaveRtContainerBits = 32
             FinalWaveRtValidBits = 16
@@ -442,7 +487,10 @@ jobs:
             "bounded\P360SofAudio.sys",
             "final\P360SofAudio.inf",
             "final\P360SofAudio.cat",
-            "final\P360SofAudio.sys"
+            "final\P360SofAudio.sys",
+            "amp\P360Max98357Safe.inf",
+            "amp\P360Max98357Safe.cat",
+            "amp\P360Max98357Safe.sys"
           )) {
             if (-not (Test-Path (Join-Path $root $required))) {
               throw "Final hardware gate package missing: $required"

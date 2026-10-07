@@ -143,6 +143,9 @@ NTSTATUS p360_host_playback_stop(
 NTSTATUS p360_host_playback_release(
     _Inout_ P360_DEVICE_CONTEXT *ctx,
     _Inout_ P360_PLAYBACK_STREAM *playback);
+NTSTATUS p360_host_playback_force_quiesce(
+    _Inout_ P360_DEVICE_CONTEXT *ctx,
+    _Inout_ P360_PLAYBACK_STREAM *playback);
 
 NTSTATUS p360_portcls_driver_initialize(
     _In_ PDRIVER_OBJECT DriverObject,
