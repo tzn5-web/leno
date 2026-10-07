@@ -969,7 +969,7 @@ if "PKEY_AudioEndpoint_Association%,,%KSNODETYPE_ANY%" in production_inf:
 for token in (
     "PKEY_AudioEngine_OEMFormat",
     "PKEY_AudioEngine_DeviceFormat",
-    "DEVICE_FORMAT_EXACT_P360=",
+    "%ls_EXACT_P360=",
     "IAudioEndpointFormatControl",
     "ResetToDefault(0)",
     "MIX_INTERNAL_ENGINE_FORMAT=OBSERVED",
