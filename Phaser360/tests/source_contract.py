@@ -1677,6 +1677,10 @@ if "P360_FW_FILE_BYTES 287488u" not in loader_h:
 if "P360_FW_PAYLOAD_BYTES 286720u" not in loader_h:
     raise SystemExit("official firmware payload size contract missing")
 
+boot_h=(ROOT/"include/p360_cs_boot.h").read_text()
+if "C_ASSERT(P360_CS_BOOT_PAGE_COUNT == 70);" not in boot_h:
+    raise SystemExit("official SOF boot DMA page-count contract missing")
+
 for token in (
     "ZwCreateFile(",
     "ZwQueryInformationFile(",
