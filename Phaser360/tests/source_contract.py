@@ -989,6 +989,29 @@ for forbidden in (
     if forbidden in wasapi_shared:
         raise SystemExit(f"internal engine mix format is incorrectly treated as hardware format: {forbidden}")
 
+for function_name in (
+    "Install-Bundle",
+    "Wait-ProductionBinding",
+    "Assert-ProductionBinding",
+    "Remove-StaleProjectPackages",
+    "Restart-ExactProductionDevices",
+    "Reenumerate-Adsp",
+    "Restart-WindowsAudio",
+    "Run-Wasapi",
+    "Reset-WasapiEndpointFormat",
+    "Write-ResultZip",
+    "Restore-Original",
+):
+    marker=f"function {function_name}"
+    if production_runner.count(marker) != 1:
+        raise SystemExit(
+            f"production runner function must exist exactly once: {function_name}")
+
+if "COINIT_APARTMENTTHREADED" not in wasapi_shared:
+    raise SystemExit("WASAPI acceptance utility must initialize COM in STA")
+if "COINIT_MULTITHREADED" in wasapi_shared:
+    raise SystemExit("WASAPI acceptance utility regressed to MTA first-use initialization")
+
 for token in (
     "Report-NonAudioBoot0000",
     "NOT_AUDIO_BLOCKER=YES",
