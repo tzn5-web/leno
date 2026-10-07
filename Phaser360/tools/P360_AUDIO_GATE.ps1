@@ -1360,7 +1360,7 @@ try {
 
     $script:State.SpeakerPassed=$true
     Save-State
-    Write-RunLog "FINAL_TONE_2000MS_MAX_0P78125PCT=PASS"
+    Write-RunLog "FINAL_TONE_2000MS_MAX_0P5PCT=PASS"
 
     $null=Disable-TargetAndProveStop $targetId 31
     $script:State.SpeakerStopProved=$true
