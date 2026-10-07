@@ -76,6 +76,11 @@ p360_playback_stream_position(
     _In_ const P360_PLAYBACK_STREAM *Playback
     );
 
+UINT32
+p360_playback_stream_fifo_size(
+    _In_ const P360_PLAYBACK_STREAM *Playback
+    );
+
 NTSTATUS
 p360_playback_stream_retire(
     _Inout_ P360_PLAYBACK_STREAM *Playback
