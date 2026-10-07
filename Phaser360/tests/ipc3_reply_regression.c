@@ -71,7 +71,9 @@ int main(void)
 {
     struct p360_dispatch d;
     struct p360_irq_event e;
+    const struct p360_ipc3_speaker_ids ids={1u,100u,101u,102u,103u};
     struct p360_ipc3_message pcm;
+    struct p360_ipc3_message tone;
     struct mock m;
     uint8_t proof[8];
     int32_t error;
@@ -97,6 +99,27 @@ int main(void)
     assert(p360_ipc_consume(&d.ipc,&error,&bytes)==0);
     assert(error==0 && bytes==12u);
     assert(d.expected_reply_bytes==0u);
+
+    memset(&m,0,sizeof(m));
+    m.now=250u;
+    ready(&d);
+    assert(p360_ipc3_build_tone_new(&tone,&ids,P360_SAMPLE_RATE)==0);
+    assert(p360_dispatch_expect_message(
+        &d,150u,100u,tone.data,tone.bytes)==0);
+    assert(d.expected_generic==0);
+    assert(d.expected_reply_bytes==20u);
+    assert(d.expected_reply_cmd==0x30010000u);
+    assert(d.expected_comp_id==ids.tone_id);
+    m.reply_bytes=20u;
+    put32(m.reply,20u);
+    put32(m.reply+4,0x30010000u);
+    put32(m.reply+8,0u);
+    put32(m.reply+12,ids.tone_id);
+    put32(m.reply+16,0u);
+    e=reply_event(1u);
+    assert(p360_dispatch_process(&d,&e,&io,&m)==0);
+    assert(p360_ipc_consume(&d.ipc,&error,&bytes)==0);
+    assert(error==0 && bytes==20u);
 
     memset(&m,0,sizeof(m));
     m.now=300u;
