@@ -869,10 +869,48 @@ STDMETHODIMP_(ULONG)
 P360WaveStream::Release()
 {
     LONG refs=InterlockedDecrement(&m_Refs);
+
     if (!refs) {
+        /*
+         * Never enter the destructor while SOF/HDA/MAX can still own state
+         * reachable through m_Playback. The destructor is void and therefore
+         * cannot veto the ExFreePoolWithTag() that follows it.
+         *
+         * First make a final synchronous normal-release/emergency-quiesce
+         * attempt. If ownership still cannot be proved gone, resurrect one
+         * private reference and quarantine the whole WaveRT object. Retaining
+         * the object, PortCls reference, WDF reference and MDL until reboot is
+         * preferable to freeing an object still reachable from ActivePlayback
+         * or from a live DMA engine.
+         */
+        if (!p360_playback_memory_released(&m_Playback)) {
+            if (m_Context) {
+                (void)p360_host_playback_release(
+                    m_Context,
+                    &m_Playback);
+
+                if (!p360_playback_memory_released(&m_Playback)) {
+                    (void)p360_host_playback_force_quiesce(
+                        m_Context,
+                        &m_Playback);
+                }
+            }
+
+            if (!p360_playback_memory_released(&m_Playback)) {
+                if (m_Context)
+                    p360_state_fail(
+                        &m_Context->State,
+                        P360_FAIL_STREAM);
+
+                InterlockedExchange(&m_Refs,1);
+                return 1u;
+            }
+        }
+
         this->~P360WaveStream();
         ExFreePoolWithTag(this,P360_SPEAKER_POOL_TAG);
     }
+
     return (ULONG)refs;
 }
 
