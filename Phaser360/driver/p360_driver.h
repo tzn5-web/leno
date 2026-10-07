@@ -11,6 +11,7 @@
 #include "../include/p360_cs_runtime.h"
 #include "../include/p360_firmware.h"
 #include "../include/p360_csaudio.h"
+#include "../include/p360_safety.h"
 #include "../sof_core/loader/p360_loader.h"
 #include "../sof_core/loader/p360_ipc3_topology.h"
 
@@ -47,6 +48,19 @@
 #define P360_TONE_TOPOLOGY_PROOF_ENABLED 0
 #endif
 
+/*
+ * One-shot internal-speaker diagnostic. It is compiled out by default and is
+ * only valid together with the proved SOF/IPC/topology chain and the explicit
+ * internal-speaker safety override.
+ */
+#ifndef P360_BOUNDED_TONE_TEST_ENABLED
+#define P360_BOUNDED_TONE_TEST_ENABLED 0
+#endif
+
+#if P360_BOUNDED_TONE_TEST_ENABLED &&     (!P360_RUNTIME_BOOT_ENABLED || !P360_IPC_PROBE_ENABLED ||      !P360_TONE_TOPOLOGY_PROOF_ENABLED || !P360_ENABLE_INTERNAL_SPEAKER)
+#error P360_BOUNDED_TONE_TEST_ENABLED requires all reviewed speaker proof gates
+#endif
+
 
 typedef struct _P360_DEVICE_CONTEXT {
     P360_STATE_MACHINE State;
@@ -70,6 +84,7 @@ typedef struct _P360_DEVICE_CONTEXT {
     BOOLEAN RuntimeInitialized;
     BOOLEAN CsAudioInitialized;
     BOOLEAN SpeakerEndpointInstalled;
+    BOOLEAN BoundedToneConsumed;
     BOOLEAN Prepared;
     volatile LONG Removing;
 } P360_DEVICE_CONTEXT;
