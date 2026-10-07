@@ -243,7 +243,7 @@ p360_runtime_prepare_tone_topology(
     status=p360_runtime_send_zero_error(
         ctx,
         &message,
-        12u);
+        P360_IPC3_TONE_CONTROL_BYTES);
     if (!NT_SUCCESS(status))
         return status;
 
@@ -259,7 +259,7 @@ p360_runtime_prepare_tone_topology(
     status=p360_runtime_send_zero_error(
         ctx,
         &message,
-        12u);
+        P360_IPC3_TONE_CONTROL_BYTES);
     if (!NT_SUCCESS(status))
         return status;
 
@@ -376,9 +376,9 @@ p360_runtime_run_bounded_tone(
         goto cleanup;
 
     /*
-     * The SOF v1.9.3 Tone component defaults to ~997 Hz at -20 dB when the
-     * optional tone fields are zero. Keep the requested final physical proof bounded to 2 seconds and
-     * non-alertable, then mute the amplifier before stopping SSP1.
+     * Gain is already capped at 0.5% full-scale and SOF tone_length is capped
+     * at 2 seconds. Keep the Windows timer as an independent second bound,
+     * then mute the amplifier before stopping SSP1.
      */
     delay.QuadPart=-(LONGLONG)P360_BOUNDED_TONE_DURATION_MS * 10 * 1000;
     status=KeDelayExecutionThread(
