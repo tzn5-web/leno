@@ -9,7 +9,9 @@ p360_build_flags(VOID)
         flags|=P360_TELEM_FLAG_RUNTIME_BOOT;
     if (P360_IPC_PROBE_ENABLED)
         flags|=P360_TELEM_FLAG_IPC_PROBE;
-    if (P360_TONE_TOPOLOGY_PROOF_ENABLED)
+    if (P360_HOST_PLAYBACK_ENABLED)
+        flags|=P360_TELEM_FLAG_HOST_TOPOLOGY;
+    else if (P360_TONE_TOPOLOGY_PROOF_ENABLED)
         flags|=P360_TELEM_FLAG_TONE_TOPOLOGY;
     if (P360_ENABLE_INTERNAL_SPEAKER)
         flags|=P360_TELEM_FLAG_INTERNAL_SPEAKER;
@@ -46,6 +48,12 @@ static BOOLEAN
 p360_ipc_probe_policy_enabled(VOID)
 {
     return P360_IPC_PROBE_ENABLED ? TRUE : FALSE;
+}
+
+static BOOLEAN
+p360_host_playback_policy_enabled(VOID)
+{
+    return P360_HOST_PLAYBACK_ENABLED ? TRUE : FALSE;
 }
 
 static BOOLEAN
@@ -92,6 +100,154 @@ p360_runtime_send_zero_error(
         return STATUS_DEVICE_CONFIGURATION_ERROR;
 
     return STATUS_SUCCESS;
+}
+
+static NTSTATUS
+p360_runtime_prepare_host_topology(
+    _Inout_ P360_DEVICE_CONTEXT *ctx,
+    _Out_ P360_FAILURE_REASON *failure
+    )
+{
+    const struct p360_ipc3_playback_ids ids={
+        P360_IPC3_SPEAKER_PIPELINE_ID,
+        P360_IPC3_SPEAKER_HOST_ID,
+        P360_IPC3_SPEAKER_BUFFER_ID,
+        P360_IPC3_SPEAKER_DAI_ID,
+        P360_IPC3_SPEAKER_SCHED_ID
+    };
+    const struct p360_ipc3_ssp1_profile ssp={
+        P360_IPC3_DAI_FMT_I2S |
+            P360_IPC3_DAI_FMT_NB_NF |
+            P360_IPC3_DAI_FMT_CBC_CFC,
+        P360_SPEAKER_SSP1_MCLK_ID,
+        P360_SPEAKER_SSP1_MCLK_HZ,
+        P360_SAMPLE_RATE,
+        P360_SPEAKER_SSP1_BCLK_HZ,
+        P360_SPEAKER_CHANNELS,
+        3u,
+        3u,
+        P360_SPEAKER_DAI_VALID_BITS,
+        P360_SPEAKER_DAI_SLOT_BITS,
+        P360_IPC3_MCLK_CODEC_INPUT,
+        0u,
+        0u,
+        0u,
+        0u,
+        0u,
+        0u,
+        0u
+    };
+    struct p360_ipc3_message message;
+    NTSTATUS status;
+    int rc;
+
+    if (failure)
+        *failure=P360_FAIL_TOPOLOGY;
+
+    if (!ctx || !failure ||
+        ctx->State.state!=P360_STATE_IPC_READY ||
+        !ctx->State.ipc_ready ||
+        !ctx->State.fw_ready ||
+        !ctx->Runtime.Bound ||
+        !InterlockedCompareExchange(&ctx->Runtime.Active,0,0) ||
+        InterlockedCompareExchange(&ctx->Runtime.Fault,0,0) ||
+        InterlockedCompareExchange(&ctx->Removing,0,0)!=0) {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+
+#define P360_HOST_BUILD_AND_SEND(_builder,_expected)                    \
+    do {                                                                \
+        RtlZeroMemory(&message,sizeof(message));                         \
+        rc=(_builder);                                                   \
+        if (rc!=P360_IPC3_TOPOLOGY_OK)                                  \
+            return STATUS_INVALID_PARAMETER;                            \
+        status=p360_runtime_send_zero_error(ctx,&message,(_expected));   \
+        if (!NT_SUCCESS(status))                                        \
+            return status;                                              \
+    } while (0)
+
+    /*
+     * Linux GLK playback model, reduced to the one physical speaker route:
+     * HOST -> buffer -> SSP1 DAI. HOST owns the DMA scheduling domain.
+     * PCM_PARAMS is intentionally deferred until WaveRT supplies the actual
+     * host MDL, compressed SOF page table and CoolStar render stream tag.
+     */
+    P360_HOST_BUILD_AND_SEND(
+        p360_ipc3_build_host_new(&message,&ids),
+        20u);
+
+    P360_HOST_BUILD_AND_SEND(
+        p360_ipc3_build_playback_buffer_new(
+            &message,
+            &ids,
+            384u), /* two 1 ms stereo S16 periods */
+        20u);
+
+    P360_HOST_BUILD_AND_SEND(
+        p360_ipc3_build_playback_dai_new(
+            &message,
+            &ids,
+            g_p360_phaser360_profile.ssp_amp),
+        20u);
+
+    P360_HOST_BUILD_AND_SEND(
+        p360_ipc3_build_ssp1_config(
+            &message,
+            g_p360_phaser360_profile.ssp_amp,
+            &ssp),
+        12u);
+
+    P360_HOST_BUILD_AND_SEND(
+        p360_ipc3_build_connect(
+            &message,
+            ids.host_id,
+            ids.buffer_id),
+        12u);
+
+    P360_HOST_BUILD_AND_SEND(
+        p360_ipc3_build_connect(
+            &message,
+            ids.buffer_id,
+            ids.dai_id),
+        12u);
+
+    P360_HOST_BUILD_AND_SEND(
+        p360_ipc3_build_playback_pipe_new(
+            &message,
+            &ids,
+            1000u,
+            48u),
+        20u);
+
+    P360_HOST_BUILD_AND_SEND(
+        p360_ipc3_build_playback_pipe_complete(
+            &message,
+            &ids),
+        12u);
+
+#undef P360_HOST_BUILD_AND_SEND
+
+    ctx->State.topology_ready=1;
+    if (!p360_state_advance(
+            &ctx->State,
+            P360_STATE_TOPOLOGY_READY)) {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+
+    status=p360_telemetry_stage(
+        P360_TELEM_STAGE_TOPOLOGY_READY);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    ctx->State.audio_core_ready=1;
+    if (!p360_state_advance(
+            &ctx->State,
+            P360_STATE_AUDIO_CORE_READY)) {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+
+    return p360_telemetry_stage(
+        P360_TELEM_STAGE_AUDIO_CORE);
 }
 
 static NTSTATUS
@@ -434,6 +590,288 @@ cleanup:
 }
 #endif
 
+NTSTATUS
+p360_host_playback_prepare(
+    P360_DEVICE_CONTEXT *ctx,
+    P360_PLAYBACK_STREAM *playback,
+    PMDL audioMdl,
+    ULONG bufferBytes,
+    ULONG periodBytes
+    )
+{
+    struct p360_ipc3_message message;
+    NTSTATUS status;
+    UINT32 pageTablePhysical;
+    int rc;
+
+    if (!ctx || !playback || !audioMdl ||
+        !p360_host_playback_policy_enabled() ||
+        !ctx->Prepared || !ctx->BusOpen ||
+        !ctx->CsAudioInitialized ||
+        ctx->State.state!=P360_STATE_AUDIO_CORE_READY ||
+        !ctx->State.fw_ready ||
+        !ctx->State.ipc_ready ||
+        !ctx->State.topology_ready ||
+        !ctx->State.audio_core_ready ||
+        InterlockedCompareExchange(&ctx->Removing,0,0)!=0) {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+
+    status=p360_playback_stream_init(
+        playback,
+        &ctx->Bus);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    status=p360_playback_stream_bind_buffer(
+        playback,
+        audioMdl,
+        bufferBytes,
+        periodBytes);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    pageTablePhysical=
+        p360_playback_page_table_physical32(playback);
+    if (!pageTablePhysical) {
+        status=STATUS_DEVICE_CONFIGURATION_ERROR;
+        goto fail;
+    }
+
+    RtlZeroMemory(&message,sizeof(message));
+    rc=p360_ipc3_build_host_pcm_params(
+        &message,
+        P360_IPC3_SPEAKER_HOST_ID,
+        pageTablePhysical,
+        playback->PageCount,
+        playback->BufferBytes,
+        playback->PeriodBytes,
+        playback->StreamTag,
+        P360_SAMPLE_RATE,
+        P360_SPEAKER_CHANNELS);
+    if (rc!=P360_IPC3_TOPOLOGY_OK) {
+        status=STATUS_INVALID_PARAMETER;
+        goto fail;
+    }
+
+    status=p360_runtime_send_zero_error(
+        ctx,
+        &message,
+        20u);
+    if (!NT_SUCCESS(status))
+        goto fail;
+
+    playback->SofParamsPrepared=TRUE;
+    return STATUS_SUCCESS;
+
+fail:
+    (void)p360_playback_stream_retire(playback);
+    return status;
+}
+
+NTSTATUS
+p360_host_playback_start(
+    P360_DEVICE_CONTEXT *ctx,
+    P360_PLAYBACK_STREAM *playback
+    )
+{
+    struct p360_ipc3_message message;
+    NTSTATUS status;
+    NTSTATUS cleanupStatus;
+    int rc;
+
+    if (!ctx || !playback ||
+        !playback->SofParamsPrepared ||
+        playback->SofRunning ||
+        playback->SpeakerArmed ||
+        playback->SpeakerStarted ||
+        ctx->State.state!=P360_STATE_AUDIO_CORE_READY ||
+        !p360_safety_can_start_speaker(&ctx->State) ||
+        InterlockedCompareExchange(&ctx->Removing,0,0)!=0) {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+
+    /*
+     * Match Linux SOF IPC3 ordering: start the platform HDA DMA first,
+     * then issue STREAM_START. The MAX98357A amplifier is enabled last.
+     */
+    status=p360_playback_stream_start(playback);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    RtlZeroMemory(&message,sizeof(message));
+    rc=p360_ipc3_build_stream_trigger(
+        &message,
+        P360_IPC3_SPEAKER_HOST_ID,
+        1);
+    if (rc!=P360_IPC3_TOPOLOGY_OK) {
+        status=STATUS_INVALID_PARAMETER;
+        goto fail_dma;
+    }
+
+    status=p360_runtime_send_zero_error(
+        ctx,
+        &message,
+        12u);
+    if (!NT_SUCCESS(status))
+        goto fail_dma;
+    playback->SofRunning=TRUE;
+
+    status=p360_telemetry_stage(
+        P360_TELEM_STAGE_STREAM_STARTED);
+    if (!NT_SUCCESS(status))
+        goto fail_sof;
+
+    if (!p360_state_speaker_arm(&ctx->State)) {
+        status=STATUS_INVALID_DEVICE_STATE;
+        goto fail_sof;
+    }
+    playback->SpeakerArmed=TRUE;
+
+    status=p360_telemetry_stage(
+        P360_TELEM_STAGE_SPEAKER_ARMED);
+    if (!NT_SUCCESS(status))
+        goto fail_arm;
+
+    status=p360_csaudio_speaker_start(&ctx->CsAudio);
+    if (!NT_SUCCESS(status))
+        goto fail_arm;
+    playback->SpeakerStarted=TRUE;
+
+    return p360_telemetry_stage(
+        P360_TELEM_STAGE_AMP_STARTED);
+
+fail_arm:
+    if (playback->SpeakerArmed) {
+        (void)p360_state_speaker_disarm(&ctx->State);
+        playback->SpeakerArmed=FALSE;
+    }
+
+fail_sof:
+    if (playback->SofRunning) {
+        RtlZeroMemory(&message,sizeof(message));
+        if (p360_ipc3_build_stream_trigger(
+                &message,
+                P360_IPC3_SPEAKER_HOST_ID,
+                0)==P360_IPC3_TOPOLOGY_OK) {
+            cleanupStatus=p360_runtime_send_zero_error(
+                ctx,
+                &message,
+                12u);
+            UNREFERENCED_PARAMETER(cleanupStatus);
+        }
+        playback->SofRunning=FALSE;
+    }
+
+fail_dma:
+    (void)p360_playback_stream_stop(playback);
+    return status;
+}
+
+NTSTATUS
+p360_host_playback_stop(
+    P360_DEVICE_CONTEXT *ctx,
+    P360_PLAYBACK_STREAM *playback
+    )
+{
+    struct p360_ipc3_message message;
+    NTSTATUS firstStatus=STATUS_SUCCESS;
+    NTSTATUS status;
+    int rc;
+
+    if (!ctx || !playback)
+        return STATUS_INVALID_PARAMETER;
+
+    /*
+     * Fail-quiet ordering: mute the external amplifier before stopping
+     * the SOF graph or HDA DMA.
+     */
+    if (playback->SpeakerStarted) {
+        status=p360_csaudio_speaker_stop(&ctx->CsAudio);
+        if (!NT_SUCCESS(status) && NT_SUCCESS(firstStatus))
+            firstStatus=status;
+        playback->SpeakerStarted=FALSE;
+    }
+
+    if (playback->SpeakerArmed) {
+        if (!p360_state_speaker_disarm(&ctx->State) &&
+            NT_SUCCESS(firstStatus)) {
+            firstStatus=STATUS_INVALID_DEVICE_STATE;
+        }
+        playback->SpeakerArmed=FALSE;
+    }
+
+    if (playback->SofRunning) {
+        RtlZeroMemory(&message,sizeof(message));
+        rc=p360_ipc3_build_stream_trigger(
+            &message,
+            P360_IPC3_SPEAKER_HOST_ID,
+            0);
+        if (rc!=P360_IPC3_TOPOLOGY_OK) {
+            if (NT_SUCCESS(firstStatus))
+                firstStatus=STATUS_INVALID_PARAMETER;
+        } else {
+            status=p360_runtime_send_zero_error(
+                ctx,
+                &message,
+                12u);
+            if (!NT_SUCCESS(status) && NT_SUCCESS(firstStatus))
+                firstStatus=status;
+        }
+        playback->SofRunning=FALSE;
+    }
+
+    status=p360_playback_stream_stop(playback);
+    if (!NT_SUCCESS(status) && NT_SUCCESS(firstStatus))
+        firstStatus=status;
+
+    return firstStatus;
+}
+
+NTSTATUS
+p360_host_playback_release(
+    P360_DEVICE_CONTEXT *ctx,
+    P360_PLAYBACK_STREAM *playback
+    )
+{
+    struct p360_ipc3_message message;
+    NTSTATUS firstStatus;
+    NTSTATUS status;
+    int rc;
+
+    if (!ctx || !playback)
+        return STATUS_INVALID_PARAMETER;
+
+    firstStatus=p360_host_playback_stop(
+        ctx,
+        playback);
+
+    if (playback->SofParamsPrepared) {
+        RtlZeroMemory(&message,sizeof(message));
+        rc=p360_ipc3_build_pcm_free(
+            &message,
+            P360_IPC3_SPEAKER_HOST_ID);
+        if (rc!=P360_IPC3_TOPOLOGY_OK) {
+            if (NT_SUCCESS(firstStatus))
+                firstStatus=STATUS_INVALID_PARAMETER;
+        } else {
+            status=p360_runtime_send_zero_error(
+                ctx,
+                &message,
+                12u);
+            if (!NT_SUCCESS(status) && NT_SUCCESS(firstStatus))
+                firstStatus=status;
+        }
+        playback->SofParamsPrepared=FALSE;
+    }
+
+    status=p360_playback_stream_retire(playback);
+    if (!NT_SUCCESS(status) && NT_SUCCESS(firstStatus))
+        firstStatus=status;
+
+    return firstStatus;
+}
+
 static NTSTATUS
 p360_loader_status_to_ntstatus(
     _In_ int rc)
@@ -614,7 +1052,21 @@ p360_runtime_boot_start(
             goto fail_live;
     }
 
-    if (p360_tone_topology_policy_enabled()) {
+    if (p360_host_playback_policy_enabled()) {
+        if (!p360_ipc_probe_policy_enabled() ||
+            ctx->State.state!=P360_STATE_IPC_READY ||
+            !ctx->State.ipc_ready) {
+            failure=P360_FAIL_IPC;
+            status=STATUS_INVALID_DEVICE_STATE;
+            goto fail_live;
+        }
+
+        status=p360_runtime_prepare_host_topology(
+            ctx,
+            &failure);
+        if (!NT_SUCCESS(status))
+            goto fail_live;
+    } else if (p360_tone_topology_policy_enabled()) {
         if (!p360_ipc_probe_policy_enabled() ||
             ctx->State.state!=P360_STATE_IPC_READY ||
             !ctx->State.ipc_ready) {
