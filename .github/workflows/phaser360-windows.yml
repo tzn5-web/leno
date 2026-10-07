@@ -267,15 +267,54 @@ jobs:
           $boundedDir = Join-Path $root "bounded"
           $finalDir = Join-Path $root "final"
           $ampDir = Join-Path $root "amp"
+          $firmwareDir = Join-Path $root "firmware"
           Remove-Item "Phaser360\package" -Recurse -Force -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Path $certDir,$preDir,$boundedDir,$finalDir,$ampDir -Force | Out-Null
+          New-Item -ItemType Directory -Path $certDir,$preDir,$boundedDir,$finalDir,$ampDir,$firmwareDir -Force | Out-Null
 
           Copy-Item Phaser360\tools\P360_AUDIO_GATE.ps1 (Join-Path $root "P360_AUDIO_GATE.ps1") -Force
           Copy-Item Phaser360\tools\START_AUDIO_TEST.cmd (Join-Path $root "START_AUDIO_TEST.cmd") -Force
           Copy-Item Phaser360\tools\RESTORE_LAST_SESSION.cmd (Join-Path $root "RESTORE_LAST_SESSION.cmd") -Force
           Copy-Item Phaser360\tools\P360_AUDIO_GATE_README.txt (Join-Path $root "README.txt") -Force
           Copy-Item Phaser360\driver\out\Release\P360_WAVERT_TEST.exe (Join-Path $root "P360_WAVERT_TEST.exe") -Force
-          Copy-Item Phaser360\firmware\P360_FIRMWARE_MANIFEST.txt (Join-Path $root "P360_FIRMWARE_MANIFEST.txt") -Force
+          Copy-Item Phaser360\firmware\P360_FIRMWARE_MANIFEST.txt (Join-Path $firmwareDir "P360_FIRMWARE_MANIFEST.txt") -Force
+
+          $firmwarePayload = "Phaser360\firmware\p360-f686.ri.gz"
+          $firmwarePayloadExpected = "221f536ad2e1ccc53ec145573fb8556dd3d7d115322e085d5cfae3faf62e48c3"
+          if (-not (Test-Path -LiteralPath $firmwarePayload -PathType Leaf)) {
+            throw "Pinned PHASER360 firmware payload is missing from the repository."
+          }
+          $payloadHash = (Get-FileHash -LiteralPath $firmwarePayload -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($payloadHash -ne $firmwarePayloadExpected) {
+            throw "Pinned firmware gzip payload hash mismatch: $payloadHash"
+          }
+
+          $firmwareOut = Join-Path $firmwareDir "p360-f686.ri"
+          $inputStream = [IO.File]::OpenRead($firmwarePayload)
+          $outputStream = [IO.File]::Create($firmwareOut)
+          try {
+            $gzip = [IO.Compression.GZipStream]::new(
+              $inputStream,
+              [IO.Compression.CompressionMode]::Decompress)
+            try {
+              $gzip.CopyTo($outputStream)
+            } finally {
+              $gzip.Dispose()
+            }
+          } finally {
+            $outputStream.Dispose()
+            $inputStream.Dispose()
+          }
+
+          $firmwareItem = Get-Item -LiteralPath $firmwareOut
+          $firmwareHash = (Get-FileHash -LiteralPath $firmwareOut -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($firmwareItem.Length -ne 246528) {
+            throw "Pinned firmware size mismatch: $($firmwareItem.Length)"
+          }
+          if ($firmwareHash -ne "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab") {
+            throw "Pinned firmware SHA256 mismatch: $firmwareHash"
+          }
+          Write-Host "P360_EXACT_FIRMWARE_RECONSTRUCT=PASS"
+          Write-Host "P360_EXACT_FIRMWARE_SHA256=$firmwareHash"
 
           Write-Host "CERT_CREATE=BEGIN"
           $rsa = [System.Security.Cryptography.RSA]::Create(2048)
@@ -339,6 +378,7 @@ jobs:
           $boundedDir = Join-Path $root "bounded"
           $finalDir = Join-Path $root "final"
           $ampDir = Join-Path $root "amp"
+          $firmwareDir = Join-Path $root "firmware"
 
           function New-P360Catalog(
             [string]$SourceSys,
@@ -440,6 +480,7 @@ jobs:
           $boundedDir = Join-Path $root "bounded"
           $finalDir = Join-Path $root "final"
           $ampDir = Join-Path $root "amp"
+          $firmwareDir = Join-Path $root "firmware"
 
           $preHash = (Get-FileHash (Join-Path $preDir "P360SofAudio.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
           $boundedHash = (Get-FileHash (Join-Path $boundedDir "P360SofAudio.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -467,11 +508,20 @@ jobs:
             FinalWaveRtValidBits = 16
             FinalSampleRate = 48000
             FinalChannels = 2
-            LegacyBoundedToneDiagnosticRetained = $true
+            LegacyBoundedToneDiagnosticRetained = $false
             FirmwareBytes = 246528
             FirmwareSha256 = "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab"
+            FirmwareBundled = $true
+            FirmwareRelativePath = "firmware\\p360-f686.ri"
+            FirmwarePayloadSha256 = "221f536ad2e1ccc53ec145573fb8556dd3d7d115322e085d5cfae3faf62e48c3"
           } | ConvertTo-Json |
             Set-Content (Join-Path $root "PACKAGE_INFO.json") -Encoding utf8
+
+          Remove-Item $preDir,$boundedDir -Recurse -Force
+          if ((Test-Path -LiteralPath $preDir) -or (Test-Path -LiteralPath $boundedDir)) {
+            throw "Historical diagnostic directories survived public package cleanup."
+          }
+          Write-Host "P360_USER_PACKAGE_DIAGNOSTICS_STRIPPED=PASS"
 
           foreach ($required in @(
             "START_AUDIO_TEST.cmd",
@@ -481,12 +531,8 @@ jobs:
             "PACKAGE_INFO.json",
             "README.txt",
             "cert\P360_TEST.cer",
-            "preaudio\P360SofAudio.inf",
-            "preaudio\P360SofAudio.cat",
-            "preaudio\P360SofAudio.sys",
-            "bounded\P360SofAudio.inf",
-            "bounded\P360SofAudio.cat",
-            "bounded\P360SofAudio.sys",
+            "firmware\p360-f686.ri",
+            "firmware\P360_FIRMWARE_MANIFEST.txt",
             "final\P360SofAudio.inf",
             "final\P360SofAudio.cat",
             "final\P360SofAudio.sys",
@@ -503,6 +549,26 @@ jobs:
           $zip = "Phaser360\package\P360_AUDIO_GATE.zip"
           Compress-Archive -Path "$root\*" -DestinationPath $zip -Force
           $zipHash = (Get-FileHash $zip -Algorithm SHA256).Hash
+
+          $verifyRoot = Join-Path $env:RUNNER_TEMP "P360_AUDIO_GATE_VERIFY"
+          Remove-Item $verifyRoot -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -LiteralPath $zip -DestinationPath $verifyRoot -Force
+          foreach ($forbidden in @("preaudio","bounded")) {
+            if (Test-Path -LiteralPath (Join-Path $verifyRoot $forbidden)) {
+              throw "Public ZIP unexpectedly contains historical diagnostic directory: $forbidden"
+            }
+          }
+          $verifyFirmware = Join-Path $verifyRoot "firmware\p360-f686.ri"
+          if (-not (Test-Path -LiteralPath $verifyFirmware -PathType Leaf)) {
+            throw "Public ZIP is missing bundled firmware."
+          }
+          $verifyFirmwareItem = Get-Item -LiteralPath $verifyFirmware
+          $verifyFirmwareHash = (Get-FileHash -LiteralPath $verifyFirmware -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($verifyFirmwareItem.Length -ne 246528 -or
+              $verifyFirmwareHash -ne "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab") {
+            throw "Public ZIP firmware identity verification failed."
+          }
+          Write-Host "P360_SELF_CONTAINED_PACKAGE_VERIFY=PASS"
           Write-Host "P360_AUDIO_GATE_PACKAGE=PASS"
           Write-Host "P360_AUDIO_GATE_ZIP_SHA256=$zipHash"
 

@@ -22,9 +22,16 @@ Provenance:
   The current loader independently validates the exact size, XMan manifest,
   SHA-256 and fixed FW_READY bytes before use.
 
-Packaging rule:
-  Do not substitute another sof-apl.ri by filename alone. An install/test
-  package may rename this exact verified image to p360-f686.ri only after
-  size and SHA-256 both match this manifest.
+Repository payload:
+  Phaser360/firmware/p360-f686.ri.gz
+  gzip SHA-256:
+  221f536ad2e1ccc53ec145573fb8556dd3d7d115322e085d5cfae3faf62e48c3
 
-The firmware binary is intentionally not committed in this repository.
+CI reconstruction:
+  The Windows workflow decompresses the repository payload to
+  firmware/p360-f686.ri and rejects the build unless the raw result is exactly
+  246528 bytes with SHA-256 f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab.
+
+Packaging rule:
+  Do not substitute another sof-apl.ri by filename alone. Only the exact
+  verified image above may be packaged as p360-f686.ri.

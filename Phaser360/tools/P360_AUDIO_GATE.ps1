@@ -182,6 +182,19 @@ function Resolve-Firmware([string]$Requested) {
         return $resolved
     }
 
+    $bundledDir = Join-Path $PackageRoot "firmware"
+    $bundledFirmware = Join-Path $bundledDir "p360-f686.ri"
+    if (Test-Path -LiteralPath $bundledFirmware -PathType Leaf) {
+        if (-not (Test-FirmwareFile $bundledFirmware)) {
+            throw "Bundled firmware exists but does not match exact f686 size/hash."
+        }
+        Write-RunLog "FIRMWARE_BUNDLED=PASS PATH=$bundledFirmware"
+        return $bundledFirmware
+    }
+    if (Test-Path -LiteralPath $bundledDir -PathType Container) {
+        throw "Self-contained package firmware directory exists but p360-f686.ri is missing."
+    }
+
     $knownFirmware = @(
         "D:\PHASER360_WORK\continuation_20261005\v10_17R_original\firmware\sof-apl.ri",
         "D:\PHASER360_WORK\continuation_20261005\v10_17R2_local\firmware\sof-apl.ri",

@@ -568,6 +568,30 @@ for token in (
     if token not in runner:
         raise SystemExit(f"hardware gate runner contract missing: {token}")
 
+
+for token in (
+    '$bundledDir = Join-Path $PackageRoot "firmware"',
+    '$bundledFirmware = Join-Path $bundledDir "p360-f686.ri"',
+    'FIRMWARE_BUNDLED=PASS PATH=',
+    'Self-contained package firmware directory exists but p360-f686.ri is missing.',
+):
+    if token not in runner:
+        raise SystemExit(f"self-contained firmware runner contract missing: {token}")
+
+for token in (
+    'Phaser360\\firmware\\p360-f686.ri.gz',
+    '221f536ad2e1ccc53ec145573fb8556dd3d7d115322e085d5cfae3faf62e48c3',
+    '[IO.Compression.GZipStream]::new(',
+    'P360_EXACT_FIRMWARE_RECONSTRUCT=PASS',
+    'firmware\\p360-f686.ri',
+    'FirmwareBundled = $true',
+    'P360_USER_PACKAGE_DIAGNOSTICS_STRIPPED=PASS',
+    'Remove-Item $preDir,$boundedDir -Recurse -Force',
+    'P360_SELF_CONTAINED_PACKAGE_VERIFY=PASS',
+):
+    if token not in workflow:
+        raise SystemExit(f"self-contained final package workflow contract missing: {token}")
+
 for forbidden in (
     "Final speaker test did not reach fresh TONE_COMPLETE.",
     "FINAL_TONE_2000MS_MAX_0P5PCT=PASS",
