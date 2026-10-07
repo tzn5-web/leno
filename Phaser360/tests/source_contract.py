@@ -914,6 +914,7 @@ for token in (
 production_inf=(ROOT/"production/P360AudioBundle.inx").read_text()
 full_installer=(ROOT/"full_install/P360_FULL_INSTALL.ps1").read_text()
 force_installer=(ROOT/"full_install/P360_FORCE_INSTALL.cpp").read_text()
+manual_acceptance=(ROOT/"full_install/TEST_PHASER360_AUDIO.cmd").read_text()
 wasapi_shared=(ROOT/"production/P360_WASAPI_TEST.cpp").read_text()
 
 for token in (
@@ -1009,6 +1010,22 @@ for forbidden in (
 if "PhysicalAudioTest=$true" in workflow:
     raise SystemExit("full-install workflow must remain install-only")
 
+for token in (
+    "P360_WASAPI_TEST.exe",
+    "FINAL_ACCEPTANCE=WASAPI_SHARED_ENDPOINT_FUNCTIONAL",
+    "No second physical test was started automatically.",
+):
+    if token not in manual_acceptance:
+        raise SystemExit(f"manual one-shot WASAPI acceptance contract missing: {token}")
+for forbidden in (
+    "for ",
+    "goto ",
+    "P360_WAVERT_TEST",
+    "P360_FULL_INSTALL.ps1",
+):
+    if forbidden.lower() in manual_acceptance.lower():
+        raise SystemExit(f"manual acceptance gained retry/legacy/install behavior: {forbidden}")
+
 full_prepare_begin=workflow.index("- name: Assemble full-install driver")
 full_build_begin=workflow.index("- name: Catalog sign audit and package",full_prepare_begin)
 full_prepare=workflow[full_prepare_begin:full_build_begin]
@@ -1019,6 +1036,7 @@ for token in (
     '"P360_FORCE_INSTALL.exe"',
     '"P360_FULL_INSTALL.ps1"',
     '"INSTALL_PHASER360_AUDIO.cmd"',
+    '"TEST_PHASER360_AUDIO.cmd"',
     '"RESTORE_PHASER360_AUDIO.cmd"',
     "p360-f686.ri",
     "P360_FULL_INSTALL_PARSE=PASS",
@@ -1032,6 +1050,9 @@ for token in (
     'InstallerMode="FullInstall"',
     'ForceBindingApi="UpdateDriverForPlugAndPlayDevices/INSTALLFLAG_FORCE"',
     "PhysicalAudioTest=$false",
+    'ManualAcceptance="TEST_PHASER360_AUDIO.cmd"',
+    'ManualAcceptanceMode="WASAPI_SHARED_ONE_SHOT"',
+    "ManualPhysicalWasapiAttempts=1",
     "P360SofAudioSha256=",
     "P360Max98357SafeSha256=",
     "WasapiTestSha256=",
