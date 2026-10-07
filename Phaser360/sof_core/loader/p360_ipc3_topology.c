@@ -156,7 +156,7 @@ int p360_ipc3_build_host_new(struct p360_ipc3_message *out,
      * Upstream pipe-host-playback.m4: playback HOST has two sink periods,
      * zero source periods and is scheduled by the host DMA.
      */
-    put_config(d+28,2u,0u,P360_IPC3_FRAME_S16_LE);
+    put_config(d+28,2u,0u,P360_IPC3_FRAME_S32_LE);
     put32(d+64,P360_IPC3_STREAM_PLAYBACK);
     put32(d+68,0u); /* no_irq: keep normal DMA scheduling */
     put32(d+72,0u); /* dmac_config: platform default */
@@ -198,7 +198,7 @@ int p360_ipc3_build_playback_dai_new(struct p360_ipc3_message *out,
     d=out->data;
     put_comp(d,P360_IPC3_DAI_NEW_BYTES,ids->dai_id,
         P360_IPC3_COMP_DAI,ids->pipeline_id);
-    put_config(d+28,0u,2u,P360_IPC3_FRAME_S16_LE);
+    put_config(d+28,0u,2u,P360_IPC3_FRAME_S32_LE);
     put32(d+64,P360_IPC3_STREAM_PLAYBACK);
     put32(d+68,dai_index);
     put32(d+72,P360_IPC3_DAI_INTEL_SSP);
@@ -399,13 +399,13 @@ int p360_ipc3_build_host_pcm_params(struct p360_ipc3_message *out,
     put32(d+52,0u);
 
     put32(d+56,P360_IPC3_STREAM_PLAYBACK);
-    put32(d+60,P360_IPC3_FRAME_S16_LE);
+    put32(d+60,P360_IPC3_FRAME_S32_LE);
     put32(d+64,P360_IPC3_BUFFER_INTERLEAVED);
     put32(d+68,sample_rate);
     put16(d+72,stream_tag);
     put16(d+74,channels);
-    put16(d+76,2u);
-    put16(d+78,2u);
+    put16(d+76,2u); /* 16 valid bits */
+    put16(d+78,4u); /* forced 32-bit Windows/HDA container */
     put32(d+80,period_bytes);
 
     /*
