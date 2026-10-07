@@ -279,17 +279,10 @@ jobs:
           Remove-Item $pfx -Force
           Write-Host "CERT_PRIVATE_KEY_IMPORT=PASS"
 
-          Import-Certificate `
-            -FilePath $cer `
-            -CertStoreLocation "Cert:\CurrentUser\Root" `
-            -Confirm:$false | Out-Null
-          Write-Host "CERT_ROOT_TRUST=PASS"
-
-          Import-Certificate `
-            -FilePath $cer `
-            -CertStoreLocation "Cert:\CurrentUser\TrustedPublisher" `
-            -Confirm:$false | Out-Null
-          Write-Host "CERT_PUBLISHER_TRUST=PASS"
+          # Do not mutate a hosted runner Root/TrustedPublisher store here.
+          # Root-store imports can block non-interactively. The target-side
+          # runner imports the public certificate before pnputil.
+          Write-Host "CERT_TRUST_DEFERRED_TO_TARGET=YES"
 
           "P360_CERT_THUMBPRINT=$($imported.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
@@ -347,9 +340,19 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "SignTool sign failed for $cat" }
             Write-Host "SIGN_PASS=$cat"
 
-            & $env:P360_SIGNTOOL verify /pa /v $cat
-            if ($LASTEXITCODE -ne 0) { throw "SignTool verify failed for $cat" }
-            Write-Host "VERIFY_PASS=$cat"
+            $sig = Get-AuthenticodeSignature -LiteralPath $cat
+            if (-not $sig.SignerCertificate) {
+              throw "Signed catalog has no signer certificate: $cat"
+            }
+            if ($sig.SignerCertificate.Thumbprint -ne $env:P360_CERT_THUMBPRINT) {
+              throw "Signed catalog signer thumbprint mismatch: $cat"
+            }
+            $allowed = @("Valid","NotTrusted","UnknownError")
+            if ($allowed -notcontains [string]$sig.Status) {
+              throw "Signed catalog integrity check failed: $cat status=$($sig.Status)"
+            }
+            Write-Host "VERIFY_SIGNER_PASS=$cat"
+            Write-Host "VERIFY_STATUS=$($sig.Status)"
           }
 
       - name: Finalize hardware gate package
