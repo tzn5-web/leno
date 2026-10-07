@@ -55,6 +55,7 @@ typedef struct _P360_MAX_CONTEXT {
     PCALLBACK_OBJECT Callback;
     PVOID Registration;
     ULONG SenderCookie;
+    WDFWAITLOCK TransitionLock;
     volatile LONG DesiredGeneration;
     volatile LONG DesiredOn;
     volatile LONG PoweredOn;
