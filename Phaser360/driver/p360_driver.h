@@ -10,6 +10,7 @@
 #include "../include/p360_cs_boot.h"
 #include "../include/p360_cs_runtime.h"
 #include "../include/p360_firmware.h"
+#include "../include/p360_telemetry.h"
 #include "../include/p360_csaudio.h"
 #include "../include/p360_safety.h"
 #include "../sof_core/loader/p360_loader.h"
