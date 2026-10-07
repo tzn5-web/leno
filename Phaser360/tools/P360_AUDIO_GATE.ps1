@@ -336,10 +336,12 @@ function Import-TestCertificate($Info) {
         throw "Test certificate thumbprint mismatch."
     }
 
-    Invoke-Tool -Exe "certutil.exe" -Arguments @("-addstore","-f","Root",$cer) | Out-Null
-    Invoke-Tool -Exe "certutil.exe" -Arguments @("-addstore","-f","TrustedPublisher",$cer) | Out-Null
+    # Persist the identity before the first mutation so rollback can remove a
+    # partially imported certificate if the second store operation fails.
     $script:State.CertificateThumbprint = $thumb
     Save-State
+    Invoke-Tool -Exe "certutil.exe" -Arguments @("-addstore","-f","Root",$cer) | Out-Null
+    Invoke-Tool -Exe "certutil.exe" -Arguments @("-addstore","-f","TrustedPublisher",$cer) | Out-Null
     return $thumb
 }
 
@@ -386,6 +388,7 @@ function Backup-OriginalDriver([string]$InstanceId) {
         $script:State.OriginalDriverVersion = ""
         $script:State.OriginalProvider = ""
         $script:State.OriginalExportedInf = ""
+        $script:State.AdspBackupComplete = $true
         Save-State
         Write-RunLog ("ORIGINAL_DRIVER=UNBOUND CODE={0} SERVICE={1}" -f
             $script:State.OriginalProblemCode,$script:State.OriginalService)
@@ -411,6 +414,7 @@ function Backup-OriginalDriver([string]$InstanceId) {
     $script:State.OriginalDriverVersion = [string]$driver.DriverVersion
     $script:State.OriginalProvider = [string]$driver.DriverProviderName
     $script:State.OriginalExportedInf = $exportedInf.FullName
+    $script:State.AdspBackupComplete = $true
     Save-State
     Write-RunLog ("ORIGINAL_DRIVER=BOUND INF={0} VERSION={1} PROVIDER={2}" -f
         $script:State.OriginalInfName,
@@ -449,6 +453,7 @@ function Backup-OriginalAmpDriver([string]$InstanceId) {
     $script:State.AmpOriginalDriverVersion=[string]$driver.DriverVersion
     $script:State.AmpOriginalProvider=[string]$driver.DriverProviderName
     $script:State.AmpOriginalExportedInf=$exportedInf.FullName
+    $script:State.AmpBackupComplete=$true
     $script:State.AmpRestoreVerified=$false
     Save-State
 
@@ -558,8 +563,13 @@ function Install-SafeAmpPackage($Info,[string]$InstanceId) {
 }
 
 function Restore-OriginalAmpDriver {
-    if (-not $script:State -or
-        -not $script:State.PSObject.Properties["AmpInstanceId"] -or
+    if (-not $script:State) { return }
+    if ($script:State.PSObject.Properties["AmpBackupComplete"] -and
+        -not [bool]$script:State.AmpBackupComplete) {
+        Write-RunLog "RESTORE_AMP_SKIPPED=backup_not_complete"
+        return
+    }
+    if (-not $script:State.PSObject.Properties["AmpInstanceId"] -or
         -not [string]$script:State.AmpInstanceId) {
         return
     }
@@ -1267,6 +1277,11 @@ function Disable-TargetAndProveStop([string]$InstanceId,[uint32]$ExpectedFlags) 
 
 function Restore-OriginalDriver([string]$InstanceId) {
     if (-not $script:State) { return }
+    if ($script:State.PSObject.Properties["AdspBackupComplete"] -and
+        -not [bool]$script:State.AdspBackupComplete) {
+        Write-RunLog "RESTORE_ADSP_SKIPPED=backup_not_complete"
+        return
+    }
 
     # First remove the exact ADSP devnode. This prevents a stale selected
     # package from surviving only in the existing devnode after Driver Store
@@ -1581,6 +1596,8 @@ function Write-Report([string]$Result,[object]$Telemetry) {
         OriginalService=$script:State.OriginalService
         OriginalInfName=$script:State.OriginalInfName
         OriginalDriverVersion=$script:State.OriginalDriverVersion
+        AdspBackupComplete=(Get-StateBool "AdspBackupComplete")
+        AmpBackupComplete=(Get-StateBool "AmpBackupComplete")
         AmpInstanceId=$(if ($script:State.PSObject.Properties["AmpInstanceId"]) {[string]$script:State.AmpInstanceId} else {""})
         AmpOriginalService=$(if ($script:State.PSObject.Properties["AmpOriginalService"]) {[string]$script:State.AmpOriginalService} else {""})
         AmpOriginalDriverVersion=$(if ($script:State.PSObject.Properties["AmpOriginalDriverVersion"]) {[string]$script:State.AmpOriginalDriverVersion} else {""})
@@ -1655,6 +1672,7 @@ $script:State=[pscustomobject]@{
     OriginalDriverVersion=""
     OriginalProvider=""
     OriginalExportedInf=""
+    AdspBackupComplete=$false
     TestInfName=""
     TestDriverVersion=""
     AmpInstanceId=""
@@ -1664,6 +1682,7 @@ $script:State=[pscustomobject]@{
     AmpOriginalDriverVersion=""
     AmpOriginalProvider=""
     AmpOriginalExportedInf=""
+    AmpBackupComplete=$false
     SafeAmpInfName=""
     SafeAmpInstalled=$false
     AmpDisabledByRunner=$false
