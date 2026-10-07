@@ -1,5 +1,9 @@
 name: Phaser360 Windows WDK
 
+concurrency:
+  group: phaser360-windows-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches:
