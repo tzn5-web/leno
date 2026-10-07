@@ -383,6 +383,24 @@ for token in (
 
 workflow=(ROOT.parent/".github/workflows/phaser360-windows.yml").read_text()
 runner=(ROOT/"tools/P360_AUDIO_GATE.ps1").read_text()
+wavert_test=(ROOT/"tools/P360_WAVERT_TEST.c").read_text()
+for token in (
+    "P360_RATE 48000u",
+    "P360_SECONDS 2u",
+    "P360_AMPLITUDE 10737418.0",
+    "P360_TONE_HZ 997.0",
+    'contains_i(caps.szPname,L"PHASER360")',
+    "WAVE_FORMAT_EXTENSIBLE",
+    "wValidBitsPerSample=16",
+    "wBitsPerSample=32",
+    "waveOutOpen(",
+    "waveOutWrite(",
+    "waveOutReset(",
+    'wprintf(L"TEST=PASS',
+):
+    if token not in wavert_test:
+        raise SystemExit(f"bounded WaveRT test contract missing: {token}")
+
 runner_readme=(ROOT/"tools/P360_AUDIO_GATE_README.txt").read_text()
 start_cmd=(ROOT/"tools/START_AUDIO_TEST.cmd").read_text()
 restore_cmd=(ROOT/"tools/RESTORE_LAST_SESSION.cmd").read_text()
@@ -391,7 +409,11 @@ for token in (
     'ValidateSet("Audio","Restore")',
     "ExpectedFirmwareBytes = 246528",
     "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab",
-    "ExpectedFlags 31 -MinimumStage 110",
+    "ExpectedFlags 47 -MinimumStage 70",
+    "ExpectedFlags 47 -MinimumStage 120",
+    "FINAL_HOST_AUDIO_CORE=PASS",
+    "FINAL_WAVERT_2000MS_MAX_0P5PCT=PASS",
+    "P360_WAVERT_TEST.exe",
     "[BitConverter]::ToInt32([BitConverter]::GetBytes($fwRaw),0)",
     "Disable-TargetAndProveStop",
     "Get-WindowsDriver -Online -All",
@@ -418,7 +440,7 @@ for token in (
     "MANUAL_WINDOWS_RESTART_REQUIRED=YES",
     "DIRECT_FINAL_SPEAKER_TEST=YES",
     "FINAL_SPEAKER_PHASE=BEGIN",
-    "FINAL_TONE_2000MS_MAX_0P5PCT=PASS",
+    "FINAL_WAVERT_2000MS_MAX_0P5PCT=PASS",
     "FINAL_SPEAKER_STOP_MUTE=PASS",
     "FINAL_DRIVER_RESTORE=PASS",
     "AUDIO_GATE=PASS",
@@ -427,6 +449,25 @@ for token in (
     '"D:\\PHASER360_WORK"',
 ):
     if token not in runner:
+
+
+for forbidden in (
+    "Final speaker test did not reach fresh TONE_COMPLETE.",
+    "FINAL_TONE_2000MS_MAX_0P5PCT=PASS",
+    "-ExpectedFlags 31 -MinimumStage 110",
+):
+    if forbidden in runner:
+        raise SystemExit(f"final runner regressed to hostless Tone semantics: {forbidden}")
+
+for token in (
+    "$telemetry=Wait-Telemetry -ExpectedFlags 47 -MinimumStage 70 -Seconds 25",
+    "$waveTest=Join-Path $PackageRoot \"P360_WAVERT_TEST.exe\"",
+    "$waveResult=Invoke-Tool -Exe $waveTest -Arguments @() -AllowFailure",
+    "$telemetry=Wait-Telemetry -ExpectedFlags 47 -MinimumStage 120 -Seconds 5",
+    "FINAL_WAVERT_2000MS_MAX_0P5PCT=PASS",
+):
+    if token not in runner:
+        raise SystemExit(f"real WaveRT final-runner contract missing: {token}")
         raise SystemExit(f"hardware gate runner safety contract missing: {token}")
 
 if '"/install"' in runner:
@@ -549,6 +590,8 @@ for token in (
     "P360_FIRMWARE_MANIFEST.txt",
     "PORTCLS_SPEAKER_ENDPOINT_COMPILE=PASS",
     "PORTCLS_HOST_WAVERT_PLAYBACK_COMPILE=PASS",
+    "P360_WAVERT_TEST_COMPILE=PASS",
+    "P360_WAVERT_TEST.exe",
     "P360SofAudio-host-playback.sys",
     "P360SofAudio-host-playback.pdb",
     "/p:P360HostPlaybackEnabled=1",
@@ -898,6 +941,8 @@ sof_stop_i=driver.index("p360_ipc3_build_stream_trigger(",speaker_disarm_i)
 dma_stop_i=driver.index("p360_playback_stream_stop(playback)",sof_stop_i)
 if not host_stop_i < amp_stop_i < speaker_disarm_i < sof_stop_i < dma_stop_i:
     raise SystemExit("HOST playback STOP ordering is not MAX mute -> SOF -> HDA stop")
+if "P360_TELEM_STAGE_STOP_COMPLETE" not in driver[host_stop_i:dma_stop_i+1200]:
+    raise SystemExit("HOST WaveRT stop does not publish STOP_COMPLETE telemetry")
 
 host_release_i=driver.index("p360_host_playback_release(")
 pcm_free_i=driver.index("p360_ipc3_build_pcm_free(",host_release_i)
