@@ -328,12 +328,15 @@ for token in (
     "OriginalService",
     "ORIGINAL_DRIVER=UNBOUND",
     "Wait-TargetPresent",
-    "Rebind-TestTarget",
-    "TEST_BIND_AFTER_RESTART=PASS",
-    "TEST_BIND_AFTER_DISABLE_ENABLE=PASS",
-    "PNPUTIL_ADD_EXIT=",
-    "RESTORE_PNPUTIL_ADD_EXIT=",
-    "PNPUTIL_REBOOT_REPORTED=YES",
+    "Clear-TestTelemetry",
+    "STALE_TELEMETRY_CLEARED=",
+    "Remove-And-RescanTarget",
+    "TARGET_REENUM_BIND=PASS",
+    "Assert-SafeBaselineBeforeNewTest",
+    '"/remove-device"',
+    "RESTORE_DELETE_TEST_PACKAGE=",
+    "RESTORE_STAGE_BASELINE_EXIT=",
+    "RESTORE_BOUND_BASELINE=PASS",
     "RESTORE_UNBOUND_BASELINE=PASS",
     "Restore-OriginalDriver",
     "Restore-Firmware",
@@ -351,6 +354,9 @@ for token in (
 ):
     if token not in runner:
         raise SystemExit(f"hardware gate runner safety contract missing: {token}")
+
+if '"/install"' in runner:
+    raise SystemExit("hardware gate runner must stage packages without pnputil /install")
 
 for forbidden in (
     "bcdedit.exe /set",
