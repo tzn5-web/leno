@@ -125,8 +125,9 @@ int main(void)
     memset(&m,0,sizeof(m));
     m.now=275u;
     ready(&d);
-    assert(p360_ipc3_build_tone_amplitude_control(
-        &tone_control,ids.tone_id,0x01000000)==0);
+    assert(p360_ipc3_build_tone_amplitude(
+        &tone_control,ids.tone_id,P360_IPC3_TONE_HALF_PERCENT_Q1_31,
+        P360_SPEAKER_CHANNELS)==0);
     assert(p360_dispatch_expect_message(
         &d,175u,100u,tone_control.data,tone_control.bytes)==0);
     assert(d.expected_generic==0);
