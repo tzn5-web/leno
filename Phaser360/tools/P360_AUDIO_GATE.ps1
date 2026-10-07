@@ -636,6 +636,18 @@ function Restore-OriginalDriver([string]$InstanceId) {
         Save-State
     }
 
+    # Remove any still-staged test package even if TestInfName was cleared by
+    # a prior interrupted rollback.
+    foreach ($entry in @(Get-P360StoreEntries | Where-Object {
+        ([string]$_.Version -eq "2.0.100.1") -or
+        ([string]$_.Version -eq "2.0.200.1")
+    })) {
+        if ($entry.Driver) {
+            Invoke-Tool -Exe "pnputil.exe" -Arguments @(
+                "/delete-driver",[string]$entry.Driver,"/uninstall","/force") -AllowFailure | Out-Null
+        }
+    }
+
     Invoke-Tool -Exe "pnputil.exe" -Arguments @("/enable-device",$InstanceId) -AllowFailure | Out-Null
 
     if ([bool]$script:State.OriginalHadDriver) {
@@ -653,6 +665,37 @@ function Restore-OriginalDriver([string]$InstanceId) {
         }
 
         $null=Restart-Target $InstanceId
+        Start-Sleep -Milliseconds 750
+
+        if (-not (Test-BoundDriver $InstanceId ([string]$script:State.OriginalDriverVersion) ([string]$script:State.OriginalProvider))) {
+            Write-RunLog "RESTORE_RESTART_NOT_ENOUGH=YES; trying remove/scan re-enumeration"
+            $remove=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/remove-device",$InstanceId) -AllowFailure
+            Write-RunLog "RESTORE_REMOVE_DEVICE_EXIT=$($remove.ExitCode)"
+            Start-Sleep -Milliseconds 750
+            Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure | Out-Null
+
+            $deadline=(Get-Date).AddSeconds(20)
+            do {
+                Start-Sleep -Milliseconds 500
+                if (Test-BoundDriver $InstanceId ([string]$script:State.OriginalDriverVersion) ([string]$script:State.OriginalProvider)) {
+                    Write-RunLog "RESTORE_REENUM_BIND=PASS"
+                    break
+                }
+            } while ((Get-Date) -lt $deadline)
+        }
+
+        if (-not (Test-BoundDriver $InstanceId ([string]$script:State.OriginalDriverVersion) ([string]$script:State.OriginalProvider))) {
+            $current=Get-BoundDriverOrNull $InstanceId
+            $currentText=if ($current) {
+                "INF=$($current.InfName) VERSION=$($current.DriverVersion) PROVIDER=$($current.DriverProviderName)"
+            } else {
+                "UNBOUND"
+            }
+            $script:State | Add-Member -NotePropertyName RebootRequired -NotePropertyValue $true -Force
+            Save-State
+            throw "Baseline restore requires one manual Windows reboot. Current=$currentText. Test packages are removed; original package remains staged."
+        }
+
         Wait-TargetHealthy $InstanceId | Out-Null
 
         $driver=Get-SignedDriver $InstanceId
