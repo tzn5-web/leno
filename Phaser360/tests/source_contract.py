@@ -466,6 +466,9 @@ for token in (
     "P360SofAudio-bounded-tone-test.pdb",
     "FinalSpeakerDriverVersion = \"2.0.302.1\"",
     "FinalSpeakerSysSha256",
+    'FinalSpeakerAmplitudeQ1_31 = "10737418"',
+    "FinalSpeakerAmplitudePercent = 0.5",
+    "FinalSpeakerToneBlocks125us = 16000",
     "final\\P360SofAudio.sys",
     "P360SofAudio.inx",
     "P360_FIRMWARE_MANIFEST.txt",
@@ -631,10 +634,10 @@ if "tests/ipc3_topology_regression.c" not in run_b4:
 
 for token in (
     "#define P360_IPC3_TONE_CONTROL_BYTES   140u",
-    "#define P360_IPC3_CTRL_TYPE_VALUE_COMP_SET 3u",
-    "#define P360_IPC3_TONE_HALF_PERCENT_Q1_31  10737418u",
-    "#define P360_IPC3_TONE_TWO_SECONDS_BLOCKS   16000u",
-    "put32(d+16,P360_IPC3_CTRL_TYPE_VALUE_COMP_SET);",
+    "#define P360_IPC3_CTRL_TYPE_DATA_SET 5u",
+    "#define P360_IPC3_TONE_HALF_PERCENT_Q1_31 10737418u",
+    "#define P360_IPC3_TONE_TWO_SECONDS_BLOCKS  16000u",
+    "put32(d+16,P360_IPC3_CTRL_TYPE_DATA_SET);"
     "put32(d+20,P360_IPC3_CTRL_CMD_ENUM);",
     "P360_IPC3_TONE_IDX_AMPLITUDE",
     "P360_IPC3_TONE_IDX_LENGTH",
