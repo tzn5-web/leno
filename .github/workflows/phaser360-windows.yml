@@ -127,6 +127,21 @@ jobs:
           $pdb = "Phaser360\driver\out\Release\P360SofAudio.pdb"
           if (Test-Path $pdb) { Remove-Item $pdb -Force }
 
+      - name: Compile bounded internal speaker proof
+        shell: pwsh
+        run: |
+          msbuild Phaser360\driver\P360SofAudio.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /p:P360PortClsShellEnabled=1 /p:P360RuntimeBootEnabled=1 /p:P360IpcProbeEnabled=1 /p:P360ToneTopologyProofEnabled=1 /p:P360InternalSpeakerEnabled=1 /p:P360BoundedToneTestEnabled=1 /v:minimal
+          $sys = "Phaser360\driver\out\Release\P360SofAudio.sys"
+          if (-not (Test-Path $sys)) {
+            throw "PortCls+SOF+IPC3+Tone+bounded speaker compile did not produce P360SofAudio.sys"
+          }
+          $h = Get-FileHash $sys -Algorithm SHA256
+          Write-Host "PORTCLS_BOUNDED_TONE_TEST_COMPILE=PASS"
+          Write-Host "SHA256=$($h.Hash)"
+          Remove-Item $sys -Force
+          $pdb = "Phaser360\driver\out\Release\P360SofAudio.pdb"
+          if (Test-Path $pdb) { Remove-Item $pdb -Force }
+
       - name: Compile speaker endpoint shell
         shell: pwsh
         run: |
