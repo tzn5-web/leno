@@ -90,3 +90,15 @@ NTSTATUS p360_telemetry_prepare(_In_ ULONG Step,_In_ ULONG Detail,_In_ NTSTATUS 
 NTSTATUS p360_telemetry_boot_epoch(_In_ ULONGLONG Epoch);
 NTSTATUS p360_telemetry_ipc(_In_ LONG FirmwareError,_In_ ULONG ReplyBytes);
 NTSTATUS p360_telemetry_result(_In_ ULONG FailureReason,_In_ NTSTATUS Status);
+
+
+NTSTATUS
+p360_telemetry_loader(
+    _In_ ULONG Phase,
+    _In_ LONG LoaderError,
+    _In_ LONG CleanupError,
+    _In_ ULONG EntryAdspcs,
+    _In_ ULONG NormalizedAdspcs,
+    _In_ ULONG FinalAdspcs,
+    _In_ ULONG RomStatus,
+    _In_ ULONG RomError);
