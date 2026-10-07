@@ -245,6 +245,9 @@ if not re.search(r"#define\s+P360_IPC_PROBE_ENABLED\s+0\b", driver_h):
 if not re.search(r"#define\s+P360_SPEAKER_ENDPOINT_ENABLED\s+0\b", driver_h):
     raise SystemExit("speaker endpoint barrier was enabled in the default driver")
 
+if not re.search(r"#define\s+P360_TONE_TOPOLOGY_PROOF_ENABLED\s+0\b", driver_h):
+    raise SystemExit("hostless topology proof barrier was enabled in the default driver")
+
 speaker_endpoint=(ROOT/"src/p360_speaker_endpoint.cpp").read_text()
 for token in (
     "CLSID_PortTopology",

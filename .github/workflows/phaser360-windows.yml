@@ -199,6 +199,7 @@ jobs:
             playbackImplemented = $false
             hardwareValidated = $false
             internalSpeakerPolicy = 0
+            toneTopologyProofEnabled = 0
             firmwareIncluded = $false
             files = @($buildFiles)
           } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath Phaser360\driver\out\Release\build-manifest.json -Encoding utf8
