@@ -776,6 +776,7 @@ fail_arm:
 fail_sof:
     if (playback->SofRunning) {
         RtlZeroMemory(&message,sizeof(message));
+        cleanupStatus=STATUS_INVALID_PARAMETER;
         if (p360_ipc3_build_stream_trigger(
                 &message,
                 P360_IPC3_SPEAKER_HOST_ID,
@@ -784,9 +785,18 @@ fail_sof:
                 ctx,
                 &message,
                 12u);
-            UNREFERENCED_PARAMETER(cleanupStatus);
         }
-        playback->SofRunning=FALSE;
+
+        if (NT_SUCCESS(cleanupStatus)) {
+            playback->SofRunning=FALSE;
+        } else {
+            /*
+             * STREAM_START was acknowledged, so firmware ownership remains
+             * live until STREAM_STOP is positively acknowledged or the DSP is
+             * reset. Never convert a failed rollback into false local idle.
+             */
+            p360_state_fail(&ctx->State,P360_FAIL_STREAM);
+        }
     }
 
 fail_dma:
@@ -909,16 +919,27 @@ p360_host_playback_release(
             &message,
             P360_IPC3_SPEAKER_HOST_ID);
         if (rc!=P360_IPC3_TOPOLOGY_OK) {
-            if (NT_SUCCESS(firstStatus))
-                firstStatus=STATUS_INVALID_PARAMETER;
+            status=STATUS_INVALID_PARAMETER;
         } else {
             status=p360_runtime_send_zero_error(
                 ctx,
                 &message,
                 12u);
-            if (!NT_SUCCESS(status) && NT_SUCCESS(firstStatus))
-                firstStatus=status;
         }
+
+        if (!NT_SUCCESS(status)) {
+            if (NT_SUCCESS(firstStatus))
+                firstStatus=status;
+
+            /*
+             * The firmware still owns PCM_PARAMS/page-table metadata. Do not
+             * retire the HDA stream or free its page table until PCM_FREE is
+             * acknowledged or a higher-level DSP reset has proved ownership
+             * gone.
+             */
+            return firstStatus;
+        }
+
         playback->SofParamsPrepared=FALSE;
     }
 
