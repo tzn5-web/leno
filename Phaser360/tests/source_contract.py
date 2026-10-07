@@ -699,6 +699,18 @@ for token in (
 if "3.0.100.1" not in runner[runner.index("function Test-IsReservedGateVersion"):runner.index("function Assert-NoStaleTestPackage")]:
     raise SystemExit("final persistent P360 driver version is not covered by rollback cleanup")
 
+for token in (
+    "AdspBackupComplete=$false",
+    "AmpBackupComplete=$false",
+    "$script:State.AdspBackupComplete = $true",
+    "$script:State.AmpBackupComplete=$true",
+    'RESTORE_ADSP_SKIPPED=backup_not_complete',
+    'RESTORE_AMP_SKIPPED=backup_not_complete',
+    '# Persist the identity before the first mutation so rollback can remove a',
+):
+    if token not in runner:
+        raise SystemExit(f"crash-safe one-shot transaction contract missing: {token}")
+
 for forbidden in (
     "bcdedit.exe /set",
     "bcdedit /set",
