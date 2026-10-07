@@ -601,7 +601,9 @@ p360_host_playback_prepare(
 {
     struct p360_ipc3_message message;
     NTSTATUS status;
+    NTSTATUS cleanupStatus;
     UINT32 pageTablePhysical;
+    BOOLEAN pcmParamsAttempted=FALSE;
     int rc;
 
     if (!ctx || !playback || !audioMdl ||
@@ -661,6 +663,7 @@ p360_host_playback_prepare(
         goto fail;
     }
 
+    pcmParamsAttempted=TRUE;
     status=p360_runtime_send_zero_error(
         ctx,
         &message,
@@ -672,7 +675,38 @@ p360_host_playback_prepare(
     return STATUS_SUCCESS;
 
 fail:
-    (void)p360_playback_stream_retire(playback);
+    /*
+     * Once PCM_PARAMS has been submitted, a transport/reply failure is
+     * ambiguous: firmware may already hold the host page-table reference.
+     * A normal HDA retire is not enough to prove that ownership gone. Force a
+     * full DSP quiesce/reset before allowing the WaveRT MDL to be released.
+     */
+    if (pcmParamsAttempted) {
+        cleanupStatus=p360_host_playback_force_quiesce(
+            ctx,
+            playback);
+    } else {
+        cleanupStatus=p360_playback_stream_retire(playback);
+    }
+
+    if (!NT_SUCCESS(cleanupStatus)) {
+        p360_state_fail(&ctx->State,P360_FAIL_STREAM);
+        return cleanupStatus;
+    }
+
+    if (playback->AudioMdl ||
+        playback->PageTable ||
+        playback->StreamOwned ||
+        playback->StreamPrepared ||
+        playback->Running ||
+        playback->SofRunning ||
+        playback->SofParamsPrepared ||
+        playback->SpeakerStarted ||
+        playback->SpeakerArmed) {
+        p360_state_fail(&ctx->State,P360_FAIL_STREAM);
+        return STATUS_DEVICE_HARDWARE_ERROR;
+    }
+
     (void)InterlockedCompareExchangePointer(
         (PVOID volatile *)&ctx->ActivePlayback,
         NULL,
