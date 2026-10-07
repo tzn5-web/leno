@@ -977,7 +977,10 @@ for token in (
     "ResetToDefault(0)",
     "MIX_INTERNAL_ENGINE_FORMAT=OBSERVED",
     "AUDCLNT_SHAREMODE_SHARED",
+    "IAudioRenderClient",
+    "IAudioClock",
     "WASAPI_SHARED_PREFLIGHT=PASS",
+    "WASAPI_SHARED_PLAYBACK=PASS",
 ):
     if token not in wasapi_shared:
         raise SystemExit(f"WASAPI no-sound endpoint verification missing: {token}")
@@ -1008,6 +1011,7 @@ for function_name in (
     "Restart-WindowsAudio",
     "Run-WasapiPreflight",
     "Reset-WasapiEndpointFormat",
+    "Run-WasapiPhysicalOnce",
     "Remove-StaleProjectPackages",
     "Install-FullStack",
     "Write-ResultZip",
@@ -1019,25 +1023,42 @@ for function_name in (
 
 for token in (
     "PHASER360 FULL AUDIO DRIVER INSTALL",
-    "PHYSICAL_AUDIO_TEST=NO",
+    "PHYSICAL_AUDIO_TEST=ONE_SHOT_WASAPI_SHARED",
     "P360_FORCE_INSTALL.exe",
     "FULL_INSTALL_ROUND=",
     "WINDOWS_AUDIO_ENDPOINT=PASS",
     "WASAPI_DEVICE_FORMAT_RESET=PASS",
     "NOT_AUDIO_BLOCKER=YES",
+    "ORIGINAL_BACKUP=SKIPPED_ALREADY_PRODUCTION",
     "FULL_DRIVER_INSTALL=PASS",
+    "WINDOWS_AUDIO_ENDPOINT=PREFLIGHT_READY",
+    "PHYSICAL_WASAPI_ATTEMPTS_MAX=1",
+    "PHYSICAL_WASAPI_ATTEMPT=1",
+    "WASAPI_SHARED_PHYSICAL_PLAYBACK=PASS",
+    "FINAL_ACCEPTANCE=WASAPI_SHARED_ENDPOINT_FUNCTIONAL",
+    "AUTOMATIC_ROLLBACK=NO",
+    "AUTOMATIC_PHYSICAL_REPLAY=NO",
     "AUDIO_DRIVER_READY=YES",
 ):
     if token not in full_installer:
         raise SystemExit(f"full installer convergence contract missing: {token}")
 
+if full_installer.count("Run-WasapiPhysicalOnce") != 2:
+    raise SystemExit("full installer must define and invoke the physical WASAPI path exactly once")
+install_stack_begin=full_installer.index("function Install-FullStack")
+install_stack_end=full_installer.index("function Write-ResultZip",install_stack_begin)
+if "Run-WasapiPhysicalOnce" in full_installer[install_stack_begin:install_stack_end]:
+    raise SystemExit("physical playback leaked into automatic repair/preflight loop")
+physical_call=full_installer.index("if (-not (Run-WasapiPhysicalOnce))")
+full_install_call=full_installer.index("Install-FullStack $info")
+if physical_call <= full_install_call:
+    raise SystemExit("physical playback must occur only after the full no-sound stack converges")
+
 for forbidden in (
-    'Run-Wasapi")',
-    "PHYSICAL_WASAPI_ATTEMPT",
     "P360_WAVERT_TEST.exe",
 ):
     if forbidden in full_installer:
-        raise SystemExit(f"physical/legacy test leaked into full installer: {forbidden}")
+        raise SystemExit(f"legacy waveOut test leaked into full installer: {forbidden}")
 
 full_prepare_begin=workflow.index("- name: Prepare full-install audio package")
 full_build_begin=workflow.index("- name: Build and audit full-install driver package",full_prepare_begin)
@@ -1060,12 +1081,16 @@ full_build=workflow[full_build_begin:full_upload_begin]
 for token in (
     'InstallerMode = "FullInstall"',
     'ForceBindingApi = "UpdateDriverForPlugAndPlayDevices/INSTALLFLAG_FORCE"',
-    "PhysicalAudioTest = $false",
+    "PhysicalAudioTest = $true",
+    "PhysicalWasapiAttemptsMax = 1",
+    'FinalAcceptance = "WASAPI_SHARED_ENDPOINT_FUNCTIONAL"',
     "P360SofAudioSha256",
     "P360Max98357SafeSha256",
     "WasapiTestSha256",
     "ForceInstallSha256",
     "P360_FULL_INSTALL_PACKAGE=PASS",
+    "P360_FINAL_ACCEPTANCE=WASAPI_SHARED_ONE_SHOT",
+    "P360_PHYSICAL_WASAPI_ATTEMPTS_MAX=1",
 ):
     if token not in full_build:
         raise SystemExit(f"full-install manifest/audit missing: {token}")
