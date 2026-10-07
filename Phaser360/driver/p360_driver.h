@@ -110,6 +110,7 @@ typedef struct _P360_DEVICE_CONTEXT {
     BOOLEAN Prepared;
     volatile PVOID ActivePlayback;
     volatile LONG Removing;
+    volatile LONG PnpQueryPending;
 } P360_DEVICE_CONTEXT;
 
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(P360_DEVICE_CONTEXT,P360GetContext)

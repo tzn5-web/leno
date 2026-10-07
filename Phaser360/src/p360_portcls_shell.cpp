@@ -33,6 +33,7 @@ typedef struct _P360_PORTCLS_INSTANCE {
     PDEVICE_OBJECT Fdo;
     WDFDEVICE FrameworkDevice;
     P360_DEVICE_CONTEXT *Context;
+    volatile LONG Quarantined;
 } P360_PORTCLS_INSTANCE;
 
 static P360_PORTCLS_INSTANCE gP360PortClsInstance;
@@ -316,6 +317,133 @@ p360_portcls_current_fdo(VOID)
     return fdo;
 }
 
+static P360_DEVICE_CONTEXT *
+p360_portcls_peek_context(
+    _In_ PDEVICE_OBJECT Fdo
+    )
+{
+    KIRQL oldIrql;
+    P360_DEVICE_CONTEXT *ctx=NULL;
+
+    KeAcquireSpinLock(&gP360PortClsInstance.Lock,&oldIrql);
+    if (gP360PortClsInstance.Fdo==Fdo)
+        ctx=gP360PortClsInstance.Context;
+    KeReleaseSpinLock(&gP360PortClsInstance.Lock,oldIrql);
+
+    /*
+     * PnP minor IRPs for this FDO are serialized at PASSIVE_LEVEL, so the
+     * instance cannot be removed by another PnP minor while this dispatch
+     * routine is evaluating the returned context.
+     */
+    return ctx;
+}
+
+static NTSTATUS
+p360_portcls_begin_pnp_query(
+    _In_ PDEVICE_OBJECT Fdo
+    )
+{
+    P360_DEVICE_CONTEXT *ctx;
+
+    ctx=p360_portcls_peek_context(Fdo);
+    if (!ctx)
+        return STATUS_SUCCESS;
+
+    if (InterlockedCompareExchange(
+            &gP360PortClsInstance.Quarantined,0,0)!=0)
+        return STATUS_DEVICE_HARDWARE_ERROR;
+
+    if (InterlockedCompareExchange(
+            &ctx->PnpQueryPending,1,0)!=0)
+        return STATUS_SUCCESS;
+
+    if (InterlockedCompareExchange(
+            &ctx->Removing,1,0)!=0) {
+        InterlockedExchange(&ctx->PnpQueryPending,0);
+        return STATUS_DEVICE_BUSY;
+    }
+
+    KeMemoryBarrier();
+
+    /*
+     * Do not mutate a live WaveRT pin during a QUERY_* IRP. Veto the query
+     * instead. This preserves the pin state if PnP later cancels the query
+     * and guarantees no new prepare can race in behind the gate.
+     */
+    if (InterlockedCompareExchangePointer(
+            (PVOID volatile *)&ctx->ActivePlayback,
+            NULL,
+            NULL)!=NULL ||
+        InterlockedCompareExchange(
+            &ctx->CsAudio.SpeakerStarted,0,0)!=0 ||
+        ctx->State.speaker_runtime_armed) {
+        InterlockedExchange(&ctx->Removing,0);
+        InterlockedExchange(&ctx->PnpQueryPending,0);
+        return STATUS_DEVICE_BUSY;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+static VOID
+p360_portcls_cancel_pnp_query(
+    _In_ PDEVICE_OBJECT Fdo
+    )
+{
+    P360_DEVICE_CONTEXT *ctx;
+
+    ctx=p360_portcls_peek_context(Fdo);
+    if (!ctx)
+        return;
+
+    if (InterlockedExchange(
+            &ctx->PnpQueryPending,0)!=0 &&
+        InterlockedCompareExchange(
+            &gP360PortClsInstance.Quarantined,0,0)==0) {
+        KeMemoryBarrier();
+        InterlockedExchange(&ctx->Removing,0);
+    }
+}
+
+static VOID
+p360_portcls_mark_quarantined(
+    _In_ PDEVICE_OBJECT Fdo,
+    _In_ BOOLEAN DetachFromPortClsFdo
+    )
+{
+    WDFDEVICE frameworkDevice=NULL;
+    P360_DEVICE_CONTEXT *ctx=NULL;
+
+    InterlockedExchange(
+        &gP360PortClsInstance.Quarantined,
+        1);
+
+    if (!DetachFromPortClsFdo)
+        return;
+
+    /*
+     * REMOVE/SURPRISE_REMOVE cannot be failed. If teardown cannot prove
+     * ownership gone, detach the intentionally leaked/quarantined miniport
+     * from the soon-to-disappear PortCls FDO instead of retaining a stale FDO
+     * pointer or freeing a WaveRT/MDL object that hardware may still own.
+     */
+    if (p360_portcls_take_instance(
+            Fdo,
+            &frameworkDevice,
+            &ctx)) {
+        UNREFERENCED_PARAMETER(frameworkDevice);
+
+        if (ctx) {
+            ctx->PortClsFdo=NULL;
+            InterlockedExchange(&ctx->PnpQueryPending,0);
+            InterlockedExchange(&ctx->Removing,1);
+            p360_state_fail(
+                &ctx->State,
+                P360_FAIL_STREAM);
+        }
+    }
+}
+
 static NTSTATUS
 p360_portcls_cleanup_instance(
     _In_ PDEVICE_OBJECT Fdo
@@ -423,6 +551,11 @@ P360PortClsStartDevice(
 
     if (!DeviceObject || KeGetCurrentIrql()!=PASSIVE_LEVEL)
         return STATUS_INVALID_PARAMETER;
+
+    if (InterlockedCompareExchange(
+            &gP360PortClsInstance.Quarantined,0,0)!=0) {
+        return STATUS_DEVICE_HARDWARE_ERROR;
+    }
 
     WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(
         &attributes,
@@ -543,21 +676,83 @@ P360PortClsPnpHandler(
     stack=IoGetCurrentIrpStackLocation(Irp);
 
     switch (stack->MinorFunction) {
+    case IRP_MN_QUERY_STOP_DEVICE:
+    case IRP_MN_QUERY_REMOVE_DEVICE:
+        {
+            NTSTATUS status=
+                p360_portcls_begin_pnp_query(DeviceObject);
+
+            if (!NT_SUCCESS(status)) {
+                /*
+                 * QUERY_* is the legal veto point. Complete a failed query
+                 * here and do not pass it farther down the stack.
+                 */
+                Irp->IoStatus.Status=status;
+                IoCompleteRequest(Irp,IO_NO_INCREMENT);
+                return status;
+            }
+
+            Irp->IoStatus.Status=STATUS_SUCCESS;
+        }
+        break;
+
+    case IRP_MN_CANCEL_STOP_DEVICE:
+    case IRP_MN_CANCEL_REMOVE_DEVICE:
+        p360_portcls_cancel_pnp_query(DeviceObject);
+        Irp->IoStatus.Status=STATUS_SUCCESS;
+        break;
+
     case IRP_MN_STOP_DEVICE:
+        {
+            NTSTATUS cleanupStatus=
+                p360_portcls_cleanup_instance(DeviceObject);
+
+            /*
+             * STOP itself must succeed. A preceding QUERY_STOP should have
+             * vetoed live ownership; a later hardware failure is quarantined
+             * and prevents a second StartDevice until reboot.
+             */
+            if (!NT_SUCCESS(cleanupStatus))
+                p360_portcls_mark_quarantined(
+                    DeviceObject,
+                    FALSE);
+        }
+        break;
+
     case IRP_MN_SURPRISE_REMOVAL:
     case IRP_MN_REMOVE_DEVICE:
-        /*
-         * PortCls owns the PnP IRP. We release our SOF/WDF side first, then
-         * always pass the IRP to PortCls exactly as the reference adapter
-         * model does.
-         */
-        (void)p360_portcls_cleanup_instance(DeviceObject);
+        {
+            NTSTATUS cleanupStatus;
+            P360_DEVICE_CONTEXT *ctx=
+                p360_portcls_peek_context(DeviceObject);
+
+            /*
+             * Mandatory-success path: stop all new host activity even if no
+             * QUERY_REMOVE preceded this IRP, then make one fail-closed
+             * cleanup attempt.
+             */
+            if (ctx) {
+                InterlockedExchange(&ctx->PnpQueryPending,0);
+                InterlockedExchange(&ctx->Removing,1);
+            }
+
+            cleanupStatus=
+                p360_portcls_cleanup_instance(DeviceObject);
+            if (!NT_SUCCESS(cleanupStatus))
+                p360_portcls_mark_quarantined(
+                    DeviceObject,
+                    TRUE);
+        }
         break;
 
     default:
         break;
     }
 
+    /*
+     * PortCls owns successful and mandatory PnP IRPs. STOP,
+     * SURPRISE_REMOVAL and REMOVE are never failed here.
+     */
     return PcDispatchIrp(DeviceObject,Irp);
 }
 

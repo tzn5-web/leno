@@ -626,6 +626,20 @@ p360_host_playback_prepare(
         return STATUS_DEVICE_BUSY;
     }
 
+    /*
+     * QUERY_STOP/QUERY_REMOVE sets Removing before checking ActivePlayback.
+     * A prepare that observed Removing==0 just before that gate can publish
+     * afterwards, so re-check immediately after the CAS and withdraw before
+     * touching HDA/SOF.
+     */
+    if (InterlockedCompareExchange(&ctx->Removing,0,0)!=0) {
+        (void)InterlockedCompareExchangePointer(
+            (PVOID volatile *)&ctx->ActivePlayback,
+            NULL,
+            playback);
+        return STATUS_DEVICE_BUSY;
+    }
+
     status=p360_playback_stream_init(
         playback,
         &ctx->Bus);
@@ -1530,6 +1544,7 @@ P360EvtDeviceAdd(
     ctx=P360GetContext(device);
     p360_state_init(&ctx->State);
     InterlockedExchange(&ctx->Removing,0);
+    InterlockedExchange(&ctx->PnpQueryPending,0);
 
     return STATUS_SUCCESS;
 }
@@ -1558,6 +1573,7 @@ p360_host_prepare(
         (PVOID volatile *)&ctx->ActivePlayback,
         NULL);
     InterlockedExchange(&ctx->Removing,0);
+    InterlockedExchange(&ctx->PnpQueryPending,0);
 
     status=p360_telemetry_reset(
         p360_build_flags());

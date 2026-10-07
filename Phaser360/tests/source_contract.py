@@ -849,6 +849,7 @@ for token in (
     "PVOID SpeakerTopologyPort;",
     "PVOID SpeakerWavePort;",
     "BOOLEAN SpeakerEndpointInstalled;",
+    "volatile LONG PnpQueryPending;",
     "extern \"C\" {",
 ):
     if token not in driver_h:
@@ -1112,6 +1113,22 @@ for forbidden in (
         raise SystemExit(f"playback bridge introduced a second audio-buffer owner: {forbidden}")
 
 host_prepare_i=driver.index("p360_host_playback_prepare(")
+active_publish_i=driver.index(
+    "InterlockedCompareExchangePointer(",
+    host_prepare_i)
+removing_recheck_i=driver.index(
+    "InterlockedCompareExchange(&ctx->Removing,0,0)!=0",
+    active_publish_i)
+active_withdraw_i=driver.index(
+    "InterlockedCompareExchangePointer(",
+    removing_recheck_i)
+if not (
+    host_prepare_i < active_publish_i < removing_recheck_i <
+    active_withdraw_i
+):
+    raise SystemExit(
+        "QUERY_STOP/REMOVE race can publish ActivePlayback after the PnP gate")
+
 bind_buffer_i=driver.index("p360_playback_stream_bind_buffer(",host_prepare_i)
 host_pcm_i=driver.index("p360_ipc3_build_host_pcm_params(",bind_buffer_i)
 host_pcm_attempt_i=driver.index("pcmParamsAttempted=TRUE;",host_pcm_i)
@@ -1319,6 +1336,55 @@ endpoint_uninstall_i=portcls_shell.index("p360_speaker_endpoint_uninstall(")
 endpoint_d0_exit_i=portcls_shell.index("p360_host_d0_exit(ctx);", endpoint_uninstall_i)
 if not endpoint_uninstall_i < endpoint_d0_exit_i:
     raise SystemExit("speaker endpoint teardown must precede DSP D0 exit")
+
+for token in (
+    "IRP_MN_QUERY_STOP_DEVICE",
+    "IRP_MN_QUERY_REMOVE_DEVICE",
+    "IRP_MN_CANCEL_STOP_DEVICE",
+    "IRP_MN_CANCEL_REMOVE_DEVICE",
+    "p360_portcls_begin_pnp_query(",
+    "p360_portcls_cancel_pnp_query(",
+    "p360_portcls_mark_quarantined(",
+    "IoCompleteRequest(Irp,IO_NO_INCREMENT);",
+    "volatile LONG Quarantined;",
+):
+    if token not in portcls_shell:
+        raise SystemExit(f"PnP fail-closed lifecycle contract missing: {token}")
+
+query_i=portcls_shell.index("case IRP_MN_QUERY_STOP_DEVICE:")
+query_gate_i=portcls_shell.index(
+    "p360_portcls_begin_pnp_query(DeviceObject)",
+    query_i)
+query_fail_complete_i=portcls_shell.index(
+    "IoCompleteRequest(Irp,IO_NO_INCREMENT);",
+    query_gate_i)
+stop_i=portcls_shell.index("case IRP_MN_STOP_DEVICE:",query_fail_complete_i)
+stop_cleanup_i=portcls_shell.index(
+    "p360_portcls_cleanup_instance(DeviceObject)",
+    stop_i)
+surprise_i=portcls_shell.index(
+    "case IRP_MN_SURPRISE_REMOVAL:",
+    stop_cleanup_i)
+remove_i=portcls_shell.index(
+    "case IRP_MN_REMOVE_DEVICE:",
+    surprise_i)
+dispatch_i=portcls_shell.index(
+    "return PcDispatchIrp(DeviceObject,Irp);",
+    remove_i)
+if not (
+    query_i < query_gate_i < query_fail_complete_i <
+    stop_i < stop_cleanup_i < surprise_i <= remove_i < dispatch_i
+):
+    raise SystemExit("PnP query-veto/mandatory-success ordering drifted")
+
+mandatory_block=portcls_shell[stop_i:dispatch_i]
+for forbidden in (
+    "return cleanupStatus;",
+    "Irp->IoStatus.Status=cleanupStatus;",
+):
+    if forbidden in mandatory_block:
+        raise SystemExit(
+            f"mandatory STOP/REMOVE path can still be failed: {forbidden}")
 
 print("Phaser360 runtime lifecycle contract: PASS")
 
