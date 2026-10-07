@@ -292,8 +292,42 @@ p360_csaudio_speaker_start(
         P360_CSAUDIO_ENDPOINT_START_ACK,
         TRUE);
     if (!NT_SUCCESS(status)) {
-        InterlockedExchange(&link->SpeakerStarted,0);
-        return status;
+        NTSTATUS startStatus=status;
+        NTSTATUS stopStatus;
+        UINT32 stopGeneration;
+
+        /*
+         * START delivery is synchronous, but an absent/invalid ACK is still
+         * ambiguous: MAX may already have asserted SDMODE. Never convert that
+         * ambiguity into local OFF. Issue a new-generation STOP immediately
+         * and require a positive LOW acknowledgement before clearing the
+         * local ownership latch.
+         */
+        stopGeneration=p360_csaudio_next_generation(link);
+        p360_csaudio_reset_ack(link);
+
+        p360_csaudio_notify(
+            link,
+            P360_CSAUDIO_ENDPOINT_SPEAKER,
+            P360_CSAUDIO_ENDPOINT_STOP,
+            stopGeneration);
+
+        stopStatus=p360_csaudio_require_ack(
+            link,
+            stopGeneration,
+            P360_CSAUDIO_ENDPOINT_STOP_ACK,
+            FALSE);
+        if (NT_SUCCESS(stopStatus)) {
+            InterlockedExchange(&link->SpeakerStarted,0);
+            return startStatus;
+        }
+
+        /*
+         * STOP could not be proved. Keep SpeakerStarted latched so the host
+         * rollback/release path retries mute and refuses resource teardown.
+         */
+        InterlockedExchange(&link->SpeakerStarted,1);
+        return stopStatus;
     }
 
     return STATUS_SUCCESS;
