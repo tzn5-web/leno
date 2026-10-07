@@ -3,14 +3,14 @@ PHASER360 AUDIO GATE
 
 This package is intentionally fail-closed.
 
-Order:
-  1. Open PowerShell as Administrator.
-  2. Run:
-       powershell -ExecutionPolicy Bypass -File .\P360_AUDIO_GATE.ps1 -Mode Audit
-  3. Run:
-       powershell -ExecutionPolicy Bypass -File .\P360_AUDIO_GATE.ps1 -Mode PreAudio
-  4. Only if PREAUDIO_GATE=PASS, run:
-       powershell -ExecutionPolicy Bypass -File .\P360_AUDIO_GATE.ps1 -Mode BoundedSpeaker
+Fast path:
+  Open PowerShell as Administrator and run one transaction:
+       powershell -ExecutionPolicy Bypass -File .\P360_AUDIO_GATE.ps1 -Mode Audio -FirmwarePath "C:\path\to\sof-apl.ri"
+
+Audio mode performs PRE-AUDIO proof first and reaches the 250 ms speaker tone
+only when FW_READY + IRQ + IPC3 -22/12 bytes + STOP are all proved in the same run.
+
+The separate Audit / PreAudio / BoundedSpeaker modes remain available for diagnosis.
 
 The runner:
 - never changes BIOS/UEFI;
@@ -27,7 +27,9 @@ The runner:
 - disables the device and requires STOP_COMPLETE before cleanup;
 - restores the original driver, firmware and certificate;
 - refuses BoundedSpeaker unless a matching PRE-AUDIO PASS exists;
-- BoundedSpeaker emits at most the compiled 250 ms SOF Tone diagnostic.
+- Audio mode performs PRE-AUDIO and bounded speaker sequentially in one transaction;
+- Audio never reaches speaker START unless PRE-AUDIO proof and STOP succeeded first;
+- BoundedSpeaker/Audio emit at most the compiled 250 ms SOF Tone diagnostic.
 
 If an interrupted run prevents automatic rollback:
   powershell -ExecutionPolicy Bypass -File .\P360_AUDIO_GATE.ps1 -Mode Restore
