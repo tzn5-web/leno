@@ -591,16 +591,23 @@ for token in (
         raise SystemExit(f"self-contained firmware runner contract missing: {token}")
 
 for token in (
-    'Phaser360\\firmware\\p360-f686.ri.gz',
-    '221f536ad2e1ccc53ec145573fb8556dd3d7d115322e085d5cfae3faf62e48c3',
-    '[IO.Compression.GZipStream]::new(',
-    'Join-Path $root "p360-f686.ri"',
-    'FirmwareSha256=(Get-FileHash (Join-Path $root "p360-f686.ri")',
-    'P360_FULL_INSTALL_VERIFY',
+    'Phaser360\\firmware\\sof-apl-v1.9.3-official.ri',
+    '40029b5a05665f19a492ef00b8c0a24c42e90d7c00fc57146e07947fd1407d5c',
+    'P360_OFFICIAL_SOF_1_9_3=PASS',
+    'Join-Path $root "sof-apl-v1.9.3-official.ri"',
+    'FirmwareSha256=(Get-FileHash (Join-Path $root "sof-apl-v1.9.3-official.ri")',
     'P360_FULL_INSTALL_PACKAGE=PASS',
 ):
     if token not in workflow:
-        raise SystemExit(f"self-contained full-install firmware workflow contract missing: {token}")
+        raise SystemExit(f"official SOF full-install workflow contract missing: {token}")
+
+for forbidden in (
+    'Phaser360\\firmware\\p360-f686.ri.gz',
+    '221f536ad2e1ccc53ec145573fb8556dd3d7d115322e085d5cfae3faf62e48c3',
+    'f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab',
+):
+    if forbidden in workflow:
+        raise SystemExit(f"diagnostic firmware leaked back into full-install workflow: {forbidden}")
 
 for forbidden in (
     "Final speaker test did not reach fresh TONE_COMPLETE.",
@@ -917,7 +924,7 @@ force_installer=(ROOT/"full_install/P360_FORCE_INSTALL.cpp").read_text()
 wasapi_shared=(ROOT/"production/P360_WASAPI_TEST.cpp").read_text()
 
 for token in (
-    "DriverVer=10/07/2026,4.2.0.0",
+    "DriverVer=10/07/2026,4.3.0.0",
     r"CSAUDIO\ADSP&CTLR_VEN_8086&CTLR_DEV_3198",
     r"ACPI\MX98357A",
     "PKEY_AudioEngine_OEMFormat",
@@ -984,6 +991,10 @@ for function_name in (
 
 for token in (
     "PHASER360 FULL AUDIO DRIVER INSTALL",
+    'PhysicalAudioTest -ne "False"',
+    "sof-apl-v1.9.3-official.ri",
+    "287488",
+    "40029b5a05665f19a492ef00b8c0a24c42e90d7c00fc57146e07947fd1407d5c",
     "PHYSICAL_AUDIO_TEST=NO",
     "P360_FORCE_INSTALL.exe",
     "FULL_INSTALL_ROUND=",
@@ -1027,7 +1038,7 @@ for token in (
     '"P360_FULL_INSTALL.ps1"',
     '"INSTALL_PHASER360_AUDIO.cmd"',
     '"RESTORE_PHASER360_AUDIO.cmd"',
-    "p360-f686.ri",
+    "sof-apl-v1.9.3-official.ri",
     "P360_FULL_INSTALL_PARSE=PASS",
 ):
     if token not in full_prepare:
@@ -1633,12 +1644,14 @@ print("Phaser360 runtime lifecycle contract: PASS")
 firmware_h=(ROOT/"include/p360_firmware.h").read_text()
 firmware=(ROOT/"src/p360_firmware.c").read_text()
 
-if r"\\SystemRoot\\System32\\drivers\\P360\\p360-f686.ri" not in firmware_h:
-    raise SystemExit("firmware provider fixed path missing")
+if r"\\SystemRoot\\System32\\drivers\\P360\\sof-apl-v1.9.3-official.ri" not in firmware_h:
+    raise SystemExit("official firmware provider fixed path missing")
 
 loader_h=(ROOT/"sof_core/loader/p360_loader.h").read_text()
-if "P360_FW_FILE_BYTES 246528u" not in loader_h:
-    raise SystemExit("firmware provider exact size contract missing")
+if "P360_FW_FILE_BYTES 287488u" not in loader_h:
+    raise SystemExit("official firmware exact size contract missing")
+if "P360_FW_PAYLOAD_BYTES 286720u" not in loader_h:
+    raise SystemExit("official firmware payload size contract missing")
 
 for token in (
     "ZwCreateFile(",
@@ -1649,6 +1662,15 @@ for token in (
 ):
     if token not in firmware:
         raise SystemExit(f"validated firmware load gate missing: {token}")
+
+for token in (
+    "0x40029b5au,0x05665f19u,0xa492ef00u,0xb8c0a24cu",
+    "0x42e90d7cu,0x00fc5714u,0x6e07947fu,0xd1407d5cu",
+    "0x8f,0xce,0x4c,0xc8",
+):
+    if token not in (ROOT/"sof_core/loader/p360_fw_image.c").read_text():
+        raise SystemExit(f"official SOF identity contract missing: {token}")
+
 
 if "P360_RUNTIME_BOOT_ENABLED 0" not in driver_h:
     raise SystemExit("firmware provider was added but runtime boot barrier is not closed")
