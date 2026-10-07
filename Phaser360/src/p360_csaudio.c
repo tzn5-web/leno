@@ -226,20 +226,6 @@ p360_csaudio_open(
         0u);
 
     /*
-     * If the amplifier answered, force its callback state to STOP while the
-     * DSP topology is still absent. This preserves GPIO ownership in the
-     * dedicated MAX98357A driver and keeps the speaker path fail-closed.
-     */
-    if (InterlockedCompareExchange(
-            &link->SpeakerRegistered,0,0)) {
-        p360_csaudio_notify(
-            link,
-            P360_CSAUDIO_ENDPOINT_SPEAKER,
-            P360_CSAUDIO_ENDPOINT_STOP,
-            0u);
-    }
-
-    /*
      * A legacy CoolStar amplifier can register but cannot prove SDMODE low.
      * The final Phaser360 driver requires the generation-tagged safe MAX
      * protocol before it will accept the speaker dependency.
