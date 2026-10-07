@@ -325,6 +325,26 @@ run_call_i=speaker_endpoint.index("p360_host_playback_start(",run_i)
 if run_i >= run_call_i:
     raise SystemExit("WaveRT RUN still has no real SOF/HDA backend")
 
+release_fn_i=speaker_endpoint.index("P360WaveStream::Release()")
+release_guard_i=speaker_endpoint.index(
+    "if (!p360_playback_memory_released(&m_Playback))",
+    release_fn_i)
+release_resurrect_i=speaker_endpoint.index(
+    "InterlockedExchange(&m_Refs,1);",
+    release_guard_i)
+release_destructor_i=speaker_endpoint.index(
+    "this->~P360WaveStream();",
+    release_resurrect_i)
+release_pool_free_i=speaker_endpoint.index(
+    "ExFreePoolWithTag(this,P360_SPEAKER_POOL_TAG);",
+    release_destructor_i)
+if not (
+    release_fn_i < release_guard_i < release_resurrect_i <
+    release_destructor_i < release_pool_free_i
+):
+    raise SystemExit(
+        "WaveRT object can be freed before DMA/SOF/MAX ownership is proved gone")
+
 if "Hard barrier: the endpoint may enumerate" in speaker_endpoint:
     raise SystemExit("old enumerate-only WaveRT barrier was reintroduced")
 
