@@ -1,6 +1,6 @@
 param(
-    [ValidateSet("Audit","PreAudio","BoundedSpeaker","Audio","Restore")]
-    [string]$Mode = "Audit",
+    [ValidateSet("Audio","Restore")]
+    [string]$Mode = "Audio",
     [string]$FirmwarePath = "",
     [string]$SessionPath = ""
 )
@@ -584,21 +584,38 @@ function Assert-NoStaleTestPackage {
 }
 
 function Assert-SafeBaselineBeforeNewTest([string]$InstanceId) {
+    $device=Get-TargetByIdOrNull $InstanceId
     $driver=Get-BoundDriverOrNull $InstanceId
-    $device=Get-CimInstance Win32_PnPEntity | Where-Object {
-        $_.PNPDeviceID -eq $InstanceId
-    } | Select-Object -First 1
 
-    if ($driver) {
-        $version=[string]$driver.DriverVersion
-        if ($version -eq "2.0.100.1" -or $version -eq "2.0.200.1") {
-            throw "A Phaser360 test driver is still bound (version=$version). Run RESTORE_LAST_SESSION.cmd before any new audio test."
-        }
+    if (-not $device) {
+        throw "ADSP target is missing before test."
+    }
+    if ([int]$device.ConfigManagerErrorCode -ne 0) {
+        throw "ADSP baseline is not healthy; code=$($device.ConfigManagerErrorCode)."
+    }
+    if ([string]$device.Service -ne "P360AdspProbe") {
+        throw "ADSP baseline service is '$($device.Service)', expected P360AdspProbe."
+    }
+    if (-not $driver) {
+        throw "ADSP baseline has no signed-driver record."
+    }
+    if ([string]$driver.DriverProviderName -ne "PHASER360 Project" -or
+        [string]$driver.DriverVersion -ne "1.1.0.0") {
+        throw ("ADSP baseline mismatch: provider={0}, version={1}; expected PHASER360 Project 1.1.0.0." -f
+            [string]$driver.DriverProviderName,[string]$driver.DriverVersion)
     }
 
-    if ($device -and [string]$device.Service -eq "P360SofAudio") {
-        throw "P360SofAudio is still the active service. Run RESTORE_LAST_SESSION.cmd before any new audio test."
+    $stale=@(Get-P360StoreEntries | Where-Object {
+        ([string]$_.Version -eq "2.0.100.1") -or
+        ([string]$_.Version -eq "2.0.200.1")
+    })
+    if ($stale.Count -ne 0) {
+        $names=($stale | ForEach-Object { "$($_.Driver):$($_.Version)" }) -join ", "
+        throw "Stale Phaser360 test packages remain in Driver Store: $names."
     }
+
+    Write-RunLog ("BASELINE_VERIFIED=PASS SERVICE={0} VERSION={1} INF={2}" -f
+        [string]$device.Service,[string]$driver.DriverVersion,[string]$driver.InfName)
 }
 
 function Install-TestPackage([string]$RunMode,$Info,[string]$InstanceId) {
@@ -836,6 +853,123 @@ function Restore-OriginalDriver([string]$InstanceId) {
     $script:State.RestoreVerified = $true
     $script:State | Add-Member -NotePropertyName RebootRequired -NotePropertyValue $false -Force
     Save-State
+}
+
+function Find-RecoverableSession([string]$InstanceId) {
+    $root=Join-Path ([Environment]::GetFolderPath("Desktop")) "P360_AUDIO_SAFE"
+    if (-not (Test-Path -LiteralPath $root)) {
+        return $null
+    }
+
+    foreach ($dir in @(Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending)) {
+        $statePath=Join-Path $dir.FullName "STATE.json"
+        if (-not (Test-Path -LiteralPath $statePath -PathType Leaf)) {
+            continue
+        }
+        try {
+            $candidate=Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
+        } catch {
+            continue
+        }
+
+        if ([string]$candidate.TargetInstanceId -ne $InstanceId) {
+            continue
+        }
+        if (-not [bool]$candidate.OriginalHadDriver) {
+            continue
+        }
+        if ([string]$candidate.OriginalService -ne "P360AdspProbe" -or
+            [string]$candidate.OriginalDriverVersion -ne "1.1.0.0" -or
+            [string]$candidate.OriginalProvider -ne "PHASER360 Project") {
+            continue
+        }
+        if (-not $candidate.OriginalExportedInf -or
+            -not (Test-Path -LiteralPath ([string]$candidate.OriginalExportedInf) -PathType Leaf)) {
+            continue
+        }
+
+        return [pscustomobject]@{
+            Session=$dir.FullName
+            State=$candidate
+        }
+    }
+
+    return $null
+}
+
+function Current-BaselineNeedsRecovery([string]$InstanceId) {
+    $device=Get-TargetByIdOrNull $InstanceId
+    $driver=Get-BoundDriverOrNull $InstanceId
+    $stale=@(Get-P360StoreEntries | Where-Object {
+        ([string]$_.Version -eq "2.0.100.1") -or
+        ([string]$_.Version -eq "2.0.200.1")
+    })
+
+    if ($stale.Count -gt 0) { return $true }
+    if ($device -and [string]$device.Service -eq "P360SofAudio") { return $true }
+    if ($driver -and (
+        [string]$driver.DriverVersion -eq "2.0.100.1" -or
+        [string]$driver.DriverVersion -eq "2.0.200.1")) { return $true }
+
+    return $false
+}
+
+function Schedule-AudioResumeAfterManualReboot {
+    $launcher=Join-Path $PackageRoot "START_AUDIO_TEST.cmd"
+    if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) {
+        return
+    }
+
+    $runOnce="HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce"
+    New-Item -Path $runOnce -Force | Out-Null
+    $command='cmd.exe /c ""{0}""' -f $launcher
+    New-ItemProperty -Path $runOnce -Name "P360AudioGateResume" -Value $command -PropertyType String -Force | Out-Null
+    Write-RunLog "RESUME_AFTER_REBOOT_SCHEDULED=YES"
+}
+
+function Recover-PreviousBaselineIfNeeded([string]$InstanceId) {
+    if (-not (Current-BaselineNeedsRecovery $InstanceId)) {
+        return
+    }
+
+    Write-RunLog "PREVIOUS_TEST_STATE_DETECTED=YES"
+    $candidate=Find-RecoverableSession $InstanceId
+    if (-not $candidate) {
+        throw "Test binding is present but no valid saved P360AdspProbe 1.1.0.0 baseline was found."
+    }
+
+    $savedSession=$script:Session
+    $savedLog=$script:LogPath
+    $savedState=$script:State
+
+    $script:Session=[string]$candidate.Session
+    $script:LogPath=Join-Path $script:Session "AUTO_RECOVERY.log"
+    $script:State=$candidate.State
+
+    try {
+        Write-RunLog "AUTO_BASELINE_RECOVERY=BEGIN"
+        Restore-OriginalDriver $InstanceId
+        Restore-Firmware
+        Remove-TestCertificate ([string]$script:State.CertificateThumbprint)
+        Write-RunLog "AUTO_BASELINE_RECOVERY=PASS"
+    } catch {
+        $needsReboot=$false
+        if ($script:State.PSObject.Properties["RebootRequired"]) {
+            $needsReboot=[bool]$script:State.RebootRequired
+        }
+        if ($needsReboot) {
+            Schedule-AudioResumeAfterManualReboot
+            Write-RunLog "AUTO_BASELINE_RECOVERY=REBOOT_REQUIRED"
+        }
+        throw
+    } finally {
+        $script:Session=$savedSession
+        $script:LogPath=$savedLog
+        $script:State=$savedState
+    }
+
+    Assert-SafeBaselineBeforeNewTest $InstanceId
 }
 
 function Assert-PreAudioProof($Info,[string]$InstanceId,[string]$Firmware,[string]$PreAudioSys) {
