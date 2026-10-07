@@ -40,8 +40,8 @@ if "%RC%"=="0" (
     echo The runner performed no second physical speaker test.
 )
 echo Return code: %RC%
-echo Results: %%USERPROFILE%%\Desktop\P360_AUDIO_SAFE
-echo Result ZIP: %%USERPROFILE%%\Desktop\P360_AUDIO_*.zip
+echo Results: %USERPROFILE%\Desktop\P360_AUDIO_SAFE
+echo Result ZIP: %USERPROFILE%\Desktop\P360_AUDIO_*.zip
 echo ============================================================
 echo.
 pause
