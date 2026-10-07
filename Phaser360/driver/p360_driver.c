@@ -1031,7 +1031,14 @@ p360_host_playback_force_quiesce(
             firstStatus;
     }
 
-    if (ctx->State.hardware_identity_ok &&
+    /*
+     * DSP reset proves only DSP/HDA ownership. It says nothing about the
+     * external MAX98357A SDMODE GPIO. Preserve the speaker safety latch unless
+     * the generation-tagged STOP_ACK already proved the amplifier low.
+     */
+    if (!playback->SpeakerStarted &&
+        !playback->SpeakerArmed &&
+        ctx->State.hardware_identity_ok &&
         ctx->State.nhlt_ok) {
         (void)p360_state_runtime_reset(&ctx->State,1);
     }
@@ -1042,7 +1049,6 @@ p360_host_playback_force_quiesce(
      */
     playback->SofRunning=FALSE;
     playback->SofParamsPrepared=FALSE;
-    playback->SpeakerArmed=FALSE;
 
     status=p360_playback_stream_retire(playback);
     if (!NT_SUCCESS(status)) {
@@ -1050,7 +1056,9 @@ p360_host_playback_force_quiesce(
         return status;
     }
 
-    if (!playback->StreamOwned &&
+    if (!playback->SpeakerStarted &&
+        !playback->SpeakerArmed &&
+        !playback->StreamOwned &&
         !playback->StreamPrepared &&
         !playback->Running &&
         !playback->PageTable &&
