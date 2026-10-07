@@ -526,6 +526,24 @@ function Assert-NoStaleTestPackage {
     }
 }
 
+function Assert-SafeBaselineBeforeNewTest([string]$InstanceId) {
+    $driver=Get-BoundDriverOrNull $InstanceId
+    $device=Get-CimInstance Win32_PnPEntity | Where-Object {
+        $_.PNPDeviceID -eq $InstanceId
+    } | Select-Object -First 1
+
+    if ($driver) {
+        $version=[string]$driver.DriverVersion
+        if ($version -eq "2.0.100.1" -or $version -eq "2.0.200.1") {
+            throw "A Phaser360 test driver is still bound (version=$version). Run RESTORE_LAST_SESSION.cmd before any new audio test."
+        }
+    }
+
+    if ($device -and [string]$device.Service -eq "P360SofAudio") {
+        throw "P360SofAudio is still the active service. Run RESTORE_LAST_SESSION.cmd before any new audio test."
+    }
+}
+
 function Install-TestPackage([string]$RunMode,$Info,[string]$InstanceId) {
     $folder = Assert-Package $RunMode $Info
     Assert-CatalogSignature $folder
@@ -888,6 +906,9 @@ if ($Mode -eq "Audit") {
     exit 0
 }
 
+if ($Mode -eq "PreAudio" -or $Mode -eq "BoundedSpeaker" -or $Mode -eq "Audio") {
+    Assert-SafeBaselineBeforeNewTest $targetId
+}
 if ($Mode -eq "BoundedSpeaker" -or $Mode -eq "Audio") {
     $amp=Get-AmpDevice
     Write-RunLog "AMP=$($amp.PNPDeviceID) SERVICE=$($amp.Service)"
