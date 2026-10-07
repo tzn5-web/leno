@@ -22,10 +22,8 @@
 #define P360_IPC3_DAI_CONFIG_BYTES     216u
 #define P360_IPC3_PCM_PARAMS_BYTES     108u
 #define P360_IPC3_TONE_CONTROL_BYTES   140u
-#define P360_IPC3_TONE_CONTROL_BYTES   140u
 
 #define P360_IPC3_GLB_TPLG_MSG   0x30000000u
-#define P360_IPC3_GLB_COMP_MSG   0x50000000u
 #define P360_IPC3_GLB_STREAM_MSG 0x60000000u
 #define P360_IPC3_GLB_DAI_MSG    0x80000000u
 #define P360_IPC3_GLB_COMP_MSG   0x50000000u
@@ -34,7 +32,6 @@
 #define P360_IPC3_TPLG_PIPE_NEW  0x00100000u
 #define P360_IPC3_TPLG_PIPE_DONE 0x00130000u
 #define P360_IPC3_TPLG_BUFFER_NEW 0x00200000u
-#define P360_IPC3_COMP_SET_DATA  0x00030000u
 #define P360_IPC3_STREAM_PCM_PARAMS 0x00010000u
 #define P360_IPC3_STREAM_START   0x00040000u
 #define P360_IPC3_STREAM_STOP    0x00050000u
@@ -59,12 +56,6 @@
 #define P360_IPC3_CHMAP_FL 3u
 #define P360_IPC3_CHMAP_FR 4u
 
-#define P360_IPC3_CTRL_TYPE_DATA_SET 5u
-#define P360_IPC3_CTRL_CMD_ENUM      1u
-#define P360_IPC3_TONE_IDX_AMPLITUDE 1u
-#define P360_IPC3_SOF_ABI_MAGIC      0x00464F53u
-#define P360_IPC3_SOF_ABI_3_20_0     0x03014000u
-#define P360_IPC3_TONE_HALF_PERCENT_Q1_31 10737418u
 
 #define P360_IPC3_DAI_FMT_I2S      0x0001u
 #define P360_IPC3_DAI_FMT_CONT     0x0010u
@@ -135,8 +126,6 @@ int p360_ipc3_build_pipe_complete(struct p360_ipc3_message *out,
     const struct p360_ipc3_speaker_ids *ids);
 int p360_ipc3_build_pcm_params(struct p360_ipc3_message *out,
     uint32_t comp_id, uint32_t sample_rate, uint16_t channels);
-int p360_ipc3_build_tone_amplitude(struct p360_ipc3_message *out,
-    uint32_t comp_id, uint32_t amplitude_q1_31, uint16_t channels);
 int p360_ipc3_build_tone_amplitude_control(struct p360_ipc3_message *out,
     uint32_t comp_id, int32_t amplitude_q1_31);
 int p360_ipc3_build_tone_length_control(struct p360_ipc3_message *out,
