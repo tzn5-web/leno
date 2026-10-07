@@ -382,8 +382,8 @@ jobs:
             BoundedSysSha256 = $boundedHash
             FinalSpeakerSysSha256 = $finalHash
             FinalSpeakerDurationMs = 2000
-            FinalSpeakerAmplitudeQ1_31 = "0x01000000"
-            FinalSpeakerAmplitudePercent = 0.78125
+            FinalSpeakerAmplitudeQ1_31 = "0x00A3D70A"
+            FinalSpeakerAmplitudePercent = 0.5
             FirmwareBytes = 246528
             FirmwareSha256 = "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab"
           } | ConvertTo-Json |
