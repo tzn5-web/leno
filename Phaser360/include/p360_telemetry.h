@@ -35,6 +35,42 @@
 #define P360_PREP_STEP_CSAUDIO_OPEN       11u
 #define P360_PREP_STEP_COMPLETE           12u
 
+/* PrepareDetail pinpoints the failing member/bit inside a prepare step. */
+#define P360_PREP_ABI_SIZE                (1u << 0)
+#define P360_PREP_ABI_VERSION             (1u << 1)
+#define P360_PREP_ABI_DEVICE_ID           (1u << 2)
+#define P360_PREP_ABI_CONTEXT             (1u << 3)
+#define P360_PREP_ABI_GET_RESOURCES       (1u << 4)
+#define P360_PREP_ABI_SET_POWER           (1u << 5)
+#define P360_PREP_ABI_REGISTER_IRQ        (1u << 6)
+#define P360_PREP_ABI_UNREGISTER_IRQ      (1u << 7)
+#define P360_PREP_ABI_GET_RENDER          (1u << 8)
+#define P360_PREP_ABI_GET_CAPTURE         (1u << 9)
+#define P360_PREP_ABI_FREE_STREAM         (1u << 10)
+#define P360_PREP_ABI_PREPARE_DSP         (1u << 11)
+#define P360_PREP_ABI_CLEANUP_DSP         (1u << 12)
+#define P360_PREP_ABI_TRIGGER_DSP         (1u << 13)
+#define P360_PREP_ABI_STREAM_POSITION     (1u << 14)
+
+#define P360_PREP_RES_HDA_BASE            (1u << 0)
+#define P360_PREP_RES_HDA_LEN             (1u << 1)
+#define P360_PREP_RES_DSP_BASE            (1u << 2)
+#define P360_PREP_RES_DSP_LEN             (1u << 3)
+#define P360_PREP_RES_PPCAP               (1u << 4)
+#define P360_PREP_RES_NHLT_PTR            (1u << 5)
+#define P360_PREP_RES_NHLT_SIZE           (1u << 6)
+#define P360_PREP_RES_PCI_GET             (1u << 7)
+#define P360_PREP_RES_PCI_SET             (1u << 8)
+
+#define P360_PREP_ID_READ                 0x40000000u
+#define P360_PREP_ID_VALIDATE             0x20000000u
+#define P360_PREP_ID_COMMAND              0x10000000u
+
+#define P360_PREP_NHLT_DMIC               (1u << 16)
+#define P360_PREP_NHLT_SSP1_RENDER        (1u << 17)
+#define P360_PREP_NHLT_SSP2_RENDER        (1u << 18)
+#define P360_PREP_NHLT_SSP2_CAPTURE       (1u << 19)
+
 #define P360_TELEM_FLAG_RUNTIME_BOOT     (1u << 0)
 #define P360_TELEM_FLAG_IPC_PROBE        (1u << 1)
 #define P360_TELEM_FLAG_TONE_TOPOLOGY    (1u << 2)
@@ -44,7 +80,7 @@
 
 NTSTATUS p360_telemetry_reset(_In_ ULONG BuildFlags);
 NTSTATUS p360_telemetry_stage(_In_ ULONG Stage);
-NTSTATUS p360_telemetry_prepare(_In_ ULONG Step,_In_ NTSTATUS Status);
+NTSTATUS p360_telemetry_prepare(_In_ ULONG Step,_In_ ULONG Detail,_In_ NTSTATUS Status);
 NTSTATUS p360_telemetry_boot_epoch(_In_ ULONGLONG Epoch);
 NTSTATUS p360_telemetry_ipc(_In_ LONG FirmwareError,_In_ ULONG ReplyBytes);
 NTSTATUS p360_telemetry_result(_In_ ULONG FailureReason,_In_ NTSTATUS Status);

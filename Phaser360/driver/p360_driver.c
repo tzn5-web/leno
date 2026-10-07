@@ -761,31 +761,27 @@ p360_host_prepare(
     UNREFERENCED_PARAMETER(status);
 #endif
 
-    (void)p360_telemetry_prepare(
-        P360_PREP_STEP_HOST_BEGIN,
-        STATUS_SUCCESS);
+    (void)p360_telemetry_prepare(P360_PREP_STEP_HOST_BEGIN,0,STATUS_SUCCESS);
 
     status=p360_cs_bus_open(&ctx->Bus,Device);
     if (!NT_SUCCESS(status))
         goto cleanup;
     ctx->BusOpen=TRUE;
 
-    (void)p360_telemetry_prepare(
-        P360_PREP_STEP_PCI_IDENTITY,
-        STATUS_PENDING);
+    (void)p360_telemetry_prepare(P360_PREP_STEP_PCI_IDENTITY,0,STATUS_PENDING);
     status=p360_cs_bus_read_identity(&ctx->Bus,&ctx->Identity);
-    (void)p360_telemetry_prepare(
-        P360_PREP_STEP_PCI_IDENTITY,
-        status);
+    if (NT_SUCCESS(status))
+        (void)p360_telemetry_prepare(
+            P360_PREP_STEP_PCI_IDENTITY,
+            (ULONG)ctx->Identity.command,
+            status);
     if (!NT_SUCCESS(status)) {
         failure=P360_FAIL_IDENTITY;
         goto cleanup;
     }
     ctx->State.hardware_identity_ok=1;
 
-    (void)p360_telemetry_prepare(
-        P360_PREP_STEP_NHLT_PARSE,
-        STATUS_PENDING);
+    (void)p360_telemetry_prepare(P360_PREP_STEP_NHLT_PARSE,0,STATUS_PENDING);
     if (!p360_nhlt_parse(
             ctx->Bus.nhlt.nhlt,
             (size_t)ctx->Bus.nhlt.nhltSz,
@@ -793,76 +789,62 @@ p360_host_prepare(
         status=STATUS_DEVICE_CONFIGURATION_ERROR;
         (void)p360_telemetry_prepare(
             P360_PREP_STEP_NHLT_PARSE,
+            (ULONG)ctx->Bus.nhlt.nhltSz & 0xffffu,
             status);
         failure=P360_FAIL_NHLT;
         goto cleanup;
     }
     (void)p360_telemetry_prepare(
         P360_PREP_STEP_NHLT_PARSE,
+        ((ULONG)ctx->Nhlt.table_length & 0xffffu) |
+            (ctx->Nhlt.dmic_capture ? P360_PREP_NHLT_DMIC : 0) |
+            (ctx->Nhlt.ssp1_render ? P360_PREP_NHLT_SSP1_RENDER : 0) |
+            (ctx->Nhlt.ssp2_render ? P360_PREP_NHLT_SSP2_RENDER : 0) |
+            (ctx->Nhlt.ssp2_capture ? P360_PREP_NHLT_SSP2_CAPTURE : 0),
         STATUS_SUCCESS);
     ctx->State.nhlt_ok=1;
 
-    (void)p360_telemetry_prepare(
-        P360_PREP_STEP_STATE_READY,
-        STATUS_PENDING);
+    (void)p360_telemetry_prepare(P360_PREP_STEP_STATE_READY,0,STATUS_PENDING);
     if (!p360_state_advance(
             &ctx->State,
             P360_STATE_RESOURCES_OK)) {
         status=STATUS_INVALID_DEVICE_STATE;
-        (void)p360_telemetry_prepare(
-            P360_PREP_STEP_STATE_READY,
-            status);
+        (void)p360_telemetry_prepare(P360_PREP_STEP_STATE_READY,0,status);
         goto cleanup;
     }
-    (void)p360_telemetry_prepare(
-        P360_PREP_STEP_STATE_READY,
-        STATUS_SUCCESS);
+    (void)p360_telemetry_prepare(P360_PREP_STEP_STATE_READY,0,STATUS_SUCCESS);
 
     p360_loader_init(&ctx->Loader);
 
-    (void)p360_telemetry_prepare(
-        P360_PREP_STEP_BOOT_ADAPTER,
-        STATUS_PENDING);
+    (void)p360_telemetry_prepare(P360_PREP_STEP_BOOT_ADAPTER,0,STATUS_PENDING);
     status=p360_cs_boot_adapter_init(
         &ctx->Boot,
         &ctx->Bus);
-    (void)p360_telemetry_prepare(
-        P360_PREP_STEP_BOOT_ADAPTER,
-        status);
+    (void)p360_telemetry_prepare(P360_PREP_STEP_BOOT_ADAPTER,0,status);
     if (!NT_SUCCESS(status))
         goto cleanup;
     ctx->BootInitialized=TRUE;
 
-    (void)p360_telemetry_prepare(
-        P360_PREP_STEP_RUNTIME_CREATE,
-        STATUS_PENDING);
+    (void)p360_telemetry_prepare(P360_PREP_STEP_RUNTIME_CREATE,0,STATUS_PENDING);
     status=p360_cs_runtime_create(
         &ctx->Runtime,
         Device,
         &ctx->Bus,
         &ctx->Boot);
-    (void)p360_telemetry_prepare(
-        P360_PREP_STEP_RUNTIME_CREATE,
-        status);
+    (void)p360_telemetry_prepare(P360_PREP_STEP_RUNTIME_CREATE,0,status);
     if (!NT_SUCCESS(status))
         goto cleanup;
     ctx->RuntimeInitialized=TRUE;
 
-    (void)p360_telemetry_prepare(
-        P360_PREP_STEP_CSAUDIO_OPEN,
-        STATUS_PENDING);
+    (void)p360_telemetry_prepare(P360_PREP_STEP_CSAUDIO_OPEN,0,STATUS_PENDING);
     status=p360_csaudio_open(&ctx->CsAudio);
-    (void)p360_telemetry_prepare(
-        P360_PREP_STEP_CSAUDIO_OPEN,
-        status);
+    (void)p360_telemetry_prepare(P360_PREP_STEP_CSAUDIO_OPEN,0,status);
     if (!NT_SUCCESS(status))
         goto cleanup;
     ctx->CsAudioInitialized=TRUE;
 
     ctx->Prepared=TRUE;
-    (void)p360_telemetry_prepare(
-        P360_PREP_STEP_COMPLETE,
-        STATUS_SUCCESS);
+    (void)p360_telemetry_prepare(P360_PREP_STEP_COMPLETE,0,STATUS_SUCCESS);
     return STATUS_SUCCESS;
 
 cleanup:

@@ -610,12 +610,10 @@ function Remove-And-RescanTarget(
 
                     $t=Get-Telemetry
                     $prepareText=if ($t) {
-                        "{0}({1}) prepareNtStatus=0x{2:X8} failure={3} lastNtStatus=0x{4:X8}" -f
-                            (Get-PrepareStepName $t.PrepareStep),
-                            $t.PrepareStep,
-                            $t.PrepareNtStatus,
-                            $t.FailureReason,
-                            $t.LastNtStatus
+                        "{0}({1}) detail={2} prepareNtStatus=0x{3:X8} failure={4} lastNtStatus=0x{5:X8}" -f
+                            (Get-PrepareStepName $t.PrepareStep),$t.PrepareStep,
+                            (Get-PrepareDetailText $t.PrepareStep $t.PrepareDetail),
+                            $t.PrepareNtStatus,$t.FailureReason,$t.LastNtStatus
                     } else {
                         "<no telemetry>"
                     }
@@ -769,9 +767,13 @@ function Get-Telemetry {
     $fwRaw = [uint32]$p.FirmwareError
     $fwSigned = [BitConverter]::ToInt32([BitConverter]::GetBytes($fwRaw),0)
     $prepareStep=0
+    $prepareDetail=0
     $prepareNtStatus=0
     if ($p.PSObject.Properties["PrepareStep"]) {
         $prepareStep=[uint32]$p.PrepareStep
+    }
+    if ($p.PSObject.Properties["PrepareDetail"]) {
+        $prepareDetail=[uint32]$p.PrepareDetail
     }
     if ($p.PSObject.Properties["PrepareNtStatus"]) {
         $prepareNtStatus=[uint32]$p.PrepareNtStatus
@@ -785,8 +787,43 @@ function Get-Telemetry {
         FailureReason = [uint32]$p.FailureReason
         LastNtStatus = [uint32]$p.LastNtStatus
         PrepareStep = $prepareStep
+        PrepareDetail = $prepareDetail
         PrepareNtStatus = $prepareNtStatus
     }
+}
+
+function Get-PrepareDetailText([uint32]$Step,[uint32]$Detail) {
+    if ($Detail -eq 0) { return "none" }
+    if ($Step -eq 3) {
+        $pairs=@(@(1,"INTERFACE.Size"),@(2,"INTERFACE.Version"),@(4,"CtlrDevId"),@(8,"Context"),
+            @(16,"GetResources"),@(32,"SetDSPPowerState"),@(64,"RegisterInterrupt"),
+            @(128,"UnregisterInterrupt"),@(256,"GetRenderStream"),@(512,"GetCaptureStream"),
+            @(1024,"FreeStream"),@(2048,"PrepareDSP"),@(4096,"CleanupDSP"),
+            @(8192,"TriggerDSP"),@(16384,"StreamPosition"))
+        $bad=@(); foreach($p in $pairs){if(($Detail-band[uint32]$p[0])-ne 0){$bad+=$p[1]}}
+        return "ABI_BAD=" + ($bad -join ",")
+    }
+    if ($Step -eq 5) {
+        $pairs=@(@(1,"HDA.Base"),@(2,"HDA.Len<0x4000"),@(4,"DSP.Base"),@(8,"DSP.Len<0xA2000"),
+            @(16,"PPCAP"),@(32,"NHLT.ptr"),@(64,"NHLT.size"),@(128,"PCI.GetBusData"),@(256,"PCI.SetBusData"))
+        $bad=@(); foreach($p in $pairs){if(($Detail-band[uint32]$p[0])-ne 0){$bad+=$p[1]}}
+        return "RESOURCE_BAD=" + ($bad -join ",")
+    }
+    if ($Step -eq 6) {
+        if (($Detail-band 0x40000000)-ne 0) { return ("PCI_READ_SHORT@0x{0:X}" -f ($Detail-band 0xffff)) }
+        if (($Detail-band 0x20000000)-ne 0) { return ("PCI_VALIDATE_RC=-{0}" -f ($Detail-band 0xffff)) }
+        if (($Detail-band 0x10000000)-ne 0) {
+            $cmd=$Detail-band 0xffff
+            return ("PCI_COMMAND=0x{0:X4} MEMORY={1} BUS_MASTER={2}" -f $cmd,[bool]($cmd-band 2),[bool]($cmd-band 4))
+        }
+        return ("PCI_COMMAND=0x{0:X4}" -f ($Detail-band 0xffff))
+    }
+    if ($Step -eq 7) {
+        return ("NHLT_LEN={0} DMIC={1} SSP1_RENDER={2} SSP2_RENDER={3} SSP2_CAPTURE={4}" -f
+            ($Detail-band 0xffff),[bool]($Detail-band 0x10000),[bool]($Detail-band 0x20000),
+            [bool]($Detail-band 0x40000),[bool]($Detail-band 0x80000))
+    }
+    return ("0x{0:X8}" -f $Detail)
 }
 
 function Format-TelemetryDiagnosis([object]$Telemetry,[string]$InstanceId) {
@@ -794,18 +831,12 @@ function Format-TelemetryDiagnosis([object]$Telemetry,[string]$InstanceId) {
     if (-not $Telemetry) {
         return "telemetry=<missing>; $deviceText"
     }
-    return ("stage={0}, flags={1}, bootEpoch={2}, prepare={3}({4}), prepareNtStatus=0x{5:X8}, failure={6}, lastNtStatus=0x{7:X8}, fwError={8}, replyBytes={9}; {10}" -f
-        $Telemetry.Stage,
-        $Telemetry.BuildFlags,
-        $Telemetry.BootEpoch,
-        (Get-PrepareStepName $Telemetry.PrepareStep),
-        $Telemetry.PrepareStep,
-        $Telemetry.PrepareNtStatus,
-        $Telemetry.FailureReason,
-        $Telemetry.LastNtStatus,
-        $Telemetry.FirmwareError,
-        $Telemetry.ReplyBytes,
-        $deviceText)
+    return ("stage={0}, flags={1}, bootEpoch={2}, prepare={3}({4}), detail={5}, prepareNtStatus=0x{6:X8}, failure={7}, lastNtStatus=0x{8:X8}, fwError={9}, replyBytes={10}; {11}" -f
+        $Telemetry.Stage,$Telemetry.BuildFlags,$Telemetry.BootEpoch,
+        (Get-PrepareStepName $Telemetry.PrepareStep),$Telemetry.PrepareStep,
+        (Get-PrepareDetailText $Telemetry.PrepareStep $Telemetry.PrepareDetail),
+        $Telemetry.PrepareNtStatus,$Telemetry.FailureReason,$Telemetry.LastNtStatus,
+        $Telemetry.FirmwareError,$Telemetry.ReplyBytes,$deviceText)
 }
 
 function Wait-Telemetry {
@@ -1353,6 +1384,15 @@ try {
         Write-RunLog "CERT_CLEANUP=PASS"
     } catch {
         Write-RunLog "CERT_CLEANUP=FAIL $($_.Exception.Message)"
+        $success=$false
+    }
+
+    try {
+        Assert-SafeBaselineBeforeNewTest $targetId
+        Write-RunLog ("FINAL_BASELINE_DIAGNOSTIC={0}" -f (Get-TargetDiagnosticText $targetId))
+        Write-RunLog "FINAL_RESIDUAL_STATE=PASS"
+    } catch {
+        Write-RunLog "FINAL_RESIDUAL_STATE=FAIL $($_.Exception.Message)"
         $success=$false
     }
 }
