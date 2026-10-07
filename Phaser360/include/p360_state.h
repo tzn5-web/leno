@@ -44,6 +44,10 @@ typedef struct P360_STATE_MACHINE {
     uint8_t speaker_runtime_armed;
 } P360_STATE_MACHINE;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void p360_state_init(P360_STATE_MACHINE *sm);
 int p360_state_advance(P360_STATE_MACHINE *sm, P360_RUNTIME_STATE next);
 void p360_state_fail(P360_STATE_MACHINE *sm, P360_FAILURE_REASON why);
@@ -56,3 +60,7 @@ int p360_state_speaker_disarm(P360_STATE_MACHINE *sm);
  * NHLT proof survive; every volatile runtime proof is invalidated.
  */
 int p360_state_runtime_reset(P360_STATE_MACHINE *sm, int quiesced);
+
+#ifdef __cplusplus
+}
+#endif
