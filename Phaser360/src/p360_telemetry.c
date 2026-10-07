@@ -105,13 +105,33 @@ p360_telemetry_reset(_In_ ULONG BuildFlags)
     if (!NT_SUCCESS(status)) return status;
     status=p360_telemetry_write_dword(L"FailureReason",0);
     if (!NT_SUCCESS(status)) return status;
-    return p360_telemetry_write_dword(L"LastNtStatus",0);
+    status=p360_telemetry_write_dword(L"LastNtStatus",0);
+    if (!NT_SUCCESS(status)) return status;
+    status=p360_telemetry_write_dword(L"PrepareStep",P360_PREP_STEP_NONE);
+    if (!NT_SUCCESS(status)) return status;
+    return p360_telemetry_write_dword(L"PrepareNtStatus",0);
 }
 
 NTSTATUS
 p360_telemetry_stage(_In_ ULONG Stage)
 {
     return p360_telemetry_write_dword(L"Stage",Stage);
+}
+
+NTSTATUS
+p360_telemetry_prepare(
+    _In_ ULONG Step,
+    _In_ NTSTATUS Status)
+{
+    NTSTATUS writeStatus;
+
+    writeStatus=p360_telemetry_write_dword(L"PrepareStep",Step);
+    if (!NT_SUCCESS(writeStatus))
+        return writeStatus;
+
+    return p360_telemetry_write_dword(
+        L"PrepareNtStatus",
+        (ULONG)Status);
 }
 
 NTSTATUS

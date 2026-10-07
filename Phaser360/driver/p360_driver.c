@@ -736,6 +736,7 @@ p360_host_prepare(
     _In_ WDFDEVICE Device)
 {
     NTSTATUS status;
+    P360_FAILURE_REASON failure=P360_FAIL_RESOURCES;
 
     if (!ctx || !Device || ctx->Prepared || ctx->BusOpen)
         return STATUS_INVALID_DEVICE_STATE;
@@ -760,99 +761,138 @@ p360_host_prepare(
     UNREFERENCED_PARAMETER(status);
 #endif
 
+    (void)p360_telemetry_prepare(
+        P360_PREP_STEP_HOST_BEGIN,
+        STATUS_SUCCESS);
+
     status=p360_cs_bus_open(&ctx->Bus,Device);
     if (!NT_SUCCESS(status))
-        return p360_fail(ctx,P360_FAIL_RESOURCES,status);
+        goto cleanup;
     ctx->BusOpen=TRUE;
 
+    (void)p360_telemetry_prepare(
+        P360_PREP_STEP_PCI_IDENTITY,
+        STATUS_PENDING);
     status=p360_cs_bus_read_identity(&ctx->Bus,&ctx->Identity);
-    if (!NT_SUCCESS(status))
-        goto identity_fail;
+    (void)p360_telemetry_prepare(
+        P360_PREP_STEP_PCI_IDENTITY,
+        status);
+    if (!NT_SUCCESS(status)) {
+        failure=P360_FAIL_IDENTITY;
+        goto cleanup;
+    }
     ctx->State.hardware_identity_ok=1;
 
+    (void)p360_telemetry_prepare(
+        P360_PREP_STEP_NHLT_PARSE,
+        STATUS_PENDING);
     if (!p360_nhlt_parse(
             ctx->Bus.nhlt.nhlt,
             (size_t)ctx->Bus.nhlt.nhltSz,
             &ctx->Nhlt)) {
         status=STATUS_DEVICE_CONFIGURATION_ERROR;
-        goto nhlt_fail;
+        (void)p360_telemetry_prepare(
+            P360_PREP_STEP_NHLT_PARSE,
+            status);
+        failure=P360_FAIL_NHLT;
+        goto cleanup;
     }
+    (void)p360_telemetry_prepare(
+        P360_PREP_STEP_NHLT_PARSE,
+        STATUS_SUCCESS);
     ctx->State.nhlt_ok=1;
 
+    (void)p360_telemetry_prepare(
+        P360_PREP_STEP_STATE_READY,
+        STATUS_PENDING);
     if (!p360_state_advance(
             &ctx->State,
             P360_STATE_RESOURCES_OK)) {
         status=STATUS_INVALID_DEVICE_STATE;
-        goto resource_state_fail;
+        (void)p360_telemetry_prepare(
+            P360_PREP_STEP_STATE_READY,
+            status);
+        goto cleanup;
     }
+    (void)p360_telemetry_prepare(
+        P360_PREP_STEP_STATE_READY,
+        STATUS_SUCCESS);
 
     p360_loader_init(&ctx->Loader);
 
+    (void)p360_telemetry_prepare(
+        P360_PREP_STEP_BOOT_ADAPTER,
+        STATUS_PENDING);
     status=p360_cs_boot_adapter_init(
         &ctx->Boot,
         &ctx->Bus);
+    (void)p360_telemetry_prepare(
+        P360_PREP_STEP_BOOT_ADAPTER,
+        status);
     if (!NT_SUCCESS(status))
-        goto boot_init_fail;
-
+        goto cleanup;
     ctx->BootInitialized=TRUE;
 
+    (void)p360_telemetry_prepare(
+        P360_PREP_STEP_RUNTIME_CREATE,
+        STATUS_PENDING);
     status=p360_cs_runtime_create(
         &ctx->Runtime,
         Device,
         &ctx->Bus,
         &ctx->Boot);
+    (void)p360_telemetry_prepare(
+        P360_PREP_STEP_RUNTIME_CREATE,
+        status);
     if (!NT_SUCCESS(status))
-        goto runtime_init_fail;
-
+        goto cleanup;
     ctx->RuntimeInitialized=TRUE;
 
+    (void)p360_telemetry_prepare(
+        P360_PREP_STEP_CSAUDIO_OPEN,
+        STATUS_PENDING);
     status=p360_csaudio_open(&ctx->CsAudio);
+    (void)p360_telemetry_prepare(
+        P360_PREP_STEP_CSAUDIO_OPEN,
+        status);
     if (!NT_SUCCESS(status))
-        goto csaudio_init_fail;
-
+        goto cleanup;
     ctx->CsAudioInitialized=TRUE;
+
     ctx->Prepared=TRUE;
+    (void)p360_telemetry_prepare(
+        P360_PREP_STEP_COMPLETE,
+        STATUS_SUCCESS);
     return STATUS_SUCCESS;
 
-csaudio_init_fail:
-    p360_state_fail(&ctx->State,P360_FAIL_RESOURCES);
+cleanup:
+    if (ctx->CsAudioInitialized) {
+        p360_csaudio_close(&ctx->CsAudio);
+        ctx->CsAudioInitialized=FALSE;
+    }
+
     if (ctx->RuntimeInitialized) {
-        NTSTATUS destroyStatus=
+        NTSTATUS cleanupStatus=
             p360_cs_runtime_destroy(&ctx->Runtime);
-        if (!NT_SUCCESS(destroyStatus))
-            status=destroyStatus;
+        if (!NT_SUCCESS(cleanupStatus))
+            status=cleanupStatus;
         ctx->RuntimeInitialized=FALSE;
     }
 
-runtime_init_fail:
-    p360_state_fail(&ctx->State,P360_FAIL_RESOURCES);
     if (ctx->BootInitialized) {
-        NTSTATUS retireStatus=
+        NTSTATUS cleanupStatus=
             p360_cs_boot_adapter_retire(&ctx->Boot);
-        if (!NT_SUCCESS(retireStatus))
-            status=retireStatus;
+        if (!NT_SUCCESS(cleanupStatus))
+            status=cleanupStatus;
         ctx->BootInitialized=FALSE;
     }
-    goto cleanup;
 
-boot_init_fail:
-    p360_state_fail(&ctx->State,P360_FAIL_RESOURCES);
-    goto cleanup;
-resource_state_fail:
-    p360_state_fail(&ctx->State,P360_FAIL_RESOURCES);
-    goto cleanup;
-nhlt_fail:
-    p360_state_fail(&ctx->State,P360_FAIL_NHLT);
-    goto cleanup;
-identity_fail:
-    p360_state_fail(&ctx->State,P360_FAIL_IDENTITY);
-
-cleanup:
     if (ctx->BusOpen) {
         p360_cs_bus_close(&ctx->Bus);
         ctx->BusOpen=FALSE;
     }
-    return status;
+
+    return p360_fail(ctx,failure,status);
 }
 
 NTSTATUS

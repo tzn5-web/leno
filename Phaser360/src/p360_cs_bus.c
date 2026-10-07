@@ -1,4 +1,5 @@
 #include "../include/p360_cs_bus.h"
+#include "../include/p360_telemetry.h"
 
 static void p360_cs_zero(P360_CS_BUS *bus)
 {
@@ -15,6 +16,9 @@ NTSTATUS p360_cs_bus_open(P360_CS_BUS *bus, WDFDEVICE device)
     p360_cs_zero(bus);
     bus->device = device;
 
+    (void)p360_telemetry_prepare(
+        P360_PREP_STEP_BUS_QUERY_INTERFACE,
+        STATUS_PENDING);
     status = WdfFdoQueryForInterface(
         device,
         &P360_GUID_ADSP_BUS_INTERFACE,
@@ -23,6 +27,9 @@ NTSTATUS p360_cs_bus_open(P360_CS_BUS *bus, WDFDEVICE device)
         P360_CS_ADSP_INTERFACE_VERSION,
         NULL);
 
+    (void)p360_telemetry_prepare(
+        P360_PREP_STEP_BUS_QUERY_INTERFACE,
+        status);
     if (!NT_SUCCESS(status))
         return status;
 
@@ -32,6 +39,9 @@ NTSTATUS p360_cs_bus_open(P360_CS_BUS *bus, WDFDEVICE device)
      */
     bus->interface_acquired = TRUE;
 
+    (void)p360_telemetry_prepare(
+        P360_PREP_STEP_BUS_ABI_VALIDATE,
+        STATUS_PENDING);
     if (bus->iface.Size != sizeof(bus->iface) ||
         bus->iface.Version != P360_CS_ADSP_INTERFACE_VERSION ||
         bus->iface.CtlrDevId != P360_CS_GLK_DEVICE_ID ||
@@ -46,12 +56,22 @@ NTSTATUS p360_cs_bus_open(P360_CS_BUS *bus, WDFDEVICE device)
         !bus->iface.CleanupDSP ||
         !bus->iface.TriggerDSP ||
         !bus->iface.StreamPosition) {
+        status=STATUS_REVISION_MISMATCH;
+        (void)p360_telemetry_prepare(
+            P360_PREP_STEP_BUS_ABI_VALIDATE,
+            status);
         p360_cs_bus_close(bus);
-        return STATUS_REVISION_MISMATCH;
+        return status;
     }
 
+    (void)p360_telemetry_prepare(
+        P360_PREP_STEP_BUS_ABI_VALIDATE,
+        STATUS_SUCCESS);
     bus->interface_valid = TRUE;
 
+    (void)p360_telemetry_prepare(
+        P360_PREP_STEP_BUS_GET_RESOURCES,
+        STATUS_PENDING);
     status = bus->iface.GetResources(
         bus->iface.Context,
         &bus->hda,
@@ -60,12 +80,21 @@ NTSTATUS p360_cs_bus_open(P360_CS_BUS *bus, WDFDEVICE device)
         &bus->nhlt,
         &bus->pci);
 
+    (void)p360_telemetry_prepare(
+        P360_PREP_STEP_BUS_GET_RESOURCES,
+        status);
     if (!NT_SUCCESS(status)) {
         p360_cs_bus_close(bus);
         return status;
     }
 
+    (void)p360_telemetry_prepare(
+        P360_PREP_STEP_BUS_VALIDATE,
+        STATUS_PENDING);
     status = p360_cs_bus_validate_resources(bus);
+    (void)p360_telemetry_prepare(
+        P360_PREP_STEP_BUS_VALIDATE,
+        status);
     if (!NT_SUCCESS(status)) {
         p360_cs_bus_close(bus);
         return status;

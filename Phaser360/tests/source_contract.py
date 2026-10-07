@@ -82,7 +82,7 @@ run_b4=(ROOT/"tests/run_b4_core.sh").read_text()
 csaudio_h=(ROOT/"include/p360_csaudio.h").read_text()
 csaudio=(ROOT/"src/p360_csaudio.c").read_text()
 telemetry_h=(ROOT/"include/p360_telemetry.h").read_text()
-telemetry=(ROOT/"src/p360_telemetry.c").read_text()
+telemetry=(ROOT/"src/p360_telemetry.c").read_text()\ncs_bus=(ROOT/"src/p360_cs_bus.c").read_text()
 state_h=(ROOT/"include/p360_state.h").read_text()
 state=(ROOT/"src/p360_state.c").read_text()
 
@@ -891,3 +891,40 @@ if "P360_RUNTIME_BOOT_ENABLED 0" not in driver_h:
     raise SystemExit("firmware provider was added but runtime boot barrier is not closed")
 
 print("Phaser360 firmware-provider contract: PASS")
+
+
+# PRE-AUDIO start-failure diagnostics must identify the exact PrepareHardware
+# substep and preserve the minimal pre-audio/speaker separation.
+for token in (
+    "P360_PREP_STEP_BUS_QUERY_INTERFACE",
+    "P360_PREP_STEP_BUS_ABI_VALIDATE",
+    "P360_PREP_STEP_BUS_GET_RESOURCES",
+    "P360_PREP_STEP_BUS_VALIDATE",
+    "P360_PREP_STEP_PCI_IDENTITY",
+    "P360_PREP_STEP_NHLT_PARSE",
+    "P360_PREP_STEP_BOOT_ADAPTER",
+    "P360_PREP_STEP_RUNTIME_CREATE",
+    "P360_PREP_STEP_CSAUDIO_OPEN",
+    "PrepareNtStatus",
+):
+    if token not in telemetry_h + "\n" + telemetry + "\n" + driver + "\n" + cs_bus:
+        raise SystemExit(f"prepare diagnostic contract missing: {token}")
+
+for token in (
+    "TARGET_START_REPAIR=BEGIN",
+    "Get-DeviceProblemStatusHex",
+    "Get-PrepareStepName",
+    "FAIL_DIAGNOSTIC=",
+    "PrepareNtStatus",
+):
+    if token not in runner:
+        raise SystemExit(f"hardware gate exact-failure diagnostic missing: {token}")
+
+pre_phase_i=runner.index('Write-RunLog "PREAUDIO_PHASE=BEGIN"')
+pre_restore_i=runner.index('Write-RunLog "PREAUDIO_BASELINE_RESTORE=PASS"',pre_phase_i)
+amp_i=runner.index("$amp=Get-AmpDevice",pre_restore_i)
+speaker_phase_i=runner.index('Write-RunLog "SPEAKER_PHASE=BEGIN"',amp_i)
+if not (pre_phase_i < pre_restore_i < amp_i < speaker_phase_i):
+    raise SystemExit("MAX98357A dependency leaked back into minimal PRE-AUDIO")
+
+print("Phaser360 exact start-failure diagnostic contract: PASS")

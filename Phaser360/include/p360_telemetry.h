@@ -16,6 +16,25 @@
 #define P360_TELEM_STAGE_TONE_COMPLETE  110u
 #define P360_TELEM_STAGE_STOP_COMPLETE  120u
 
+/*
+ * PrepareHardware diagnostic steps. These are deliberately separate from the
+ * runtime Stage milestones so a failed device start can report the exact
+ * substep without being mistaken for FW/IRQ/IPC proof.
+ */
+#define P360_PREP_STEP_NONE                0u
+#define P360_PREP_STEP_HOST_BEGIN          1u
+#define P360_PREP_STEP_BUS_QUERY_INTERFACE 2u
+#define P360_PREP_STEP_BUS_ABI_VALIDATE    3u
+#define P360_PREP_STEP_BUS_GET_RESOURCES   4u
+#define P360_PREP_STEP_BUS_VALIDATE        5u
+#define P360_PREP_STEP_PCI_IDENTITY        6u
+#define P360_PREP_STEP_NHLT_PARSE          7u
+#define P360_PREP_STEP_STATE_READY         8u
+#define P360_PREP_STEP_BOOT_ADAPTER        9u
+#define P360_PREP_STEP_RUNTIME_CREATE     10u
+#define P360_PREP_STEP_CSAUDIO_OPEN       11u
+#define P360_PREP_STEP_COMPLETE           12u
+
 #define P360_TELEM_FLAG_RUNTIME_BOOT     (1u << 0)
 #define P360_TELEM_FLAG_IPC_PROBE        (1u << 1)
 #define P360_TELEM_FLAG_TONE_TOPOLOGY    (1u << 2)
@@ -25,6 +44,7 @@
 
 NTSTATUS p360_telemetry_reset(_In_ ULONG BuildFlags);
 NTSTATUS p360_telemetry_stage(_In_ ULONG Stage);
+NTSTATUS p360_telemetry_prepare(_In_ ULONG Step,_In_ NTSTATUS Status);
 NTSTATUS p360_telemetry_boot_epoch(_In_ ULONGLONG Epoch);
 NTSTATUS p360_telemetry_ipc(_In_ LONG FirmwareError,_In_ ULONG ReplyBytes);
 NTSTATUS p360_telemetry_result(_In_ ULONG FailureReason,_In_ NTSTATUS Status);

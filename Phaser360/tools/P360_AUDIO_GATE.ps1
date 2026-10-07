@@ -311,6 +311,13 @@ function Remove-TestCertificate([string]$Thumbprint) {
     if (-not $Thumbprint) { return }
     Invoke-Tool -Exe "certutil.exe" -Arguments @("-delstore","Root",$Thumbprint) -AllowFailure | Out-Null
     Invoke-Tool -Exe "certutil.exe" -Arguments @("-delstore","TrustedPublisher",$Thumbprint) -AllowFailure | Out-Null
+
+    foreach ($store in @("Root","TrustedPublisher")) {
+        $path="Cert:\LocalMachine\$store\$Thumbprint"
+        if (Test-Path -LiteralPath $path) {
+            throw "Test certificate cleanup verification failed: $path still exists."
+        }
+    }
 }
 
 function Assert-CatalogSignature([string]$Folder) {
@@ -403,8 +410,19 @@ function Restore-Firmware {
             throw "Original firmware backup is missing."
         }
         Copy-Item -LiteralPath $script:State.FirmwareBackup -Destination $dest -Force
+        if (-not (Test-Path -LiteralPath $dest -PathType Leaf)) {
+            throw "Firmware restore verification failed: original destination is missing."
+        }
+        $want=(Get-FileHash -LiteralPath $script:State.FirmwareBackup -Algorithm SHA256).Hash
+        $have=(Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash
+        if ($have -ne $want) {
+            throw "Firmware restore verification failed: restored hash differs from original backup."
+        }
     } else {
         Remove-Item -LiteralPath $dest -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $dest) {
+            throw "Firmware restore verification failed: temporary P360 firmware still exists."
+        }
     }
 }
 
@@ -433,6 +451,54 @@ function Get-TargetByIdOrNull([string]$InstanceId) {
     return (Get-CimInstance Win32_PnPEntity | Where-Object {
         $_.PNPDeviceID -eq $InstanceId
     } | Select-Object -First 1)
+}
+
+function Get-DeviceProblemStatusHex([string]$InstanceId) {
+    try {
+        $property=Get-PnpDeviceProperty -InstanceId $InstanceId -KeyName "DEVPKEY_Device_ProblemStatus" -ErrorAction Stop
+        if ($property -and $null -ne $property.Data) {
+            $raw=[int64]$property.Data
+            return ("0x{0:X8}" -f [uint32]($raw -band 0xFFFFFFFFL))
+        }
+    } catch {
+        return "<unavailable>"
+    }
+    return "<unavailable>"
+}
+
+function Get-PrepareStepName([uint32]$Step) {
+    switch ($Step) {
+        0  { return "NONE" }
+        1  { return "HOST_BEGIN" }
+        2  { return "BUS_QUERY_INTERFACE" }
+        3  { return "BUS_ABI_VALIDATE" }
+        4  { return "BUS_GET_RESOURCES" }
+        5  { return "BUS_RESOURCE_VALIDATE" }
+        6  { return "PCI_IDENTITY" }
+        7  { return "NHLT_PARSE" }
+        8  { return "STATE_RESOURCES_OK" }
+        9  { return "BOOT_ADAPTER_INIT" }
+        10 { return "RUNTIME_CREATE" }
+        11 { return "CSAUDIO_OPEN" }
+        12 { return "PREPARE_COMPLETE" }
+        default { return "UNKNOWN_$Step" }
+    }
+}
+
+function Get-TargetDiagnosticText([string]$InstanceId) {
+    $dev=Get-TargetByIdOrNull $InstanceId
+    $drv=Get-BoundDriverOrNull $InstanceId
+    if (-not $dev) {
+        return "device=<missing>"
+    }
+    return ("service={0}, cmcode={1}, status={2}, problemStatus={3}, inf={4}, provider={5}, version={6}" -f
+        [string]$dev.Service,
+        [int]$dev.ConfigManagerErrorCode,
+        [string]$dev.Status,
+        (Get-DeviceProblemStatusHex $InstanceId),
+        $(if ($drv) {[string]$drv.InfName} else {"<none>"}),
+        $(if ($drv) {[string]$drv.DriverProviderName} else {"<none>"}),
+        $(if ($drv) {[string]$drv.DriverVersion} else {"<none>"}))
 }
 
 function Test-BoundDriver(
@@ -509,11 +575,52 @@ function Remove-And-RescanTarget(
                 if ($driver -and
                     [string]$driver.DriverVersion -eq $ExpectedVersion -and
                     [string]$driver.DriverProviderName -eq $ExpectedProvider) {
-                    Write-RunLog ("TARGET_REENUM_BIND=PASS SERVICE={0} VERSION={1} INF={2}" -f
+                    Write-RunLog ("TARGET_REENUM_BOUND SERVICE={0} VERSION={1} INF={2} CODE={3} STATUS={4} PROBLEMSTATUS={5}" -f
                         [string]$device.Service,
                         [string]$driver.DriverVersion,
-                        [string]$driver.InfName)
-                    return $device
+                        [string]$driver.InfName,
+                        [int]$device.ConfigManagerErrorCode,
+                        [string]$device.Status,
+                        (Get-DeviceProblemStatusHex $InstanceId))
+
+                    if ([int]$device.ConfigManagerErrorCode -eq 0) {
+                        Write-RunLog "TARGET_REENUM_BIND=PASS HEALTHY=YES"
+                        return $device
+                    }
+
+                    # One bounded user-mode repair attempt is allowed in PRE-AUDIO.
+                    # It never touches the parent bus and cannot reach speaker code.
+                    Write-RunLog ("TARGET_START_REPAIR=BEGIN CODE={0}" -f [int]$device.ConfigManagerErrorCode)
+                    $null=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/enable-device",$InstanceId) -AllowFailure
+                    $null=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/restart-device",$InstanceId) -AllowFailure
+                    $null=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure
+
+                    $repairDeadline=(Get-Date).AddSeconds(8)
+                    do {
+                        Start-Sleep -Milliseconds 500
+                        $device=Get-TargetByIdOrNull $InstanceId
+                        if ($device -and
+                            [int]$device.ConfigManagerErrorCode -eq 0 -and
+                            (Test-BoundDriver $InstanceId $ExpectedVersion $ExpectedProvider $ExpectedService)) {
+                            Write-RunLog "TARGET_START_REPAIR=PASS"
+                            Write-RunLog "TARGET_REENUM_BIND=PASS HEALTHY=YES AFTER_REPAIR=YES"
+                            return $device
+                        }
+                    } while ((Get-Date) -lt $repairDeadline)
+
+                    $t=Get-Telemetry
+                    $prepareText=if ($t) {
+                        "{0}({1}) prepareNtStatus=0x{2:X8} failure={3} lastNtStatus=0x{4:X8}" -f
+                            (Get-PrepareStepName $t.PrepareStep),
+                            $t.PrepareStep,
+                            $t.PrepareNtStatus,
+                            $t.FailureReason,
+                            $t.LastNtStatus
+                    } else {
+                        "<no telemetry>"
+                    }
+                    throw ("P360SofAudio bound but device start failed after one repair attempt. {0}; telemetry={1}" -f
+                        (Get-TargetDiagnosticText $InstanceId),$prepareText)
                 }
             }
         }
@@ -661,6 +768,14 @@ function Get-Telemetry {
     $p = Get-ItemProperty -Path $TelemetryPath
     $fwRaw = [uint32]$p.FirmwareError
     $fwSigned = [BitConverter]::ToInt32([BitConverter]::GetBytes($fwRaw),0)
+    $prepareStep=0
+    $prepareNtStatus=0
+    if ($p.PSObject.Properties["PrepareStep"]) {
+        $prepareStep=[uint32]$p.PrepareStep
+    }
+    if ($p.PSObject.Properties["PrepareNtStatus"]) {
+        $prepareNtStatus=[uint32]$p.PrepareNtStatus
+    }
     return [pscustomobject]@{
         BuildFlags = [uint32]$p.BuildFlags
         Stage = [uint32]$p.Stage
@@ -669,7 +784,28 @@ function Get-Telemetry {
         ReplyBytes = [uint32]$p.ReplyBytes
         FailureReason = [uint32]$p.FailureReason
         LastNtStatus = [uint32]$p.LastNtStatus
+        PrepareStep = $prepareStep
+        PrepareNtStatus = $prepareNtStatus
     }
+}
+
+function Format-TelemetryDiagnosis([object]$Telemetry,[string]$InstanceId) {
+    $deviceText=Get-TargetDiagnosticText $InstanceId
+    if (-not $Telemetry) {
+        return "telemetry=<missing>; $deviceText"
+    }
+    return ("stage={0}, flags={1}, bootEpoch={2}, prepare={3}({4}), prepareNtStatus=0x{5:X8}, failure={6}, lastNtStatus=0x{7:X8}, fwError={8}, replyBytes={9}; {10}" -f
+        $Telemetry.Stage,
+        $Telemetry.BuildFlags,
+        $Telemetry.BootEpoch,
+        (Get-PrepareStepName $Telemetry.PrepareStep),
+        $Telemetry.PrepareStep,
+        $Telemetry.PrepareNtStatus,
+        $Telemetry.FailureReason,
+        $Telemetry.LastNtStatus,
+        $Telemetry.FirmwareError,
+        $Telemetry.ReplyBytes,
+        $deviceText)
 }
 
 function Wait-Telemetry {
@@ -687,7 +823,7 @@ function Wait-Telemetry {
                 throw "Loaded driver build flags mismatch: $($t.BuildFlags) != $ExpectedFlags."
             }
             if ($t.FailureReason -ne 0 -or $t.LastNtStatus -ne 0) {
-                throw ("Driver reported failure: stage={0}, reason={1}, ntstatus=0x{2:X8}" -f $t.Stage,$t.FailureReason,$t.LastNtStatus)
+                throw ("Driver reported failure: {0}" -f (Format-TelemetryDiagnosis $t $script:State.TargetInstanceId))
             }
             if ($t.Stage -ge $MinimumStage) {
                 return $t
@@ -695,9 +831,11 @@ function Wait-Telemetry {
         }
     } while ((Get-Date) -lt $deadline)
     if ($t) {
-        throw "Telemetry timeout: stage=$($t.Stage), expected >= $MinimumStage."
+        throw ("Telemetry timeout: expected stage >= {0}; {1}" -f
+            $MinimumStage,(Format-TelemetryDiagnosis $t $script:State.TargetInstanceId))
     }
-    throw "Telemetry key was never created."
+    throw ("Telemetry key was never created; {0}" -f
+        (Get-TargetDiagnosticText $script:State.TargetInstanceId))
 }
 
 function Disable-TargetAndProveStop([string]$InstanceId,[uint32]$ExpectedFlags) {
@@ -809,6 +947,7 @@ function Restore-OriginalDriver([string]$InstanceId) {
                         [int]$dev.ConfigManagerErrorCode,
                         [string]$driver.DriverVersion,
                         [string]$driver.InfName)
+                    Assert-NoStaleTestPackage
                     $script:State.RestoreVerified = $true
                     $script:State | Add-Member -NotePropertyName RebootRequired -NotePropertyValue $false -Force
                     Save-State
@@ -852,6 +991,7 @@ function Restore-OriginalDriver([string]$InstanceId) {
             [string]$dev.Service,[string]$script:State.OriginalService)
     }
 
+    Assert-NoStaleTestPackage
     Write-RunLog ("RESTORE_UNBOUND_BASELINE=PASS CODE={0}" -f
         [int]$dev.ConfigManagerErrorCode)
     $script:State.RestoreVerified = $true
@@ -1019,6 +1159,7 @@ function Write-Report([string]$Result,[object]$Telemetry) {
         SpeakerPassed=(Get-StateBool "SpeakerPassed")
         SpeakerStopProved=(Get-StateBool "SpeakerStopProved")
         RestoreVerified=$script:State.RestoreVerified
+        LastError=$(if ($script:State.PSObject.Properties["LastError"]) {[string]$script:State.LastError} else {""})
         Telemetry=$Telemetry
     }
     $report | ConvertTo-Json -Depth 6 |
@@ -1091,6 +1232,7 @@ $script:State=[pscustomobject]@{
     SpeakerAttempted=$false
     SpeakerPassed=$false
     SpeakerStopProved=$false
+    LastError=""
 }
 Save-State
 
@@ -1103,9 +1245,6 @@ Write-RunLog "BUS=$($bus.PNPDeviceID) SERVICE=$($bus.Service)"
 
 Assert-TestSigning
 Assert-SafeBaselineBeforeNewTest $targetId
-
-$amp=Get-AmpDevice
-Write-RunLog "AMP=$($amp.PNPDeviceID) SERVICE=$($amp.Service)"
 
 $firmware=Resolve-Firmware $FirmwarePath
 Write-RunLog "FIRMWARE=$firmware"
@@ -1161,7 +1300,10 @@ try {
     $script:State.StopProved=$false
     Save-State
 
-    # PHASE 2: bounded speaker. This is the first point where amp START is possible.
+    # PHASE 2: bounded speaker. The amplifier is required only here; PRE-AUDIO
+    # remains independent from the physical speaker path.
+    $amp=Get-AmpDevice
+    Write-RunLog "AMP=$($amp.PNPDeviceID) SERVICE=$($amp.Service)"
     Write-RunLog "SPEAKER_PHASE=BEGIN"
     $script:State.SpeakerAttempted=$true
     Save-State
@@ -1183,6 +1325,11 @@ try {
 
     $success=$true
 } catch {
+    $script:State.LastError=[string]$_.Exception.Message
+    Save-State
+    $telemetry=Get-Telemetry
+    Write-RunLog ("FAIL_DIAGNOSTIC={0}" -f
+        (Format-TelemetryDiagnosis $telemetry $targetId))
     Write-RunLog "TEST=FAIL $($_.Exception.Message)"
 } finally {
     try {
