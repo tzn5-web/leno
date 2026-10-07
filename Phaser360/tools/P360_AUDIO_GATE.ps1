@@ -725,7 +725,9 @@ function Restore-OriginalDriver([string]$InstanceId) {
     if ($device) {
         $remove=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/remove-device",$InstanceId) -AllowFailure
         if ($remove.ExitCode -ne 0) {
-            throw "Restore could not remove exact ADSP child; exit=$($remove.ExitCode)."
+            $script:State | Add-Member -NotePropertyName RebootRequired -NotePropertyValue $true -Force
+            Save-State
+            throw "Restore could not remove exact ADSP child; exit=$($remove.ExitCode). A Windows restart is required before another audio-gate run."
         }
 
         $deadline=(Get-Date).AddSeconds(8)
@@ -737,7 +739,9 @@ function Restore-OriginalDriver([string]$InstanceId) {
         } while ((Get-Date) -lt $deadline)
 
         if (Get-TargetByIdOrNull $InstanceId) {
-            throw "Restore could not prove ADSP child removal."
+            $script:State | Add-Member -NotePropertyName RebootRequired -NotePropertyValue $true -Force
+            Save-State
+            throw "Restore could not prove ADSP child removal. A Windows restart is required before another audio-gate run."
         }
     }
 
@@ -775,7 +779,9 @@ function Restore-OriginalDriver([string]$InstanceId) {
 
         $scan=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure
         if ($scan.ExitCode -ne 0) {
-            throw "Restore PnP scan failed with exit code $($scan.ExitCode)."
+            $script:State | Add-Member -NotePropertyName RebootRequired -NotePropertyValue $true -Force
+            Save-State
+            throw "Restore PnP scan failed with exit code $($scan.ExitCode). A Windows restart is required before another audio-gate run."
         }
 
         $deadline=(Get-Date).AddSeconds(20)
