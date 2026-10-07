@@ -1,0 +1,53 @@
+; PHASER360 fail-closed MAX98357A driver.
+; Derived from CoolStar/max98357a under Apache-2.0.
+
+[Version]
+Signature="$WINDOWS NT$"
+Class=Media
+ClassGuid={4d36e96c-e325-11ce-bfc1-08002be10318}
+Provider=%Provider%
+DriverVer=10/07/2026,2.0.0.0
+CatalogFile=P360Max98357Safe.cat
+PnpLockdown=1
+
+[DestinationDirs]
+DefaultDestDir=12
+
+[SourceDisksNames]
+1=%DiskName%,,,""
+
+[SourceDisksFiles]
+P360Max98357Safe.sys=1,,
+
+[Manufacturer]
+%Provider%=Models,NTamd64
+
+[Models.NTamd64]
+%DeviceDesc%=Install,ACPI\MX98357A
+
+[Install.NT]
+CopyFiles=DriverCopy
+
+[Install.NT.HW]
+Include=pci.inf
+Needs=PciD3ColdSupported.HW
+
+[DriverCopy]
+P360Max98357Safe.sys
+
+[Install.NT.Services]
+AddService=P360Max98357Safe,0x00000002,Service
+
+[Service]
+DisplayName=%ServiceDesc%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%12%\P360Max98357Safe.sys
+LoadOrderGroup=Base
+
+[Strings]
+Provider="PHASER360 Project"
+DiskName="PHASER360 MAX98357A Safe Driver"
+DeviceDesc="MAX98357A I2S Amplifier (PHASER360 fail-closed)"
+ServiceDesc="PHASER360 MAX98357A fail-closed GPIO amplifier"
