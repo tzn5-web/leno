@@ -327,6 +327,23 @@ p360_format_supported(
     return FALSE;
 }
 
+static BOOLEAN
+p360_playback_memory_released(
+    _In_ const P360_PLAYBACK_STREAM *Playback
+    )
+{
+    if (!Playback)
+        return FALSE;
+
+    return !Playback->AudioMdl &&
+        !Playback->PageTable &&
+        !Playback->StreamOwned &&
+        !Playback->StreamPrepared &&
+        !Playback->Running &&
+        !Playback->SofRunning &&
+        !Playback->SofParamsPrepared;
+}
+
 class P360TopologyMiniport final : public IMiniportTopology
 {
 public:
@@ -777,6 +794,18 @@ P360WaveStream::~P360WaveStream()
             &m_Playback);
     }
 
+    if (m_Mdl && !p360_playback_memory_released(&m_Playback)) {
+        /*
+         * A void COM destructor cannot report teardown failure. Fail closed:
+         * retain the PortCls stream/framework references and its MDL rather
+         * than free pages that SOF/HDA may still DMA into. This is a
+         * quarantine/reboot path, not a normal leak.
+         */
+        if (m_Context)
+            p360_state_fail(&m_Context->State,P360_FAIL_STREAM);
+        return;
+    }
+
     if (m_Mdl) {
         m_PortStream->FreePagesFromMdl(m_Mdl);
         m_Mdl=NULL;
@@ -1059,6 +1088,18 @@ P360WaveStream::FreeAudioBuffer(
             (void)p360_host_playback_release(
                 m_Context,
                 &m_Playback);
+
+        if (!p360_playback_memory_released(&m_Playback)) {
+            /*
+             * FreeAudioBuffer is void, so it cannot surface a failed SOF/HDA
+             * release to PortCls. Retain the MDL instead of creating a DMA
+             * use-after-free; normal PnP teardown will then remain blocked by
+             * the same latched ownership.
+             */
+            if (m_Context)
+                p360_state_fail(&m_Context->State,P360_FAIL_STREAM);
+            return;
+        }
 
         m_PortStream->FreePagesFromMdl(m_Mdl);
         m_Mdl=NULL;
