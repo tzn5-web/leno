@@ -3,6 +3,13 @@
 #include "p360_loader.h"
 static uint32_t U32(const uint8_t *p)
 {return (uint32_t)p[0]|((uint32_t)p[1]<<8)|((uint32_t)p[2]<<16)|((uint32_t)p[3]<<24);}
+static int Structured20(uint32_t command)
+{
+    return command==0x30010000u || /* TPLG_COMP_NEW */
+        command==0x30100000u ||    /* TPLG_PIPE_NEW */
+        command==0x30200000u ||    /* TPLG_BUFFER_NEW */
+        command==0x60010000u;      /* STREAM_PCM_PARAMS */
+}
 static int Fail(struct p360_dispatch *d)
 {d->poisoned=1;d->active=0;d->ipc.state=P360_IPC_POISONED;return -1;}
 int p360_dispatch_prepare(struct p360_dispatch *d,const uint8_t *image,
@@ -68,7 +75,7 @@ int p360_dispatch_expect_message(struct p360_dispatch *d,uint64_t now,
         return -1;
 
     command=U32(message+4);
-    if(command==0x60010000u) {
+    if(Structured20(command)) {
         if(bytes<12u) return -1;
         comp_id=U32(message+8);
         if(!comp_id) return -1;
@@ -143,7 +150,7 @@ int p360_dispatch_process(struct p360_dispatch *d,const struct p360_irq_event *e
 
         if(!d->expected_generic) {
             if(d->expected_reply_bytes!=20u ||
-               d->expected_reply_cmd!=0x60010000u ||
+               !Structured20(d->expected_reply_cmd) ||
                !d->expected_comp_id ||
                U32(reply+12)!=d->expected_comp_id)
                 return Fail(d);
