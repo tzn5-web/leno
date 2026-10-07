@@ -209,6 +209,9 @@ if not re.search(r"#define\s+P360_IPC_PROBE_ENABLED\s+0\b", driver_h):
 if not re.search(r"#define\s+P360_SPEAKER_ENDPOINT_ENABLED\s+0\b", driver_h):
     raise SystemExit("speaker endpoint barrier was enabled in the default driver")
 
+if not re.search(r"#define\s+P360_HOST_PLAYBACK_ENABLED\s+0\b", driver_h):
+    raise SystemExit("HOST playback barrier was enabled in the default driver")
+
 if not re.search(r"#define\s+P360_TONE_TOPOLOGY_PROOF_ENABLED\s+0\b", driver_h):
     raise SystemExit("hostless Tone topology proof barrier is not closed by default")
 
@@ -239,13 +242,22 @@ for token in (
     "IID_IUnregisterPhysicalConnection",
     "P360_SPEAKER_PCM_VALID_BITS",
     "case KSSTATE_RUN:",
-    "return STATUS_DEVICE_NOT_READY;",
+    "p360_host_playback_prepare(",
+    "p360_host_playback_start(",
+    "p360_host_playback_stop(",
+    "p360_host_playback_release(",
+    "p360_playback_stream_position(",
 ):
     if token not in speaker_endpoint:
-        raise SystemExit(f"speaker WaveRT shell contract missing: {token}")
+        raise SystemExit(f"active WaveRT HOST playback contract missing: {token}")
 
-if "p360_csaudio_speaker_start(" in speaker_endpoint:
-    raise SystemExit("speaker amplifier START is wired before SOF stream backend exists")
+run_i=speaker_endpoint.index("case KSSTATE_RUN:")
+run_call_i=speaker_endpoint.index("p360_host_playback_start(",run_i)
+if run_i >= run_call_i:
+    raise SystemExit("WaveRT RUN still has no real SOF/HDA backend")
+
+if "Hard barrier: the endpoint may enumerate" in speaker_endpoint:
+    raise SystemExit("old enumerate-only WaveRT barrier was reintroduced")
 
 board_h=(ROOT/"include/p360_board.h").read_text()
 for token in (
@@ -286,6 +298,8 @@ for token in (
     r"..\src\p360_safety.c",
     r"..\src\p360_csaudio.c",
     r"..\include\p360_csaudio.h",
+    r"..\src\p360_playback.c",
+    r"..\include\p360_playback.h",
     r"..\src\p360_telemetry.c",
     r"..\include\p360_telemetry.h",
     r"..\sof_core\loader\p360_ipc3_tx.c",
@@ -302,6 +316,7 @@ for token in (
     "P360_PORTCLS_SHELL_ENABLED=$(P360PortClsShellEnabled)",
     "P360_IPC_PROBE_ENABLED=$(P360IpcProbeEnabled)",
     "P360_SPEAKER_ENDPOINT_ENABLED=$(P360SpeakerEndpointEnabled)",
+    "P360_HOST_PLAYBACK_ENABLED=$(P360HostPlaybackEnabled)",
     "P360_TONE_TOPOLOGY_PROOF_ENABLED=$(P360ToneTopologyProofEnabled)",
     "P360_ENABLE_INTERNAL_SPEAKER=$(P360InternalSpeakerEnabled)",
     "P360_BOUNDED_TONE_TEST_ENABLED=$(P360BoundedToneTestEnabled)",
@@ -714,59 +729,81 @@ for token in (
     if token not in runtime_h + "\n" + runtime:
         raise SystemExit(f"generic serialized IPC3 runtime path missing: {token}")
 
-bounded_call=driver.find(
-    "if (p360_bounded_tone_policy_enabled() &&\n"
-    "        !ctx->BoundedToneConsumed)")
-if bounded_call < 0:
-    raise SystemExit("bounded Tone one-shot is not skipped after first D0 lifetime run")
+# The legacy hostless Tone diagnostic may remain compiled behind a closed
+# build gate, but it is no longer the final audio architecture. Real audio
+# primitives are now expected in the WaveRT/HOST playback lifecycle.
+if "#if P360_BOUNDED_TONE_TEST_ENABLED" not in driver:
+    raise SystemExit("legacy bounded Tone diagnostic gate disappeared unexpectedly")
 
-bounded_begin=driver.find("#if P360_BOUNDED_TONE_TEST_ENABLED")
-bounded_end=driver.find(
-    "#endif\n\nstatic NTSTATUS\np360_loader_status_to_ntstatus",
-    bounded_begin)
-if bounded_begin < 0 or bounded_end < 0:
-    raise SystemExit("bounded speaker proof block is missing")
-bounded_block=driver[bounded_begin:bounded_end]
-
-for forbidden in (
-    "p360_ipc3_build_stream_trigger(",
-    "p360_csaudio_speaker_start(",
-):
-    if driver.count(forbidden) != bounded_block.count(forbidden):
-        raise SystemExit(
-            f"audio-start primitive escaped bounded speaker gate: {forbidden}")
+playback_h=(ROOT/"include/p360_playback.h").read_text()
+playback=(ROOT/"src/p360_playback.c").read_text()
 
 for token in (
-    "ctx->BoundedToneConsumed=TRUE;",
-    "p360_ipc3_build_stream_trigger(",
-    "p360_state_speaker_arm(&ctx->State)",
-    "p360_csaudio_speaker_start(&ctx->CsAudio)",
-    "P360_BOUNDED_TONE_DURATION_MS",
-    "KeDelayExecutionThread(",
-    "p360_csaudio_speaker_stop(&ctx->CsAudio)",
-    "p360_state_speaker_disarm(&ctx->State)",
+    "P360_PLAYBACK_MAX_BUFFER_BYTES (64u * 1024u)",
+    "P360_PLAYBACK_PAGE_TABLE_BYTES PAGE_SIZE",
+    "P360_PLAYBACK_STREAM",
+    "p360_playback_stream_bind_buffer(",
+    "p360_playback_stream_start(",
+    "p360_playback_stream_stop(",
+    "p360_playback_stream_position(",
+    "p360_playback_stream_retire(",
 ):
-    if token not in bounded_block:
-        raise SystemExit(f"bounded speaker proof contract missing: {token}")
+    if token not in playback_h:
+        raise SystemExit(f"real playback stream contract missing: {token}")
 
-if bounded_block.count("p360_ipc3_build_stream_trigger(") != 2:
-    raise SystemExit("bounded speaker proof must contain exactly START and STOP triggers")
-
-bounded_start_i=bounded_block.index("p360_ipc3_build_stream_trigger(")
-bounded_arm_i=bounded_block.index("p360_state_speaker_arm(&ctx->State)")
-bounded_amp_start_i=bounded_block.index("p360_csaudio_speaker_start(&ctx->CsAudio)")
-bounded_delay_i=bounded_block.index("KeDelayExecutionThread(")
-bounded_amp_stop_i=bounded_block.index("p360_csaudio_speaker_stop(&ctx->CsAudio)")
-bounded_disarm_i=bounded_block.index("p360_state_speaker_disarm(&ctx->State)")
-bounded_stop_i=bounded_block.index(
-    "p360_ipc3_build_stream_trigger(",
-    bounded_start_i + 1)
-if not (
-    bounded_start_i < bounded_arm_i < bounded_amp_start_i <
-    bounded_delay_i < bounded_amp_stop_i < bounded_disarm_i <
-    bounded_stop_i
+for token in (
+    "MmAllocateContiguousMemorySpecifyCache(",
+    "MmGetMdlPfnArray(",
+    "pfn>0xfffffu",
+    "GetRenderStream(",
+    "PrepareDSP(",
+    "DSPEnableSPIB",
+    "TriggerDSP(",
+    "StreamPosition(",
+    "CleanupDSP(",
+    "FreeStream(",
 ):
-    raise SystemExit("bounded speaker START/STOP safety ordering drifted")
+    if token not in playback:
+        raise SystemExit(f"CoolStar/SOF host DMA bridge missing: {token}")
+
+# The compressed SOF page table must be created from the WaveRT MDL and the
+# audio MDL must remain owned by PortCls; the bridge may not allocate a second
+# hidden audio buffer.
+for forbidden in (
+    "MmAllocatePagesForMdl(",
+    "P360_CS_BOOT_DMA_BYTES",
+):
+    if forbidden in playback:
+        raise SystemExit(f"playback bridge introduced a second audio-buffer owner: {forbidden}")
+
+host_prepare_i=driver.index("p360_host_playback_prepare(")
+bind_buffer_i=driver.index("p360_playback_stream_bind_buffer(",host_prepare_i)
+host_pcm_i=driver.index("p360_ipc3_build_host_pcm_params(",bind_buffer_i)
+host_prepare_done_i=driver.index("playback->SofParamsPrepared=TRUE;",host_pcm_i)
+if not host_prepare_i < bind_buffer_i < host_pcm_i < host_prepare_done_i:
+    raise SystemExit("WaveRT MDL -> CoolStar stream -> SOF PCM_PARAMS ordering drifted")
+
+host_start_i=driver.index("p360_host_playback_start(")
+dma_start_i=driver.index("p360_playback_stream_start(playback)",host_start_i)
+sof_start_i=driver.index("p360_ipc3_build_stream_trigger(",dma_start_i)
+speaker_arm_i=driver.index("p360_state_speaker_arm(&ctx->State)",sof_start_i)
+amp_start_i=driver.index("p360_csaudio_speaker_start(&ctx->CsAudio)",speaker_arm_i)
+if not host_start_i < dma_start_i < sof_start_i < speaker_arm_i < amp_start_i:
+    raise SystemExit("HOST playback START ordering is not DMA -> SOF -> arm -> MAX98357A")
+
+host_stop_i=driver.index("p360_host_playback_stop(")
+amp_stop_i=driver.index("p360_csaudio_speaker_stop(&ctx->CsAudio)",host_stop_i)
+speaker_disarm_i=driver.index("p360_state_speaker_disarm(&ctx->State)",amp_stop_i)
+sof_stop_i=driver.index("p360_ipc3_build_stream_trigger(",speaker_disarm_i)
+dma_stop_i=driver.index("p360_playback_stream_stop(playback)",sof_stop_i)
+if not host_stop_i < amp_stop_i < speaker_disarm_i < sof_stop_i < dma_stop_i:
+    raise SystemExit("HOST playback STOP ordering is not MAX mute -> SOF -> HDA stop")
+
+host_release_i=driver.index("p360_host_playback_release(")
+pcm_free_i=driver.index("p360_ipc3_build_pcm_free(",host_release_i)
+retire_i=driver.index("p360_playback_stream_retire(playback)",pcm_free_i)
+if not host_release_i < pcm_free_i < retire_i:
+    raise SystemExit("HOST playback release does not free SOF PCM before HDA ownership")
 
 if "ctx->State.speaker_policy_enabled=" not in driver or    "P360_ENABLE_INTERNAL_SPEAKER ? 1u : 0u" not in driver:
     raise SystemExit("speaker policy state is not bound to the explicit compile barrier")
@@ -832,32 +869,43 @@ if not (start_i < loader_i < ready_i < bind_live_i < probe_gate_i <
         probe_call_i < ipc_flag_i < ipc_state_i):
     raise SystemExit("SOF boot -> FW_READY -> IRQ -> real IPC3 proof ordering drifted")
 
-tone_policy_i=driver.index("if (p360_tone_topology_policy_enabled())", ipc_state_i)
-tone_prepare_call_i=driver.index("p360_runtime_prepare_tone_topology(", tone_policy_i)
-helper_i=driver.index("p360_runtime_prepare_tone_topology(")
+host_policy_i=driver.index("if (p360_host_playback_policy_enabled())", ipc_state_i)
+host_prepare_call_i=driver.index("p360_runtime_prepare_host_topology(", host_policy_i)
+helper_i=driver.index("p360_runtime_prepare_host_topology(")
 helper_body_i=driver.index("{", helper_i)
-tone_new_i=driver.index("p360_ipc3_build_tone_new(", helper_body_i)
-buffer_new_i=driver.index("p360_ipc3_build_buffer_new(", tone_new_i)
-dai_new_i=driver.index("p360_ipc3_build_dai_new(", buffer_new_i)
+host_new_i=driver.index("p360_ipc3_build_host_new(", helper_body_i)
+buffer_new_i=driver.index("p360_ipc3_build_playback_buffer_new(", host_new_i)
+dai_new_i=driver.index("p360_ipc3_build_playback_dai_new(", buffer_new_i)
 dai_cfg_i=driver.index("p360_ipc3_build_ssp1_config(", dai_new_i)
 connect1_i=driver.index("p360_ipc3_build_connect(", dai_cfg_i)
 connect2_i=driver.index("p360_ipc3_build_connect(", connect1_i + 1)
-pipe_new_i=driver.index("p360_ipc3_build_pipe_new(", connect2_i)
-pipe_done_i=driver.index("p360_ipc3_build_pipe_complete(", pipe_new_i)
+pipe_new_i=driver.index("p360_ipc3_build_playback_pipe_new(", connect2_i)
+pipe_done_i=driver.index("p360_ipc3_build_playback_pipe_complete(", pipe_new_i)
 top_flag_i=driver.index("ctx->State.topology_ready=1;", pipe_done_i)
 top_state_i=driver.index("P360_STATE_TOPOLOGY_READY", top_flag_i)
-ampl_i=driver.index("p360_ipc3_build_tone_amplitude(", top_state_i)
-length_i=driver.index("p360_ipc3_build_tone_length(", ampl_i)
-pcm_i=driver.index("p360_ipc3_build_pcm_params(", length_i)
-core_flag_i=driver.index("ctx->State.audio_core_ready=1;", pcm_i)
+core_flag_i=driver.index("ctx->State.audio_core_ready=1;", top_state_i)
 core_state_i=driver.index("P360_STATE_AUDIO_CORE_READY", core_flag_i)
 if not (
-    ipc_state_i < tone_policy_i < tone_prepare_call_i and
-    helper_body_i < tone_new_i < buffer_new_i < dai_new_i < dai_cfg_i <
+    ipc_state_i < host_policy_i < host_prepare_call_i and
+    helper_body_i < host_new_i < buffer_new_i < dai_new_i < dai_cfg_i <
     connect1_i < connect2_i < pipe_new_i < pipe_done_i <
-    top_flag_i < top_state_i < ampl_i < length_i < pcm_i < core_flag_i < core_state_i
+    top_flag_i < top_state_i < core_flag_i < core_state_i
 ):
-    raise SystemExit("hostless Tone -> SSP1 topology/prepare ordering drifted")
+    raise SystemExit("SOF HOST -> buffer -> SSP1 DMA topology ordering drifted")
+
+for token in (
+    "#define P360_IPC3_COMP_HOST   1u",
+    "#define P360_IPC3_HOST_NEW_BYTES        76u",
+    "p360_ipc3_build_host_new(",
+    "p360_ipc3_build_playback_buffer_new(",
+    "p360_ipc3_build_playback_dai_new(",
+    "p360_ipc3_build_playback_pipe_new(",
+    "p360_ipc3_build_host_pcm_params(",
+    "p360_ipc3_build_pcm_free(",
+    "P360_IPC3_TIME_DMA",
+):
+    if token not in ipc3_topology_h + "\n" + ipc3_topology:
+        raise SystemExit(f"SOF HOST IPC3 contract missing: {token}")
 
 for token in (
     "p360_host_prepare(",
