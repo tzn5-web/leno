@@ -507,6 +507,8 @@ p360_host_prepare(
         return STATUS_INVALID_DEVICE_STATE;
 
     p360_state_init(&ctx->State);
+    ctx->State.speaker_policy_enabled=
+        P360_ENABLE_INTERNAL_SPEAKER ? 1u : 0u;
     RtlZeroMemory(&ctx->Nhlt,sizeof(ctx->Nhlt));
     RtlZeroMemory(&ctx->Identity,sizeof(ctx->Identity));
     ctx->BootInitialized=FALSE;
