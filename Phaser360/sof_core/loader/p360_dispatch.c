@@ -29,7 +29,10 @@ int p360_dispatch_bind(struct p360_dispatch *d,uint64_t epoch)
 {
     if(!d || !d->prepared || d->active || d->poisoned ||
         p360_ipc_new_proved_boot(&d->ipc,epoch)) return -1;
-    d->sequence=0;d->stream_id=0;d->positions=0;d->active=1;return 0;
+    d->sequence=0;d->stream_id=0;d->positions=0;
+    d->expected_reply_bytes=0;d->expected_reply_cmd=0;
+    d->expected_comp_id=0;d->expected_generic=0;
+    d->active=1;return 0;
 }
 int p360_dispatch_stream(struct p360_dispatch *d,uint32_t id)
 {
@@ -41,9 +44,52 @@ int p360_dispatch_expect(struct p360_dispatch *d,uint64_t now,uint32_t timeout_m
 {
     uint64_t generation;
     if(!d || !d->active || d->poisoned) return -1;
+    d->expected_reply_bytes=12u;
+    d->expected_reply_cmd=0x10000000u;
+    d->expected_comp_id=0;
+    d->expected_generic=1;
     {int rc=p360_ipc_begin(&d->ipc,now,timeout_ms,&generation);
+     if(rc) {
+        d->expected_reply_bytes=0;d->expected_reply_cmd=0;
+        d->expected_comp_id=0;d->expected_generic=0;
+     }
      if(d->ipc.state==P360_IPC_POISONED) return Fail(d);
      return rc;}
+}
+int p360_dispatch_expect_message(struct p360_dispatch *d,uint64_t now,
+    uint32_t timeout_ms,const uint8_t *message,uint32_t bytes)
+{
+    uint32_t command,comp_id=0;
+    uint64_t generation;
+    int rc;
+
+    if(!d || !d->active || d->poisoned || !message ||
+       bytes<8u || (bytes&3u) || U32(message)!=bytes)
+        return -1;
+
+    command=U32(message+4);
+    if(command==0x60010000u) {
+        if(bytes<12u) return -1;
+        comp_id=U32(message+8);
+        if(!comp_id) return -1;
+        d->expected_reply_bytes=20u;
+        d->expected_reply_cmd=command;
+        d->expected_comp_id=comp_id;
+        d->expected_generic=0;
+    } else {
+        d->expected_reply_bytes=12u;
+        d->expected_reply_cmd=0x10000000u;
+        d->expected_comp_id=0;
+        d->expected_generic=1;
+    }
+
+    rc=p360_ipc_begin(&d->ipc,now,timeout_ms,&generation);
+    if(rc) {
+        d->expected_reply_bytes=0;d->expected_reply_cmd=0;
+        d->expected_comp_id=0;d->expected_generic=0;
+    }
+    if(d->ipc.state==P360_IPC_POISONED) return Fail(d);
+    return rc;
 }
 static int Stable(const struct p360_dispatch_io *io,void *ctx,uint32_t offset,
     uint8_t *out,uint32_t size)
@@ -53,10 +99,26 @@ static int Stable(const struct p360_dispatch_io *io,void *ctx,uint32_t offset,
     for(i=0;i<size;++i) if(out[i]!=other[i]) return -1;
     return U32(out)==size?0:-1;
 }
+static int32_t Signed32(uint32_t value)
+{
+    return value<=INT32_MAX ? (int32_t)value :
+        -1-(int32_t)(UINT32_MAX-value);
+}
+static int CompleteStructured(struct p360_ipc *ipc,const uint8_t *reply,
+    uint32_t bytes)
+{
+    if(!ipc || !reply || ipc->state!=P360_IPC_PENDING ||
+       bytes<12u || bytes>384u || U32(reply)!=bytes)
+        return -1;
+    ipc->firmware_error=Signed32(U32(reply+8));
+    ipc->reply_bytes=bytes;
+    ipc->state=P360_IPC_COMPLETE;
+    return 0;
+}
 int p360_dispatch_process(struct p360_dispatch *d,const struct p360_irq_event *e,
     const struct p360_dispatch_io *io,void *ctx)
 {
-    uint8_t reply[12],position[76];struct p360_ipc next;uint64_t now;uint32_t i;
+    uint8_t reply[20],position[76];struct p360_ipc next;uint64_t now;uint32_t i;
     struct p360_irq_event captured;uint32_t causes;uint64_t sequence;
     if(!d || !e || !io || !io->copy || !io->finish || !io->now) return -1;
     if(!d->active || d->poisoned) return -1;
@@ -72,8 +134,20 @@ int p360_dispatch_process(struct p360_dispatch *d,const struct p360_irq_event *e
     now=io->now(ctx);next=d->ipc;
     if(p360_ipc_expire(&next,now)) return Fail(d);
     if(causes&1) {
-        if(next.state!=P360_IPC_PENDING || Stable(io,ctx,P360_DSP_UPBOX,reply,12) ||
-           U32(reply+4)!=0x10000000u) return Fail(d);
+        if(next.state!=P360_IPC_PENDING ||
+           (d->expected_reply_bytes!=12u && d->expected_reply_bytes!=20u) ||
+           !d->expected_reply_cmd ||
+           Stable(io,ctx,P360_DSP_UPBOX,reply,d->expected_reply_bytes) ||
+           U32(reply+4)!=d->expected_reply_cmd)
+            return Fail(d);
+
+        if(!d->expected_generic) {
+            if(d->expected_reply_bytes!=20u ||
+               d->expected_reply_cmd!=0x60010000u ||
+               !d->expected_comp_id ||
+               U32(reply+12)!=d->expected_comp_id)
+                return Fail(d);
+        }
     }
     if(causes&2) {
         if(!d->stream_id || d->positions==UINT32_MAX || e->hipcte!=0 ||
@@ -88,9 +162,22 @@ int p360_dispatch_process(struct p360_dispatch *d,const struct p360_irq_event *e
      * Generation is pending HOST metadata, not inferred firmware correlation. */
     now=io->now(ctx);
     if(p360_ipc_expire(&next,now)) return Fail(d);
-    if((causes&1) && p360_ipc_complete(&next,e->epoch,next.generation,now,reply,12)) return Fail(d);
+    if(causes&1) {
+        if(d->expected_generic) {
+            if(p360_ipc_complete(&next,e->epoch,next.generation,now,
+                    reply,d->expected_reply_bytes))
+                return Fail(d);
+        } else {
+            if(CompleteStructured(&next,reply,d->expected_reply_bytes))
+                return Fail(d);
+        }
+    }
     if(io->finish(ctx,e)) return Fail(d);
     d->ipc=next;d->sequence=sequence;
+    if(causes&1) {
+        d->expected_reply_bytes=0;d->expected_reply_cmd=0;
+        d->expected_comp_id=0;d->expected_generic=0;
+    }
     if(causes&2) {for(i=0;i<76;++i) d->position[i]=position[i];++d->positions;}
     return 0;
 }
