@@ -327,7 +327,7 @@ jobs:
           New-P360Catalog `
             "Phaser360\driver\out\Release\P360SofAudio-bounded-tone-test.sys" `
             $finalDir `
-            "2.0.301.1"
+            "2.0.302.1"
 
       - name: Sign hardware gate catalogs
         shell: pwsh
@@ -377,7 +377,7 @@ jobs:
             CertificateThumbprint = "${env:P360_CERT_THUMBPRINT}"
             PreAudioDriverVersion = "2.0.101.1"
             BoundedDriverVersion = "2.0.201.1"
-            FinalSpeakerDriverVersion = "2.0.301.1"
+            FinalSpeakerDriverVersion = "2.0.302.1"
             PreAudioSysSha256 = $preHash
             BoundedSysSha256 = $boundedHash
             FinalSpeakerSysSha256 = $finalHash
