@@ -464,7 +464,7 @@ for token in (
     "PORTCLS_BOUNDED_TONE_TEST_COMPILE=PASS",
     "P360SofAudio-bounded-tone-test.sys",
     "P360SofAudio-bounded-tone-test.pdb",
-    "FinalSpeakerDriverVersion = \"2.0.301.1\"",
+    "FinalSpeakerDriverVersion = \"2.0.302.1\"",
     "FinalSpeakerSysSha256",
     "final\\P360SofAudio.sys",
     "P360SofAudio.inx",
