@@ -99,6 +99,7 @@ typedef struct _P360_DEVICE_CONTEXT {
     PDEVICE_OBJECT PortClsFdo;
     PVOID SpeakerTopologyPort;
     PVOID SpeakerWavePort;
+    PVOID AdapterPowerManager;
 
     BOOLEAN BusOpen;
     BOOLEAN BootInitialized;
