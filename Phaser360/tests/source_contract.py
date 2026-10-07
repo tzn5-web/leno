@@ -518,10 +518,12 @@ if '"/install"' in install_test_body:
 
 for token in (
     'function Install-SafeAmpPackage',
-    '@("/add-driver",$inf,"/install")',
+    '$add=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/add-driver",$inf) -AllowFailure',
+    '$remove=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/remove-device",$InstanceId) -AllowFailure',
+    '$scan=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure',
     'function Restore-OriginalAmpDriver',
-    '[string]$script:State.AmpOriginalExportedInf,',
-    '"/install") -AllowFailure',
+    '[string]$script:State.AmpOriginalExportedInf) -AllowFailure',
+    'Original MAX98357A driver was not restored exactly.',
 ):
     if token not in runner:
         raise SystemExit(f"safe MAX98357A bind/restore transaction missing: {token}")
