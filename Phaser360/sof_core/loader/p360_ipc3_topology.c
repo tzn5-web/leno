@@ -282,6 +282,49 @@ int p360_ipc3_build_pcm_params(struct p360_ipc3_message *out,
     return P360_IPC3_TOPOLOGY_OK;
 }
 
+int p360_ipc3_build_tone_amplitude(struct p360_ipc3_message *out,
+    uint32_t comp_id,uint32_t amplitude_q1_31,uint16_t channels)
+{
+    uint8_t *d;
+
+    if (!out || !comp_id ||
+        channels!=P360_SPEAKER_CHANNELS ||
+        !amplitude_q1_31 ||
+        amplitude_q1_31>P360_IPC3_TONE_AMPLITUDE_MAX_Q1_31)
+        return P360_IPC3_TOPOLOGY_ARGUMENT;
+
+    zero_message(out);
+    d=out->data;
+
+    /*
+     * SOF 1.9.3 tone_new() resets each channel to the firmware default
+     * amplitude (0.1 / -20 dB).  Do not rely on COMP_NEW tail fields.
+     * Match the IPC3 component-control ABI and override both channels before
+     * STREAM_START.  10737418 in Q1.31 is 0.5% full-scale (-46.02 dBFS).
+     */
+    put32(d,P360_IPC3_TONE_CONTROL_BYTES);
+    put32(d+4,P360_IPC3_GLB_COMP_MSG|P360_IPC3_COMP_SET_DATA);
+    put32(d+8,0u); /* sof_ipc_reply.error in request */
+    put32(d+12,comp_id);
+    put32(d+16,P360_IPC3_CTRL_TYPE_VALUE_COMP_SET);
+    put32(d+20,P360_IPC3_CTRL_CMD_ENUM);
+    put32(d+24,P360_IPC3_TONE_IDX_AMPLITUDE);
+
+    /* Empty sof_ipc_host_buffer: payload follows inline. */
+    put32(d+28,28u);
+    put32(d+56,channels);
+    put32(d+60,0u);
+    put32(d+64,0u);
+
+    put32(d+92,0u);
+    put32(d+96,amplitude_q1_31);
+    put32(d+100,1u);
+    put32(d+104,amplitude_q1_31);
+
+    out->bytes=P360_IPC3_TONE_CONTROL_BYTES;
+    return P360_IPC3_TOPOLOGY_OK;
+}
+
 int p360_ipc3_build_stream_trigger(struct p360_ipc3_message *out,
     uint32_t comp_id,int start)
 {
