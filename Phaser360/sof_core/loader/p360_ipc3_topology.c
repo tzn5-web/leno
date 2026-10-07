@@ -146,7 +146,8 @@ int p360_ipc3_build_buffer_new(struct p360_ipc3_message *out,
     put_comp(d,P360_IPC3_BUFFER_NEW_BYTES,ids->buffer_id,
         P360_IPC3_COMP_BUFFER,ids->pipeline_id);
     put32(d+28,bytes);
-    put32(d+32,P360_IPC3_MEM_RAM|P360_IPC3_MEM_CACHE);
+    put32(d+32,P360_IPC3_MEM_RAM|P360_IPC3_MEM_HP|
+        P360_IPC3_MEM_DMA|P360_IPC3_MEM_CACHE);
     put32(d+36,0u);
     put32(d+40,0u);
     out->bytes=P360_IPC3_BUFFER_NEW_BYTES;
