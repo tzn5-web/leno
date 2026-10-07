@@ -34,4 +34,13 @@ cc $CFLAGS $SAN tests/ipc3_topology_regression.c \
   -o "$OBJ/ipc3_topology"
 "$OBJ/ipc3_topology"
 
+cc $CFLAGS $SAN tests/ipc3_reply_regression.c \
+  sof_core/p360_transport_core.c \
+  sof_core/loader/p360_fw_image.c \
+  sof_core/loader/p360_dispatch.c \
+  sof_core/loader/p360_ipc3_tx.c \
+  sof_core/loader/p360_ipc3_topology.c \
+  -o "$OBJ/ipc3_reply"
+"$OBJ/ipc3_reply"
+
 echo "B4 core compile/regressions: PASS"
