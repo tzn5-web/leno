@@ -647,7 +647,7 @@ for token in (
 
 for forbidden in (
     "P360_IPC3_CTRL_TYPE_DATA_SET",
-    "p360_ipc3_build_tone_amplitude_control(",
+    "p360_ipc3_build_tone_amplitude(",
 ):
     if forbidden in ipc3_topology_h + "\n" + ipc3_topology:
         raise SystemExit(f"wrong duplicate Tone control path present: {forbidden}")
