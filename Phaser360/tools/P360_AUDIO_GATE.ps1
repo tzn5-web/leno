@@ -1032,6 +1032,13 @@ function Load-RestoreState([string]$RequestedSession) {
     $script:State=Get-Content -LiteralPath (Join-Path $path "STATE.json") -Raw | ConvertFrom-Json
 }
 
+function Get-StateBool([string]$Name) {
+    if ($script:State -and $script:State.PSObject.Properties[$Name]) {
+        return [bool]$script:State.$Name
+    }
+    return $false
+}
+
 function Write-Report([string]$Result,[object]$Telemetry) {
     $report=[ordered]@{
         Mode=$Mode
@@ -1043,8 +1050,12 @@ function Write-Report([string]$Result,[object]$Telemetry) {
         OriginalService=$script:State.OriginalService
         OriginalInfName=$script:State.OriginalInfName
         OriginalDriverVersion=$script:State.OriginalDriverVersion
+        PreAudioPassed=(Get-StateBool "PreAudioPassed")
+        PreAudioStopProved=(Get-StateBool "PreAudioStopProved")
+        SpeakerAttempted=(Get-StateBool "SpeakerAttempted")
+        SpeakerPassed=(Get-StateBool "SpeakerPassed")
+        SpeakerStopProved=(Get-StateBool "SpeakerStopProved")
         RestoreVerified=$script:State.RestoreVerified
-        StopProved=$script:State.StopProved
         Telemetry=$Telemetry
     }
     $report | ConvertTo-Json -Depth 6 |
@@ -1068,9 +1079,25 @@ if ($Mode -eq "Restore") {
     }
 }
 
-New-RunSession $Mode | Out-Null
-Write-RunLog "PHASER360 AUDIO GATE"
-Write-RunLog "MODE=$Mode"
+# The one-click Audio transaction first repairs any incomplete previous test.
+$preTarget=Get-TargetDevice
+$preTargetId=[string]$preTarget.PNPDeviceID
+try {
+    Recover-PreviousBaselineIfNeeded $preTargetId
+} catch {
+    Write-Host ("BASELINE_RECOVERY=FAIL {0}" -f $_.Exception.Message)
+    if ($_.Exception.Message -match "(?i)restart is required|reboot") {
+        Write-Host "MANUAL_WINDOWS_RESTART_REQUIRED=YES"
+        Write-Host "The launcher has been scheduled to resume after the next normal Windows restart."
+        exit 10
+    }
+    exit 2
+}
+
+New-RunSession "Audio" | Out-Null
+Write-RunLog "PHASER360 AUDIO ONE-SHOT"
+Write-RunLog "MODE=Audio"
+Write-RunLog "PREAUDIO_REQUIRED_BEFORE_SPEAKER=YES"
 Write-RunLog "NO_AUTO_REBOOT=YES"
 
 $info=Read-PackageInfo
@@ -1096,6 +1123,11 @@ $script:State=[pscustomobject]@{
     FirmwareDestination=""
     StopProved=$false
     RestoreVerified=$false
+    PreAudioPassed=$false
+    PreAudioStopProved=$false
+    SpeakerAttempted=$false
+    SpeakerPassed=$false
+    SpeakerStopProved=$false
 }
 Save-State
 
@@ -1105,7 +1137,12 @@ Write-RunLog ("TARGET_NAME={0} CODE={1} SERVICE={2}" -f
     [int]$target.ConfigManagerErrorCode,
     [string]$target.Service)
 Write-RunLog "BUS=$($bus.PNPDeviceID) SERVICE=$($bus.Service)"
+
 Assert-TestSigning
+Assert-SafeBaselineBeforeNewTest $targetId
+
+$amp=Get-AmpDevice
+Write-RunLog "AMP=$($amp.PNPDeviceID) SERVICE=$($amp.Service)"
 
 $firmware=Resolve-Firmware $FirmwarePath
 Write-RunLog "FIRMWARE=$firmware"
@@ -1115,87 +1152,84 @@ $preFolder=Assert-Package "PreAudio" $info
 $boundedFolder=Assert-Package "BoundedSpeaker" $info
 Write-RunLog "PACKAGE_HEAD=$($info.HeadSha)"
 
-if ($Mode -eq "Audit") {
-    $amp = Get-AmpDevice
-    Write-RunLog "AMP=$($amp.PNPDeviceID) SERVICE=$($amp.Service)"
-    Write-RunLog "AUDIT=PASS"
-    Write-Report "PASS" $null
-    exit 0
-}
-
-if ($Mode -eq "PreAudio" -or $Mode -eq "BoundedSpeaker" -or $Mode -eq "Audio") {
-    Assert-SafeBaselineBeforeNewTest $targetId
-}
-if ($Mode -eq "BoundedSpeaker" -or $Mode -eq "Audio") {
-    $amp=Get-AmpDevice
-    Write-RunLog "AMP=$($amp.PNPDeviceID) SERVICE=$($amp.Service)"
-}
-if ($Mode -eq "BoundedSpeaker") {
-    Assert-PreAudioProof $info $targetId $firmware (Join-Path $preFolder "P360SofAudio.sys")
-    Write-RunLog "PREAUDIO_PROOF=PASS"
-}
-
 $telemetry=$null
 $success=$false
+
 try {
     Backup-OriginalDriver $targetId
     Install-Firmware $firmware
     Import-TestCertificate $info | Out-Null
 
-    if ($Mode -eq "PreAudio" -or $Mode -eq "Audio") {
-        Install-TestPackage "PreAudio" $info $targetId
-        $telemetry=Wait-Telemetry -ExpectedFlags 3 -MinimumStage 50
-        if ($telemetry.FirmwareError -ne -22 -or $telemetry.ReplyBytes -ne 12) {
-            throw "IPC3 proof reply mismatch: error=$($telemetry.FirmwareError), bytes=$($telemetry.ReplyBytes)."
-        }
-        Write-RunLog "FW_READY_IRQ_IPC_PROOF=PASS"
-        $stopTelemetry=Disable-TargetAndProveStop $targetId 3
-        Write-RunLog "PREAUDIO_STOP_PROOF=PASS"
+    # PHASE 1: minimal PRE-AUDIO. No Tone topology and no speaker gate compiled.
+    Write-RunLog "PREAUDIO_PHASE=BEGIN"
+    Install-TestPackage "PreAudio" $info $targetId
 
-        if ($Mode -eq "PreAudio") {
-            $success=$true
-        } else {
-            Write-PreAudioProof $info $targetId $firmware (Join-Path $preFolder "P360SofAudio.sys") $telemetry
-            Write-RunLog "PREAUDIO_GATE=PASS"
-            Write-RunLog "AUDIO_PHASE_SWITCH=BEGIN"
-
-            Restore-OriginalDriver $targetId
-            Write-RunLog "PREAUDIO_DRIVER_RESTORE=PASS"
-            $script:State.RestoreVerified=$false
-            $script:State.StopProved=$false
-            Save-State
-
-            Install-TestPackage "BoundedSpeaker" $info $targetId
-            $telemetry=Wait-Telemetry -ExpectedFlags 31 -MinimumStage 110
-            if ($telemetry.Stage -ne 110) {
-                throw "Bounded tone did not terminate at TONE_COMPLETE."
-            }
-            Write-RunLog "BOUNDED_TONE_250MS=PASS"
-            $stopTelemetry=Disable-TargetAndProveStop $targetId 31
-            Write-RunLog "AUDIO_STOP_PROOF=PASS"
-            $success=$true
-        }
-    } elseif ($Mode -eq "BoundedSpeaker") {
-        Install-TestPackage "BoundedSpeaker" $info $targetId
-        $telemetry=Wait-Telemetry -ExpectedFlags 31 -MinimumStage 110
-        if ($telemetry.Stage -ne 110) {
-            throw "Bounded tone did not terminate at TONE_COMPLETE."
-        }
-        Write-RunLog "BOUNDED_TONE_250MS=PASS"
-        $stopTelemetry=Disable-TargetAndProveStop $targetId 31
-        Write-RunLog "STOP_PROOF=PASS"
-        $success=$true
+    $telemetry=Wait-Telemetry -ExpectedFlags 3 -MinimumStage 50 -Seconds 20
+    if ($telemetry.BootEpoch -lt 1) {
+        throw "PRE-AUDIO telemetry has no fresh boot epoch."
     }
+    if ($telemetry.FirmwareError -ne -22 -or $telemetry.ReplyBytes -ne 12) {
+        throw "IPC3 proof reply mismatch: error=$($telemetry.FirmwareError), bytes=$($telemetry.ReplyBytes)."
+    }
+
+    $script:State.PreAudioPassed=$true
+    Save-State
+    Write-RunLog "PREAUDIO_FW_READY_IRQ_IPC=PASS"
+
+    $null=Disable-TargetAndProveStop $targetId 3
+    $script:State.PreAudioStopProved=$true
+    Save-State
+    Write-RunLog "PREAUDIO_STOP=PASS"
+
+    # Return to the exact proven baseline before changing to the speaker build.
+    Restore-OriginalDriver $targetId
+    if (-not $script:State.RestoreVerified) {
+        throw "PRE-AUDIO baseline restore was not verified."
+    }
+    Write-RunLog "PREAUDIO_BASELINE_RESTORE=PASS"
+    Assert-SafeBaselineBeforeNewTest $targetId
+
+    if (-not $script:State.PreAudioPassed -or -not $script:State.PreAudioStopProved) {
+        throw "Speaker phase blocked: PRE-AUDIO proof or STOP is missing."
+    }
+
+    # Prepare final cleanup state for the bounded speaker phase.
+    $script:State.RestoreVerified=$false
+    $script:State.StopProved=$false
+    Save-State
+
+    # PHASE 2: bounded speaker. This is the first point where amp START is possible.
+    Write-RunLog "SPEAKER_PHASE=BEGIN"
+    $script:State.SpeakerAttempted=$true
+    Save-State
+
+    Install-TestPackage "BoundedSpeaker" $info $targetId
+    $telemetry=Wait-Telemetry -ExpectedFlags 31 -MinimumStage 110 -Seconds 20
+    if ($telemetry.BootEpoch -lt 1 -or $telemetry.Stage -ne 110) {
+        throw "Bounded speaker proof did not reach fresh TONE_COMPLETE."
+    }
+
+    $script:State.SpeakerPassed=$true
+    Save-State
+    Write-RunLog "BOUNDED_TONE_250MS=PASS"
+
+    $null=Disable-TargetAndProveStop $targetId 31
+    $script:State.SpeakerStopProved=$true
+    Save-State
+    Write-RunLog "SPEAKER_STOP_MUTE=PASS"
+
+    $success=$true
 } catch {
     Write-RunLog "TEST=FAIL $($_.Exception.Message)"
 } finally {
     try {
         Restore-OriginalDriver $targetId
-        Write-RunLog "DRIVER_RESTORE=PASS"
+        Write-RunLog "FINAL_DRIVER_RESTORE=PASS"
     } catch {
-        Write-RunLog "DRIVER_RESTORE=FAIL $($_.Exception.Message)"
+        Write-RunLog "FINAL_DRIVER_RESTORE=FAIL $($_.Exception.Message)"
         $success=$false
     }
+
     try {
         Restore-Firmware
         Write-RunLog "FIRMWARE_RESTORE=PASS"
@@ -1203,6 +1237,7 @@ try {
         Write-RunLog "FIRMWARE_RESTORE=FAIL $($_.Exception.Message)"
         $success=$false
     }
+
     try {
         Remove-TestCertificate ([string]$script:State.CertificateThumbprint)
         Write-RunLog "CERT_CLEANUP=PASS"
@@ -1212,15 +1247,22 @@ try {
     }
 }
 
-if ($success -and $Mode -eq "PreAudio") {
-    Write-PreAudioProof $info $targetId $firmware (Join-Path $preFolder "P360SofAudio.sys") $telemetry
-    Write-RunLog "PREAUDIO_GATE=PASS"
+if ($success) {
+    if (-not $script:State.PreAudioPassed -or
+        -not $script:State.PreAudioStopProved -or
+        -not $script:State.SpeakerAttempted -or
+        -not $script:State.SpeakerPassed -or
+        -not $script:State.SpeakerStopProved -or
+        -not $script:State.RestoreVerified) {
+        Write-RunLog "FINAL_GATE=FAIL incomplete proof vector"
+        $success=$false
+    }
 }
-if ($success -and $Mode -eq "BoundedSpeaker") {
-    Write-RunLog "SPEAKER_GATE=PASS"
-}
-if ($success -and $Mode -eq "Audio") {
+
+if ($success) {
     Write-RunLog "AUDIO_GATE=PASS"
+} else {
+    Write-RunLog "AUDIO_GATE=FAIL"
 }
 
 Write-Report $(if ($success) {"PASS"} else {"FAIL"}) $telemetry
