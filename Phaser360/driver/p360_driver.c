@@ -227,22 +227,39 @@ p360_runtime_prepare_tone_topology(
     *failure=P360_FAIL_STREAM;
 
     /*
-     * Program the SOF v1.9.3 Tone target before PCM_PARAMS causes
-     * tone_prepare().  This prevents even the first 125 us block from using
-     * the firmware default 0.1 amplitude.  0x01000000 Q1.31 is 0.78125%.
+     * Program gain and duration before PCM_PARAMS causes tone_prepare().
+     * This avoids the firmware default -20 dBFS first block and gives the DSP
+     * its own hard 2-second silence bound independent of the Windows timer.
      */
     RtlZeroMemory(&message,sizeof(message));
-    rc=p360_ipc3_build_tone_amplitude_control(
+    rc=p360_ipc3_build_tone_amplitude(
         &message,
         ids.tone_id,
-        P360_DIAGNOSTIC_TONE_Q1_31);
+        P360_DIAGNOSTIC_TONE_Q1_31,
+        P360_SPEAKER_CHANNELS);
     if (rc!=P360_IPC3_TOPOLOGY_OK)
         return STATUS_INVALID_PARAMETER;
 
     status=p360_runtime_send_zero_error(
         ctx,
         &message,
-        P360_IPC3_TONE_CONTROL_BYTES);
+        12u);
+    if (!NT_SUCCESS(status))
+        return status;
+
+    RtlZeroMemory(&message,sizeof(message));
+    rc=p360_ipc3_build_tone_length(
+        &message,
+        ids.tone_id,
+        P360_DIAGNOSTIC_TONE_BLOCKS,
+        P360_SPEAKER_CHANNELS);
+    if (rc!=P360_IPC3_TOPOLOGY_OK)
+        return STATUS_INVALID_PARAMETER;
+
+    status=p360_runtime_send_zero_error(
+        ctx,
+        &message,
+        12u);
     if (!NT_SUCCESS(status))
         return status;
 
