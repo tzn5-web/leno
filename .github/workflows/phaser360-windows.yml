@@ -72,6 +72,17 @@ jobs:
             }
           }
 
+      - name: Compile fail-closed MAX98357A dependency
+        shell: pwsh
+        run: |
+          msbuild Phaser360\max98357a_safe\P360Max98357Safe.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /v:minimal
+          $sys = "Phaser360\max98357a_safe\out\Release\P360Max98357Safe.sys"
+          if (-not (Test-Path $sys)) {
+            throw "Fail-closed MAX98357A build did not produce P360Max98357Safe.sys"
+          }
+          Write-Host "P360_MAX98357_SAFE_COMPILE=PASS"
+          Write-Host "SHA256=$((Get-FileHash $sys -Algorithm SHA256).Hash)"
+
       - name: Parse hardware gate runner
         shell: pwsh
         run: |
