@@ -40,6 +40,11 @@ p360_max_force_low(
     if (!Context)
         return STATUS_INVALID_PARAMETER;
 
+    if (!Context->TransitionLock)
+        return STATUS_INVALID_DEVICE_STATE;
+
+    WdfWaitLockAcquire(Context->TransitionLock,NULL);
+
     InterlockedExchange(&Context->DesiredOn,0);
     InterlockedIncrement(&Context->DesiredGeneration);
 
@@ -47,6 +52,7 @@ p360_max_force_low(
     if (NT_SUCCESS(status))
         InterlockedExchange(&Context->PoweredOn,0);
 
+    WdfWaitLockRelease(Context->TransitionLock);
     return status;
 }
 
@@ -129,15 +135,18 @@ p360_max_callback(
         return;
     }
 
-    InterlockedExchange(
-        &ctx->DesiredGeneration,
-        (LONG)generation);
-
     if (local.endpointRequest==P360_MAX_REQUEST_STOP) {
+        WdfWaitLockAcquire(ctx->TransitionLock,NULL);
+
+        InterlockedExchange(
+            &ctx->DesiredGeneration,
+            (LONG)generation);
         InterlockedExchange(&ctx->DesiredOn,0);
         status=p360_max_gpio_write(&ctx->Sdmode,0);
         if (NT_SUCCESS(status))
             InterlockedExchange(&ctx->PoweredOn,0);
+
+        WdfWaitLockRelease(ctx->TransitionLock);
 
         p360_max_notify(
             ctx,
@@ -153,11 +162,16 @@ p360_max_callback(
      * anti-pop interval, and only then assert SDMODE. A concurrent STOP
      * changes generation/DesiredOn and cancels this START before GPIO high.
      */
+    WdfWaitLockAcquire(ctx->TransitionLock,NULL);
+    InterlockedExchange(
+        &ctx->DesiredGeneration,
+        (LONG)generation);
     InterlockedExchange(&ctx->DesiredOn,1);
 
     status=p360_max_gpio_write(&ctx->Sdmode,0);
     if (!NT_SUCCESS(status)) {
         InterlockedExchange(&ctx->DesiredOn,0);
+        WdfWaitLockRelease(ctx->TransitionLock);
         p360_max_notify(
             ctx,
             P360_MAX_REQUEST_START_ACK,
@@ -167,6 +181,7 @@ p360_max_callback(
         return;
     }
     InterlockedExchange(&ctx->PoweredOn,0);
+    WdfWaitLockRelease(ctx->TransitionLock);
 
     delay.QuadPart=-10*1000*5; /* 5 ms */
     (void)KeDelayExecutionThread(
@@ -174,9 +189,12 @@ p360_max_callback(
         FALSE,
         &delay);
 
+    WdfWaitLockAcquire(ctx->TransitionLock,NULL);
+
     if ((UINT32)InterlockedCompareExchange(
             &ctx->DesiredGeneration,0,0)!=generation ||
         !InterlockedCompareExchange(&ctx->DesiredOn,0,0)) {
+        WdfWaitLockRelease(ctx->TransitionLock);
         p360_max_notify(
             ctx,
             P360_MAX_REQUEST_START_ACK,
@@ -193,6 +211,8 @@ p360_max_callback(
         InterlockedExchange(&ctx->DesiredOn,0);
         InterlockedExchange(&ctx->PoweredOn,0);
     }
+
+    WdfWaitLockRelease(ctx->TransitionLock);
 
     p360_max_notify(
         ctx,
@@ -264,6 +284,11 @@ P360MaxReleaseHardware(
     if (ctx->Registration) {
         ExUnregisterCallback(ctx->Registration);
         ctx->Registration=NULL;
+    }
+
+    if (ctx->TransitionLock) {
+        WdfObjectDelete(ctx->TransitionLock);
+        ctx->TransitionLock=NULL;
     }
 
     if (ctx->Callback) {
@@ -391,6 +416,18 @@ P360MaxEvtDeviceAdd(
     RtlZeroMemory(ctx,sizeof(*ctx));
     ctx->Device=device;
     ctx->SenderCookie=0x3630584du; /* MX06 */
+
+    {
+        WDF_OBJECT_ATTRIBUTES lockAttributes;
+        WDF_OBJECT_ATTRIBUTES_INIT(&lockAttributes);
+        lockAttributes.ParentObject=device;
+
+        status=WdfWaitLockCreate(
+            &lockAttributes,
+            &ctx->TransitionLock);
+        if (!NT_SUCCESS(status))
+            return status;
+    }
 
     return STATUS_SUCCESS;
 }
