@@ -449,7 +449,7 @@ for token in (
     '"D:\\PHASER360_WORK"',
 ):
     if token not in runner:
-
+        raise SystemExit(f"hardware gate runner contract missing: {token}")
 
 for forbidden in (
     "Final speaker test did not reach fresh TONE_COMPLETE.",
