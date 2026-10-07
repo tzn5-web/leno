@@ -1618,6 +1618,41 @@ function Write-Report([string]$Result,[object]$Telemetry) {
         Set-Content -LiteralPath (Join-Path $script:Session "RESULT.json") -Encoding UTF8
 }
 
+function Write-ResultZip([string]$Label="AUDIO") {
+    if (-not $script:Session -or
+        -not (Test-Path -LiteralPath $script:Session -PathType Container)) {
+        Write-RunLog "RESULT_ZIP=FAIL session_missing"
+        return ""
+    }
+    try {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $desktop=[Environment]::GetFolderPath("Desktop")
+        $leaf=Split-Path -Leaf $script:Session
+        $suffix=$(if ($Label -eq "AUDIO") {""} else {"_" + $Label.ToUpperInvariant()})
+        $zip=Join-Path $desktop ($leaf + $suffix + ".zip")
+        if (Test-Path -LiteralPath $zip) {
+            Remove-Item -LiteralPath $zip -Force
+        }
+        Write-RunLog "RESULT_ZIP_BEGIN=$zip"
+        [IO.Compression.ZipFile]::CreateFromDirectory(
+            $script:Session,
+            $zip,
+            [IO.Compression.CompressionLevel]::Optimal,
+            $false)
+        if (-not (Test-Path -LiteralPath $zip -PathType Leaf) -or
+            (Get-Item -LiteralPath $zip).Length -le 0) {
+            throw "Result ZIP was not created."
+        }
+        $sha=(Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+        Write-Host "RESULT_ZIP=$zip"
+        Write-Host "RESULT_ZIP_SHA256=$sha"
+        return $zip
+    } catch {
+        Write-RunLog "RESULT_ZIP=FAIL $($_.Exception.Message)"
+        return ""
+    }
+}
+
 Assert-Administrator
 
 if ($Mode -eq "Restore") {
@@ -1629,9 +1664,11 @@ if ($Mode -eq "Restore") {
         Restore-Firmware
         Remove-TestCertificate ([string]$script:State.CertificateThumbprint)
         Write-RunLog "RESTORE=PASS"
+        Write-ResultZip "RESTORE" | Out-Null
         exit 0
     } catch {
         Write-RunLog "RESTORE=FAIL $($_.Exception.Message)"
+        Write-ResultZip "RESTORE" | Out-Null
         exit 2
     }
 }
@@ -1896,6 +1933,7 @@ if ($success) {
 
 Write-Report $(if ($success) {"PASS"} else {"FAIL"}) $telemetry
 Write-RunLog "RESULT_DIR=$Session"
+Write-ResultZip "AUDIO" | Out-Null
 
 if ($success) { exit 0 }
 exit 2
