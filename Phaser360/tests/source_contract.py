@@ -489,7 +489,7 @@ for token in (
     "Recover-PreviousBaselineIfNeeded",
     "RESUME_AFTER_REBOOT_SCHEDULED=YES",
     "MANUAL_WINDOWS_RESTART_REQUIRED=YES",
-    "DIRECT_FINAL_SPEAKER_TEST=YES",
+    "PREAUDIO_CORE_AND_AMP_MUTE=PASS",
     "FINAL_SPEAKER_PHASE=BEGIN",
     "FINAL_WAVERT_2000MS_MAX_0P5PCT=PASS",
     "FINAL_SPEAKER_STOP_MUTE=PASS",
@@ -583,20 +583,23 @@ for forbidden in (
     if forbidden in runner:
         raise SystemExit(f"persistent PRE-AUDIO proof reuse path reintroduced: {forbidden}")
 
-final_phase_i=runner.index('Write-RunLog "FINAL_SPEAKER_PHASE=BEGIN"')
-final_attempt_i=runner.index("$script:State.SpeakerAttempted=$true",final_phase_i)
-final_install_i=runner.index('Install-TestPackage "FinalSpeaker"',final_attempt_i)
+preaudio_phase_i=runner.index('Write-RunLog "PREAUDIO_PHASE=BEGIN"')
+final_install_i=runner.index('Install-TestPackage "FinalSpeaker"',preaudio_phase_i)
 final_core_wait_i=runner.index("Wait-Telemetry -ExpectedFlags 47 -MinimumStage 70",final_install_i)
-final_wave_i=runner.index("$waveResult=Invoke-Tool -Exe $waveTest -Arguments @() -AllowFailure",final_core_wait_i)
+preaudio_pass_i=runner.index('Write-RunLog "PREAUDIO_CORE_AND_AMP_MUTE=PASS"',final_core_wait_i)
+final_phase_i=runner.index('Write-RunLog "FINAL_SPEAKER_PHASE=BEGIN"',preaudio_pass_i)
+final_attempt_i=runner.index("$script:State.SpeakerAttempted=$true",final_phase_i)
+final_wave_i=runner.index("$waveResult=Invoke-Tool -Exe $waveTest -Arguments @() -AllowFailure",final_attempt_i)
 final_stop_wait_i=runner.index("Wait-Telemetry -ExpectedFlags 47 -MinimumStage 120",final_wave_i)
 final_pass_i=runner.index('Write-RunLog "FINAL_WAVERT_2000MS_MAX_0P5PCT=PASS"',final_stop_wait_i)
 final_stop_call_i=runner.index("Disable-TargetAndProveStop $targetId 47",final_pass_i)
 final_stop_i=runner.index('Write-RunLog "FINAL_SPEAKER_STOP_MUTE=PASS"',final_stop_call_i)
 if not (
-    final_phase_i < final_attempt_i < final_install_i < final_core_wait_i <
-    final_wave_i < final_stop_wait_i < final_pass_i < final_stop_call_i < final_stop_i
+    preaudio_phase_i < final_install_i < final_core_wait_i < preaudio_pass_i <
+    final_phase_i < final_attempt_i < final_wave_i < final_stop_wait_i <
+    final_pass_i < final_stop_call_i < final_stop_i
 ):
-    raise SystemExit("single final WaveRT speaker transaction ordering drifted")
+    raise SystemExit("fresh preaudio -> single WaveRT speaker transaction ordering drifted")
 
 for forbidden in (
     "bcdedit.exe /set",
@@ -613,7 +616,9 @@ for token in (
     "net session >nul 2>&1",
     "Start-Process -FilePath '%~f0' -Verb RunAs",
     'P360_AUDIO_GATE.ps1" -Mode Audio',
-    "2. Load final SOF/SSP1 speaker driver",
+    "2. Install pinned fail-closed MAX98357A driver in mute",
+    "3. Fresh PRE-AUDIO proof: SOF + IRQ + IPC3 + HOST topology",
+    "4. If PRE-AUDIO passes: WaveRT speaker test, 2 s / 0.5%%",
     "Return code: %RC%",
     "pause",
 ):
