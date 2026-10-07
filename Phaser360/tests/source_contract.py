@@ -122,7 +122,7 @@ for token in (
 
 for token in (
     "stream=image+0xa0",
-    "Stable(io,ctx,P360_DSP_UPBOX,reply,12)",
+    "Stable(io,ctx,P360_DSP_UPBOX,reply,d->expected_reply_bytes)",
     "Stable(io,ctx,P360_STREAM_BOX,position,76)",
 ):
     if token not in dispatch:
