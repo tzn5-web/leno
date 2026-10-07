@@ -6,7 +6,7 @@ Signature="$WINDOWS NT$"
 Class=MEDIA
 ClassGuid={4D36E96C-E325-11CE-BFC1-08002BE10318}
 Provider=%Provider%
-DriverVer=10/07/2026,4.2.0.0
+DriverVer=10/07/2026,4.3.0.0
 CatalogFile=P360AudioBundle.cat
 PnpLockdown=1
 
@@ -21,7 +21,7 @@ P360_Firmware.CopyFiles=12,P360
 [SourceDisksFiles]
 P360SofAudio.sys=1
 P360Max98357Safe.sys=1
-p360-f686.ri=1
+sof-apl-v1.9.3-official.ri=1
 
 [Manufacturer]
 %Provider%=Models,NTamd64.10.0...19044
@@ -40,7 +40,7 @@ AddReg=P360_ADSP.AddReg
 P360SofAudio.sys
 
 [P360_Firmware.CopyFiles]
-p360-f686.ri
+sof-apl-v1.9.3-official.ri
 
 [P360_ADSP.AddReg]
 HKR,,AssociatedFilters,,"wdmaud"
@@ -125,7 +125,7 @@ KmdfLibraryVersion=1.15
 
 [Strings]
 Provider="PHASER360 Project"
-DiskName="PHASER360 Production Audio Bundle"
+DiskName="PHASER360 Full Audio Driver"
 AdspDesc="PHASER360 Gemini Lake SOF Audio"
 AmpDesc="MAX98357A I2S Amplifier (PHASER360)"
 AdspService="PHASER360 SOF Audio"
