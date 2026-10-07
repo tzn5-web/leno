@@ -341,7 +341,9 @@ p360_playback_memory_released(
         !Playback->StreamPrepared &&
         !Playback->Running &&
         !Playback->SofRunning &&
-        !Playback->SofParamsPrepared;
+        !Playback->SofParamsPrepared &&
+        !Playback->SpeakerStarted &&
+        !Playback->SpeakerArmed;
 }
 
 class P360TopologyMiniport final : public IMiniportTopology
