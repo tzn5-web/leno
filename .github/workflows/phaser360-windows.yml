@@ -220,8 +220,9 @@ jobs:
           $certDir = Join-Path $root "cert"
           $preDir = Join-Path $root "preaudio"
           $boundedDir = Join-Path $root "bounded"
+          $finalDir = Join-Path $root "final"
           Remove-Item "Phaser360\package" -Recurse -Force -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Path $certDir,$preDir,$boundedDir -Force | Out-Null
+          New-Item -ItemType Directory -Path $certDir,$preDir,$boundedDir,$finalDir -Force | Out-Null
 
           Copy-Item Phaser360\tools\P360_AUDIO_GATE.ps1 (Join-Path $root "P360_AUDIO_GATE.ps1") -Force
           Copy-Item Phaser360\tools\START_AUDIO_TEST.cmd (Join-Path $root "START_AUDIO_TEST.cmd") -Force
@@ -289,6 +290,7 @@ jobs:
           $root = "Phaser360\package\P360_AUDIO_GATE"
           $preDir = Join-Path $root "preaudio"
           $boundedDir = Join-Path $root "bounded"
+          $finalDir = Join-Path $root "final"
 
           function New-P360Catalog(
             [string]$SourceSys,
@@ -322,13 +324,18 @@ jobs:
             $boundedDir `
             "2.0.201.1"
 
+          New-P360Catalog `
+            "Phaser360\driver\out\Release\P360SofAudio-bounded-tone-test.sys" `
+            $finalDir `
+            "2.0.301.1"
+
       - name: Sign hardware gate catalogs
         shell: pwsh
         timeout-minutes: 2
         run: |
           $ErrorActionPreference = "Stop"
           $root = "Phaser360\package\P360_AUDIO_GATE"
-          foreach ($dir in @("preaudio","bounded")) {
+          foreach ($dir in @("preaudio","bounded","final")) {
             $cat = Join-Path (Join-Path $root $dir) "P360SofAudio.cat"
             Write-Host "SIGN_BEGIN=$cat"
             & $env:P360_SIGNTOOL sign /fd SHA256 /f $env:P360_CERT_PFX /p $env:P360_CERT_PFX_PASSWORD /v $cat
@@ -358,9 +365,11 @@ jobs:
           $root = "Phaser360\package\P360_AUDIO_GATE"
           $preDir = Join-Path $root "preaudio"
           $boundedDir = Join-Path $root "bounded"
+          $finalDir = Join-Path $root "final"
 
           $preHash = (Get-FileHash (Join-Path $preDir "P360SofAudio.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
           $boundedHash = (Get-FileHash (Join-Path $boundedDir "P360SofAudio.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
+          $finalHash = (Get-FileHash (Join-Path $finalDir "P360SofAudio.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
 
           [ordered]@{
             HeadSha = "${env:GITHUB_SHA}"
@@ -368,8 +377,13 @@ jobs:
             CertificateThumbprint = "${env:P360_CERT_THUMBPRINT}"
             PreAudioDriverVersion = "2.0.101.1"
             BoundedDriverVersion = "2.0.201.1"
+            FinalSpeakerDriverVersion = "2.0.301.1"
             PreAudioSysSha256 = $preHash
             BoundedSysSha256 = $boundedHash
+            FinalSpeakerSysSha256 = $finalHash
+            FinalSpeakerDurationMs = 2000
+            FinalSpeakerAmplitudeQ1_31 = "0x01000000"
+            FinalSpeakerAmplitudePercent = 0.78125
             FirmwareBytes = 246528
             FirmwareSha256 = "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab"
           } | ConvertTo-Json |
@@ -387,7 +401,10 @@ jobs:
             "preaudio\P360SofAudio.sys",
             "bounded\P360SofAudio.inf",
             "bounded\P360SofAudio.cat",
-            "bounded\P360SofAudio.sys"
+            "bounded\P360SofAudio.sys",
+            "final\P360SofAudio.inf",
+            "final\P360SofAudio.cat",
+            "final\P360SofAudio.sys"
           )) {
             if (-not (Test-Path (Join-Path $root $required))) {
               throw "Final hardware gate package missing: $required"
