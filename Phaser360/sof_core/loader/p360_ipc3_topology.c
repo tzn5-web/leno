@@ -164,6 +164,49 @@ int p360_ipc3_build_host_new(struct p360_ipc3_message *out,
     return P360_IPC3_TOPOLOGY_OK;
 }
 
+int p360_ipc3_build_playback_buffer_new(struct p360_ipc3_message *out,
+    const struct p360_ipc3_playback_ids *ids,uint32_t bytes)
+{
+    uint8_t *d;
+
+    if (!out || p360_ipc3_playback_ids_validate(ids) ||
+        !bytes || (bytes & 3u) || bytes>65536u)
+        return P360_IPC3_TOPOLOGY_ARGUMENT;
+
+    zero_message(out);
+    d=out->data;
+    put_comp(d,P360_IPC3_BUFFER_NEW_BYTES,ids->buffer_id,
+        P360_IPC3_COMP_BUFFER,ids->pipeline_id);
+    put32(d+28,bytes);
+    put32(d+32,P360_IPC3_MEM_RAM|P360_IPC3_MEM_HP|
+        P360_IPC3_MEM_DMA|P360_IPC3_MEM_CACHE);
+    put32(d+36,0u);
+    put32(d+40,0u);
+    out->bytes=P360_IPC3_BUFFER_NEW_BYTES;
+    return P360_IPC3_TOPOLOGY_OK;
+}
+
+int p360_ipc3_build_playback_dai_new(struct p360_ipc3_message *out,
+    const struct p360_ipc3_playback_ids *ids,uint32_t dai_index)
+{
+    uint8_t *d;
+
+    if (!out || p360_ipc3_playback_ids_validate(ids) || dai_index!=1u)
+        return P360_IPC3_TOPOLOGY_ARGUMENT;
+
+    zero_message(out);
+    d=out->data;
+    put_comp(d,P360_IPC3_DAI_NEW_BYTES,ids->dai_id,
+        P360_IPC3_COMP_DAI,ids->pipeline_id);
+    put_config(d+28,0u,2u,P360_IPC3_FRAME_S16_LE);
+    put32(d+64,P360_IPC3_STREAM_PLAYBACK);
+    put32(d+68,dai_index);
+    put32(d+72,P360_IPC3_DAI_INTEL_SSP);
+    put32(d+76,0u);
+    out->bytes=P360_IPC3_DAI_NEW_BYTES;
+    return P360_IPC3_TOPOLOGY_OK;
+}
+
 int p360_ipc3_build_tone_new(struct p360_ipc3_message *out,
     const struct p360_ipc3_speaker_ids *ids,uint32_t sample_rate)
 {
@@ -248,6 +291,20 @@ int p360_ipc3_build_playback_pipe_new(struct p360_ipc3_message *out,
     put32(d+40,0u);
     put32(d+44,P360_IPC3_TIME_DMA);
     out->bytes=P360_IPC3_PIPE_NEW_BYTES;
+    return P360_IPC3_TOPOLOGY_OK;
+}
+
+int p360_ipc3_build_playback_pipe_complete(struct p360_ipc3_message *out,
+    const struct p360_ipc3_playback_ids *ids)
+{
+    if (!out || p360_ipc3_playback_ids_validate(ids))
+        return P360_IPC3_TOPOLOGY_ARGUMENT;
+
+    zero_message(out);
+    put32(out->data,P360_IPC3_PIPE_READY_BYTES);
+    put32(out->data+4,P360_IPC3_GLB_TPLG_MSG|P360_IPC3_TPLG_PIPE_DONE);
+    put32(out->data+8,ids->pipe_comp_id);
+    out->bytes=P360_IPC3_PIPE_READY_BYTES;
     return P360_IPC3_TOPOLOGY_OK;
 }
 
