@@ -311,7 +311,7 @@ start_cmd=(ROOT/"tools/START_AUDIO_TEST.cmd").read_text()
 restore_cmd=(ROOT/"tools/RESTORE_LAST_SESSION.cmd").read_text()
 
 for token in (
-    'ValidateSet("Audit","PreAudio","BoundedSpeaker","Audio","Restore")',
+    'ValidateSet("Audio","Restore")',
     "ExpectedFirmwareBytes = 246528",
     "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab",
     "ExpectedFlags 3 -MinimumStage 50",
@@ -326,7 +326,6 @@ for token in (
     "OriginalHadDriver",
     "OriginalProblemCode",
     "OriginalService",
-    "ORIGINAL_DRIVER=UNBOUND",
     "Wait-TargetPresent",
     "Clear-TestTelemetry",
     "STALE_TELEMETRY_CLEARED=",
@@ -337,16 +336,21 @@ for token in (
     "RESTORE_DELETE_TEST_PACKAGE=",
     "RESTORE_STAGE_BASELINE_EXIT=",
     "RESTORE_BOUND_BASELINE=PASS",
-    "RESTORE_UNBOUND_BASELINE=PASS",
     "Restore-OriginalDriver",
     "Restore-Firmware",
     "Remove-TestCertificate",
-    "Assert-PreAudioProof",
-    "PREAUDIO_GATE=PASS",
-    "SPEAKER_GATE=PASS",
-    "AUDIO_PHASE_SWITCH=BEGIN",
-    "PREAUDIO_STOP_PROOF=PASS",
-    "AUDIO_STOP_PROOF=PASS",
+    "Recover-PreviousBaselineIfNeeded",
+    "RESUME_AFTER_REBOOT_SCHEDULED=YES",
+    "MANUAL_WINDOWS_RESTART_REQUIRED=YES",
+    "PREAUDIO_REQUIRED_BEFORE_SPEAKER=YES",
+    "PREAUDIO_PHASE=BEGIN",
+    "PREAUDIO_FW_READY_IRQ_IPC=PASS",
+    "PREAUDIO_STOP=PASS",
+    "PREAUDIO_BASELINE_RESTORE=PASS",
+    "SPEAKER_PHASE=BEGIN",
+    "BOUNDED_TONE_250MS=PASS",
+    "SPEAKER_STOP_MUTE=PASS",
+    "FINAL_DRIVER_RESTORE=PASS",
     "AUDIO_GATE=PASS",
     "NO_AUTO_REBOOT=YES",
     r"D:\PHASER360_WORK\continuation_20261005\v10_17R_original\firmware\sof-apl.ri",
@@ -357,6 +361,19 @@ for token in (
 
 if '"/install"' in runner:
     raise SystemExit("hardware gate runner must stage packages without pnputil /install")
+
+pre_phase_i=runner.index('Write-RunLog "PREAUDIO_PHASE=BEGIN"')
+pre_pass_i=runner.index('Write-RunLog "PREAUDIO_FW_READY_IRQ_IPC=PASS"',pre_phase_i)
+pre_stop_i=runner.index('Write-RunLog "PREAUDIO_STOP=PASS"',pre_pass_i)
+pre_restore_i=runner.index('Write-RunLog "PREAUDIO_BASELINE_RESTORE=PASS"',pre_stop_i)
+speaker_phase_i=runner.index('Write-RunLog "SPEAKER_PHASE=BEGIN"',pre_restore_i)
+tone_pass_i=runner.index('Write-RunLog "BOUNDED_TONE_250MS=PASS"',speaker_phase_i)
+speaker_stop_i=runner.index('Write-RunLog "SPEAKER_STOP_MUTE=PASS"',tone_pass_i)
+if not (
+    pre_phase_i < pre_pass_i < pre_stop_i < pre_restore_i <
+    speaker_phase_i < tone_pass_i < speaker_stop_i
+):
+    raise SystemExit("one-shot PRE-AUDIO -> restore -> speaker ordering drifted")
 
 for forbidden in (
     "bcdedit.exe /set",
