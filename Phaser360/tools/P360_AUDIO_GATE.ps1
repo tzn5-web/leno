@@ -568,7 +568,9 @@ function Install-SafeAmpPackage($Info,[string]$InstanceId) {
         throw "Safe MAX98357A staging requested reboot; refusing audio execution."
     }
 
-    $store=Get-SafeAmpStoreEntries $Info
+    # PowerShell functions enumerate array output. Force an array at the
+    # call site so a single DISM driver record still has a Count property.
+    $store=@(Get-SafeAmpStoreEntries $Info)
     if ($store.Count -ne 1 -or -not $store[0].Driver) {
         throw "Could not identify exactly one staged safe MAX98357A package."
     }
@@ -645,13 +647,29 @@ function Restore-OriginalAmpDriver {
         }
     }
 
+    # Normally SafeAmpInfName is persisted immediately after staging. If a
+    # previous runner failed between pnputil /add-driver and Save-State, recover
+    # the staged PHASER360 amp INF from Driver Store instead of leaving it able
+    # to win the next PnP rank selection.
+    $safeInfNames=@()
     if ($script:State.PSObject.Properties["SafeAmpInfName"] -and
         [string]$script:State.SafeAmpInfName) {
+        $safeInfNames+=([string]$script:State.SafeAmpInfName)
+    }
+    $safeInfNames+=@(Get-WindowsDriver -Online -All | Where-Object {
+        [string]$_.ProviderName -eq $SafeAmpProviderName -and
+        [string]$_.Version -eq $SafeAmpDriverVersion
+    } | ForEach-Object { [string]$_.Driver })
+    $safeInfNames=@($safeInfNames | Where-Object {
+        $_ -and $_ -match "(?i)^oem\d+\.inf$"
+    } | Select-Object -Unique)
+
+    foreach ($safeInf in $safeInfNames) {
         $delete=Invoke-Tool -Exe "pnputil.exe" -Arguments @(
             "/delete-driver",
-            [string]$script:State.SafeAmpInfName,
+            $safeInf,
             "/force") -AllowFailure
-        Write-RunLog "AMP_SAFE_DELETE_EXIT=$($delete.ExitCode)"
+        Write-RunLog "AMP_SAFE_DELETE_INF=$safeInf EXIT=$($delete.ExitCode)"
     }
 
     if (-not $script:State.AmpOriginalExportedInf -or
