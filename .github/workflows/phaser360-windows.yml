@@ -224,6 +224,8 @@ jobs:
           New-Item -ItemType Directory -Path $certDir,$preDir,$boundedDir -Force | Out-Null
 
           Copy-Item Phaser360\tools\P360_AUDIO_GATE.ps1 (Join-Path $root "P360_AUDIO_GATE.ps1") -Force
+          Copy-Item Phaser360\tools\START_AUDIO_TEST.cmd (Join-Path $root "START_AUDIO_TEST.cmd") -Force
+          Copy-Item Phaser360\tools\RESTORE_LAST_SESSION.cmd (Join-Path $root "RESTORE_LAST_SESSION.cmd") -Force
           Copy-Item Phaser360\tools\P360_AUDIO_GATE_README.txt (Join-Path $root "README.txt") -Force
           Copy-Item Phaser360\firmware\P360_FIRMWARE_MANIFEST.txt (Join-Path $root "P360_FIRMWARE_MANIFEST.txt") -Force
 
@@ -372,6 +374,26 @@ jobs:
             FirmwareSha256 = "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab"
           } | ConvertTo-Json |
             Set-Content (Join-Path $root "PACKAGE_INFO.json") -Encoding utf8
+
+          foreach ($required in @(
+            "START_AUDIO_TEST.cmd",
+            "RESTORE_LAST_SESSION.cmd",
+            "P360_AUDIO_GATE.ps1",
+            "PACKAGE_INFO.json",
+            "README.txt",
+            "cert\P360_TEST.cer",
+            "preaudio\P360SofAudio.inf",
+            "preaudio\P360SofAudio.cat",
+            "preaudio\P360SofAudio.sys",
+            "bounded\P360SofAudio.inf",
+            "bounded\P360SofAudio.cat",
+            "bounded\P360SofAudio.sys"
+          )) {
+            if (-not (Test-Path (Join-Path $root $required))) {
+              throw "Final hardware gate package missing: $required"
+            }
+          }
+          Write-Host "P360_ONE_CLICK_PACKAGE_CONTENT=PASS"
 
           $zip = "Phaser360\package\P360_AUDIO_GATE.zip"
           Compress-Archive -Path "$root\*" -DestinationPath $zip -Force
