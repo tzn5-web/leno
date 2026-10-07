@@ -84,7 +84,7 @@ static void init_format(WAVEFORMATEXTENSIBLE *f)
     f->SubFormat=P360_KSDATAFORMAT_SUBTYPE_PCM;
 }
 
-int wmain(void)
+int wmain(int argc,wchar_t **argv)
 {
     UINT device_id;
     WAVEFORMATEXTENSIBLE fmt;
@@ -95,6 +95,14 @@ int wmain(void)
     MMRESULT r;
     DWORD start;
     uint32_t frame;
+    int preflight=0;
+
+    if (argc==2 && wcscmp(argv[1],L"--preflight")==0) {
+        preflight=1;
+    } else if (argc!=1) {
+        wprintf(L"TEST=FAIL invalid arguments\n");
+        return 19;
+    }
 
     if (!find_p360_waveout(&device_id)) {
         wprintf(L"TEST=FAIL endpoint match is not unique\n");
@@ -102,6 +110,22 @@ int wmain(void)
     }
 
     init_format(&fmt);
+
+    if (preflight) {
+        r=waveOutOpen(
+            NULL,
+            device_id,
+            (WAVEFORMATEX *)&fmt,
+            0,
+            0,
+            WAVE_FORMAT_QUERY);
+        if (r!=MMSYSERR_NOERROR) {
+            wprintf(L"PREFLIGHT=FAIL waveOutFormatQuery=%u\n",r);
+            return 21;
+        }
+        wprintf(L"PREFLIGHT=PASS\n");
+        return 0;
+    }
 
     r=waveOutOpen(
         &hwo,
@@ -173,6 +197,9 @@ int wmain(void)
         return 24;
     }
 
+    wprintf(L"PHYSICAL_COMMIT=YES\n");
+    fflush(stdout);
+
     start=GetTickCount();
     while ((hdr.dwFlags & WHDR_DONE)==0) {
         if ((DWORD)(GetTickCount()-start)>3000u) {
@@ -187,6 +214,7 @@ int wmain(void)
     }
 
     wprintf(L"PLAY=COMPLETE\n");
+    wprintf(L"PHYSICAL_COMPLETE=YES\n");
     waveOutReset(hwo);
     waveOutUnprepareHeader(hwo,&hdr,sizeof(hdr));
     VirtualFree(samples,0,MEM_RELEASE);

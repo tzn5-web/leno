@@ -1,45 +1,63 @@
-PHASER360 FINAL AUDIO INSTALL + ONE PHYSICAL TEST
-==================================================
+PHASER360 FINAL AUDIO SELF-HEALING INSTALL
+===========================================
 
 Double-click START_AUDIO_TEST.cmd.
 
-This is one autonomous install/repair transaction. It does not stop at a
-separate PRE-AUDIO package and it does not restore the old drivers after a
-successful test.
+The runner now treats a failure as a repair problem, not as an automatic
+request to restore the old stack. The original ADSP/MAX/firmware baseline is
+kept only so RESTORE_LAST_SESSION.cmd remains available as an explicit manual
+choice.
 
 Flow:
-  1. Detect and recover any incomplete prior P360 transaction.
-  2. Verify the known-good ADSP/MAX baseline and back up both bound drivers.
+  1. Detect a clean baseline or resume an existing persistent P360 repair state.
+  2. Preserve the original ADSP/MAX/firmware recovery provenance once.
   3. Validate the exact pinned f686 SOF firmware.
-  4. Install the signed fail-closed P360Max98357Safe driver.
-  5. Install the final P360SofAudio HOST/WaveRT driver.
-  6. Inside that same final driver, prove the non-audible readiness gates:
-       hardware identity -> NHLT -> SOF boot/FW_READY -> IRQ -> IPC3 ->
-       HOST topology/AUDIO_CORE -> HDA ownership/readback -> MAX mute ACK.
-  7. Perform exactly one physical playback test:
-       Windows PCM -> WaveRT -> HDA DMA -> SOF HOST -> SSP1 -> MAX98357A.
-     Test vector: 997 Hz, 2 seconds, 0.5% digital full-scale,
-     48 kHz stereo, 16 valid bits in a 32-bit container.
-  8. Prove the test stream stopped cleanly:
-       MAX STOP/mute ACK -> SOF STOP/FREE -> HDA RUN=0.
-  9. Re-verify the final ADSP driver, MAX driver, firmware, certificate and
-     idle telemetry.
+  4. Install or reuse the fail-closed P360Max98357Safe driver.
+  5. Install or reuse the final P360SofAudio HOST/WaveRT driver.
+  6. Bring the core to AUDIO_CORE. On failure the runner classifies and repairs
+     PnP binding, firmware, bus/resource refresh, IRQ, IPC, topology or CSAudio
+     dependency state, then re-verifies instead of rolling back.
+  7. Repair Windows Audio/AudioEndpointBuilder publication and perform a
+     no-audio WAVE_FORMAT_QUERY before any sample buffer is submitted.
+  8. Run the bounded physical vector:
+       997 Hz, 2 seconds, 0.5% digital full-scale,
+       48 kHz stereo, 16 valid bits in a 32-bit container.
+  9. If a physical attempt fails after waveOutWrite accepted the buffer, the
+     runner first proves clean STOP/mute or forces fail-closed MAX D0Exit mute
+     followed by ADSP D0Exit quiesce. Only a proved quiesced stack may be
+     repaired and tried again.
  10. On PASS, leave the final stack installed and the speaker endpoint active
-     for normal Windows audio and future WaveRT streams.
- 11. On any failure, automatically restore the exact saved ADSP/MAX/firmware
-     baseline and remove the temporary trust certificate.
+     for normal Windows audio.
+ 11. On unresolved failure, preserve the P360 stack and repair state for the
+     next run. There is no automatic baseline rollback.
 
-A successful run ends with working PHASER360 audio installed.
-It does not disable the target and does not return to P360AdspProbe.
+Automatic repair classes include:
+- stale/wrong P360 child binding -> exact final rebind/rescan;
+- pinned firmware load/FW_READY -> exact f686 recopy + ADSP restart;
+- IRQ/IPC/topology runtime failure -> ADSP restart + fresh telemetry proof;
+- CSAudio/MAX dependency issue -> safe MAX restart + ADSP restart;
+- resource/identity/NHLT runtime mismatch -> audio-bus refresh + exact rebind;
+- missing/delayed WaveRT endpoint -> AudioEndpointBuilder/Audiosrv repair,
+  PnP rescan and silent format query;
+- committed physical failure -> MAX mute + ADSP quiesce proof, then repair.
 
-The runner is self-aware in the practical sense required here:
-- detects stale/partial prior P360 installs;
-- uses the saved transaction state to recover before a new run;
-- verifies exact driver/provider/version/hash identities;
-- replaces the required ADSP/MAX components itself;
-- verifies firmware and trust state;
-- refuses ambiguous ownership or unproved GPIO/HDA states;
-- rolls back automatically only if the install/test fails.
+The same failure fingerprint repeating after repair is marked NEEDS_DRIVER_PATCH.
+The installed stack and full diagnostics are preserved; the runner does not
+pretend that repeated restarts can repair a deterministic kernel-code defect.
+
+Hard stop is reserved for conditions where continuing would be physically
+unsafe or recovery provenance is unavailable:
+- the exact target/recovery provenance cannot be established;
+- the exact f686 firmware/package identity cannot be validated;
+- MAX98357A mute cannot be proved;
+- ADSP/stream ownership cannot be quiesced after a committed playback.
+
+TestSigning:
+- if TestSigning is OFF, the runner enables it with bcdedit and schedules
+  itself to resume after one normal manual Windows restart;
+- it never reboots Windows automatically;
+- Secure Boot still requires an explicit firmware-setting change if it blocks
+  test-signed kernel drivers.
 
 Fixed target:
   Windows 10 x64 build 19044
@@ -49,22 +67,20 @@ Fixed target:
   firmware SHA256:
   f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab
 
-Safety:
-- no BIOS/UEFI changes;
-- no BCD changes;
-- no automatic reboot;
-- one physical 2-second test only;
-- MAX D0Entry is muted;
-- START/STOP are generation-tagged and require GPIO-state ACK;
-- HDA RUN transitions are proved by readback;
-- WaveRT DMA pages are retained while ownership is ambiguous;
-- failure rolls back; success remains installed.
+Restore is manual only.
 
-Manual rollback after a successful install:
+Manual restore:
   Double-click RESTORE_LAST_SESSION.cmd.
 
 Results:
-  Detailed recovery state remains under Desktop\P360_AUDIO_SAFE\.
-  Every Audio run also writes one result ZIP directly on Desktop:
+  Detailed state remains under Desktop\P360_AUDIO_SAFE\.
+  Every Audio run writes one result ZIP directly on Desktop:
   P360_AUDIO_*.zip
-  Send that ZIP back for the next audit; no manual file selection is needed.
+
+Important result fields:
+  RepairHistory, LastRepairClass, LastRepairAction, PhysicalAttempts,
+  PhysicalCommitted, HardStop, NeedsDriverPatch, NeedsManualRestart.
+
+A successful run ends with working PHASER360 audio installed.
+A failed run leaves the repairable stack in place unless a manual Restore is
+explicitly requested.

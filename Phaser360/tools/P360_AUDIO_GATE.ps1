@@ -22,6 +22,10 @@ $PackageInfoPath = Join-Path $PackageRoot "PACKAGE_INFO.json"
 $LogPath = $null
 $Session = $null
 $State = $null
+$ResumeState = $null
+$MaxCoreRepairRounds = 6
+$MaxEndpointRepairRounds = 4
+$MaxPhysicalRepairRounds = 3
 
 function Write-RunLog([string]$Message) {
     $line = "[{0}] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"), $Message
@@ -124,27 +128,41 @@ function Get-SignedDriver([string]$InstanceId) {
 }
 
 function Assert-TestSigning {
-    $result = Invoke-Tool -Exe "bcdedit.exe" -Arguments @("/enum","{current}")
-    $text = $result.Output
-    if ($text -notmatch "(?im)^\s*testsigning\s+(Yes|On|Da|1)\s*$") {
-        throw "Windows TestSigning is not ON. Runner will not modify BCD and will not reboot."
+    $result = Invoke-Tool -Exe "bcdedit.exe" -Arguments @("/enum","{current}") -AllowFailure
+    if ($result.ExitCode -ne 0) {
+        throw "Cannot read current BCD TestSigning state."
+    }
+
+    if ($result.Output -notmatch "(?im)^\s*testsigning\s+(Yes|On|Da|1)\s*$") {
+        Write-RunLog "TESTSIGNING_REPAIR=BEGIN"
+        $set = Invoke-Tool -Exe "bcdedit.exe" -Arguments @("/set","testsigning","on") -AllowFailure
+        if ($set.ExitCode -ne 0) {
+            throw "Windows TestSigning is OFF and automatic BCD repair failed."
+        }
+        if ($script:State) {
+            $script:State.NeedsManualRestart=$true
+            $script:State.LastRepairClass="TESTSIGNING"
+            $script:State.LastRepairAction="BCD_TESTSIGNING_ON"
+            Save-State
+        }
+        Schedule-AudioResumeAfterManualReboot
+        Write-RunLog "TESTSIGNING_REPAIR=PASS RESTART_REQUIRED=YES"
+        throw "TESTSIGNING_REPAIRED_RESTART_REQUIRED"
     }
 
     try {
         $secureBoot = Confirm-SecureBootUEFI
         if ($secureBoot -eq $true) {
-            throw "Secure Boot is enabled; refusing test-signed kernel package."
+            throw "SECURE_BOOT_BLOCKS_TEST_SIGNED_DRIVER"
         }
     } catch [System.PlatformNotSupportedException] {
-        # Legacy BIOS / unsupported query: TestSigning result remains authoritative.
     } catch {
-        if ($_.Exception.Message -match "not supported|Cmdlet not supported") {
-            # Ignore unsupported firmware query.
-        } else {
+        if ($_.Exception.Message -notmatch "not supported|Cmdlet not supported") {
             throw
         }
     }
 }
+
 
 function New-RunSession([string]$RunMode) {
     $desktop = [Environment]::GetFolderPath("Desktop")
@@ -516,6 +534,25 @@ function Install-SafeAmpPackage($Info,[string]$InstanceId) {
     $provider=[string]$Info.SafeAmpProvider
     $service=[string]$Info.SafeAmpService
 
+    $existing=Get-TargetByIdOrNull $InstanceId
+    $existingDriver=Get-BoundDriverOrNull $InstanceId
+    if ($existing -and $existingDriver -and
+        [int]$existing.ConfigManagerErrorCode -eq 0 -and
+        [string]$existing.Service -eq $service -and
+        [string]$existingDriver.DriverVersion -eq $version -and
+        [string]$existingDriver.DriverProviderName -eq $provider) {
+        $script:State.SafeAmpInfName=[string]$existingDriver.InfName
+        $script:State.SafeAmpInstalled=$true
+        $script:State.AmpDisabledByRunner=$false
+        Save-State
+        Write-RunLog ("AMP_SAFE_REUSE=PASS SERVICE={0} VERSION={1} PROVIDER={2} INF={3}" -f
+            [string]$existing.Service,
+            [string]$existingDriver.DriverVersion,
+            [string]$existingDriver.DriverProviderName,
+            [string]$existingDriver.InfName)
+        return
+    }
+
     $disable=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/disable-device",$InstanceId) -AllowFailure
     if ($disable.ExitCode -ne 0) {
         throw "Could not disable MAX98357A before safe-driver transition."
@@ -656,6 +693,19 @@ function Install-Firmware([string]$Firmware) {
     $dest = Join-Path $dir "p360-f686.ri"
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
 
+    if ($script:State.PSObject.Properties["ResumedRepairState"] -and
+        [bool]$script:State.ResumedRepairState -and
+        $script:State.PSObject.Properties["FirmwareDestination"] -and
+        [string]$script:State.FirmwareDestination) {
+        $dest=[string]$script:State.FirmwareDestination
+        Copy-Item -LiteralPath $Firmware -Destination $dest -Force
+        if (-not (Test-FirmwareFile $dest)) {
+            throw "Firmware repair copy did not preserve exact f686 identity."
+        }
+        Write-RunLog "FIRMWARE_REPAIR_IN_PLACE=PASS"
+        return
+    }
+
     if (Test-Path -LiteralPath $dest) {
         $backup = Join-Path $script:Session "original-p360-firmware.ri"
         Copy-Item -LiteralPath $dest -Destination $backup -Force
@@ -673,6 +723,7 @@ function Install-Firmware([string]$Firmware) {
         throw "Firmware identity changed after copy to system driver directory."
     }
 }
+
 
 function Restore-Firmware {
     if (-not $script:State -or -not $script:State.FirmwareDestination) { return }
@@ -1052,12 +1103,68 @@ function Install-TestPackage([string]$RunMode,$Info,[string]$InstanceId) {
 
     $inf = Join-Path $folder "P360SofAudio.inf"
     $wantVersion = Get-InfVersion $inf
-    Assert-NoStaleTestPackage
+
+    $live=Get-TargetByIdOrNull $InstanceId
+    $liveDriver=Get-BoundDriverOrNull $InstanceId
+    if ($live -and $liveDriver -and
+        [string]$live.Service -eq "P360SofAudio" -and
+        [string]$liveDriver.DriverVersion -eq $wantVersion -and
+        [string]$liveDriver.DriverProviderName -eq "PHASER360 Project") {
+        $script:State.TestInfName=[string]$liveDriver.InfName
+        $script:State.TestDriverVersion=$wantVersion
+        Save-State
+        Clear-TestTelemetry
+        Write-RunLog ("FINAL_PACKAGE_REUSE=BEGIN VERSION={0} INF={1}" -f
+            $wantVersion,[string]$liveDriver.InfName)
+        Restart-Target $InstanceId | Out-Null
+        Wait-TargetHealthy $InstanceId 15 | Out-Null
+        if (-not (Test-BoundDriver $InstanceId $wantVersion "PHASER360 Project" "P360SofAudio")) {
+            throw "Existing final package did not survive repair restart."
+        }
+        Write-RunLog "FINAL_PACKAGE_REUSE=PASS"
+        return
+    }
+
+    $reserved=@(Get-P360StoreEntries | Where-Object {
+        (Test-IsReservedGateVersion ([string]$_.Version))
+    })
+    $matching=@($reserved | Where-Object {
+        [string]$_.Version -eq $wantVersion
+    })
+    $foreign=@($reserved | Where-Object {
+        [string]$_.Version -ne $wantVersion
+    })
+
+    if ($foreign.Count -gt 0) {
+        foreach ($entry in $foreign) {
+            if ($entry.Driver) {
+                $delete=Invoke-Tool -Exe "pnputil.exe" -Arguments @(
+                    "/delete-driver",[string]$entry.Driver,"/force") -AllowFailure
+                Write-RunLog ("AUTO_CLEAN_OLD_GATE_PACKAGE={0} VERSION={1} EXIT={2}" -f
+                    [string]$entry.Driver,[string]$entry.Version,$delete.ExitCode)
+            }
+        }
+    }
 
     Clear-TestTelemetry
 
-    $addResult = Invoke-Tool -Exe "pnputil.exe" -Arguments @("/add-driver",$inf) -AllowFailure
+    if ($matching.Count -eq 1 -and
+        $script:State.PSObject.Properties["ResumedRepairState"] -and
+        [bool]$script:State.ResumedRepairState) {
+        $script:State.TestInfName=[string]$matching[0].Driver
+        $script:State.TestDriverVersion=$wantVersion
+        Save-State
+        Write-RunLog ("FINAL_STAGED_PACKAGE_REUSE=YES VERSION={0} INF={1}" -f
+            $wantVersion,[string]$matching[0].Driver)
+        Remove-And-RescanTarget $InstanceId $wantVersion "PHASER360 Project" "P360SofAudio" | Out-Null
+        return
+    }
 
+    if ($matching.Count -gt 1) {
+        throw "More than one matching final P360 package exists in Driver Store."
+    }
+
+    $addResult = Invoke-Tool -Exe "pnputil.exe" -Arguments @("/add-driver",$inf) -AllowFailure
     $store = @(Get-P360StoreEntries | Where-Object {
         [string]$_.Version -eq $wantVersion
     })
@@ -1074,7 +1181,10 @@ function Install-TestPackage([string]$RunMode,$Info,[string]$InstanceId) {
         throw "Driver staging failed with exit code $($addResult.ExitCode)."
     }
     if ($addResult.Output -match "(?i)reboot is needed|restart is needed") {
-        throw "Driver staging unexpectedly requested a reboot; refusing hardware execution."
+        $script:State.NeedsManualRestart=$true
+        Save-State
+        Schedule-AudioResumeAfterManualReboot
+        throw "FINAL_DRIVER_STAGING_RESTART_REQUIRED"
     }
 
     Remove-And-RescanTarget $InstanceId $wantVersion "PHASER360 Project" "P360SofAudio" | Out-Null
@@ -1083,6 +1193,7 @@ function Install-TestPackage([string]$RunMode,$Info,[string]$InstanceId) {
         throw "Freshly re-enumerated target is not bound to the requested P360SofAudio package."
     }
 }
+
 
 function Get-Telemetry {
     if (-not (Test-Path $TelemetryPath)) {
@@ -1184,6 +1295,485 @@ function Format-TelemetryDiagnosis([object]$Telemetry,[string]$InstanceId) {
         $Telemetry.FailureReason,$Telemetry.LastNtStatus,(Get-NtStatusName $Telemetry.LastNtStatus),
         $Telemetry.FirmwareError,$Telemetry.ReplyBytes,$deviceText)
 }
+
+function Get-FailureReasonName([uint32]$Reason) {
+    switch ($Reason) {
+        0  { return "NONE" }
+        1  { return "IDENTITY" }
+        2  { return "RESOURCES" }
+        3  { return "NHLT" }
+        4  { return "FIRMWARE" }
+        5  { return "FW_READY" }
+        6  { return "IRQ" }
+        7  { return "IPC" }
+        8  { return "TOPOLOGY" }
+        9  { return "STREAM" }
+        10 { return "CODEC" }
+        11 { return "SPEAKER_GUARD" }
+        default { return "UNKNOWN_$Reason" }
+    }
+}
+
+function Get-FailureFingerprint([object]$Telemetry,[string]$ErrorText) {
+    if ($Telemetry) {
+        return ("stage={0};reason={1};status={2};prep={3};prepstatus={4};fw={5}" -f
+            [uint32]$Telemetry.Stage,
+            [uint32]$Telemetry.FailureReason,
+            [uint32]$Telemetry.LastNtStatus,
+            [uint32]$Telemetry.PrepareStep,
+            [uint32]$Telemetry.PrepareNtStatus,
+            [int]$Telemetry.FirmwareError)
+    }
+    return "no-telemetry;" + $ErrorText
+}
+
+function Add-RepairHistory([string]$Class,[string]$Action,[string]$Result,[string]$Detail) {
+    $entry=[ordered]@{
+        Time=(Get-Date).ToString("o")
+        Class=$Class
+        Action=$Action
+        Result=$Result
+        Detail=$Detail
+    }
+    $history=@()
+    if ($script:State.PSObject.Properties["RepairHistory"] -and $script:State.RepairHistory) {
+        $history=@($script:State.RepairHistory)
+    }
+    $history += [pscustomobject]$entry
+    $script:State.RepairHistory=$history
+    $script:State.LastRepairClass=$Class
+    $script:State.LastRepairAction=$Action
+    Save-State
+    Write-RunLog ("REPAIR class={0} action={1} result={2} detail={3}" -f
+        $Class,$Action,$Result,$Detail)
+}
+
+function Classify-CoreFailure([object]$Telemetry,[string]$ErrorText) {
+    if ($ErrorText -match "(?i)SECURE_BOOT") {
+        return [pscustomobject]@{ Class="SECURE_BOOT"; Action="MANUAL_FIRMWARE_SETTING"; Auto=$false }
+    }
+    if ($ErrorText -match "(?i)RESTART_REQUIRED|reboot is needed|restart is needed") {
+        return [pscustomobject]@{ Class="RESTART_REQUIRED"; Action="MANUAL_RESTART_RESUME"; Auto=$false }
+    }
+    if ($ErrorText -match "(?i)hash mismatch|identity changed|signature|catalog|package.*missing") {
+        return [pscustomobject]@{ Class="PACKAGE_INTEGRITY"; Action="STOP_BAD_PACKAGE"; Auto=$false }
+    }
+
+    if ($Telemetry) {
+        $reason=[uint32]$Telemetry.FailureReason
+        $prepare=[uint32]$Telemetry.PrepareStep
+        if ($prepare -ge 2 -and $prepare -le 7) {
+            return [pscustomobject]@{ Class="BUS_RESOURCE_CONTRACT"; Action="RESTART_AUDIO_BUS_AND_ADSP"; Auto=$true }
+        }
+        if ($prepare -eq 11) {
+            return [pscustomobject]@{ Class="CSAUDIO_LINK"; Action="RESTART_SAFE_AMP_AND_ADSP"; Auto=$true }
+        }
+        switch ($reason) {
+            1 { return [pscustomobject]@{ Class="IDENTITY"; Action="RESTART_AUDIO_BUS_AND_ADSP"; Auto=$true } }
+            2 { return [pscustomobject]@{ Class="RESOURCES"; Action="RESTART_AUDIO_BUS_AND_ADSP"; Auto=$true } }
+            3 { return [pscustomobject]@{ Class="NHLT"; Action="RESTART_AUDIO_BUS_AND_ADSP"; Auto=$true } }
+            4 { return [pscustomobject]@{ Class="FIRMWARE"; Action="RECOPY_FIRMWARE_AND_RESTART_ADSP"; Auto=$true } }
+            5 { return [pscustomobject]@{ Class="FW_READY"; Action="RECOPY_FIRMWARE_AND_RESTART_ADSP"; Auto=$true } }
+            6 { return [pscustomobject]@{ Class="IRQ"; Action="RESTART_ADSP"; Auto=$true } }
+            7 { return [pscustomobject]@{ Class="IPC"; Action="RESTART_ADSP"; Auto=$true } }
+            8 { return [pscustomobject]@{ Class="TOPOLOGY"; Action="RESTART_ADSP"; Auto=$true } }
+            9 { return [pscustomobject]@{ Class="STREAM"; Action="QUIESCE_AND_RESTART_ADSP"; Auto=$true } }
+            10 { return [pscustomobject]@{ Class="CODEC"; Action="RESTART_SAFE_AMP_AND_ADSP"; Auto=$true } }
+            11 { return [pscustomobject]@{ Class="SPEAKER_GUARD"; Action="FORCE_QUIESCE"; Auto=$true } }
+        }
+    }
+
+    if ($ErrorText -match "(?i)binding|re-enumerat|device start|Target did not|PnP|telemetry key was never") {
+        return [pscustomobject]@{ Class="PNP_BINDING"; Action="REBIND_FINAL_ADSP"; Auto=$true }
+    }
+
+    return [pscustomobject]@{ Class="UNKNOWN"; Action="RESTART_ADSP"; Auto=$true }
+}
+
+function Repair-PinnedFirmware([string]$Firmware) {
+    if (-not (Test-FirmwareFile $Firmware)) {
+        throw "Pinned repair firmware failed exact f686 validation."
+    }
+    $dest=[string]$script:State.FirmwareDestination
+    if (-not $dest) {
+        $dest=Join-Path $env:SystemRoot "System32\drivers\P360\p360-f686.ri"
+        $script:State.FirmwareDestination=$dest
+        Save-State
+    }
+    New-Item -ItemType Directory -Path (Split-Path -Parent $dest) -Force | Out-Null
+    Copy-Item -LiteralPath $Firmware -Destination $dest -Force
+    if (-not (Test-FirmwareFile $dest)) {
+        throw "Pinned firmware repair copy could not be verified."
+    }
+    Write-RunLog "AUTO_REPAIR_FIRMWARE=PASS"
+}
+
+function Restart-AudioBusSafely([string]$BusInstanceId) {
+    if ($script:State.PhysicalCommitted) {
+        throw "Parent audio bus restart is forbidden until physical stream ownership is quiesced."
+    }
+    $r=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/restart-device",$BusInstanceId) -AllowFailure
+    if ($r.ExitCode -ne 0) {
+        throw "Intel audio bus restart failed with exit code $($r.ExitCode)."
+    }
+    $scan=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure
+    if ($scan.ExitCode -ne 0) {
+        throw "PnP rescan failed after audio bus restart."
+    }
+    Start-Sleep -Milliseconds 700
+    Get-BusDevice | Out-Null
+    Write-RunLog "AUTO_REPAIR_AUDIO_BUS=PASS"
+}
+
+function Restart-SafeAmpForRepair([string]$AmpInstanceId,$Info) {
+    if ($script:State.PhysicalCommitted) {
+        throw "MAX restart requires quiesced physical ownership first."
+    }
+    $r=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/restart-device",$AmpInstanceId) -AllowFailure
+    if ($r.ExitCode -ne 0) {
+        throw "Safe MAX98357A restart failed with exit code $($r.ExitCode)."
+    }
+    $bound=Wait-AmpBinding $AmpInstanceId ([string]$Info.SafeAmpDriverVersion) ([string]$Info.SafeAmpProvider) ([string]$Info.SafeAmpService) 12
+    if (-not $bound) {
+        throw "Safe MAX98357A did not return healthy after restart."
+    }
+    Write-RunLog "AUTO_REPAIR_SAFE_AMP=PASS"
+}
+
+function Rebind-FinalAdsp([string]$InstanceId,$Info) {
+    $folder=Assert-Package "FinalSpeaker" $Info
+    $version=Get-InfVersion (Join-Path $folder "P360SofAudio.inf")
+    Clear-TestTelemetry
+    Remove-And-RescanTarget $InstanceId $version "PHASER360 Project" "P360SofAudio" | Out-Null
+    Write-RunLog "AUTO_REPAIR_FINAL_ADSP_REBIND=PASS"
+}
+
+function Ensure-PhysicalQuiesced([string]$InstanceId,[string]$AmpInstanceId,$Info) {
+    try {
+        $t=Wait-Telemetry -ExpectedFlags 47 -MinimumStage 120 -Seconds 4
+        if ($t.Stage -eq 120) {
+            Write-RunLog "QUIESCE=PASS SOURCE=KERNEL_STOP_TELEMETRY"
+            $script:State.PhysicalCommitted=$false
+            Save-State
+            return $true
+        }
+    } catch {
+        Write-RunLog "QUIESCE_TELEMETRY_NOT_PROVED=$($_.Exception.Message)"
+    }
+
+    $ampDisable=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/disable-device",$AmpInstanceId) -AllowFailure
+    if ($ampDisable.ExitCode -ne 0) {
+        $script:State.HardStop=$true
+        Save-State
+        Add-RepairHistory "PHYSICAL_SAFETY" "FORCE_MAX_MUTE" "HARD_STOP" "MAX98357A D0Exit/mute could not be proved."
+        return $false
+    }
+    $script:State.AmpDisabledByRunner=$true
+    Save-State
+    Write-RunLog "FORCED_MAX_MUTE=PASS"
+
+    $adspDisable=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/disable-device",$InstanceId) -AllowFailure
+    if ($adspDisable.ExitCode -ne 0) {
+        $script:State.HardStop=$true
+        Save-State
+        Add-RepairHistory "PHYSICAL_SAFETY" "QUIESCE_ADSP" "HARD_STOP" "ADSP D0Exit could not be proved after MAX mute."
+        return $false
+    }
+    Write-RunLog "FORCED_ADSP_QUIESCE=PASS"
+
+    $ampEnable=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/enable-device",$AmpInstanceId) -AllowFailure
+    if ($ampEnable.ExitCode -ne 0) {
+        throw "Safe MAX98357A could not be re-enabled after proved mute."
+    }
+    $bound=Wait-AmpBinding $AmpInstanceId ([string]$Info.SafeAmpDriverVersion) ([string]$Info.SafeAmpProvider) ([string]$Info.SafeAmpService) 12
+    if (-not $bound) {
+        throw "Safe MAX98357A did not return after quiesce."
+    }
+    $script:State.AmpDisabledByRunner=$false
+
+    $adspEnable=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/enable-device",$InstanceId) -AllowFailure
+    if ($adspEnable.ExitCode -ne 0) {
+        throw "ADSP could not be re-enabled after quiesce."
+    }
+    $scan=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure
+    if ($scan.ExitCode -ne 0) {
+        throw "PnP rescan failed after forced quiesce."
+    }
+    $script:State.PhysicalCommitted=$false
+    Save-State
+    Write-RunLog "QUIESCE=PASS SOURCE=FORCED_D0_EXIT"
+    return $true
+}
+
+function Invoke-CoreRepair([object]$Decision,[string]$InstanceId,[string]$BusInstanceId,[string]$AmpInstanceId,$Info,[string]$Firmware) {
+    if (-not [bool]$Decision.Auto) {
+        throw "Failure class $($Decision.Class) is not automatically repairable."
+    }
+
+    switch ([string]$Decision.Action) {
+        "RECOPY_FIRMWARE_AND_RESTART_ADSP" {
+            Repair-PinnedFirmware $Firmware
+            Clear-TestTelemetry
+            Restart-Target $InstanceId | Out-Null
+            Start-Sleep -Milliseconds 700
+        }
+        "RESTART_ADSP" {
+            Clear-TestTelemetry
+            Restart-Target $InstanceId | Out-Null
+            Start-Sleep -Milliseconds 700
+        }
+        "REBIND_FINAL_ADSP" {
+            Rebind-FinalAdsp $InstanceId $Info
+        }
+        "RESTART_SAFE_AMP_AND_ADSP" {
+            Restart-SafeAmpForRepair $AmpInstanceId $Info
+            Clear-TestTelemetry
+            Restart-Target $InstanceId | Out-Null
+            Start-Sleep -Milliseconds 700
+        }
+        "RESTART_AUDIO_BUS_AND_ADSP" {
+            Restart-AudioBusSafely $BusInstanceId
+            Rebind-FinalAdsp $InstanceId $Info
+        }
+        "QUIESCE_AND_RESTART_ADSP" {
+            if (-not (Ensure-PhysicalQuiesced $InstanceId $AmpInstanceId $Info)) {
+                throw "HARD_STOP_STREAM_NOT_QUIESCED"
+            }
+            Rebind-FinalAdsp $InstanceId $Info
+        }
+        "FORCE_QUIESCE" {
+            if (-not (Ensure-PhysicalQuiesced $InstanceId $AmpInstanceId $Info)) {
+                throw "HARD_STOP_MAX_MUTE_OR_STREAM_NOT_PROVED"
+            }
+            Rebind-FinalAdsp $InstanceId $Info
+        }
+        default {
+            throw "No repair implementation for action $($Decision.Action)."
+        }
+    }
+}
+
+function Ensure-FinalCoreReady($Info,[string]$InstanceId,[string]$BusInstanceId,[string]$AmpInstanceId,[string]$Firmware) {
+    $lastFingerprint=""
+    $repeatCount=0
+
+    for ($round=1; $round -le $MaxCoreRepairRounds; $round++) {
+        $script:State.RepairRound=$round
+        Save-State
+        try {
+            Write-RunLog "CORE_REPAIR_ROUND=$round"
+            if ($round -eq 1) {
+                Install-TestPackage "FinalSpeaker" $Info $InstanceId
+            }
+            $t=Wait-Telemetry -ExpectedFlags 47 -MinimumStage 70 -Seconds 25
+            if ($t.BootEpoch -lt 1 -or $t.Stage -lt 70) {
+                throw "Final HOST driver did not reach fresh AUDIO_CORE."
+            }
+            Add-RepairHistory "CORE" "VERIFY_AUDIO_CORE" "PASS" ("stage={0};epoch={1}" -f $t.Stage,$t.BootEpoch)
+            return $t
+        } catch {
+            $errorText=[string]$_.Exception.Message
+            $t=Get-Telemetry
+            $decision=Classify-CoreFailure $t $errorText
+            $fingerprint=Get-FailureFingerprint $t $errorText
+
+            if ($fingerprint -eq $lastFingerprint) {
+                $repeatCount++
+            } else {
+                $repeatCount=0
+                $lastFingerprint=$fingerprint
+            }
+
+            Add-RepairHistory ([string]$decision.Class) ([string]$decision.Action) "DETECTED" $fingerprint
+
+            if (-not [bool]$decision.Auto) {
+                throw
+            }
+
+            if ($repeatCount -ge 2) {
+                $script:State.NeedsDriverPatch=$true
+                Save-State
+                Add-RepairHistory ([string]$decision.Class) "NEEDS_DRIVER_PATCH" "STOP" "Same failure persisted after two repairs; preserve installed stack and diagnostics."
+                throw "NEEDS_DRIVER_PATCH:$fingerprint"
+            }
+
+            Invoke-CoreRepair $decision $InstanceId $BusInstanceId $AmpInstanceId $Info $Firmware
+            Add-RepairHistory ([string]$decision.Class) ([string]$decision.Action) "APPLIED" $errorText
+        }
+    }
+
+    $script:State.NeedsDriverPatch=$true
+    Save-State
+    throw "NEEDS_DRIVER_PATCH:core repair rounds exhausted"
+}
+
+function Ensure-WindowsAudioServices([int]$Round) {
+    foreach ($name in @("AudioEndpointBuilder","Audiosrv")) {
+        $svc=Get-Service -Name $name -ErrorAction SilentlyContinue
+        if (-not $svc) {
+            throw "Required Windows audio service is missing: $name"
+        }
+        if ($svc.StartType -eq "Disabled") {
+            Set-Service -Name $name -StartupType Automatic -ErrorAction Stop
+            Write-RunLog "AUDIO_SERVICE_ENABLE=$name"
+        }
+        $svc=Get-Service -Name $name -ErrorAction Stop
+        if ($svc.Status -ne "Running") {
+            Start-Service -Name $name -ErrorAction Stop
+            Write-RunLog "AUDIO_SERVICE_START=$name"
+        }
+    }
+
+    if ($Round -gt 1) {
+        Restart-Service -Name "Audiosrv" -Force -ErrorAction Stop
+        Write-RunLog "AUDIO_SERVICE_RESTART=Audiosrv"
+    }
+
+    $scan=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure
+    if ($scan.ExitCode -ne 0) {
+        throw "PnP rescan failed during endpoint publication repair."
+    }
+    Start-Sleep -Milliseconds 1200
+}
+
+function Ensure-WaveRtPreflight([string]$WaveTest) {
+    for ($round=1; $round -le $MaxEndpointRepairRounds; $round++) {
+        $script:State.EndpointRepairRound=$round
+        Save-State
+        Ensure-WindowsAudioServices $round
+        $pre=Invoke-Tool -Exe $WaveTest -Arguments @("--preflight") -AllowFailure
+        if ($pre.ExitCode -eq 0 -and $pre.Output -match "(?im)^PREFLIGHT=PASS\s*$") {
+            $script:State.EndpointPreflightPassed=$true
+            Save-State
+            Add-RepairHistory "ENDPOINT" "WAVE_FORMAT_QUERY" "PASS" "No audio buffer submitted."
+            return
+        }
+
+        Add-RepairHistory "ENDPOINT" "PUBLISH_AND_FORMAT_QUERY" "RETRY" ("exit={0}; {1}" -f $pre.ExitCode,$pre.Output.Trim())
+        if ($pre.ExitCode -notin @(20,21)) {
+            throw "WaveRT no-audio preflight failed with non-publication exit code $($pre.ExitCode)."
+        }
+    }
+    throw "WaveRT endpoint/format did not become ready after automatic publication repairs."
+}
+
+function Invoke-PhysicalPlaybackRepairLoop([string]$WaveTest,$Info,[string]$InstanceId,[string]$BusInstanceId,[string]$AmpInstanceId,[string]$Firmware) {
+    for ($round=1; $round -le $MaxPhysicalRepairRounds; $round++) {
+        $script:State.PhysicalAttempts=$round
+        $script:State.EndpointPreflightPassed=$false
+        Save-State
+
+        Ensure-WaveRtPreflight $WaveTest
+
+        Write-RunLog "PHYSICAL_AUDIO_TEST=BEGIN ATTEMPT=$round"
+        $wave=Invoke-Tool -Exe $WaveTest -Arguments @() -AllowFailure
+        $committed=($wave.Output -match "(?im)^PHYSICAL_COMMIT=YES\s*$")
+        if ($committed) {
+            $script:State.SpeakerAttempted=$true
+            $script:State.PhysicalCommitted=$true
+            Save-State
+            Write-RunLog "PHYSICAL_PLAYBACK_COMMITTED=YES"
+        }
+
+        if ($wave.ExitCode -eq 0 -and
+            $wave.Output -match "(?im)^PHYSICAL_COMPLETE=YES\s*$" -and
+            $wave.Output -match "(?im)^TEST=PASS\s*$") {
+            $t=Wait-Telemetry -ExpectedFlags 47 -MinimumStage 120 -Seconds 6
+            if ($t.Stage -ne 120) {
+                throw "Physical playback passed but clean STOP/mute telemetry is missing."
+            }
+            $script:State.PhysicalCommitted=$false
+            Save-State
+            return $t
+        }
+
+        if (-not $committed) {
+            Add-RepairHistory "WAVERT_PRE_COMMIT" "REPAIR_ENDPOINT_AND_CORE" "RETRY" ("exit={0}" -f $wave.ExitCode)
+            Ensure-WindowsAudioServices ($round+1)
+            Ensure-FinalCoreReady $Info $InstanceId $BusInstanceId $AmpInstanceId $Firmware | Out-Null
+            continue
+        }
+
+        Add-RepairHistory "WAVERT_POST_COMMIT" "QUIESCE_AND_REPAIR" "BEGIN" ("exit={0}" -f $wave.ExitCode)
+        if (-not (Ensure-PhysicalQuiesced $InstanceId $AmpInstanceId $Info)) {
+            throw "HARD_STOP_MAX_MUTE_OR_STREAM_NOT_PROVED"
+        }
+
+        Rebind-FinalAdsp $InstanceId $Info
+        Ensure-FinalCoreReady $Info $InstanceId $BusInstanceId $AmpInstanceId $Firmware | Out-Null
+        Add-RepairHistory "WAVERT_POST_COMMIT" "QUIESCE_AND_REPAIR" "PASS" "Safe MAX mute and ADSP quiesce proved; retry allowed."
+    }
+
+    $script:State.NeedsDriverPatch=$true
+    Save-State
+    throw "NEEDS_DRIVER_PATCH:physical playback repair rounds exhausted"
+}
+
+function Copy-ResumeBaselineState {
+    if (-not $script:ResumeState) { return }
+
+    foreach ($name in @(
+        "OriginalHadDriver","OriginalProblemCode","OriginalService","OriginalName",
+        "OriginalInfName","OriginalDriverVersion","OriginalProvider","OriginalExportedInf",
+        "AdspBackupComplete","AmpInstanceId","AmpOriginalService","AmpOriginalProblemCode",
+        "AmpOriginalInfName","AmpOriginalDriverVersion","AmpOriginalProvider",
+        "AmpOriginalExportedInf","AmpBackupComplete","FirmwareHadOriginal",
+        "FirmwareBackup","FirmwareDestination","CertificateThumbprint"
+    )) {
+        if ($script:ResumeState.PSObject.Properties[$name]) {
+            $script:State.$name=$script:ResumeState.$name
+        }
+    }
+    $script:State.ResumedRepairState=$true
+    Save-State
+    Write-RunLog "PERSISTENT_REPAIR_SESSION_RESUMED=YES"
+}
+
+function Assert-PersistentRepairState([string]$InstanceId) {
+    $dev=Get-TargetByIdOrNull $InstanceId
+    if (-not $dev) {
+        throw "Persistent repair target is missing."
+    }
+    if ([string]$dev.Service -notin @("P360SofAudio","P360AdspProbe")) {
+        throw "Persistent repair target has an unknown service: $($dev.Service)"
+    }
+
+    if ([int]$dev.ConfigManagerErrorCode -ne 0) {
+        $enable=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/enable-device",$InstanceId) -AllowFailure
+        if ($enable.ExitCode -ne 0) {
+            throw "Persistent ADSP repair target could not be re-enabled."
+        }
+        $scan=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/scan-devices") -AllowFailure
+        if ($scan.ExitCode -ne 0) {
+            throw "Persistent ADSP repair rescan failed."
+        }
+        Start-Sleep -Milliseconds 600
+    }
+
+    $amps=@(Get-CimInstance Win32_PnPEntity | Where-Object {
+        $_.PNPDeviceID -and $_.PNPDeviceID.StartsWith($ExpectedAmpPrefix,[StringComparison]::OrdinalIgnoreCase)
+    })
+    if ($amps.Count -ne 1) {
+        throw "Persistent repair requires exactly one MAX98357A device."
+    }
+    $amp=$amps[0]
+    $ampDriver=Get-BoundDriverOrNull ([string]$amp.PNPDeviceID)
+    if ($ampDriver -and
+        [string]$amp.Service -eq $SafeAmpServiceName -and
+        [string]$ampDriver.DriverProviderName -eq $SafeAmpProviderName -and
+        [string]$ampDriver.DriverVersion -eq $SafeAmpDriverVersion -and
+        [int]$amp.ConfigManagerErrorCode -ne 0) {
+        $enableAmp=Invoke-Tool -Exe "pnputil.exe" -Arguments @("/enable-device",[string]$amp.PNPDeviceID) -AllowFailure
+        if ($enableAmp.ExitCode -ne 0) {
+            throw "Persistent safe MAX98357A could not be re-enabled."
+        }
+        Start-Sleep -Milliseconds 500
+    }
+
+    Write-RunLog ("PERSISTENT_REPAIR_STATE=PASS SERVICE={0} CODE={1}" -f
+        [string]$dev.Service,[int]$dev.ConfigManagerErrorCode)
+}
+
 
 function Wait-Telemetry {
     param(
@@ -1532,45 +2122,16 @@ function Recover-PreviousBaselineIfNeeded([string]$InstanceId) {
         return
     }
 
-    Write-RunLog "PREVIOUS_TEST_STATE_DETECTED=YES"
+    Write-Host "PERSISTENT_REPAIR_STATE_DETECTED=YES"
     $candidate=Find-RecoverableSession $InstanceId
     if (-not $candidate) {
-        throw "Test binding is present but no valid saved P360AdspProbe 1.1.0.0 baseline was found."
+        throw "P360 repair state exists but its original baseline backup cannot be found. Refusing to overwrite recovery provenance."
     }
 
-    $savedSession=$script:Session
-    $savedLog=$script:LogPath
-    $savedState=$script:State
-
-    $script:Session=[string]$candidate.Session
-    $script:LogPath=Join-Path $script:Session "AUTO_RECOVERY.log"
-    $script:State=$candidate.State
-
-    try {
-        Write-RunLog "AUTO_BASELINE_RECOVERY=BEGIN"
-        Restore-OriginalDriver $InstanceId
-        Restore-OriginalAmpDriver
-        Restore-Firmware
-        Remove-TestCertificate ([string]$script:State.CertificateThumbprint)
-        Write-RunLog "AUTO_BASELINE_RECOVERY=PASS"
-    } catch {
-        $needsReboot=$false
-        if ($script:State.PSObject.Properties["RebootRequired"]) {
-            $needsReboot=[bool]$script:State.RebootRequired
-        }
-        if ($needsReboot) {
-            Schedule-AudioResumeAfterManualReboot
-            Write-RunLog "AUTO_BASELINE_RECOVERY=REBOOT_REQUIRED"
-        }
-        throw
-    } finally {
-        $script:Session=$savedSession
-        $script:LogPath=$savedLog
-        $script:State=$savedState
-    }
-
-    Assert-SafeBaselineBeforeNewTest $InstanceId
+    $script:ResumeState=$candidate.State
+    Write-Host ("PERSISTENT_REPAIR_RESUME_FROM={0}" -f [string]$candidate.Session)
 }
+
 
 function Load-RestoreState([string]$RequestedSession) {
     if ($RequestedSession) {
@@ -1623,6 +2184,18 @@ function Write-Report([string]$Result,[object]$Telemetry) {
         FinalStackInstalled=(Get-StateBool "FinalStackInstalled")
         AudioReady=(Get-StateBool "AudioReady")
         RollbackPerformed=(Get-StateBool "RollbackPerformed")
+        ResumedRepairState=(Get-StateBool "ResumedRepairState")
+        RepairRound=$(if ($script:State.PSObject.Properties["RepairRound"]) {[int]$script:State.RepairRound} else {0})
+        EndpointRepairRound=$(if ($script:State.PSObject.Properties["EndpointRepairRound"]) {[int]$script:State.EndpointRepairRound} else {0})
+        EndpointPreflightPassed=(Get-StateBool "EndpointPreflightPassed")
+        PhysicalAttempts=$(if ($script:State.PSObject.Properties["PhysicalAttempts"]) {[int]$script:State.PhysicalAttempts} else {0})
+        PhysicalCommitted=(Get-StateBool "PhysicalCommitted")
+        HardStop=(Get-StateBool "HardStop")
+        NeedsDriverPatch=(Get-StateBool "NeedsDriverPatch")
+        NeedsManualRestart=(Get-StateBool "NeedsManualRestart")
+        LastRepairClass=$(if ($script:State.PSObject.Properties["LastRepairClass"]) {[string]$script:State.LastRepairClass} else {""})
+        LastRepairAction=$(if ($script:State.PSObject.Properties["LastRepairAction"]) {[string]$script:State.LastRepairAction} else {""})
+        RepairHistory=$(if ($script:State.PSObject.Properties["RepairHistory"]) {@($script:State.RepairHistory)} else {@()})
         RestoreVerified=$script:State.RestoreVerified
         LastError=$(if ($script:State.PSObject.Properties["LastError"]) {[string]$script:State.LastError} else {""})
         Telemetry=$Telemetry
@@ -1750,9 +2323,22 @@ $script:State=[pscustomobject]@{
     FinalStackInstalled=$false
     AudioReady=$false
     RollbackPerformed=$false
+    ResumedRepairState=$false
+    RepairRound=0
+    EndpointRepairRound=0
+    EndpointPreflightPassed=$false
+    PhysicalAttempts=0
+    PhysicalCommitted=$false
+    HardStop=$false
+    NeedsDriverPatch=$false
+    NeedsManualRestart=$false
+    LastRepairClass=""
+    LastRepairAction=""
+    RepairHistory=@()
     LastError=""
 }
 Save-State
+Copy-ResumeBaselineState
 
 Write-RunLog "TARGET=$targetId"
 Write-RunLog ("TARGET_NAME={0} CODE={1} SERVICE={2}" -f
@@ -1761,26 +2347,40 @@ Write-RunLog ("TARGET_NAME={0} CODE={1} SERVICE={2}" -f
     [string]$target.Service)
 Write-RunLog "BUS=$($bus.PNPDeviceID) SERVICE=$($bus.Service)"
 
-Assert-TestSigning
-Assert-SafeBaselineBeforeNewTest $targetId
-
-$firmware=Resolve-Firmware $FirmwarePath
-Write-RunLog "FIRMWARE=$firmware"
-Write-RunLog "FIRMWARE_SHA256=$ExpectedFirmwareSha256"
-
-$finalFolder=Assert-Package "FinalSpeaker" $info
-$ampFolder=Assert-SafeAmpPackage $info
-Write-RunLog "PACKAGE_HEAD=$($info.HeadSha)"
-
 $telemetry=$null
 $success=$false
+$firmware=""
+$ampId=""
 
 try {
-    Backup-OriginalDriver $targetId
+    Assert-TestSigning
+    if ($script:State.ResumedRepairState) {
+        Assert-PersistentRepairState $targetId
+    } else {
+        Assert-SafeBaselineBeforeNewTest $targetId
+    }
+
+    $firmware=Resolve-Firmware $FirmwarePath
+    Write-RunLog "FIRMWARE=$firmware"
+    Write-RunLog "FIRMWARE_SHA256=$ExpectedFirmwareSha256"
+
+    $finalFolder=Assert-Package "FinalSpeaker" $info
+    $ampFolder=Assert-SafeAmpPackage $info
+    Write-RunLog "PACKAGE_HEAD=$($info.HeadSha)"
+
+    if (-not [bool]$script:State.AdspBackupComplete) {
+        Backup-OriginalDriver $targetId
+    } else {
+        Write-RunLog "ORIGINAL_DRIVER_BACKUP=REUSED"
+    }
 
     $amp=Get-AmpDevice
     $ampId=[string]$amp.PNPDeviceID
-    Backup-OriginalAmpDriver $ampId
+    if (-not [bool]$script:State.AmpBackupComplete) {
+        Backup-OriginalAmpDriver $ampId
+    } else {
+        Write-RunLog "AMP_ORIGINAL_BACKUP=REUSED"
+    }
 
     Install-Firmware $firmware
     Import-TestCertificate $info | Out-Null
@@ -1804,64 +2404,31 @@ try {
         [string]$ampDriver.DriverProviderName)
 
     Write-RunLog "FINAL_STACK_INSTALL=BEGIN"
-    Install-TestPackage "FinalSpeaker" $info $targetId
 
-    # Internal fail-closed gates are part of the same install transaction.
-    # They are not a separate test and produce no physical audio. The single
-    # physical test below is the only speaker playback performed by the runner.
-    $telemetry=Wait-Telemetry -ExpectedFlags 47 -MinimumStage 70 -Seconds 25
-    if ($telemetry.BootEpoch -lt 1 -or $telemetry.Stage -lt 70) {
-        throw "Final HOST driver did not reach fresh AUDIO_CORE."
-    }
+    $telemetry=Ensure-FinalCoreReady $info $targetId ([string]$bus.PNPDeviceID) $ampId $firmware
+
     $script:State.InternalGatePassed=$true
     Save-State
     Write-RunLog "INTERNAL_READY_GATE=PASS"
     Write-RunLog "FINAL_HOST_AUDIO_CORE=PASS"
-
-    Write-RunLog "PHYSICAL_AUDIO_TEST=BEGIN"
-    $script:State.SpeakerAttempted=$true
-    Save-State
 
     $waveTest=Join-Path $PackageRoot "P360_WAVERT_TEST.exe"
     if (-not (Test-Path -LiteralPath $waveTest -PathType Leaf)) {
         throw "P360_WAVERT_TEST.exe is missing from the final package."
     }
 
-    # Endpoint publication can lag the PnP start slightly. Retry only the
-    # explicit 'no unique PHASER360 waveOut endpoint yet' condition (exit 20).
-    # Any format/open/write failure is final and is not retried.
-    $deadline=(Get-Date).AddSeconds(10)
-    $waveResult=$null
-    do {
-        $waveResult=Invoke-Tool -Exe $waveTest -Arguments @() -AllowFailure
-        if ($waveResult.ExitCode -eq 0) { break }
-        if ($waveResult.ExitCode -ne 20) {
-            throw "WaveRT physical playback test failed with exit code $($waveResult.ExitCode)."
-        }
-        Start-Sleep -Milliseconds 500
-    } while ((Get-Date) -lt $deadline)
+    $telemetry=Invoke-PhysicalPlaybackRepairLoop $waveTest $info $targetId ([string]$bus.PNPDeviceID) $ampId $firmware
 
-    if (-not $waveResult -or $waveResult.ExitCode -ne 0 -or
-        $waveResult.Output -notmatch "(?im)^TEST=PASS\s*$") {
-        throw "PHASER360 WaveRT endpoint did not complete the bounded Windows PCM test."
-    }
-
-    # Stream STOP is generated by waveOutClose/reset. Prove that the kernel
-    # path reached MAX mute -> SOF STOP -> HDA STOP.
-    $telemetry=Wait-Telemetry -ExpectedFlags 47 -MinimumStage 120 -Seconds 5
-    if ($telemetry.Stage -ne 120) {
-        throw "WaveRT playback completed but kernel STOP/mute was not proved."
-    }
-
+    $script:State.SpeakerAttempted=$true
     $script:State.SpeakerPassed=$true
     $script:State.SpeakerStopProved=$true
     Save-State
     Write-RunLog "FINAL_WAVERT_2000MS_MAX_0P5PCT=PASS"
     Write-RunLog "STREAM_STOP_AND_AMP_MUTE=PASS"
 
-    # Keep the final driver stack installed. The 2-second vector is the only
-    # physical test; after it stops cleanly the endpoint remains enabled for
-    # normal Windows audio and future WaveRT streams.
+    # Keep the final driver stack installed. Any physical retry is allowed
+    # only after the previous attempt has been positively quiesced; after a
+    # clean PASS the endpoint remains enabled for normal Windows audio.
     $telemetry=Assert-FinalAudioStack $info $targetId $ampId
     $script:State.FinalStackInstalled=$true
     $script:State.AudioReady=$true
@@ -1885,56 +2452,36 @@ try {
     Write-RunLog ("FAIL_DIAGNOSTIC={0}" -f
         (Format-TelemetryDiagnosis $telemetry $targetId))
     Write-RunLog "TEST=FAIL $($_.Exception.Message)"
-} finally {
-    if (-not $success) {
-        $rollbackOk=$true
 
+    if ($script:State.PhysicalCommitted -and -not $script:State.HardStop) {
         try {
-            Restore-OriginalDriver $targetId
-            Write-RunLog "FAILURE_ROLLBACK_ADSP=PASS"
+            if (-not (Ensure-PhysicalQuiesced $targetId $ampId $info)) {
+                $script:State.HardStop=$true
+            }
         } catch {
-            Write-RunLog "FAILURE_ROLLBACK_ADSP=FAIL $($_.Exception.Message)"
-            $rollbackOk=$false
+            $script:State.HardStop=$true
+            Write-RunLog "FAILURE_QUIESCE=HARD_STOP $($_.Exception.Message)"
         }
-
-        try {
-            Restore-OriginalAmpDriver
-            Write-RunLog "FAILURE_ROLLBACK_AMP=PASS"
-        } catch {
-            Write-RunLog "FAILURE_ROLLBACK_AMP=FAIL $($_.Exception.Message)"
-            $rollbackOk=$false
-        }
-
-        try {
-            Restore-Firmware
-            Write-RunLog "FAILURE_ROLLBACK_FIRMWARE=PASS"
-        } catch {
-            Write-RunLog "FAILURE_ROLLBACK_FIRMWARE=FAIL $($_.Exception.Message)"
-            $rollbackOk=$false
-        }
-
-        try {
-            Remove-TestCertificate ([string]$script:State.CertificateThumbprint)
-            Write-RunLog "FAILURE_ROLLBACK_CERT=PASS"
-        } catch {
-            Write-RunLog "FAILURE_ROLLBACK_CERT=FAIL $($_.Exception.Message)"
-            $rollbackOk=$false
-        }
-
-        try {
-            Assert-SafeBaselineBeforeNewTest $targetId
-            Write-RunLog "FAILURE_ROLLBACK_BASELINE=PASS"
-        } catch {
-            Write-RunLog "FAILURE_ROLLBACK_BASELINE=FAIL $($_.Exception.Message)"
-            $rollbackOk=$false
-        }
-
-        $script:State.RollbackPerformed=$rollbackOk
         Save-State
-    } else {
+    }
+
+    $decision=Classify-CoreFailure $telemetry ([string]$script:State.LastError)
+    Add-RepairHistory ([string]$decision.Class) ([string]$decision.Action) "PRESERVED" "Automatic rollback disabled; keep stack for repair/resume."
+} finally {
+    if ($success) {
         Write-RunLog "PERSISTENT_FINAL_STACK=YES"
         Write-RunLog "ROLLBACK_ON_SUCCESS=NO"
         Write-RunLog "MANUAL_ROLLBACK=RESTORE_LAST_SESSION.cmd"
+    } else {
+        Write-RunLog "PERSISTENT_REPAIR_STATE=YES"
+        Write-RunLog "AUTOMATIC_ROLLBACK=NO"
+        Write-RunLog "MANUAL_ROLLBACK=RESTORE_LAST_SESSION.cmd"
+        if ($script:State.HardStop) {
+            Write-RunLog "HARD_STOP=YES REASON=MAX_MUTE_OR_STREAM_QUIESCE_NOT_PROVED"
+        }
+        if ($script:State.NeedsDriverPatch) {
+            Write-RunLog "NEEDS_DRIVER_PATCH=YES"
+        }
     }
 }
 
@@ -1949,4 +2496,7 @@ Write-RunLog "RESULT_DIR=$Session"
 Write-ResultZip "AUDIO" | Out-Null
 
 if ($success) { exit 0 }
+if ($script:State.NeedsManualRestart) { exit 10 }
+if ($script:State.HardStop) { exit 4 }
+if ($script:State.NeedsDriverPatch) { exit 3 }
 exit 2

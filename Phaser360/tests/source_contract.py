@@ -494,6 +494,11 @@ for token in (
     "waveOutOpen(",
     "waveOutWrite(",
     "waveOutReset(",
+    'wcscmp(argv[1],L"--preflight")',
+    "WAVE_FORMAT_QUERY",
+    'wprintf(L"PREFLIGHT=PASS',
+    'wprintf(L"PHYSICAL_COMMIT=YES',
+    'wprintf(L"PHYSICAL_COMPLETE=YES',
     'wprintf(L"TEST=PASS',
 ):
     if token not in wavert_test:
@@ -505,13 +510,14 @@ restore_cmd=(ROOT/"tools/RESTORE_LAST_SESSION.cmd").read_text()
 
 for token in (
     "successful run ends with working PHASER360 audio installed",
-    "leave the final stack installed",
-    "one physical 2-second test only",
-    "failure rolls back; success remains installed",
+    "there is no automatic baseline rollback",
+    "Only a proved quiesced stack may be",
+    "NEEDS_DRIVER_PATCH",
+    "Restore is manual only",
     "RESTORE_LAST_SESSION.cmd",
 ):
     if token not in runner_readme:
-        raise SystemExit(f"persistent audio README contract missing: {token}")
+        raise SystemExit(f"self-healing audio README contract missing: {token}")
 
 for forbidden in (
     "Restore the original ADSP driver, the exact original MAX98357A driver, firmware state and temporary test certificate.",
@@ -559,6 +565,13 @@ for token in (
     "STREAM_STOP_AND_AMP_MUTE=PASS",
     "PERSISTENT_FINAL_STACK=YES",
     "ROLLBACK_ON_SUCCESS=NO",
+    "AUTOMATIC_ROLLBACK=NO",
+    "PERSISTENT_REPAIR_STATE=YES",
+    "PERSISTENT_REPAIR_SESSION_RESUMED=YES",
+    "Ensure-FinalCoreReady",
+    "Ensure-WaveRtPreflight",
+    "Invoke-PhysicalPlaybackRepairLoop",
+    "Ensure-PhysicalQuiesced",
     "AUDIO_READY=PASS ENDPOINT_REMAINS_INSTALLED=YES",
     "AUDIO_GATE=PASS",
     "NO_AUTO_REBOOT=YES",
@@ -601,14 +614,22 @@ for forbidden in (
         raise SystemExit(f"final runner regressed to hostless Tone semantics: {forbidden}")
 
 for token in (
-    "$telemetry=Wait-Telemetry -ExpectedFlags 47 -MinimumStage 70 -Seconds 25",
-    "$waveTest=Join-Path $PackageRoot \"P360_WAVERT_TEST.exe\"",
-    "$waveResult=Invoke-Tool -Exe $waveTest -Arguments @() -AllowFailure",
-    "$telemetry=Wait-Telemetry -ExpectedFlags 47 -MinimumStage 120 -Seconds 5",
-    "FINAL_WAVERT_2000MS_MAX_0P5PCT=PASS",
+    'function Ensure-FinalCoreReady',
+    'Install-TestPackage "FinalSpeaker"',
+    'Wait-Telemetry -ExpectedFlags 47 -MinimumStage 70 -Seconds 25',
+    'function Ensure-WaveRtPreflight',
+    '@("--preflight")',
+    'function Invoke-PhysicalPlaybackRepairLoop',
+    'PHYSICAL_AUDIO_TEST=BEGIN ATTEMPT=',
+    'PHYSICAL_PLAYBACK_COMMITTED=YES',
+    'Wait-Telemetry -ExpectedFlags 47 -MinimumStage 120 -Seconds 6',
+    'function Ensure-PhysicalQuiesced',
+    'FORCED_MAX_MUTE=PASS',
+    'FORCED_ADSP_QUIESCE=PASS',
+    'FINAL_WAVERT_2000MS_MAX_0P5PCT=PASS',
 ):
     if token not in runner:
-        raise SystemExit(f"real WaveRT final-runner contract missing: {token}")
+        raise SystemExit(f"self-healing WaveRT final-runner contract missing: {token}")
 
 install_test_begin=runner.index("function Install-TestPackage")
 install_test_end=runner.index("function ",install_test_begin+1)
@@ -675,50 +696,56 @@ for forbidden in (
     if forbidden in runner:
         raise SystemExit(f"separate/persistent PRE-AUDIO runtime path reintroduced: {forbidden}")
 
-final_install_i=runner.index('Install-TestPackage "FinalSpeaker"',final_install_phase_i)
-final_core_wait_i=runner.index("Wait-Telemetry -ExpectedFlags 47 -MinimumStage 70",final_install_i)
-internal_pass_i=runner.index('Write-RunLog "INTERNAL_READY_GATE=PASS"',final_core_wait_i)
-physical_phase_i=runner.index('Write-RunLog "PHYSICAL_AUDIO_TEST=BEGIN"',internal_pass_i)
-final_attempt_i=runner.index("$script:State.SpeakerAttempted=$true",physical_phase_i)
-final_wave_i=runner.index("$waveResult=Invoke-Tool -Exe $waveTest -Arguments @() -AllowFailure",final_attempt_i)
-final_stop_wait_i=runner.index("Wait-Telemetry -ExpectedFlags 47 -MinimumStage 120",final_wave_i)
-final_pass_i=runner.index('Write-RunLog "FINAL_WAVERT_2000MS_MAX_0P5PCT=PASS"',final_stop_wait_i)
+core_fn_i=runner.index("function Ensure-FinalCoreReady")
+core_install_i=runner.index('Install-TestPackage "FinalSpeaker"',core_fn_i)
+core_wait_i=runner.index("Wait-Telemetry -ExpectedFlags 47 -MinimumStage 70",core_install_i)
+endpoint_fn_i=runner.index("function Ensure-WaveRtPreflight")
+physical_fn_i=runner.index("function Invoke-PhysicalPlaybackRepairLoop")
+preflight_i=runner.index("Ensure-WaveRtPreflight $WaveTest",physical_fn_i)
+physical_begin_i=runner.index('Write-RunLog "PHYSICAL_AUDIO_TEST=BEGIN ATTEMPT=$round"',preflight_i)
+wave_i=runner.index('$wave=Invoke-Tool -Exe $WaveTest -Arguments @() -AllowFailure',physical_begin_i)
+quiesce_i=runner.index("Ensure-PhysicalQuiesced $InstanceId $AmpInstanceId $Info",wave_i)
+repair_after_quiesce_i=runner.index("Rebind-FinalAdsp $InstanceId $Info",quiesce_i)
+if not (
+    core_fn_i < core_install_i < core_wait_i and
+    endpoint_fn_i < physical_fn_i < preflight_i < physical_begin_i < wave_i <
+    quiesce_i < repair_after_quiesce_i
+):
+    raise SystemExit("self-healing core/endpoint/physical ordering drifted")
+
+main_core_i=runner.index("$telemetry=Ensure-FinalCoreReady",final_install_phase_i)
+internal_pass_i=runner.index('Write-RunLog "INTERNAL_READY_GATE=PASS"',main_core_i)
+main_physical_i=runner.index("$telemetry=Invoke-PhysicalPlaybackRepairLoop",internal_pass_i)
+final_pass_i=runner.index('Write-RunLog "FINAL_WAVERT_2000MS_MAX_0P5PCT=PASS"',main_physical_i)
 idle_pass_i=runner.index('Write-RunLog "STREAM_STOP_AND_AMP_MUTE=PASS"',final_pass_i)
 stack_verify_i=runner.index("Assert-FinalAudioStack $info $targetId $ampId",idle_pass_i)
 audio_ready_i=runner.index('Write-RunLog "AUDIO_READY=PASS ENDPOINT_REMAINS_INSTALLED=YES"',stack_verify_i)
 persistent_i=runner.index('Write-RunLog "PERSISTENT_FINAL_STACK=YES"',audio_ready_i)
 if not (
-    final_install_phase_i < final_install_i < final_core_wait_i < internal_pass_i <
-    physical_phase_i < final_attempt_i < final_wave_i < final_stop_wait_i <
+    final_install_phase_i < main_core_i < internal_pass_i < main_physical_i <
     final_pass_i < idle_pass_i < stack_verify_i < audio_ready_i < persistent_i
 ):
-    raise SystemExit("single install -> one WaveRT test -> persistent audio ordering drifted")
-
-if "Disable-TargetAndProveStop $targetId 47" in runner[final_pass_i:]:
-    raise SystemExit("successful audio path still disables the final P360 target")
-
-success_tail=runner[runner.index("} finally {",audio_ready_i):]
-for forbidden in (
-    'Restore-OriginalDriver $targetId\n        Write-RunLog "FINAL_DRIVER_RESTORE=PASS"',
-    'Write-RunLog "FINAL_AMP_RESTORE=PASS"',
-    'Write-RunLog "FIRMWARE_RESTORE=PASS"',
-    'Write-RunLog "CERT_CLEANUP=PASS"',
-):
-    if forbidden in success_tail:
-        raise SystemExit(f"success path still contains unconditional restore: {forbidden}")
+    raise SystemExit("self-healing final install -> repair -> playback -> persistent ordering drifted")
 
 for token in (
-    'if (-not $success) {',
+    "AUTOMATIC_ROLLBACK=NO",
+    "PERSISTENT_REPAIR_STATE=YES",
+    "MANUAL_ROLLBACK=RESTORE_LAST_SESSION.cmd",
+    "NEEDS_DRIVER_PATCH=YES",
+    "HARD_STOP=YES REASON=MAX_MUTE_OR_STREAM_QUIESCE_NOT_PROVED",
+):
+    if token not in runner:
+        raise SystemExit(f"persistent repair-state contract missing: {token}")
+
+for forbidden in (
     "FAILURE_ROLLBACK_ADSP=PASS",
     "FAILURE_ROLLBACK_AMP=PASS",
     "FAILURE_ROLLBACK_FIRMWARE=PASS",
     "FAILURE_ROLLBACK_CERT=PASS",
     "FAILURE_ROLLBACK_BASELINE=PASS",
-    "ROLLBACK_ON_SUCCESS=NO",
-    "MANUAL_ROLLBACK=RESTORE_LAST_SESSION.cmd",
 ):
-    if token not in runner:
-        raise SystemExit(f"persistent-success/failure-rollback contract missing: {token}")
+    if forbidden in runner:
+        raise SystemExit(f"automatic failure rollback was reintroduced: {forbidden}")
 
 if "3.0.100.1" not in runner[runner.index("function Test-IsReservedGateVersion"):runner.index("function Assert-NoStaleTestPackage")]:
     raise SystemExit("final persistent P360 driver version is not covered by rollback cleanup")
@@ -733,32 +760,38 @@ for token in (
     '# Persist the identity before the first mutation so rollback can remove a',
 ):
     if token not in runner:
-        raise SystemExit(f"crash-safe one-shot transaction contract missing: {token}")
+        raise SystemExit(f"crash-safe recovery-provenance contract missing: {token}")
+
+for token in (
+    '"bcdedit.exe" -Arguments @("/set","testsigning","on")',
+    "TESTSIGNING_REPAIR=PASS RESTART_REQUIRED=YES",
+):
+    if token not in runner:
+        raise SystemExit(f"TestSigning self-repair contract missing: {token}")
 
 for forbidden in (
-    "bcdedit.exe /set",
-    "bcdedit /set",
     "Restart-Computer",
     "shutdown.exe",
     "/reboot",
 ):
     if forbidden.lower() in runner.lower():
-        raise SystemExit(f"hardware gate runner gained forbidden reboot/BCD mutation: {forbidden}")
+        raise SystemExit(f"hardware gate runner gained forbidden automatic reboot: {forbidden}")
 
 for token in (
     'cd /d "%~dp0"',
     "net session >nul 2>&1",
     "Start-Process -FilePath '%~f0' -Verb RunAs",
     'P360_AUDIO_GATE.ps1" -Mode Audio',
-    "2. Install/patch the pinned final ADSP + fail-closed MAX98357A stack",
-    "3. Run all SOF/IRQ/IPC/HDA safety gates internally",
-    "4. Perform ONE physical WaveRT speaker test: 2 s / 0.5%%",
-    "5. If PASS: keep the final audio stack installed and ready for Windows audio",
+    "Diagnose and repair PnP/SOF/IRQ/IPC/topology/endpoint failures",
+    "Preflight WaveRT silently before any physical sample buffer",
+    "retry only after proved quiesce",
+    "NO automatic baseline rollback",
+    "Restore is manual only",
     "Return code: %RC%",
     "pause",
 ):
     if token not in start_cmd:
-        raise SystemExit(f"one-click audio launcher contract missing: {token}")
+        raise SystemExit(f"self-healing one-click audio launcher contract missing: {token}")
 
 if 'P360_AUDIO_GATE.ps1" -Mode Restore -SessionPath' in start_cmd:
     raise SystemExit("one-click launcher must use the single Audio transaction only")
