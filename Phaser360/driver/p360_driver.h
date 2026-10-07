@@ -58,7 +58,13 @@
 #define P360_BOUNDED_TONE_TEST_ENABLED 0
 #endif
 
-#define P360_BOUNDED_TONE_DURATION_MS 250u
+/*
+ * Final one-click internal-speaker diagnostic.  The DSP Tone component is
+ * forced below 1% full-scale before PCM_PARAMS/prepare.  0x01000000 in Q1.31
+ * is exactly 1/128 = 0.78125% full-scale (~ -42.14 dBFS).
+ */
+#define P360_BOUNDED_TONE_DURATION_MS 2000u
+#define P360_DIAGNOSTIC_TONE_Q1_31 0x01000000
 
 #if P360_BOUNDED_TONE_TEST_ENABLED && \
     (!P360_RUNTIME_BOOT_ENABLED || !P360_IPC_PROBE_ENABLED || \
