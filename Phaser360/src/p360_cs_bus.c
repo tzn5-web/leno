@@ -19,7 +19,6 @@ static ULONG p360_cs_abi_detail(const P360_CS_ADSP_BUS_INTERFACE *i)
     if (!i->RegisterInterrupt) d|=P360_PREP_ABI_REGISTER_IRQ;
     if (!i->UnregisterInterrupt) d|=P360_PREP_ABI_UNREGISTER_IRQ;
     if (!i->GetRenderStream) d|=P360_PREP_ABI_GET_RENDER;
-    if (!i->GetCaptureStream) d|=P360_PREP_ABI_GET_CAPTURE;
     if (!i->FreeStream) d|=P360_PREP_ABI_FREE_STREAM;
     if (!i->PrepareDSP) d|=P360_PREP_ABI_PREPARE_DSP;
     if (!i->CleanupDSP) d|=P360_PREP_ABI_CLEANUP_DSP;
@@ -73,6 +72,11 @@ NTSTATUS p360_cs_bus_open(P360_CS_BUS *bus, WDFDEVICE device)
      */
     bus->interface_acquired = TRUE;
 
+    /*
+     * Speaker-only runtime requires the render half of the CoolStar v1
+     * interface. Capture is intentionally not a startup prerequisite until a
+     * microphone/headset-capture endpoint is implemented.
+     */
     (void)p360_telemetry_prepare(P360_PREP_STEP_BUS_ABI_VALIDATE,0,STATUS_PENDING);
     if (bus->iface.Size != sizeof(bus->iface) ||
         bus->iface.Version != P360_CS_ADSP_INTERFACE_VERSION ||
@@ -82,7 +86,6 @@ NTSTATUS p360_cs_bus_open(P360_CS_BUS *bus, WDFDEVICE device)
         !bus->iface.RegisterInterrupt ||
         !bus->iface.UnregisterInterrupt ||
         !bus->iface.GetRenderStream ||
-        !bus->iface.GetCaptureStream ||
         !bus->iface.FreeStream ||
         !bus->iface.PrepareDSP ||
         !bus->iface.CleanupDSP ||
