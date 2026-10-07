@@ -1,5 +1,26 @@
 #include "p360_driver.h"
 
+static ULONG
+p360_build_flags(VOID)
+{
+    ULONG flags=0;
+
+    if (P360_RUNTIME_BOOT_ENABLED)
+        flags|=P360_TELEM_FLAG_RUNTIME_BOOT;
+    if (P360_IPC_PROBE_ENABLED)
+        flags|=P360_TELEM_FLAG_IPC_PROBE;
+    if (P360_TONE_TOPOLOGY_PROOF_ENABLED)
+        flags|=P360_TELEM_FLAG_TONE_TOPOLOGY;
+    if (P360_ENABLE_INTERNAL_SPEAKER)
+        flags|=P360_TELEM_FLAG_INTERNAL_SPEAKER;
+    if (P360_BOUNDED_TONE_TEST_ENABLED)
+        flags|=P360_TELEM_FLAG_BOUNDED_TONE;
+    if (P360_SPEAKER_ENDPOINT_ENABLED)
+        flags|=P360_TELEM_FLAG_SPEAKER_ENDPOINT;
+
+    return flags;
+}
+
 static NTSTATUS
 p360_fail(
     _Inout_ P360_DEVICE_CONTEXT *ctx,
@@ -8,6 +29,10 @@ p360_fail(
 {
     if (ctx)
         p360_state_fail(&ctx->State,reason);
+
+    (void)p360_telemetry_result(
+        (ULONG)reason,
+        status);
     return status;
 }
 
@@ -193,6 +218,11 @@ p360_runtime_prepare_tone_topology(
         return STATUS_INVALID_DEVICE_STATE;
     }
 
+    status=p360_telemetry_stage(
+        P360_TELEM_STAGE_TOPOLOGY_READY);
+    if (!NT_SUCCESS(status))
+        return status;
+
     *failure=P360_FAIL_STREAM;
 
     RtlZeroMemory(&message,sizeof(message));
@@ -217,6 +247,11 @@ p360_runtime_prepare_tone_topology(
             P360_STATE_AUDIO_CORE_READY)) {
         return STATUS_INVALID_DEVICE_STATE;
     }
+
+    status=p360_telemetry_stage(
+        P360_TELEM_STAGE_AUDIO_CORE);
+    if (!NT_SUCCESS(status))
+        return status;
 
     return STATUS_SUCCESS;
 }
@@ -275,6 +310,11 @@ p360_runtime_run_bounded_tone(
         return status;
     streamStarted=TRUE;
 
+    status=p360_telemetry_stage(
+        P360_TELEM_STAGE_STREAM_STARTED);
+    if (!NT_SUCCESS(status))
+        goto cleanup;
+
     *failure=P360_FAIL_SPEAKER_GUARD;
     if (!p360_state_speaker_arm(&ctx->State)) {
         status=STATUS_INVALID_DEVICE_STATE;
@@ -282,10 +322,20 @@ p360_runtime_run_bounded_tone(
     }
     speakerArmed=TRUE;
 
+    status=p360_telemetry_stage(
+        P360_TELEM_STAGE_SPEAKER_ARMED);
+    if (!NT_SUCCESS(status))
+        goto cleanup;
+
     status=p360_csaudio_speaker_start(&ctx->CsAudio);
     if (!NT_SUCCESS(status))
         goto cleanup;
     speakerStarted=TRUE;
+
+    status=p360_telemetry_stage(
+        P360_TELEM_STAGE_AMP_STARTED);
+    if (!NT_SUCCESS(status))
+        goto cleanup;
 
     /*
      * The SOF v1.9.3 Tone component defaults to ~997 Hz at -20 dB when the
@@ -335,6 +385,11 @@ cleanup:
                 *failure=P360_FAIL_STREAM;
             }
         }
+    }
+
+    if (NT_SUCCESS(status)) {
+        status=p360_telemetry_stage(
+            P360_TELEM_STAGE_TONE_COMPLETE);
     }
 
     return status;
@@ -392,6 +447,11 @@ p360_runtime_boot_start(
     if (!NT_SUCCESS(status))
         return p360_fail(ctx,P360_FAIL_FIRMWARE,status);
 
+    status=p360_telemetry_stage(
+        P360_TELEM_STAGE_FW_LOADED);
+    if (!NT_SUCCESS(status))
+        goto fail;
+
     /*
      * Dispatcher preparation is immutable host-side validation of the same
      * pinned image used by the loader. It is performed once per runtime
@@ -419,6 +479,14 @@ p360_runtime_boot_start(
         status=STATUS_INVALID_DEVICE_STATE;
         goto fail;
     }
+
+    status=p360_telemetry_boot_epoch(epoch);
+    if (!NT_SUCCESS(status))
+        goto fail;
+    status=p360_telemetry_stage(
+        P360_TELEM_STAGE_SOF_BOOTING);
+    if (!NT_SUCCESS(status))
+        goto fail;
 
     rc=p360_loader_run(
         &ctx->Loader,
@@ -451,10 +519,20 @@ p360_runtime_boot_start(
         goto fail_live;
     }
 
+    status=p360_telemetry_stage(
+        P360_TELEM_STAGE_FW_READY);
+    if (!NT_SUCCESS(status))
+        goto fail_live;
+
     failure=P360_FAIL_IRQ;
     status=p360_cs_runtime_bind_live(
         &ctx->Runtime,
         epoch);
+    if (!NT_SUCCESS(status))
+        goto fail_live;
+
+    status=p360_telemetry_stage(
+        P360_TELEM_STAGE_IRQ_READY);
     if (!NT_SUCCESS(status))
         goto fail_live;
 
@@ -478,6 +556,12 @@ p360_runtime_boot_start(
             goto fail_live;
         }
 
+        status=p360_telemetry_ipc(
+            firmwareError,
+            12u);
+        if (!NT_SUCCESS(status))
+            goto fail_live;
+
         ctx->State.ipc_ready=1;
         if (!p360_state_advance(
                 &ctx->State,
@@ -485,6 +569,11 @@ p360_runtime_boot_start(
             status=STATUS_INVALID_DEVICE_STATE;
             goto fail_live;
         }
+
+        status=p360_telemetry_stage(
+            P360_TELEM_STAGE_IPC_READY);
+        if (!NT_SUCCESS(status))
+            goto fail_live;
     }
 
     if (p360_tone_topology_policy_enabled()) {
@@ -567,6 +656,14 @@ p360_runtime_boot_stop(
             ctx,
             P360_FAIL_IRQ,
             STATUS_INVALID_DEVICE_STATE);
+
+    status=p360_telemetry_stage(
+        P360_TELEM_STAGE_STOP_COMPLETE);
+    if (!NT_SUCCESS(status))
+        return p360_fail(
+            ctx,
+            P360_FAIL_IRQ,
+            status);
 
     return STATUS_SUCCESS;
 }
@@ -653,6 +750,15 @@ p360_host_prepare(
     ctx->CsAudioInitialized=FALSE;
     ctx->BoundedToneConsumed=FALSE;
     InterlockedExchange(&ctx->Removing,0);
+
+    status=p360_telemetry_reset(
+        p360_build_flags());
+#if P360_RUNTIME_BOOT_ENABLED
+    if (!NT_SUCCESS(status))
+        return status;
+#else
+    UNREFERENCED_PARAMETER(status);
+#endif
 
     status=p360_cs_bus_open(&ctx->Bus,Device);
     if (!NT_SUCCESS(status))
