@@ -453,6 +453,8 @@ jobs:
             PreAudioDriverVersion = "2.0.101.1"
             BoundedDriverVersion = "2.0.201.1"
             FinalSpeakerDriverVersion = "3.0.100.1"
+            FinalSpeakerProvider = "PHASER360 Project"
+            FinalSpeakerService = "P360SofAudio"
             SafeAmpDriverVersion = "2.0.0.0"
             SafeAmpProvider = "PHASER360 Project"
             SafeAmpService = "P360Max98357Safe"
