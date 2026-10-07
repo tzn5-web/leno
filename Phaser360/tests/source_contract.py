@@ -1094,9 +1094,42 @@ for forbidden in (
 host_prepare_i=driver.index("p360_host_playback_prepare(")
 bind_buffer_i=driver.index("p360_playback_stream_bind_buffer(",host_prepare_i)
 host_pcm_i=driver.index("p360_ipc3_build_host_pcm_params(",bind_buffer_i)
-host_prepare_done_i=driver.index("playback->SofParamsPrepared=TRUE;",host_pcm_i)
-if not host_prepare_i < bind_buffer_i < host_pcm_i < host_prepare_done_i:
-    raise SystemExit("WaveRT MDL -> CoolStar stream -> SOF PCM_PARAMS ordering drifted")
+host_pcm_attempt_i=driver.index("pcmParamsAttempted=TRUE;",host_pcm_i)
+host_prepare_done_i=driver.index("playback->SofParamsPrepared=TRUE;",host_pcm_attempt_i)
+host_prepare_fail_i=driver.index("fail:",host_prepare_done_i)
+host_prepare_quiesce_i=driver.index(
+    "p360_host_playback_force_quiesce(",
+    host_prepare_fail_i)
+if not (
+    host_prepare_i < bind_buffer_i < host_pcm_i < host_pcm_attempt_i <
+    host_prepare_done_i < host_prepare_fail_i < host_prepare_quiesce_i
+):
+    raise SystemExit(
+        "WaveRT PCM_PARAMS failure no longer forces ownership quiescence")
+
+allocate_i=speaker_endpoint.index("P360WaveStream::AllocateAudioBuffer(")
+allocate_prepare_i=speaker_endpoint.index(
+    "p360_host_playback_prepare(",
+    allocate_i)
+allocate_fail_i=speaker_endpoint.index(
+    "if (!NT_SUCCESS(status))",
+    allocate_prepare_i)
+allocate_release_check_i=speaker_endpoint.index(
+    "p360_playback_memory_released(&m_Playback)",
+    allocate_fail_i)
+allocate_quarantine_mdl_i=speaker_endpoint.index(
+    "m_Mdl=mdl;",
+    allocate_release_check_i)
+allocate_return_i=speaker_endpoint.index(
+    "return status;",
+    allocate_quarantine_mdl_i)
+if not (
+    allocate_i < allocate_prepare_i < allocate_fail_i <
+    allocate_release_check_i < allocate_quarantine_mdl_i <
+    allocate_return_i
+):
+    raise SystemExit(
+        "AllocateAudioBuffer can free/lose the MDL before failed prepare ownership is gone")
 
 host_start_i=driver.index("p360_host_playback_start(")
 dma_start_i=driver.index("p360_playback_stream_start(playback)",host_start_i)
