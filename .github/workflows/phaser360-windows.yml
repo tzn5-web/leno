@@ -176,8 +176,9 @@ jobs:
           $pdb = "Phaser360\driver\out\Release\P360SofAudio.pdb"
           if (Test-Path $pdb) { Remove-Item $pdb -Force }
 
-      - name: Build test-signed hardware gate package
+      - name: Locate WDK signing tools
         shell: pwsh
+        timeout-minutes: 2
         run: |
           $ErrorActionPreference = "Stop"
 
@@ -207,7 +208,14 @@ jobs:
           $signtool = Find-Tool "signtool.exe"
           Write-Host "INF2CAT=$inf2cat"
           Write-Host "SIGNTOOL=$signtool"
+          "P360_INF2CAT=$inf2cat" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "P360_SIGNTOOL=$signtool" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: Prepare hardware gate certificate
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $ErrorActionPreference = "Stop"
           $root = "Phaser360\package\P360_AUDIO_GATE"
           $certDir = Join-Path $root "cert"
           $preDir = Join-Path $root "preaudio"
@@ -219,6 +227,7 @@ jobs:
           Copy-Item Phaser360\tools\P360_AUDIO_GATE_README.txt (Join-Path $root "README.txt") -Force
           Copy-Item Phaser360\firmware\P360_FIRMWARE_MANIFEST.txt (Join-Path $root "P360_FIRMWARE_MANIFEST.txt") -Force
 
+          Write-Host "CERT_CREATE=BEGIN"
           $cert = New-SelfSignedCertificate `
             -Type CodeSigningCert `
             -Subject "CN=PHASER360 Project CI Test" `
@@ -226,15 +235,32 @@ jobs:
             -HashAlgorithm SHA256 `
             -KeyExportPolicy Exportable `
             -NotAfter (Get-Date).AddYears(1)
+          Write-Host "CERT_CREATE=PASS"
 
           $cer = Join-Path $certDir "P360_TEST.cer"
           Export-Certificate -Cert $cert -FilePath $cer | Out-Null
+          Write-Host "CERT_EXPORT=PASS"
+
           certutil.exe -user -addstore -f Root $cer | Out-Null
           if ($LASTEXITCODE -ne 0) { throw "Failed to trust CI test certificate in CurrentUser Root" }
+          Write-Host "CERT_ROOT_TRUST=PASS"
+
           certutil.exe -user -addstore -f TrustedPublisher $cer | Out-Null
           if ($LASTEXITCODE -ne 0) { throw "Failed to trust CI test certificate in CurrentUser TrustedPublisher" }
+          Write-Host "CERT_PUBLISHER_TRUST=PASS"
 
-          function New-P360Package(
+          "P360_CERT_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build hardware gate catalogs
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $ErrorActionPreference = "Stop"
+          $root = "Phaser360\package\P360_AUDIO_GATE"
+          $preDir = Join-Path $root "preaudio"
+          $boundedDir = Join-Path $root "bounded"
+
+          function New-P360Catalog(
             [string]$SourceSys,
             [string]$Destination,
             [string]$DriverVersion
@@ -247,28 +273,51 @@ jobs:
               "DriverVer=10/07/2026,$DriverVersion")
             Set-Content (Join-Path $Destination "P360SofAudio.inf") -Value $inf -Encoding ascii
 
-            & $inf2cat "/driver:$Destination" "/os:10_VB_X64" "/uselocaltime"
+            Write-Host "INF2CAT_BEGIN=$Destination"
+            & $env:P360_INF2CAT "/driver:$Destination" "/os:10_VB_X64" "/uselocaltime"
             if ($LASTEXITCODE -ne 0) { throw "Inf2Cat failed for $Destination" }
 
             $cat = Join-Path $Destination "P360SofAudio.cat"
             if (-not (Test-Path $cat)) { throw "Inf2Cat did not create $cat" }
-
-            & $signtool sign /fd SHA256 /s My /sha1 $cert.Thumbprint /v $cat
-            if ($LASTEXITCODE -ne 0) { throw "SignTool sign failed for $cat" }
-
-            & $signtool verify /pa /v $cat
-            if ($LASTEXITCODE -ne 0) { throw "SignTool verify failed for $cat" }
+            Write-Host "INF2CAT_PASS=$Destination"
           }
 
-          New-P360Package `
+          New-P360Catalog `
             "Phaser360\driver\out\Release\P360SofAudio-preaudio-ipc3.sys" `
             $preDir `
             "2.0.100.1"
 
-          New-P360Package `
+          New-P360Catalog `
             "Phaser360\driver\out\Release\P360SofAudio-bounded-tone-test.sys" `
             $boundedDir `
             "2.0.200.1"
+
+      - name: Sign hardware gate catalogs
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $ErrorActionPreference = "Stop"
+          $root = "Phaser360\package\P360_AUDIO_GATE"
+          foreach ($dir in @("preaudio","bounded")) {
+            $cat = Join-Path (Join-Path $root $dir) "P360SofAudio.cat"
+            Write-Host "SIGN_BEGIN=$cat"
+            & $env:P360_SIGNTOOL sign /fd SHA256 /s My /sha1 $env:P360_CERT_THUMBPRINT /v $cat
+            if ($LASTEXITCODE -ne 0) { throw "SignTool sign failed for $cat" }
+            Write-Host "SIGN_PASS=$cat"
+
+            & $env:P360_SIGNTOOL verify /pa /v $cat
+            if ($LASTEXITCODE -ne 0) { throw "SignTool verify failed for $cat" }
+            Write-Host "VERIFY_PASS=$cat"
+          }
+
+      - name: Finalize hardware gate package
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $ErrorActionPreference = "Stop"
+          $root = "Phaser360\package\P360_AUDIO_GATE"
+          $preDir = Join-Path $root "preaudio"
+          $boundedDir = Join-Path $root "bounded"
 
           $preHash = (Get-FileHash (Join-Path $preDir "P360SofAudio.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
           $boundedHash = (Get-FileHash (Join-Path $boundedDir "P360SofAudio.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -276,7 +325,7 @@ jobs:
           [ordered]@{
             HeadSha = "${env:GITHUB_SHA}"
             WorkflowRunId = "${env:GITHUB_RUN_ID}"
-            CertificateThumbprint = $cert.Thumbprint
+            CertificateThumbprint = "${env:P360_CERT_THUMBPRINT}"
             PreAudioDriverVersion = "2.0.100.1"
             BoundedDriverVersion = "2.0.200.1"
             PreAudioSysSha256 = $preHash
