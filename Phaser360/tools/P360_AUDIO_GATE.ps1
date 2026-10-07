@@ -11,6 +11,9 @@ $ErrorActionPreference = "Stop"
 $ExpectedHwIdPrefix = "CSAUDIO\ADSP&CTLR_VEN_8086&CTLR_DEV_3198"
 $ExpectedBusPrefix = "PCI\VEN_8086&DEV_3198"
 $ExpectedAmpPrefix = "ACPI\MX98357A"
+$SafeAmpServiceName = "P360Max98357Safe"
+$SafeAmpProviderName = "PHASER360 Project"
+$SafeAmpDriverVersion = "2.0.0.0"
 $ExpectedFirmwareBytes = 246528
 $ExpectedFirmwareSha256 = "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab"
 $TelemetryPath = "HKLM:\SYSTEM\CurrentControlSet\Services\P360SofAudio\Parameters"
@@ -965,6 +968,8 @@ function Assert-NoStaleTestPackage {
 function Assert-SafeBaselineBeforeNewTest([string]$InstanceId) {
     $device=Get-TargetByIdOrNull $InstanceId
     $driver=Get-BoundDriverOrNull $InstanceId
+    $amp=Get-AmpDevice
+    $ampDriver=Get-BoundDriverOrNull ([string]$amp.PNPDeviceID)
 
     if (-not $device) {
         throw "ADSP target is missing before test."
@@ -982,6 +987,23 @@ function Assert-SafeBaselineBeforeNewTest([string]$InstanceId) {
         [string]$driver.DriverVersion -ne "1.1.0.0") {
         throw ("ADSP baseline mismatch: provider={0}, version={1}; expected PHASER360 Project 1.1.0.0." -f
             [string]$driver.DriverProviderName,[string]$driver.DriverVersion)
+    }
+
+    if (-not $ampDriver) {
+        throw "MAX98357A baseline has no signed-driver record."
+    }
+    if ([string]$amp.Service -eq $SafeAmpServiceName -or
+        ([string]$ampDriver.DriverProviderName -eq $SafeAmpProviderName -and
+         [string]$ampDriver.DriverVersion -eq $SafeAmpDriverVersion)) {
+        throw "Fail-closed MAX98357A test driver is still active from a previous run."
+    }
+
+    $staleAmp=@(Get-WindowsDriver -Online -All | Where-Object {
+        [string]$_.ProviderName -eq $SafeAmpProviderName -and
+        [string]$_.Version -eq $SafeAmpDriverVersion
+    })
+    if ($staleAmp.Count -ne 0) {
+        throw "Stale fail-closed MAX98357A package remains in Driver Store."
     }
 
     $stale=@(Get-P360StoreEntries | Where-Object {
@@ -1380,6 +1402,24 @@ function Current-BaselineNeedsRecovery([string]$InstanceId) {
     if ($driver -and
         (Test-IsReservedGateVersion ([string]$driver.DriverVersion))) { return $true }
 
+    $amp=$null
+    try { $amp=Get-AmpDevice } catch { $amp=$null }
+    if ($amp -and [string]$amp.Service -eq $SafeAmpServiceName) { return $true }
+
+    $ampDriver=$null
+    if ($amp) { $ampDriver=Get-BoundDriverOrNull ([string]$amp.PNPDeviceID) }
+    if ($ampDriver -and
+        [string]$ampDriver.DriverProviderName -eq $SafeAmpProviderName -and
+        [string]$ampDriver.DriverVersion -eq $SafeAmpDriverVersion) {
+        return $true
+    }
+
+    $staleAmp=@(Get-WindowsDriver -Online -All | Where-Object {
+        [string]$_.ProviderName -eq $SafeAmpProviderName -and
+        [string]$_.Version -eq $SafeAmpDriverVersion
+    })
+    if ($staleAmp.Count -gt 0) { return $true }
+
     return $false
 }
 
@@ -1418,6 +1458,7 @@ function Recover-PreviousBaselineIfNeeded([string]$InstanceId) {
     try {
         Write-RunLog "AUTO_BASELINE_RECOVERY=BEGIN"
         Restore-OriginalDriver $InstanceId
+        Restore-OriginalAmpDriver
         Restore-Firmware
         Remove-TestCertificate ([string]$script:State.CertificateThumbprint)
         Write-RunLog "AUTO_BASELINE_RECOVERY=PASS"
