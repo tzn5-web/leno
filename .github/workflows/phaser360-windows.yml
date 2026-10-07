@@ -183,29 +183,21 @@ jobs:
             Copy-Item -LiteralPath $src -Destination (Join-Path $root $copies[$src]) -Force
           }
 
-          $payload="Phaser360\firmware\p360-f686.ri.gz"
-          $payloadHash=(Get-FileHash $payload -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($payloadHash -ne "221f536ad2e1ccc53ec145573fb8556dd3d7d115322e085d5cfae3faf62e48c3") {
-            throw "Firmware payload hash mismatch."
+          $firmwareSource="Phaser360\firmware\sof-apl-v1.9.3-official.ri"
+          if (-not (Test-Path -LiteralPath $firmwareSource -PathType Leaf)) {
+            throw "Official SOF 1.9.3 firmware is missing."
           }
 
-          $firmware=Join-Path $root "p360-f686.ri"
-          $input=[IO.File]::OpenRead($payload)
-          $output=[IO.File]::Create($firmware)
-          try {
-            $gzip=[IO.Compression.GZipStream]::new($input,[IO.Compression.CompressionMode]::Decompress)
-            try { $gzip.CopyTo($output) } finally { $gzip.Dispose() }
-          } finally {
-            $output.Dispose()
-            $input.Dispose()
-          }
+          $firmware=Join-Path $root "sof-apl-v1.9.3-official.ri"
+          Copy-Item -LiteralPath $firmwareSource -Destination $firmware -Force
 
           $fw=Get-Item $firmware
           $fwHash=(Get-FileHash $firmware -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($fw.Length -ne 246528 -or
-              $fwHash -ne "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab") {
-            throw "Firmware identity mismatch."
+          if ($fw.Length -ne 287488 -or
+              $fwHash -ne "40029b5a05665f19a492ef00b8c0a24c42e90d7c00fc57146e07947fd1407d5c") {
+            throw "Official SOF 1.9.3 firmware identity mismatch."
           }
+          Write-Host "P360_OFFICIAL_SOF_1_9_3=PASS"
 
           $rsa=[System.Security.Cryptography.RSA]::Create(2048)
           $dn=[System.Security.Cryptography.X509Certificates.X500DistinguishedName]::new("CN=PHASER360 Project CI Test")
@@ -250,7 +242,7 @@ jobs:
             "ACPI\MX98357A",
             "PKEY_AudioEngine_OEMFormat",
             "KSNODETYPE_SPEAKER",
-            "DriverVer=10/07/2026,4.2.0.0"
+            "DriverVer=10/07/2026,4.3.0.0"
           )) {
             if ($infText -notmatch [regex]::Escape($token)) {
               throw "INF contract missing: $token"
@@ -285,14 +277,14 @@ jobs:
             PhysicalAudioTest=$false
             P360SofAudioSha256=(Get-FileHash (Join-Path $root "P360SofAudio.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
             P360Max98357SafeSha256=(Get-FileHash (Join-Path $root "P360Max98357Safe.sys") -Algorithm SHA256).Hash.ToLowerInvariant()
-            FirmwareSha256=(Get-FileHash (Join-Path $root "p360-f686.ri") -Algorithm SHA256).Hash.ToLowerInvariant()
+            FirmwareSha256=(Get-FileHash (Join-Path $root "sof-apl-v1.9.3-official.ri") -Algorithm SHA256).Hash.ToLowerInvariant()
             WasapiTestSha256=(Get-FileHash (Join-Path $root "P360_WASAPI_TEST.exe") -Algorithm SHA256).Hash.ToLowerInvariant()
             ForceInstallSha256=(Get-FileHash (Join-Path $root "P360_FORCE_INSTALL.exe") -Algorithm SHA256).Hash.ToLowerInvariant()
           } | ConvertTo-Json | Set-Content (Join-Path $root "PACKAGE_INFO.json") -Encoding utf8
 
           foreach($required in @(
             "P360AudioBundle.inf","P360AudioBundle.cat",
-            "P360SofAudio.sys","P360Max98357Safe.sys","p360-f686.ri",
+            "P360SofAudio.sys","P360Max98357Safe.sys","sof-apl-v1.9.3-official.ri",
             "P360_TEST.cer","P360_WASAPI_TEST.exe","P360_FORCE_INSTALL.exe",
             "P360_FULL_INSTALL.ps1","INSTALL_PHASER360_AUDIO.cmd",
             "RESTORE_PHASER360_AUDIO.cmd",
