@@ -105,6 +105,22 @@ p360_telemetry_reset(_In_ ULONG BuildFlags)
     if (!NT_SUCCESS(status)) return status;
     status=p360_telemetry_write_dword(L"FailureReason",0);
     if (!NT_SUCCESS(status)) return status;
+    status=p360_telemetry_write_dword(L"LoaderPhase",0);
+    if (!NT_SUCCESS(status)) return status;
+    status=p360_telemetry_write_dword(L"LoaderError",0);
+    if (!NT_SUCCESS(status)) return status;
+    status=p360_telemetry_write_dword(L"LoaderCleanupError",0);
+    if (!NT_SUCCESS(status)) return status;
+    status=p360_telemetry_write_dword(L"EntryAdspcs",0);
+    if (!NT_SUCCESS(status)) return status;
+    status=p360_telemetry_write_dword(L"NormalizedAdspcs",0);
+    if (!NT_SUCCESS(status)) return status;
+    status=p360_telemetry_write_dword(L"FinalAdspcs",0);
+    if (!NT_SUCCESS(status)) return status;
+    status=p360_telemetry_write_dword(L"RomStatus",0);
+    if (!NT_SUCCESS(status)) return status;
+    status=p360_telemetry_write_dword(L"RomError",0);
+    if (!NT_SUCCESS(status)) return status;
     status=p360_telemetry_write_dword(L"LastNtStatus",0);
     if (!NT_SUCCESS(status)) return status;
     status=p360_telemetry_write_dword(L"PrepareStep",P360_PREP_STEP_NONE);
@@ -179,4 +195,38 @@ p360_telemetry_result(
     return p360_telemetry_write_dword(
         L"LastNtStatus",
         (ULONG)Status);
+}
+
+
+NTSTATUS
+p360_telemetry_loader(
+    ULONG Phase,
+    LONG LoaderError,
+    LONG CleanupError,
+    ULONG EntryAdspcs,
+    ULONG NormalizedAdspcs,
+    ULONG FinalAdspcs,
+    ULONG RomStatus,
+    ULONG RomError)
+{
+    NTSTATUS status;
+
+#define P360_WRITE_LOADER_DWORD(_name,_value)                     \
+    do {                                                           \
+        status=p360_telemetry_write_dword((_name),(ULONG)(_value));\
+        if (!NT_SUCCESS(status))                                   \
+            return status;                                         \
+    } while (0)
+
+    P360_WRITE_LOADER_DWORD(L"LoaderPhase",Phase);
+    P360_WRITE_LOADER_DWORD(L"LoaderError",LoaderError);
+    P360_WRITE_LOADER_DWORD(L"LoaderCleanupError",CleanupError);
+    P360_WRITE_LOADER_DWORD(L"EntryAdspcs",EntryAdspcs);
+    P360_WRITE_LOADER_DWORD(L"NormalizedAdspcs",NormalizedAdspcs);
+    P360_WRITE_LOADER_DWORD(L"FinalAdspcs",FinalAdspcs);
+    P360_WRITE_LOADER_DWORD(L"RomStatus",RomStatus);
+    P360_WRITE_LOADER_DWORD(L"RomError",RomError);
+
+#undef P360_WRITE_LOADER_DWORD
+    return STATUS_SUCCESS;
 }
