@@ -85,6 +85,7 @@
     <ClCompile Include="..\src\p360_cs_boot.c" />
     <ClCompile Include="..\src\p360_cs_runtime.c" />
     <ClCompile Include="..\src\p360_csaudio.c" />
+    <ClCompile Include="..\src\p360_playback.c" />
     <ClCompile Include="..\src\p360_firmware.c" />
     <ClCompile Include="..\src\p360_telemetry.c" />
     <ClCompile Include="..\src\p360_portcls_bridge.cpp" />
@@ -114,6 +115,7 @@
     <ClInclude Include="..\include\p360_cs_boot.h" />
     <ClInclude Include="..\include\p360_cs_runtime.h" />
     <ClInclude Include="..\include\p360_csaudio.h" />
+    <ClInclude Include="..\include\p360_playback.h" />
     <ClInclude Include="..\include\p360_firmware.h" />
     <ClInclude Include="..\include\p360_telemetry.h" />
     <ClInclude Include="..\include\p360_portcls_bridge.h" />
