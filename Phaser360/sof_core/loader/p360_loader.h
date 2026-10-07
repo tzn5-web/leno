@@ -42,9 +42,10 @@ int p360_bdl_build(const struct p360_dma_span *spans, size_t span_count,
 /* Hardware adapter contract, NOT IMPLEMENTED by the current read-only FDO.
  * Caller serializes the engine at PASSIVE_LEVEL and holds D0/removal exclusion.
  * All callbacks must finish within their own bounded hardware deadlines.
- * acquire() must validate the PCI identity, exclusively own controller/stream,
- * drain ISR/DPC/IPC, verify every SSP/DAI/link DMA inactive, mask IPC interrupts
- * and journal only owned PCI PGCTL/CGCTL bits. A live existing stack must fail.
+ * acquire() must validate the PCI identity and hold the parent controller in D0.
+ * Once this child driver owns the ADSP PDO, a stale powered-core state is
+ * normalized with the Linux HDA/SOF stall -> reset -> power-down sequence and
+ * must prove CPA=0 before DMA preparation. No second ADSP child owner is allowed.
  * prepare() uses independently owned WDM common buffers, copies ONLY view.payload, builds BDL,
  * programs HDA stream + SPIB in DSP-decoupled mode, with link RUN never set.
  * No codec verbs, topology, SSP writes or speaker commands are permitted.
@@ -83,6 +84,7 @@ struct p360_loader_result {
     enum p360_loader_phase phase;
     int error, cleanup_error;
     uint32_t rom_status, rom_error, adspcs;
+    uint32_t entry_adspcs, normalized_adspcs;
     uint64_t boot_epoch;
     int ready_proved, resources_retained;
 };
