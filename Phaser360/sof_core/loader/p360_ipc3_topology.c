@@ -50,6 +50,30 @@ int p360_ipc3_speaker_ids_validate(const struct p360_ipc3_speaker_ids *ids)
         P360_IPC3_TOPOLOGY_RANGE;
 }
 
+static int playback_ids_distinct(const struct p360_ipc3_playback_ids *ids)
+{
+    const uint32_t v[5]={ids->pipeline_id,ids->host_id,ids->buffer_id,
+        ids->dai_id,ids->pipe_comp_id};
+    size_t i,j;
+    for (i=0;i<5;++i) {
+        if (!v[i])
+            return 0;
+        for (j=0;j<i;++j)
+            if (v[i]==v[j])
+                return 0;
+    }
+    return 1;
+}
+
+int p360_ipc3_playback_ids_validate(const struct p360_ipc3_playback_ids *ids)
+{
+    if (!ids)
+        return P360_IPC3_TOPOLOGY_ARGUMENT;
+    return playback_ids_distinct(ids) ?
+        P360_IPC3_TOPOLOGY_OK :
+        P360_IPC3_TOPOLOGY_RANGE;
+}
+
 int p360_ipc3_ssp1_profile_validate(const struct p360_ipc3_ssp1_profile *p)
 {
     uint64_t expected_bclk;
@@ -115,6 +139,31 @@ static void put_config(uint8_t *d,uint32_t periods_sink,
     put32(d+32,0u);
 }
 
+int p360_ipc3_build_host_new(struct p360_ipc3_message *out,
+    const struct p360_ipc3_playback_ids *ids)
+{
+    uint8_t *d;
+
+    if (!out || p360_ipc3_playback_ids_validate(ids))
+        return P360_IPC3_TOPOLOGY_ARGUMENT;
+
+    zero_message(out);
+    d=out->data;
+
+    put_comp(d,P360_IPC3_HOST_NEW_BYTES,ids->host_id,
+        P360_IPC3_COMP_HOST,ids->pipeline_id);
+    /*
+     * Upstream pipe-host-playback.m4: playback HOST has two sink periods,
+     * zero source periods and is scheduled by the host DMA.
+     */
+    put_config(d+28,2u,0u,P360_IPC3_FRAME_S16_LE);
+    put32(d+64,P360_IPC3_STREAM_PLAYBACK);
+    put32(d+68,0u); /* no_irq: keep normal DMA scheduling */
+    put32(d+72,0u); /* dmac_config: platform default */
+    out->bytes=P360_IPC3_HOST_NEW_BYTES;
+    return P360_IPC3_TOPOLOGY_OK;
+}
+
 int p360_ipc3_build_tone_new(struct p360_ipc3_message *out,
     const struct p360_ipc3_speaker_ids *ids,uint32_t sample_rate)
 {
@@ -174,6 +223,34 @@ int p360_ipc3_build_dai_new(struct p360_ipc3_message *out,
     return P360_IPC3_TOPOLOGY_OK;
 }
 
+int p360_ipc3_build_playback_pipe_new(struct p360_ipc3_message *out,
+    const struct p360_ipc3_playback_ids *ids,uint32_t period_us,
+    uint32_t frames_per_sched)
+{
+    uint8_t *d;
+
+    if (!out || p360_ipc3_playback_ids_validate(ids) ||
+        period_us!=1000u || frames_per_sched!=48u)
+        return P360_IPC3_TOPOLOGY_ARGUMENT;
+
+    zero_message(out);
+    d=out->data;
+    put32(d,P360_IPC3_PIPE_NEW_BYTES);
+    put32(d+4,P360_IPC3_GLB_TPLG_MSG|P360_IPC3_TPLG_PIPE_NEW);
+    put32(d+8,ids->pipe_comp_id);
+    put32(d+12,ids->pipeline_id);
+    put32(d+16,ids->host_id);
+    put32(d+20,0u);
+    put32(d+24,period_us);
+    put32(d+28,0u);
+    put32(d+32,0u);
+    put32(d+36,frames_per_sched);
+    put32(d+40,0u);
+    put32(d+44,P360_IPC3_TIME_DMA);
+    out->bytes=P360_IPC3_PIPE_NEW_BYTES;
+    return P360_IPC3_TOPOLOGY_OK;
+}
+
 int p360_ipc3_build_pipe_new(struct p360_ipc3_message *out,
     const struct p360_ipc3_speaker_ids *ids,uint32_t period_us,
     uint32_t frames_per_sched)
@@ -225,6 +302,82 @@ int p360_ipc3_build_pipe_complete(struct p360_ipc3_message *out,
     put32(out->data+4,P360_IPC3_GLB_TPLG_MSG|P360_IPC3_TPLG_PIPE_DONE);
     put32(out->data+8,ids->pipe_comp_id);
     out->bytes=P360_IPC3_PIPE_READY_BYTES;
+    return P360_IPC3_TOPOLOGY_OK;
+}
+
+int p360_ipc3_build_host_pcm_params(struct p360_ipc3_message *out,
+    uint32_t comp_id,uint32_t page_table_phys,uint32_t pages,
+    uint32_t buffer_bytes,uint32_t period_bytes,uint16_t stream_tag,
+    uint32_t sample_rate,uint16_t channels)
+{
+    uint8_t *d;
+
+    if (!out || !comp_id || !page_table_phys || !pages ||
+        !buffer_bytes || !period_bytes || period_bytes>buffer_bytes ||
+        (buffer_bytes % period_bytes)!=0 ||
+        !stream_tag || stream_tag>15u ||
+        sample_rate!=P360_SAMPLE_RATE ||
+        channels!=P360_SPEAKER_CHANNELS)
+        return P360_IPC3_TOPOLOGY_ARGUMENT;
+
+    zero_message(out);
+    d=out->data;
+
+    put32(d,P360_IPC3_PCM_PARAMS_BYTES);
+    put32(d+4,P360_IPC3_GLB_STREAM_MSG|P360_IPC3_STREAM_PCM_PARAMS);
+    put32(d+8,comp_id);
+    put32(d+12,0u);
+    put32(d+16,0u);
+    put32(d+20,0u);
+
+    put32(d+24,84u);
+
+    /* struct sof_ipc_host_buffer */
+    put32(d+28,28u);
+    put32(d+32,page_table_phys);
+    put32(d+36,pages);
+    put32(d+40,buffer_bytes);
+    put32(d+44,0u);
+    put32(d+48,0u);
+    put32(d+52,0u);
+
+    put32(d+56,P360_IPC3_STREAM_PLAYBACK);
+    put32(d+60,P360_IPC3_FRAME_S16_LE);
+    put32(d+64,P360_IPC3_BUFFER_INTERLEAVED);
+    put32(d+68,sample_rate);
+    put16(d+72,stream_tag);
+    put16(d+74,channels);
+    put16(d+76,2u);
+    put16(d+78,2u);
+    put32(d+80,period_bytes);
+
+    /*
+     * Position comes from the CoolStar HDA position buffer through
+     * StreamPosition(), so suppress periodic SOF position IPCs.
+     */
+    put16(d+84,1u);
+    d[86]=0u;
+    d[87]=0u;
+    put16(d+88,0u);
+    put16(d+90,0u);
+    put16(d+92,P360_IPC3_CHMAP_FL);
+    put16(d+94,P360_IPC3_CHMAP_FR);
+
+    out->bytes=P360_IPC3_PCM_PARAMS_BYTES;
+    return P360_IPC3_TOPOLOGY_OK;
+}
+
+int p360_ipc3_build_pcm_free(struct p360_ipc3_message *out,
+    uint32_t comp_id)
+{
+    if (!out || !comp_id)
+        return P360_IPC3_TOPOLOGY_ARGUMENT;
+
+    zero_message(out);
+    put32(out->data,P360_IPC3_STREAM_BYTES);
+    put32(out->data+4,P360_IPC3_GLB_STREAM_MSG|P360_IPC3_STREAM_PCM_FREE);
+    put32(out->data+8,comp_id);
+    out->bytes=P360_IPC3_STREAM_BYTES;
     return P360_IPC3_TOPOLOGY_OK;
 }
 
