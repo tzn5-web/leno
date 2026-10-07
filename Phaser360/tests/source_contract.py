@@ -632,11 +632,16 @@ for token in (
 if "tests/ipc3_topology_regression.c" not in run_b4:
     raise SystemExit("IPC3 speaker topology regression is not in the B4 gate")
 
+for pattern, label in (
+    (r"#define\s+P360_IPC3_TONE_CONTROL_BYTES\s+140u\b", "Tone control size=140"),
+    (r"#define\s+P360_IPC3_CTRL_TYPE_DATA_SET\s+5u\b", "SOF DATA_SET type=5"),
+    (r"#define\s+P360_IPC3_TONE_HALF_PERCENT_Q1_31\s+10737418u\b", "Tone gain=0.5%"),
+    (r"#define\s+P360_IPC3_TONE_TWO_SECONDS_BLOCKS\s+16000u\b", "Tone length=16000x125us"),
+):
+    if not re.search(pattern, ipc3_topology_h):
+        raise SystemExit(f"SOF 1.9.3 low-volume Tone control ABI missing: {label}")
+
 for token in (
-    "#define P360_IPC3_TONE_CONTROL_BYTES   140u",
-    "#define P360_IPC3_CTRL_TYPE_DATA_SET 5u",
-    "#define P360_IPC3_TONE_HALF_PERCENT_Q1_31 10737418u",
-    "#define P360_IPC3_TONE_TWO_SECONDS_BLOCKS  16000u",
     "put32(d+16,P360_IPC3_CTRL_TYPE_DATA_SET);",
     "put32(d+20,P360_IPC3_CTRL_CMD_ENUM);",
     "P360_IPC3_TONE_IDX_AMPLITUDE",
@@ -645,7 +650,7 @@ for token in (
     "put32(d+100,(uint32_t)channels * 8u)",
     "put32(d+104,P360_IPC3_SOF_ABI_3_20_0)",
 ):
-    if token not in (ipc3_topology_h + "\n" + ipc3_topology):
+    if token not in ipc3_topology:
         raise SystemExit(f"SOF 1.9.3 low-volume Tone control ABI missing: {token}")
 
 for token in (
