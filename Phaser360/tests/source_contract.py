@@ -309,7 +309,7 @@ runner=(ROOT/"tools/P360_AUDIO_GATE.ps1").read_text()
 runner_readme=(ROOT/"tools/P360_AUDIO_GATE_README.txt").read_text()
 
 for token in (
-    'ValidateSet("Audit","PreAudio","BoundedSpeaker","Restore")',
+    'ValidateSet("Audit","PreAudio","BoundedSpeaker","Audio","Restore")',
     "ExpectedFirmwareBytes = 246528",
     "f68694b6197250016a9c5ffb46fa8adaa599a32db95aa19a0ecf5bd4ed1c62ab",
     "ExpectedFlags 3 -MinimumStage 50",
@@ -339,6 +339,10 @@ for token in (
     "Assert-PreAudioProof",
     "PREAUDIO_GATE=PASS",
     "SPEAKER_GATE=PASS",
+    "AUDIO_PHASE_SWITCH=BEGIN",
+    "PREAUDIO_STOP_PROOF=PASS",
+    "AUDIO_STOP_PROOF=PASS",
+    "AUDIO_GATE=PASS",
     "NO_AUTO_REBOOT=YES",
 ):
     if token not in runner:
