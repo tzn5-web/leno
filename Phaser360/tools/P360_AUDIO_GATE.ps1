@@ -181,11 +181,24 @@ function Resolve-Firmware([string]$Requested) {
         return $resolved
     }
 
+    $knownFirmware = @(
+        "D:\PHASER360_WORK\continuation_20261005\v10_17R_original\firmware\sof-apl.ri",
+        "D:\PHASER360_WORK\continuation_20261005\v10_17R2_local\firmware\sof-apl.ri",
+        "D:\PHASER360_WORK\v10_8C_local_build_audit\firmware\sof-apl.ri"
+    )
+    foreach ($candidate in $knownFirmware) {
+        if (Test-FirmwareFile $candidate) {
+            Write-RunLog "FIRMWARE_AUTO_FOUND=$candidate"
+            return $candidate
+        }
+    }
+
     $roots = @(
         $PackageRoot,
         (Split-Path -Parent $PackageRoot),
         [Environment]::GetFolderPath("Desktop"),
-        (Join-Path $env:USERPROFILE "Downloads")
+        (Join-Path $env:USERPROFILE "Downloads"),
+        "D:\PHASER360_WORK"
     ) | Select-Object -Unique
 
     foreach ($root in $roots) {
