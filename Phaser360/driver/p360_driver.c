@@ -1474,8 +1474,13 @@ p360_host_prepare(
 
 cleanup:
     if (ctx->CsAudioInitialized) {
-        p360_csaudio_close(&ctx->CsAudio);
-        ctx->CsAudioInitialized=FALSE;
+        NTSTATUS cleanupStatus=
+            p360_csaudio_close(&ctx->CsAudio);
+        if (!NT_SUCCESS(cleanupStatus)) {
+            status=cleanupStatus;
+        } else {
+            ctx->CsAudioInitialized=FALSE;
+        }
     }
 
     if (ctx->RuntimeInitialized) {
@@ -1544,7 +1549,9 @@ p360_host_release(
      * CSAudio endpoint requests.
      */
     if (ctx->CsAudioInitialized) {
-        p360_csaudio_close(&ctx->CsAudio);
+        status=p360_csaudio_close(&ctx->CsAudio);
+        if (!NT_SUCCESS(status))
+            return status;
         ctx->CsAudioInitialized=FALSE;
     }
 
