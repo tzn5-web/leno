@@ -193,6 +193,12 @@ if not re.search(r"#define\s+P360_SPEAKER_ENDPOINT_ENABLED\s+0\b", driver_h):
 if not re.search(r"#define\s+P360_TONE_TOPOLOGY_PROOF_ENABLED\s+0\b", driver_h):
     raise SystemExit("hostless Tone topology proof barrier is not closed by default")
 
+if not re.search(r"#define\s+P360_BOUNDED_TONE_TEST_ENABLED\s+0\b", driver_h):
+    raise SystemExit("bounded Tone test barrier is not closed by default")
+
+if "#define P360_BOUNDED_TONE_DURATION_MS 250u" not in driver_h:
+    raise SystemExit("bounded Tone duration drifted from reviewed 250 ms proof")
+
 for token in (
     "#ifndef P360_ENABLE_INTERNAL_SPEAKER",
     "#define P360_ENABLE_INTERNAL_SPEAKER 0",
@@ -273,6 +279,7 @@ for token in (
     "P360_SPEAKER_ENDPOINT_ENABLED=$(P360SpeakerEndpointEnabled)",
     "P360_TONE_TOPOLOGY_PROOF_ENABLED=$(P360ToneTopologyProofEnabled)",
     "P360_ENABLE_INTERNAL_SPEAKER=$(P360InternalSpeakerEnabled)",
+    "P360_BOUNDED_TONE_TEST_ENABLED=$(P360BoundedToneTestEnabled)",
 ):
     if token not in project:
         raise SystemExit(f"staged audio build gate is not parameterized: {token}")
@@ -285,8 +292,11 @@ for token in (
     "/p:P360IpcProbeEnabled=1",
     "/p:P360SpeakerEndpointEnabled=1",
     "/p:P360ToneTopologyProofEnabled=1",
+    "/p:P360InternalSpeakerEnabled=1",
+    "/p:P360BoundedToneTestEnabled=1",
     "P360SofAudio-portcls-shell.sys",
     "PORTCLS_TONE_TOPOLOGY_PROOF_COMPILE=PASS",
+    "PORTCLS_BOUNDED_TONE_TEST_COMPILE=PASS",
     "PORTCLS_SPEAKER_ENDPOINT_COMPILE=PASS",
     "PORTCLS_SOF_BOOT_COMPILE=PASS",
     "PORTCLS_SOF_IPC3_PROOF_COMPILE=PASS",
@@ -441,12 +451,53 @@ for token in (
     if token not in runtime_h + "\n" + runtime:
         raise SystemExit(f"generic serialized IPC3 runtime path missing: {token}")
 
+bounded_begin=driver.find("#if P360_BOUNDED_TONE_TEST_ENABLED")
+bounded_end=driver.find(
+    "#endif\n\nstatic NTSTATUS\np360_loader_status_to_ntstatus",
+    bounded_begin)
+if bounded_begin < 0 or bounded_end < 0:
+    raise SystemExit("bounded speaker proof block is missing")
+bounded_block=driver[bounded_begin:bounded_end]
+
 for forbidden in (
     "p360_ipc3_build_stream_trigger(",
     "p360_csaudio_speaker_start(",
 ):
-    if forbidden in driver:
-        raise SystemExit(f"pre-audio topology proof crossed the audio-start barrier: {forbidden}")
+    if driver.count(forbidden) != bounded_block.count(forbidden):
+        raise SystemExit(
+            f"audio-start primitive escaped bounded speaker gate: {forbidden}")
+
+for token in (
+    "ctx->BoundedToneConsumed=TRUE;",
+    "p360_ipc3_build_stream_trigger(",
+    "p360_state_speaker_arm(&ctx->State)",
+    "p360_csaudio_speaker_start(&ctx->CsAudio)",
+    "P360_BOUNDED_TONE_DURATION_MS",
+    "KeDelayExecutionThread(",
+    "p360_csaudio_speaker_stop(&ctx->CsAudio)",
+    "p360_state_speaker_disarm(&ctx->State)",
+):
+    if token not in bounded_block:
+        raise SystemExit(f"bounded speaker proof contract missing: {token}")
+
+if bounded_block.count("p360_ipc3_build_stream_trigger(") != 2:
+    raise SystemExit("bounded speaker proof must contain exactly START and STOP triggers")
+
+bounded_start_i=bounded_block.index("p360_ipc3_build_stream_trigger(")
+bounded_arm_i=bounded_block.index("p360_state_speaker_arm(&ctx->State)")
+bounded_amp_start_i=bounded_block.index("p360_csaudio_speaker_start(&ctx->CsAudio)")
+bounded_delay_i=bounded_block.index("KeDelayExecutionThread(")
+bounded_amp_stop_i=bounded_block.index("p360_csaudio_speaker_stop(&ctx->CsAudio)")
+bounded_disarm_i=bounded_block.index("p360_state_speaker_disarm(&ctx->State)")
+bounded_stop_i=bounded_block.index(
+    "p360_ipc3_build_stream_trigger(",
+    bounded_start_i + 1)
+if not (
+    bounded_start_i < bounded_arm_i < bounded_amp_start_i <
+    bounded_delay_i < bounded_amp_stop_i < bounded_disarm_i <
+    bounded_stop_i
+):
+    raise SystemExit("bounded speaker START/STOP safety ordering drifted")
 
 if "ctx->State.speaker_policy_enabled=" not in driver or    "P360_ENABLE_INTERNAL_SPEAKER ? 1u : 0u" not in driver:
     raise SystemExit("speaker policy state is not bound to the explicit compile barrier")
@@ -558,8 +609,8 @@ if not (
 ):
     raise SystemExit("host release no longer proves runtime -> boot -> bus teardown ordering")
 
-if "p360_csaudio_speaker_start(" in driver:
-    raise SystemExit("speaker START wired before topology/audio-core activation gate")
+if "ctx->BoundedToneConsumed=FALSE;" not in driver:
+    raise SystemExit("bounded Tone one-shot latch is not reset on hardware prepare")
 
 endpoint_uninstall_i=portcls_shell.index("p360_speaker_endpoint_uninstall(")
 endpoint_d0_exit_i=portcls_shell.index("p360_host_d0_exit(ctx);", endpoint_uninstall_i)
