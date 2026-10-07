@@ -108,8 +108,12 @@ jobs:
           $h = Get-FileHash $sys -Algorithm SHA256
           Write-Host "PORTCLS_SOF_IPC3_PROOF_COMPILE=PASS"
           Write-Host "SHA256=$($h.Hash)"
-          Remove-Item $sys -Force
+          Copy-Item $sys "Phaser360\driver\out\Release\P360SofAudio-preaudio-ipc3.sys" -Force
           $pdb = "Phaser360\driver\out\Release\P360SofAudio.pdb"
+          if (Test-Path $pdb) {
+            Copy-Item $pdb "Phaser360\driver\out\Release\P360SofAudio-preaudio-ipc3.pdb" -Force
+          }
+          Remove-Item $sys -Force
           if (Test-Path $pdb) { Remove-Item $pdb -Force }
 
       - name: Compile hostless Tone topology proof
@@ -192,6 +196,8 @@ jobs:
             Phaser360/driver/out/Release/P360SofAudio-kmdf-baseline.pdb
             Phaser360/driver/out/Release/P360SofAudio-portcls-shell.sys
             Phaser360/driver/out/Release/P360SofAudio-portcls-shell.pdb
+            Phaser360/driver/out/Release/P360SofAudio-preaudio-ipc3.sys
+            Phaser360/driver/out/Release/P360SofAudio-preaudio-ipc3.pdb
             Phaser360/driver/out/Release/P360SofAudio-bounded-tone-test.sys
             Phaser360/driver/out/Release/P360SofAudio-bounded-tone-test.pdb
             Phaser360/driver/P360SofAudio.inx
