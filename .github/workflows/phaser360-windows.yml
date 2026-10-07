@@ -4,12 +4,17 @@ on:
   push:
     branches:
       - phaser360-sof-windows-port
+      - codex/phaser360-final-build-audit
     paths:
       - "Phaser360/**"
       - ".github/workflows/phaser360-windows.yml"
+      - ".gitattributes"
   pull_request:
     paths:
       - "Phaser360/**"
+
+permissions:
+  contents: read
 
 jobs:
   audit-core:
@@ -55,6 +60,7 @@ jobs:
         shell: pwsh
         run: |
           nuget restore Phaser360\packages.config -PackagesDirectory Phaser360\packages -NonInteractive -Verbosity detailed
+          if ($LASTEXITCODE -ne 0) { throw "Pinned WDK/SDK restore failed: $LASTEXITCODE" }
 
           $required = @(
             "Phaser360\packages\Microsoft.Windows.WDK.x64.10.0.26100.6584\build\native\Microsoft.Windows.WDK.x64.props",
@@ -72,6 +78,7 @@ jobs:
         shell: pwsh
         run: |
           msbuild Phaser360\driver\P360SofAudio.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /p:P360PortClsShellEnabled=0 /p:P360RuntimeBootEnabled=0 /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "KMDF baseline compilation failed: $LASTEXITCODE" }
           Copy-Item Phaser360\driver\out\Release\P360SofAudio.sys Phaser360\driver\out\Release\P360SofAudio-kmdf-baseline.sys -Force
           Copy-Item Phaser360\driver\out\Release\P360SofAudio.pdb Phaser360\driver\out\Release\P360SofAudio-kmdf-baseline.pdb -Force
 
@@ -79,6 +86,7 @@ jobs:
         shell: pwsh
         run: |
           msbuild Phaser360\driver\P360SofAudio.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /p:P360PortClsShellEnabled=1 /p:P360RuntimeBootEnabled=0 /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "PortCls shell compilation failed: $LASTEXITCODE" }
           Copy-Item Phaser360\driver\out\Release\P360SofAudio.sys Phaser360\driver\out\Release\P360SofAudio-portcls-shell.sys -Force
           Copy-Item Phaser360\driver\out\Release\P360SofAudio.pdb Phaser360\driver\out\Release\P360SofAudio-portcls-shell.pdb -Force
 
@@ -86,6 +94,7 @@ jobs:
         shell: pwsh
         run: |
           msbuild Phaser360\driver\P360SofAudio.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /p:P360PortClsShellEnabled=1 /p:P360RuntimeBootEnabled=1 /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "SOF boot compilation failed: $LASTEXITCODE" }
           $sys = "Phaser360\driver\out\Release\P360SofAudio.sys"
           if (-not (Test-Path $sys)) {
             throw "PortCls+SOF boot compile did not produce P360SofAudio.sys"
@@ -93,14 +102,15 @@ jobs:
           $h = Get-FileHash $sys -Algorithm SHA256
           Write-Host "PORTCLS_SOF_BOOT_COMPILE=PASS"
           Write-Host "SHA256=$($h.Hash)"
-          Remove-Item $sys -Force
+          Copy-Item $sys Phaser360\driver\out\Release\P360SofAudio-sof-boot.sys -Force
           $pdb = "Phaser360\driver\out\Release\P360SofAudio.pdb"
-          if (Test-Path $pdb) { Remove-Item $pdb -Force }
+          Copy-Item $pdb Phaser360\driver\out\Release\P360SofAudio-sof-boot.pdb -Force
 
       - name: Compile pre-audio IPC3 proof path
         shell: pwsh
         run: |
           msbuild Phaser360\driver\P360SofAudio.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /p:P360PortClsShellEnabled=1 /p:P360RuntimeBootEnabled=1 /p:P360IpcProbeEnabled=1 /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "IPC3 proof compilation failed: $LASTEXITCODE" }
           $sys = "Phaser360\driver\out\Release\P360SofAudio.sys"
           if (-not (Test-Path $sys)) {
             throw "PortCls+SOF+IPC3 proof compile did not produce P360SofAudio.sys"
@@ -108,14 +118,15 @@ jobs:
           $h = Get-FileHash $sys -Algorithm SHA256
           Write-Host "PORTCLS_SOF_IPC3_PROOF_COMPILE=PASS"
           Write-Host "SHA256=$($h.Hash)"
-          Remove-Item $sys -Force
+          Copy-Item $sys Phaser360\driver\out\Release\P360SofAudio-ipc3-proof.sys -Force
           $pdb = "Phaser360\driver\out\Release\P360SofAudio.pdb"
-          if (Test-Path $pdb) { Remove-Item $pdb -Force }
+          Copy-Item $pdb Phaser360\driver\out\Release\P360SofAudio-ipc3-proof.pdb -Force
 
       - name: Compile speaker endpoint shell
         shell: pwsh
         run: |
           msbuild Phaser360\driver\P360SofAudio.vcxproj /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /p:P360PortClsShellEnabled=1 /p:P360RuntimeBootEnabled=1 /p:P360IpcProbeEnabled=1 /p:P360SpeakerEndpointEnabled=1 /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "Speaker endpoint compilation failed: $LASTEXITCODE" }
           $sys = "Phaser360\driver\out\Release\P360SofAudio.sys"
           if (-not (Test-Path $sys)) {
             throw "PortCls+SOF+IPC3+speaker endpoint compile did not produce P360SofAudio.sys"
@@ -123,16 +134,19 @@ jobs:
           $h = Get-FileHash $sys -Algorithm SHA256
           Write-Host "PORTCLS_SPEAKER_ENDPOINT_COMPILE=PASS"
           Write-Host "SHA256=$($h.Hash)"
-          Remove-Item $sys -Force
+          Copy-Item $sys Phaser360\driver\out\Release\P360SofAudio-speaker-endpoint.sys -Force
           $pdb = "Phaser360\driver\out\Release\P360SofAudio.pdb"
-          if (Test-Path $pdb) { Remove-Item $pdb -Force }
+          Copy-Item $pdb Phaser360\driver\out\Release\P360SofAudio-speaker-endpoint.pdb -Force
 
       - name: Prove driver images exist
         shell: pwsh
         run: |
           $images = @(
             "Phaser360\driver\out\Release\P360SofAudio-kmdf-baseline.sys",
-            "Phaser360\driver\out\Release\P360SofAudio-portcls-shell.sys"
+            "Phaser360\driver\out\Release\P360SofAudio-portcls-shell.sys",
+            "Phaser360\driver\out\Release\P360SofAudio-sof-boot.sys",
+            "Phaser360\driver\out\Release\P360SofAudio-ipc3-proof.sys",
+            "Phaser360\driver\out\Release\P360SofAudio-speaker-endpoint.sys"
           )
 
           foreach ($sys in $images) {
@@ -149,6 +163,50 @@ jobs:
             Write-Host "SHA256=$($h.Hash)"
           }
 
+      - name: Record diagnostic build provenance
+        shell: pwsh
+        run: |
+          $buildProfiles = @(
+            @{ name = "kmdf-baseline"; portcls = 0; boot = 0; ipcProof = 0; speakerEndpoint = 0 },
+            @{ name = "portcls-shell"; portcls = 1; boot = 0; ipcProof = 0; speakerEndpoint = 0 },
+            @{ name = "sof-boot"; portcls = 1; boot = 1; ipcProof = 0; speakerEndpoint = 0 },
+            @{ name = "ipc3-proof"; portcls = 1; boot = 1; ipcProof = 1; speakerEndpoint = 0 },
+            @{ name = "speaker-endpoint"; portcls = 1; boot = 1; ipcProof = 1; speakerEndpoint = 1 }
+          )
+          $buildFiles = foreach ($profile in $buildProfiles) {
+            foreach ($extension in @("sys", "pdb")) {
+              $name = "P360SofAudio-$($profile.name).$extension"
+              $path = "Phaser360\driver\out\Release\$name"
+              $file = Get-Item -LiteralPath $path -ErrorAction Stop
+              @{
+                name = $name
+                bytes = $file.Length
+                sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+                profile = $profile
+              }
+            }
+          }
+          @{
+            schemaVersion = 1
+            sourceCommit = $env:GITHUB_SHA
+            sourceRef = $env:GITHUB_REF
+            runUrl = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+            sdkWdkVersion = "10.0.26100.6584"
+            configuration = "Release"
+            platform = "x64"
+            signed = $false
+            installablePackage = $false
+            playbackImplemented = $false
+            hardwareValidated = $false
+            internalSpeakerPolicy = 0
+            toneTopologyProofEnabled = 0
+            firmwareIncluded = $false
+            files = @($buildFiles)
+          } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath Phaser360\driver\out\Release\build-manifest.json -Encoding utf8
+          Copy-Item Phaser360\docs\BUILD_STATUS.md Phaser360\driver\out\Release\BUILD_STATUS.md
+          Copy-Item Phaser360\firmware\P360_FIRMWARE_MANIFEST.txt Phaser360\driver\out\Release\P360_FIRMWARE_MANIFEST.txt
+          Copy-Item Phaser360\driver\P360SofAudio.inx Phaser360\driver\out\Release\P360SofAudio.inx
+
       - name: Upload unsigned compile artifact
         uses: actions/upload-artifact@v4
         with:
@@ -158,4 +216,14 @@ jobs:
             Phaser360/driver/out/Release/P360SofAudio-kmdf-baseline.pdb
             Phaser360/driver/out/Release/P360SofAudio-portcls-shell.sys
             Phaser360/driver/out/Release/P360SofAudio-portcls-shell.pdb
+            Phaser360/driver/out/Release/P360SofAudio-sof-boot.sys
+            Phaser360/driver/out/Release/P360SofAudio-sof-boot.pdb
+            Phaser360/driver/out/Release/P360SofAudio-ipc3-proof.sys
+            Phaser360/driver/out/Release/P360SofAudio-ipc3-proof.pdb
+            Phaser360/driver/out/Release/P360SofAudio-speaker-endpoint.sys
+            Phaser360/driver/out/Release/P360SofAudio-speaker-endpoint.pdb
+            Phaser360/driver/out/Release/build-manifest.json
+            Phaser360/driver/out/Release/BUILD_STATUS.md
+            Phaser360/driver/out/Release/P360_FIRMWARE_MANIFEST.txt
+            Phaser360/driver/out/Release/P360SofAudio.inx
           if-no-files-found: error

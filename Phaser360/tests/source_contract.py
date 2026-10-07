@@ -122,11 +122,68 @@ for token in (
 
 for token in (
     "stream=image+0xa0",
-    "Stable(io,ctx,P360_DSP_UPBOX,reply,d->expected_reply_bytes)",
+    "Stable(io,ctx,P360_HOST_DOWNBOX,reply,size)",
     "Stable(io,ctx,P360_STREAM_BOX,position,76)",
 ):
     if token not in dispatch:
         raise SystemExit(f"dispatcher mailbox routing contract missing: {token}")
+
+# SOF IPC3 command replies share HOST_DOWNBOX with requests. A stable bounded
+# header permits a generic negative reply for failed structured commands;
+# successful NEW/PCM_PARAMS replies must match their 20-byte exact contract.
+# All validation must finish before the hardware ACK.
+for token in (
+    "uint8_t reply[20],position[76]",
+    "uint8_t header[12],other[12]",
+    "io->copy(ctx,P360_HOST_DOWNBOX,header,sizeof(header))",
+    "io->copy(ctx,P360_HOST_DOWNBOX,other,sizeof(other))",
+    "if(size!=12u && size!=20u) return -1",
+    "if(header[i]!=reply[i]) return -1",
+    "(d->expected_reply_bytes!=12u && d->expected_reply_bytes!=20u)",
+    "ReadReply(io,ctx,reply,&reply_bytes)",
+    "generic_reply=reply_bytes==12u && U32(reply+4)==0x10000000u",
+    "if(!d->expected_generic && Signed32(U32(reply+8))>=0)",
+    "if(d->expected_generic || reply_bytes!=20u",
+    "U32(reply+4)!=d->expected_reply_cmd",
+    "d->expected_reply_bytes!=20u",
+    "d->expected_reply_cmd!=0x60010000u",
+    "!TopologyNewCommand(d->expected_reply_cmd)",
+    "U32(reply+8)!=0",
+    "U32(reply+12)!=d->expected_comp_id",
+    "if(TopologyNewCommand(d->expected_reply_cmd) && U32(reply+16)!=0)",
+    "if(generic_reply)",
+    "CompleteStructured(&next,reply,reply_bytes)",
+):
+    if token not in dispatch:
+        raise SystemExit(f"IPC3 exact reply contract missing: {token}")
+
+process_i=dispatch.index("int p360_dispatch_process(")
+reply_read_i=dispatch.index(
+    "ReadReply(io,ctx,reply,&reply_bytes)", process_i)
+reply_command_i=dispatch.index("U32(reply+4)!=d->expected_reply_cmd", reply_read_i)
+reply_component_i=dispatch.index("U32(reply+12)!=d->expected_comp_id", reply_command_i)
+structured_complete_i=dispatch.index(
+    "CompleteStructured(&next,reply,reply_bytes)", reply_component_i)
+finish_i=dispatch.index("if(io->finish(ctx,e))", structured_complete_i)
+publish_i=dispatch.index("d->ipc=next;", finish_i)
+if not (process_i < reply_read_i < reply_command_i < reply_component_i <
+        structured_complete_i < finish_i < publish_i):
+    raise SystemExit("IPC3 reply validation/ACK/publication ordering drifted")
+
+if "Stable(io,ctx,P360_DSP_UPBOX,reply" in dispatch or \
+        "io->copy(ctx,P360_DSP_UPBOX,header" in dispatch:
+    raise SystemExit("IPC3 command reply was routed to DSP notification UPBOX")
+
+topology_new=re.search(
+    r"static int TopologyNewCommand\(uint32_t command\)\s*\{([^}]+)\}",
+    dispatch)
+if topology_new is None:
+    raise SystemExit("IPC3 structured topology NEW reply allowlist missing")
+allowlist=re.sub(r"/\*.*?\*/", "", topology_new.group(1), flags=re.S)
+allowlist=re.sub(r"\s+", "", allowlist)
+if allowlist != ("returncommand==0x30010000u||command==0x30100000u||"
+                 "command==0x30200000u;"):
+    raise SystemExit("IPC3 structured topology NEW reply allowlist drifted")
 
 for forbidden in ("P360_REPLY_BOX", "P360_NOTIFY_BOX"):
     if forbidden in dispatch_h + "\n" + dispatch + "\n" + ipc3_tx:
@@ -187,6 +244,9 @@ if not re.search(r"#define\s+P360_IPC_PROBE_ENABLED\s+0\b", driver_h):
 
 if not re.search(r"#define\s+P360_SPEAKER_ENDPOINT_ENABLED\s+0\b", driver_h):
     raise SystemExit("speaker endpoint barrier was enabled in the default driver")
+
+if not re.search(r"#define\s+P360_TONE_TOPOLOGY_PROOF_ENABLED\s+0\b", driver_h):
+    raise SystemExit("hostless topology proof barrier was enabled in the default driver")
 
 speaker_endpoint=(ROOT/"src/p360_speaker_endpoint.cpp").read_text()
 for token in (
@@ -338,6 +398,16 @@ for token in (
     if token not in (ipc3_tx_h + "\n" + ipc3_tx):
         raise SystemExit(f"IPC3 bounded TX contract missing: {token}")
 
+tx_compact=re.sub(r"\s+", "", ipc3_tx)
+expect_token="p360_dispatch_expect_message(d,io->now(context),timeout_ms,message,bytes)"
+if expect_token not in tx_compact:
+    raise SystemExit("IPC3 TX no longer binds the pending reply to the exact message")
+expect_i=tx_compact.index(expect_token)
+write_i=tx_compact.index("io->write_box(context,P360_HOST_DOWNBOX,message,bytes)", expect_i)
+doorbell_i=tx_compact.index("io->write32(context,P360_DSP_HIPCI,P360_HIPCI_BUSY)", write_i)
+if not expect_i < write_i < doorbell_i:
+    raise SystemExit("IPC3 request expectation/mailbox/doorbell ordering drifted")
+
 if "tests/ipc3_tx_regression.c" not in run_b4:
     raise SystemExit("IPC3 TX regression is not in the B4 gate")
 
@@ -353,9 +423,9 @@ for token in (
 for token in (
     "d->expected_reply_bytes=20u",
     "d->expected_reply_cmd=command",
-    "d->expected_comp_id=comp_id",
+    "d->expected_comp_id=command==0x60010000u ? comp_id : 0u",
     "U32(reply+12)!=d->expected_comp_id",
-    "CompleteStructured(&next,reply,d->expected_reply_bytes)",
+    "CompleteStructured(&next,reply,reply_bytes)",
 ):
     if token not in dispatch:
         raise SystemExit(f"structured IPC3 reply validation missing: {token}")
