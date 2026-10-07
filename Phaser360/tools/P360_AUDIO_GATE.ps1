@@ -1572,7 +1572,7 @@ try {
 New-RunSession "Audio" | Out-Null
 Write-RunLog "PHASER360 AUDIO ONE-SHOT"
 Write-RunLog "MODE=Audio"
-Write-RunLog "DIRECT_FINAL_SPEAKER_TEST=YES"
+Write-RunLog "FRESH_PREAUDIO_THEN_SPEAKER=YES"
 Write-RunLog "NO_AUTO_REBOOT=YES"
 
 $info=Read-PackageInfo
