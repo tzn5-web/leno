@@ -135,6 +135,10 @@ int p360_ipc3_ssp1_profile_validate(const struct p360_ipc3_ssp1_profile *profile
 
 int p360_ipc3_build_host_new(struct p360_ipc3_message *out,
     const struct p360_ipc3_playback_ids *ids);
+int p360_ipc3_build_playback_buffer_new(struct p360_ipc3_message *out,
+    const struct p360_ipc3_playback_ids *ids, uint32_t bytes);
+int p360_ipc3_build_playback_dai_new(struct p360_ipc3_message *out,
+    const struct p360_ipc3_playback_ids *ids, uint32_t dai_index);
 int p360_ipc3_build_tone_new(struct p360_ipc3_message *out,
     const struct p360_ipc3_speaker_ids *ids, uint32_t sample_rate);
 int p360_ipc3_build_buffer_new(struct p360_ipc3_message *out,
@@ -144,6 +148,8 @@ int p360_ipc3_build_dai_new(struct p360_ipc3_message *out,
 int p360_ipc3_build_playback_pipe_new(struct p360_ipc3_message *out,
     const struct p360_ipc3_playback_ids *ids, uint32_t period_us,
     uint32_t frames_per_sched);
+int p360_ipc3_build_playback_pipe_complete(struct p360_ipc3_message *out,
+    const struct p360_ipc3_playback_ids *ids);
 int p360_ipc3_build_pipe_new(struct p360_ipc3_message *out,
     const struct p360_ipc3_speaker_ids *ids, uint32_t period_us,
     uint32_t frames_per_sched);
