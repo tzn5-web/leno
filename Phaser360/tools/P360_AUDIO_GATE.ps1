@@ -952,7 +952,12 @@ function Get-P360StoreEntries {
 }
 
 function Test-IsReservedGateVersion([string]$Version) {
-    return $Version -in @("2.0.100.1","2.0.101.1","2.0.200.1","2.0.201.1","2.0.301.1","2.0.302.1")
+    return $Version -in @(
+        "2.0.100.1","2.0.101.1",
+        "2.0.200.1","2.0.201.1",
+        "2.0.301.1","2.0.302.1",
+        "3.0.100.1"
+    )
 }
 
 function Assert-NoStaleTestPackage {
@@ -1185,6 +1190,64 @@ function Wait-Telemetry {
     }
     throw ("Telemetry key was never created; {0}" -f
         (Get-TargetDiagnosticText $script:State.TargetInstanceId))
+}
+
+function Assert-FinalAudioStack($Info,[string]$TargetInstanceId,[string]$AmpInstanceId) {
+    $target=Wait-TargetHealthy $TargetInstanceId 12
+    $targetDriver=Get-BoundDriverOrNull $TargetInstanceId
+    if (-not $targetDriver -or
+        [string]$target.Service -ne [string]$Info.FinalSpeakerService -or
+        [string]$targetDriver.DriverVersion -ne [string]$Info.FinalSpeakerDriverVersion -or
+        [string]$targetDriver.DriverProviderName -ne [string]$Info.FinalSpeakerProvider) {
+        throw ("Final ADSP stack mismatch: service={0}, provider={1}, version={2}." -f
+            [string]$target.Service,
+            $(if ($targetDriver) {[string]$targetDriver.DriverProviderName} else {"<none>"}),
+            $(if ($targetDriver) {[string]$targetDriver.DriverVersion} else {"<none>"}))
+    }
+
+    $amp=Get-AmpDevice
+    if ([string]$amp.PNPDeviceID -ne $AmpInstanceId) {
+        throw "MAX98357A instance changed after final audio test."
+    }
+    $ampDriver=Get-BoundDriverOrNull $AmpInstanceId
+    if (-not $ampDriver -or
+        [string]$amp.Service -ne [string]$Info.SafeAmpService -or
+        [string]$ampDriver.DriverVersion -ne [string]$Info.SafeAmpDriverVersion -or
+        [string]$ampDriver.DriverProviderName -ne [string]$Info.SafeAmpProvider) {
+        throw "Fail-closed MAX98357A is no longer bound after final audio test."
+    }
+
+    if (-not $script:State.FirmwareDestination -or
+        -not (Test-FirmwareFile ([string]$script:State.FirmwareDestination))) {
+        throw "Pinned SOF firmware is not installed after final audio test."
+    }
+
+    $thumb=[string]$script:State.CertificateThumbprint
+    if (-not $thumb) {
+        throw "Final test certificate identity was lost."
+    }
+    foreach ($store in @("Root","TrustedPublisher")) {
+        $certPath="Cert:\LocalMachine\$store\$thumb"
+        if (-not (Test-Path -LiteralPath $certPath)) {
+            throw "Final test certificate is missing from $store; driver would not survive a reboot."
+        }
+    }
+
+    $t=Get-Telemetry
+    if (-not $t -or
+        $t.BuildFlags -ne 47 -or
+        $t.FailureReason -ne 0 -or
+        $t.LastNtStatus -ne 0 -or
+        $t.Stage -ne 120) {
+        throw "Final installed stack is not in proved idle/ready state after the 2-second test."
+    }
+
+    Write-RunLog ("FINAL_STACK=PASS ADSP_SERVICE={0} ADSP_VERSION={1} AMP_SERVICE={2} AMP_VERSION={3}" -f
+        [string]$target.Service,
+        [string]$targetDriver.DriverVersion,
+        [string]$amp.Service,
+        [string]$ampDriver.DriverVersion)
+    return $t
 }
 
 function Disable-TargetAndProveStop([string]$InstanceId,[uint32]$ExpectedFlags) {
@@ -1523,11 +1586,13 @@ function Write-Report([string]$Result,[object]$Telemetry) {
         AmpOriginalDriverVersion=$(if ($script:State.PSObject.Properties["AmpOriginalDriverVersion"]) {[string]$script:State.AmpOriginalDriverVersion} else {""})
         SafeAmpInstalled=(Get-StateBool "SafeAmpInstalled")
         AmpRestoreVerified=(Get-StateBool "AmpRestoreVerified")
-        PreAudioPassed=(Get-StateBool "PreAudioPassed")
-        PreAudioStopProved=(Get-StateBool "PreAudioStopProved")
+        InternalGatePassed=(Get-StateBool "InternalGatePassed")
         SpeakerAttempted=(Get-StateBool "SpeakerAttempted")
         SpeakerPassed=(Get-StateBool "SpeakerPassed")
         SpeakerStopProved=(Get-StateBool "SpeakerStopProved")
+        FinalStackInstalled=(Get-StateBool "FinalStackInstalled")
+        AudioReady=(Get-StateBool "AudioReady")
+        RollbackPerformed=(Get-StateBool "RollbackPerformed")
         RestoreVerified=$script:State.RestoreVerified
         LastError=$(if ($script:State.PSObject.Properties["LastError"]) {[string]$script:State.LastError} else {""})
         Telemetry=$Telemetry
@@ -1572,7 +1637,7 @@ try {
 New-RunSession "Audio" | Out-Null
 Write-RunLog "PHASER360 AUDIO ONE-SHOT"
 Write-RunLog "MODE=Audio"
-Write-RunLog "FRESH_PREAUDIO_THEN_SPEAKER=YES"
+Write-RunLog "SELF_AWARE_INSTALL_AND_AUDIO_TEST=YES"
 Write-RunLog "NO_AUTO_REBOOT=YES"
 
 $info=Read-PackageInfo
@@ -1609,11 +1674,13 @@ $script:State=[pscustomobject]@{
     FirmwareDestination=""
     StopProved=$false
     RestoreVerified=$false
-    PreAudioPassed=$false
-    PreAudioStopProved=$false
+    InternalGatePassed=$false
     SpeakerAttempted=$false
     SpeakerPassed=$false
     SpeakerStopProved=$false
+    FinalStackInstalled=$false
+    AudioReady=$false
+    RollbackPerformed=$false
     LastError=""
 }
 Save-State
@@ -1667,23 +1734,22 @@ try {
         [string]$ampDriver.DriverVersion,
         [string]$ampDriver.DriverProviderName)
 
-    Write-RunLog "PREAUDIO_PHASE=BEGIN"
+    Write-RunLog "FINAL_STACK_INSTALL=BEGIN"
     Install-TestPackage "FinalSpeaker" $info $targetId
 
-    # Final HOST build flags:
-    # runtime(1) + IPC(2) + HOST topology(4) + internal speaker(8) +
-    # speaker endpoint(32) = 47. The driver must reach AUDIO_CORE before any
-    # user-mode PCM is submitted.
+    # Internal fail-closed gates are part of the same install transaction.
+    # They are not a separate test and produce no physical audio. The single
+    # physical test below is the only speaker playback performed by the runner.
     $telemetry=Wait-Telemetry -ExpectedFlags 47 -MinimumStage 70 -Seconds 25
     if ($telemetry.BootEpoch -lt 1 -or $telemetry.Stage -lt 70) {
         throw "Final HOST driver did not reach fresh AUDIO_CORE."
     }
-    $script:State.PreAudioPassed=$true
+    $script:State.InternalGatePassed=$true
     Save-State
-    Write-RunLog "PREAUDIO_CORE_AND_AMP_MUTE=PASS"
+    Write-RunLog "INTERNAL_READY_GATE=PASS"
     Write-RunLog "FINAL_HOST_AUDIO_CORE=PASS"
 
-    Write-RunLog "FINAL_SPEAKER_PHASE=BEGIN"
+    Write-RunLog "PHYSICAL_AUDIO_TEST=BEGIN"
     $script:State.SpeakerAttempted=$true
     Save-State
 
@@ -1719,13 +1785,28 @@ try {
     }
 
     $script:State.SpeakerPassed=$true
-    Save-State
-    Write-RunLog "FINAL_WAVERT_2000MS_MAX_0P5PCT=PASS"
-
-    $null=Disable-TargetAndProveStop $targetId 47
     $script:State.SpeakerStopProved=$true
     Save-State
-    Write-RunLog "FINAL_SPEAKER_STOP_MUTE=PASS"
+    Write-RunLog "FINAL_WAVERT_2000MS_MAX_0P5PCT=PASS"
+    Write-RunLog "STREAM_STOP_AND_AMP_MUTE=PASS"
+
+    # Keep the final driver stack installed. The 2-second vector is the only
+    # physical test; after it stops cleanly the endpoint remains enabled for
+    # normal Windows audio and future WaveRT streams.
+    $telemetry=Assert-FinalAudioStack $info $targetId $ampId
+    $script:State.FinalStackInstalled=$true
+    $script:State.AudioReady=$true
+    Save-State
+    Write-RunLog "AUDIO_READY=PASS ENDPOINT_REMAINS_INSTALLED=YES"
+
+    if (-not $script:State.InternalGatePassed -or
+        -not $script:State.SpeakerAttempted -or
+        -not $script:State.SpeakerPassed -or
+        -not $script:State.SpeakerStopProved -or
+        -not $script:State.FinalStackInstalled -or
+        -not $script:State.AudioReady) {
+        throw "Final audio proof vector is incomplete."
+    }
 
     $success=$true
 } catch {
@@ -1736,61 +1817,60 @@ try {
         (Format-TelemetryDiagnosis $telemetry $targetId))
     Write-RunLog "TEST=FAIL $($_.Exception.Message)"
 } finally {
-    try {
-        Restore-OriginalDriver $targetId
-        Write-RunLog "FINAL_DRIVER_RESTORE=PASS"
-    } catch {
-        Write-RunLog "FINAL_DRIVER_RESTORE=FAIL $($_.Exception.Message)"
-        $success=$false
-    }
+    if (-not $success) {
+        $rollbackOk=$true
 
-    try {
-        Restore-OriginalAmpDriver
-        Write-RunLog "FINAL_AMP_RESTORE=PASS"
-    } catch {
-        Write-RunLog "FINAL_AMP_RESTORE=FAIL $($_.Exception.Message)"
-        $success=$false
-    }
+        try {
+            Restore-OriginalDriver $targetId
+            Write-RunLog "FAILURE_ROLLBACK_ADSP=PASS"
+        } catch {
+            Write-RunLog "FAILURE_ROLLBACK_ADSP=FAIL $($_.Exception.Message)"
+            $rollbackOk=$false
+        }
 
-    try {
-        Restore-Firmware
-        Write-RunLog "FIRMWARE_RESTORE=PASS"
-    } catch {
-        Write-RunLog "FIRMWARE_RESTORE=FAIL $($_.Exception.Message)"
-        $success=$false
-    }
+        try {
+            Restore-OriginalAmpDriver
+            Write-RunLog "FAILURE_ROLLBACK_AMP=PASS"
+        } catch {
+            Write-RunLog "FAILURE_ROLLBACK_AMP=FAIL $($_.Exception.Message)"
+            $rollbackOk=$false
+        }
 
-    try {
-        Remove-TestCertificate ([string]$script:State.CertificateThumbprint)
-        Write-RunLog "CERT_CLEANUP=PASS"
-    } catch {
-        Write-RunLog "CERT_CLEANUP=FAIL $($_.Exception.Message)"
-        $success=$false
-    }
+        try {
+            Restore-Firmware
+            Write-RunLog "FAILURE_ROLLBACK_FIRMWARE=PASS"
+        } catch {
+            Write-RunLog "FAILURE_ROLLBACK_FIRMWARE=FAIL $($_.Exception.Message)"
+            $rollbackOk=$false
+        }
 
-    try {
-        Assert-SafeBaselineBeforeNewTest $targetId
-        Write-RunLog ("FINAL_BASELINE_DIAGNOSTIC={0}" -f (Get-TargetDiagnosticText $targetId))
-        Write-RunLog "FINAL_RESIDUAL_STATE=PASS"
-    } catch {
-        Write-RunLog "FINAL_RESIDUAL_STATE=FAIL $($_.Exception.Message)"
-        $success=$false
+        try {
+            Remove-TestCertificate ([string]$script:State.CertificateThumbprint)
+            Write-RunLog "FAILURE_ROLLBACK_CERT=PASS"
+        } catch {
+            Write-RunLog "FAILURE_ROLLBACK_CERT=FAIL $($_.Exception.Message)"
+            $rollbackOk=$false
+        }
+
+        try {
+            Assert-SafeBaselineBeforeNewTest $targetId
+            Write-RunLog "FAILURE_ROLLBACK_BASELINE=PASS"
+        } catch {
+            Write-RunLog "FAILURE_ROLLBACK_BASELINE=FAIL $($_.Exception.Message)"
+            $rollbackOk=$false
+        }
+
+        $script:State.RollbackPerformed=$rollbackOk
+        Save-State
+    } else {
+        Write-RunLog "PERSISTENT_FINAL_STACK=YES"
+        Write-RunLog "ROLLBACK_ON_SUCCESS=NO"
+        Write-RunLog "MANUAL_ROLLBACK=RESTORE_LAST_SESSION.cmd"
     }
 }
 
 if ($success) {
-    if (-not $script:State.SpeakerAttempted -or
-        -not $script:State.SpeakerPassed -or
-        -not $script:State.SpeakerStopProved -or
-        -not $script:State.RestoreVerified -or
-        -not $script:State.AmpRestoreVerified) {
-        Write-RunLog "FINAL_GATE=FAIL incomplete proof vector"
-        $success=$false
-    }
-}
-
-if ($success) {
-    Write-RunLog "AUDIO_GATE=PASS"
+    Write-RunLog "AUDIO_GATE=PASS AUDIO_READY=YES"
 } else {
     Write-RunLog "AUDIO_GATE=FAIL"
 }
