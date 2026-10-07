@@ -247,6 +247,7 @@ P360PortClsStartDevice(
             DeviceObject,
             Irp,
             ResourceList,
+            ctx,
             &ctx->SpeakerTopologyPort,
             &ctx->SpeakerWavePort);
         if (!NT_SUCCESS(status))
