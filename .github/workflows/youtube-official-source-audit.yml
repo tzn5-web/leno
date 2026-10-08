@@ -45,7 +45,7 @@ jobs:
           sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
           xcrun clang -arch arm64 -dynamiclib -fobjc-arc -fblocks -isysroot "$sdk" \
             -miphoneos-version-min=17.0 -O2 -Wall -Wextra -Werror \
-            -framework Foundation -framework UIKit \
+            -framework Foundation -framework UIKit -framework CoreGraphics \
             VancedIOS/Official21/LocalProfile.m -Wl,-install_name,@rpath/VancedLocalProfile.dylib \
             -o VancedIOS/Official21/artifacts/VancedLocalProfile.dylib
           xcrun codesign --force --sign - VancedIOS/Official21/artifacts/VancedLocalProfile.dylib
