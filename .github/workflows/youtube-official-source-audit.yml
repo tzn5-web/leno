@@ -33,3 +33,26 @@ jobs:
             reports/report.json
             reports/SHA256.txt
           if-no-files-found: warn
+
+  build-local-profile:
+    runs-on: macos-15-intel
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build native iOS local profile
+        run: |
+          mkdir -p VancedIOS/Official21/artifacts
+          sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
+          xcrun clang -arch arm64 -dynamiclib -fobjc-arc -fblocks -isysroot "$sdk" \
+            -miphoneos-version-min=17.0 -O2 -Wall -Wextra -Werror \
+            -framework Foundation -framework UIKit \
+            VancedIOS/Official21/LocalProfile.m -Wl,-install_name,@rpath/VancedLocalProfile.dylib \
+            -o VancedIOS/Official21/artifacts/VancedLocalProfile.dylib
+          xcrun codesign --force --sign - VancedIOS/Official21/artifacts/VancedLocalProfile.dylib
+          xcrun codesign --verify --strict VancedIOS/Official21/artifacts/VancedLocalProfile.dylib
+          shasum -a 256 VancedIOS/Official21/artifacts/VancedLocalProfile.dylib > VancedIOS/Official21/artifacts/SHA256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vanced-local-only-arm64-module
+          path: VancedIOS/Official21/artifacts/
+          if-no-files-found: error
