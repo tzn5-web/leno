@@ -1,0 +1,35 @@
+name: YouTube 21.40.5 provenance audit
+on:
+  push:
+    branches: [codex/vanced-official-only-21405]
+    paths: ['VancedIOS/Official21/**','.github/workflows/youtube-official-source-audit.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unit tests (no external binary executed)
+        run: python3 -m unittest discover -s VancedIOS/Official21/tests -v
+      - name: Fetch source disclosed by open-source publisher
+        env:
+          VANILLA_URL: https://www.dropbox.com/scl/fi/i6qurxkwjn8xw8exmtaiw/com.google.ios.youtube-21.40.5-eeveedecrypter.ipa?rlkey=mh42ixectfcuudxaht5t4uh35&dl=1
+        run: |
+          mkdir -p reports
+          curl --fail --location --retry 2 --max-time 420 "$VANILLA_URL" -o reports/candidate.ipa
+          test "$(stat -c%s reports/candidate.ipa)" -gt 10000000
+          sha256sum reports/candidate.ipa > reports/SHA256.txt
+      - name: Audit IPA without executing it
+        run: python3 VancedIOS/Official21/verify_source.py reports/candidate.ipa --out reports/report.json
+      - name: Upload ONLY audit report (no third-party IPA)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-21405-candidate-source-audit
+          path: |
+            reports/report.json
+            reports/SHA256.txt
+          if-no-files-found: warn
