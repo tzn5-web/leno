@@ -33,7 +33,10 @@ static BOOL VNativeBool(id object, SEL selector) {
 }
 
 static BOOL VRecordingEnabled(void) {
-    return ![NSUserDefaults.standardUserDefaults boolForKey:@"VancedGuestHistoryPaused"] &&
+    id nativeDefaults = VGetObject(VIdentityProvider, @"userDefaults");
+    return VIdentityProvider != nil &&
+           ![NSUserDefaults.standardUserDefaults boolForKey:@"VancedGuestHistoryPaused"] &&
+           !VNativeBool(nativeDefaults, @selector(watchHistoryPaused)) &&
            !VNativeBool(VIdentityProvider, @selector(isSignedIn)) &&
            !VNativeBool(VIdentityProvider, @selector(isIncognitoActive));
 }
@@ -68,8 +71,14 @@ static void VRecordContent(id content) {
 %end
 
 %hook YTIdentityController
-- (id)nonNilActiveIdentity { VIdentityProvider = self; return %orig; }
-- (BOOL)isSignedIn { VIdentityProvider = self; return %orig; }
+- (id)nonNilActiveIdentity {
+    VIdentityProvider = self;
+    return %orig;
+}
+- (BOOL)isSignedIn {
+    VIdentityProvider = self;
+    return %orig;
+}
 %end
 
 %hook YTPlayerViewController
@@ -97,12 +106,16 @@ static void VRecordContent(id content) {
 %end
 
 %hook YTAppViewControllerImpl
-- (void)viewDidLoad { VGuestSetAppController(self); %orig; }
+- (void)viewDidLoad {
+    VGuestSetAppController(self);
+    %orig;
+}
 %end
 
 %hook YTMainAppControlsOverlayView
 - (UIImage *)buttonImage:(NSString *)tweakId {
-    return [tweakId isEqual:@"VancedGuest"] ? [UIImage systemImageNamed:@"clock.arrow.circlepath"] : %orig;
+    if ([tweakId isEqual:@"VancedGuest"]) return [UIImage systemImageNamed:@"clock.arrow.circlepath"];
+    return %orig;
 }
 %new(v@:@)
 - (void)didPressVancedGuest:(id)sender { VGuestPresentLibrary(); }
@@ -110,7 +123,8 @@ static void VRecordContent(id content) {
 
 %hook YTInlinePlayerBarContainerView
 - (UIImage *)buttonImage:(NSString *)tweakId {
-    return [tweakId isEqual:@"VancedGuest"] ? [UIImage systemImageNamed:@"clock.arrow.circlepath"] : %orig;
+    if ([tweakId isEqual:@"VancedGuest"]) return [UIImage systemImageNamed:@"clock.arrow.circlepath"];
+    return %orig;
 }
 %new(v@:@)
 - (void)didPressVancedGuest:(id)sender { VGuestPresentLibrary(); }
@@ -136,7 +150,10 @@ static void VRecordContent(id content) {
 
 %hook YTSettingsSectionItemManager
 - (void)updateSectionForCategory:(NSUInteger)category withEntry:(id)entry {
-    if (category != VGuestSection) { %orig; return; }
+    if (category != VGuestSection) {
+        %orig;
+        return;
+    }
     YTSettingsSectionItem *item = [%c(YTSettingsSectionItem) itemWithTitle:@"Deschide Biblioteca Guest"
         titleDescription:@"Istoric, favorite și liste salvate pe acest telefon."
         accessibilityIdentifier:@"VancedGuestLibrary" detailTextBlock:nil

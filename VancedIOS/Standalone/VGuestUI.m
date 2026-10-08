@@ -112,7 +112,7 @@ static UIViewController *VTopController(void) {
 - (void)play:(NSDictionary *)record {
     id controller = VAppController;
     if (!controller) {
-        @try { controller = [UIApplication.sharedApplication.delegate valueForKey:@"_appViewController"]; } @catch (NSException *exception) {}
+        @try { controller = [(id)UIApplication.sharedApplication.delegate valueForKey:@"_appViewController"]; } @catch (NSException *exception) {}
     }
     SEL selector = NSSelectorFromString(@"openURL:fromView:withCallbackURL:referringApp:trackingParams:isOriginExternal:shouldResolve:firstResponder:linkOpenerOptions:");
     Method method = class_getInstanceMethod(object_getClass(controller), selector);

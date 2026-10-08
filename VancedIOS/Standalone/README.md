@@ -32,6 +32,32 @@ pause retention still requires a device test.
 
 ## Build and package
 
+## Guest profile
+
+The user reported that the previous standalone IPA installs and opens, but its
+Google sign-in returns HTTP 404 and Continue as Guest stalls. `VancedGuest`
+uses the native first-time guest transaction instead of presenting OAuth UI.
+Its ABI and transaction behavior were checked against YouTube 20.21.6: a nil
+future identity becomes a native unauthenticated guest, and the native success
+block commits the transaction and finishes its coalescer. It does not fake
+`isSignedIn` or report a successful Google login.
+
+The Guest Library is accessible from settings and a clock/history overlay button.
+It stores watch history with progress, favorites, Watch Later and named playlists
+in this application's private Application Support folder, using atomic JSON writes.
+History is capped at 1,000 videos. Each saved collection is capped at 1,000 videos,
+with up to 100 playlists. Pause and clear controls are available. Incognito,
+signed-in playback and the native watch-history pause setting suppress recording.
+Deleting history does not delete favorites or playlists. Native signed-out search
+history remains managed by YouTube. Local lists do not act as Google likes or
+subscriptions, and they do not synchronize to a Google account. Uninstalling the
+app deletes the local profile. Corrupt libraries are preserved instead of overwritten.
+
+The user-confirmed sign-in failure remains unresolved for optional Google login;
+guest access and persistence still require testing on the user's iPhone.
+
+## Build and package
+
 On a Mac with Xcode:
 
 ```sh
