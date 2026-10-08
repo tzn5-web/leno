@@ -13,7 +13,7 @@ static IMP VOriginalSharedGroup;
 static IMP VOriginalCoreAccessGroup;
 static IMP VOriginalCoreSharedGroup;
 static IMP VOriginalGroupContainer;
-static IMP VOriginalClientIDs[5];
+static IMP VOriginalClientIDs[4];
 static IMP VOriginalClientNames[3];
 
 // Validate ABI before changing a method. Missing or incompatible methods keep
@@ -49,8 +49,8 @@ static void VHook(const char *name, const char *selector, BOOL classMethod,
 
 static NSString *VSigningAccessGroup(void) {
     static NSString *group;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
+    @synchronized (NSBundle.class) {
+        if (group) return group;
         // Ask the OS for an item in this app's own default keychain group.
         // No access to YouTube's App Store keychain is requested or required.
         NSDictionary *query = @{
@@ -77,8 +77,9 @@ static NSString *VSigningAccessGroup(void) {
             if ([value isKindOfClass:NSString.class] && [value length] > 0) group = [value copy];
         }
         if (attrs) CFRelease(attrs);
-    });
-    return group;
+        // A locked keychain or transient OS error must not cache failure forever.
+        return group;
+    }
 }
 
 static id VAccessGroup(id self, SEL sel) {

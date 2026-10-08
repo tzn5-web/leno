@@ -42,6 +42,17 @@ def main():
     theos = ROOT.parent / '.toolchain' / 'theos'
     run(['bash', ROOT.parent / 'Scripts' / 'bootstrap_theos.sh'])
     paths = {d['name']: fetch_dependency(d) for d in config['dependencies']}
+    settings = paths['YouPiP'] / 'Settings.x'
+    original_settings = settings.read_text()
+    start_marker = '    if (IS_IOS_OR_NEWER(iOS_14_0)) {'
+    end_marker = '    YTAppSettingsSectionItemActionController *sectionItemActionController'
+    if original_settings.count(start_marker) != 1 or original_settings.count(end_marker) != 1:
+        raise RuntimeError('upstream PiP settings adapter no longer matches pinned source')
+    start = original_settings.index(start_marker)
+    end = original_settings.index(end_marker, start)
+    if 'addObject:legacyPiP' not in original_settings[start:end]:
+        raise RuntimeError('unexpected legacy PiP settings block')
+    settings.write_text(original_settings[:start] + original_settings[end:])
     # YouPiP's relative includes expect the sibling folder YTVideoOverlay.
     include = DEPS / 'include'
     include.mkdir(exist_ok=True)
@@ -63,7 +74,10 @@ def main():
         'YouPiP': [paths['YouPiP'] / 'Tweak.x', paths['YouPiP'] / 'Settings.x', ROOT / 'ModernPiP.m']
     }
     evidence = {'status': 'PASS_BUILD_ONLY', 'runtime': 'NOT_TESTED', 'sdk': sdk,
-                'dependencies': config['dependencies'], 'artifacts': {}}
+                'dependencies': config['dependencies'],
+                'adapters': ['internal Objective-C hook backend', 'identity paths for a jailed app',
+                             'iOS 15+ PiP only; legacy compatibility code and settings row excluded'],
+                'artifacts': {}}
     for name, sources in targets.items():
         processed = []
         for source in sources:

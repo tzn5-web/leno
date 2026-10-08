@@ -155,7 +155,11 @@ def package(source, artifacts, output):
                 raise ValueError('module hash differs from CI build: ' + filename)
             binary = unsigned_macho(binary)
             path = APP + 'Frameworks/' + filename
-            out.writestr(path, binary)
+            entry = zipfile.ZipInfo(path)
+            entry.create_system = 3
+            entry.external_attr = 0o100755 << 16
+            entry.compress_type = zipfile.ZIP_DEFLATED
+            out.writestr(entry, binary)
             added.append(path)
         for resource in ('YouPiP.bundle', 'YTVideoOverlay.bundle', 'VancedLicenses'):
             for path in sorted((artifacts / resource).rglob('*')):
