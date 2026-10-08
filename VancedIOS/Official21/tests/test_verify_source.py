@@ -24,6 +24,9 @@ class TestSourceGate(unittest.TestCase):
  def test_known_injection(self):
   self.make(extra={"Payload/YouTube.app/Frameworks/VancedCore.dylib":b"bad"})
   self.assertEqual(m.audit(self.target)["status"],"REJECT_KNOWN_INJECTION")
+ def test_advanced_resource_not_suspicious(self):
+  self.make(extra={"Payload/YouTube.app/mainapp_filegroup/_srs_resources_eml_bundle/advanced_quality_sheet_content.eml-js_dacade31c0706ce2":b"data"})
+  self.assertEqual(m.audit(self.target)["status"],"STRUCTURAL_PASS_ORIGIN_UNVERIFIED")
  def test_encryption(self):
   self.make(encrypted=1);self.assertEqual(m.audit(self.target)["status"],"REJECT_ENCRYPTED")
  def test_zip_traversal(self):
