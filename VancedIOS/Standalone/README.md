@@ -24,6 +24,9 @@ linked as its dependency. Source revisions are pinned in `dependencies.json`.
 The Logos internal Objective-C backend avoids external Substrate and jailbreak
 path dependencies. The iOS 11-14 legacy PiP compatibility code is excluded;
 the minimum supported iOS version for this package is 15.
+The dynamically resolved protobuf `hasPictureInPicture` accessor is explicitly
+added, because the internal backend cannot hook a method missing from the original
+method table. This is checked against the fixed YouTube 20.21.6 input.
 
 The existing YouTube player handles audio, PiP and pause/resume. No timer or
 application lifecycle callback is added to force playback to resume.

@@ -53,6 +53,15 @@ def main():
     if 'addObject:legacyPiP' not in original_settings[start:end]:
         raise RuntimeError('unexpected legacy PiP settings block')
     settings.write_text(original_settings[:start] + original_settings[end:])
+    pip_tweak = paths['YouPiP'] / 'Tweak.x'
+    pip_source = pip_tweak.read_text()
+    dynamic_flag = '- (BOOL)hasPictureInPicture {\n    return YES;\n}'
+    if pip_source.count(dynamic_flag) != 1:
+        raise RuntimeError('dynamic PiP accessor adapter no longer matches pinned source')
+    # This GPBMessage accessor is absent from the original 20.21.6 method table.
+    # The internal hook backend enumerates methods without invoking resolution;
+    # explicitly adding the accessor makes it override protobuf lazy resolution.
+    pip_tweak.write_text(pip_source.replace(dynamic_flag, '%new(B@:)\n' + dynamic_flag))
     # YouPiP's relative includes expect the sibling folder YTVideoOverlay.
     include = DEPS / 'include'
     include.mkdir(exist_ok=True)
@@ -77,7 +86,8 @@ def main():
     evidence = {'status': 'PASS_BUILD_ONLY', 'runtime': 'NOT_TESTED', 'sdk': sdk,
                 'dependencies': config['dependencies'],
                 'adapters': ['internal Objective-C hook backend', 'identity paths for a jailed app',
-                             'iOS 15+ PiP only; legacy compatibility code and settings row excluded'],
+                             'iOS 15+ PiP only; legacy compatibility code and settings row excluded',
+                             'explicit dynamic protobuf hasPictureInPicture accessor'],
                 'artifacts': {}}
     for name, sources in targets.items():
         processed = []
