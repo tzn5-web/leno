@@ -47,6 +47,7 @@ def main():
     include.mkdir(exist_ok=True)
     for header in ('YouTubeHeader', 'PSHeader'):
         shutil.copytree(paths[header], include / header, dirs_exist_ok=True)
+    shutil.copy2(ROOT / 'rootless.h', include / 'rootless.h')
     sdk = subprocess.check_output(['xcrun', '--sdk', 'iphoneos', '--show-sdk-path'], text=True).strip()
     common = ['xcrun', '--sdk', 'iphoneos', 'clang', '-dynamiclib', '-arch', 'arm64',
               '-isysroot', sdk, '-miphoneos-version-min=15.0', '-fobjc-arc', '-fblocks',
@@ -54,7 +55,7 @@ def main():
               '-I' + str(theos / 'include'), '-I' + str(theos / 'vendor/include'),
               '-I' + str(theos / 'include/_fallback'),
               '-F' + str(theos / 'vendor/lib'), '-F' + str(theos / 'lib'), '-framework', 'Foundation',
-              '-framework', 'UIKit', '-framework', 'AVFoundation', '-framework', 'AVKit']
+              '-framework', 'UIKit', '-framework', 'AVFoundation', '-framework', 'AVKit', '-framework', 'CoreGraphics']
     targets = {
         'VancedIdentity': [ROOT / 'VancedIdentity.m'],
         'YouTubeX': [paths['YouTubeX'] / 'Tweak.x'],
@@ -75,6 +76,9 @@ def main():
                 processed.append(source)
         binary = OUTPUT / (name + '.dylib')
         extra = ['-framework', 'Security', '-Wall', '-Wextra', '-Werror'] if name == 'VancedIdentity' else []
+        if name == 'YouPiP':
+            # Enforce initialization order: overlay registration precedes PiP.
+            extra += ['-Wl,-needed_library,' + str(OUTPUT / 'YTVideoOverlay.dylib')]
         run(common + extra + processed + ['-Wl,-install_name,@rpath/' + binary.name, '-o', binary])
         dependencies = subprocess.check_output(['xcrun', 'otool', '-L', binary], text=True)
         if 'libsubstrate' in dependencies or 'CydiaSubstrate' in dependencies:
