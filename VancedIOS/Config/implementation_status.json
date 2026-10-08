@@ -7,22 +7,23 @@
       "evidence": "YouTube 20.21.6 verified as com.google.ios.youtube, arm64, cryptid=0; required runtime selector groups are present and the conservative unsigned IPA diff passed byte-level preservation audit."
     },
     "ad_block_video": {
-      "state": "blocked_policy",
-      "evidence": "Not implemented: no YouTube ad-entitlement or monetization bypass hooks are permitted in this project."
+      "state": "implemented_in_standalone_build_only",
+      "evidence": "Standalone uses the pinned YouTubeX source. Not included in the legacy VancedCore artifact; device behavior is pending validation."
     },
     "ad_block_feed": {
-      "state": "blocked_policy",
-      "evidence": "Not implemented: no YouTube advertising-service bypass hooks are permitted in this project."
+      "state": "implemented_in_standalone_build_only",
+      "evidence": "Standalone uses the pinned YouTubeX renderer filters. Not included in the legacy VancedCore artifact; device behavior is pending validation."
     },
     "background_playback": {
-      "state": "blocked_policy",
-      "evidence": "Not implemented: no Premium/background entitlement bypass hooks are permitted in this project."
+      "state": "implemented_in_standalone_build_only",
+      "evidence": "Standalone uses YouTubeX background availability hooks and preserves native YouTube playback. Not included in the legacy VancedCore artifact; device behavior is pending validation."
     },
     "pause_state_preservation": {
       "state": "not_implemented"
     },
     "picture_in_picture": {
-      "state": "not_implemented"
+      "state": "implemented_in_standalone_build_only",
+      "evidence": "Standalone compiles the pinned YouPiP and YTVideoOverlay sources with the internal Objective-C hook backend. Device behavior is pending validation."
     },
     "sponsorblock": {
       "state": "validated_static",

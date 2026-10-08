@@ -1,5 +1,10 @@
 # Vanced iOS
 
+For the current standalone app with video/feed ad blocking, background playback
+and native PiP, use [Standalone/README.md](Standalone/README.md). Its bundle ID is
+`ro.ion.youtubevanced`, separate from App Store YouTube. The legacy VancedCore
+implementation documented below does not provide these three playback features.
+
 This directory is the isolated implementation path for the requested iOS Vanced experience.
 
 It does **not** build the legacy SwiftUI/WKWebView client under `../Leno`. The runtime base is a user-supplied decrypted official YouTube iOS IPA/app. No YouTube binary is stored in this repository.
