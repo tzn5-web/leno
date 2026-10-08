@@ -1,0 +1,10 @@
+__pycache__/
+VancedIOS/.toolchain/
+VancedIOS/.theos/
+VancedIOS/reports/
+VancedIOS/Standalone/.deps/
+VancedIOS/Standalone/artifacts/
+*.ipa
+*.mobileprovision
+*.pem
+*.p12
