@@ -96,6 +96,10 @@ static void VUpdatePosition(NSString *videoID, double position) {
 - (BOOL)shouldSuppressFrictionlessSignIn { return YES; }
 %end
 
+%hook YTRetroactiveSignInController
+- (BOOL)shouldShowRetroactiveSignIn { return NO; }
+%end
+
 %hook YTIdentityController
 - (id)nonNilActiveIdentity {
     VIdentityProvider = self;

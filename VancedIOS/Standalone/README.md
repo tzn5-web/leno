@@ -46,6 +46,7 @@ It completes the native guest transaction, ends the native sign-in state and
 shows the state's normal Home controller, without constructing or presenting
 a sign-in view. The previous strategy shortcut skipped those state transitions.
 Unknown ABIs retain the original behavior. This code does not fake `isSignedIn`.
+Native frictionless sign-in and retroactive sign-in prompts are suppressed.
 
 The Guest Library is accessible from settings and a clock/history overlay button.
 It stores watch history with progress, favorites, Watch Later and named playlists
