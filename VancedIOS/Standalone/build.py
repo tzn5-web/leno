@@ -80,7 +80,7 @@ def main():
         'VancedIdentity': [ROOT / 'VancedIdentity.m', ROOT / 'VUpdatePolicy.m'],
         'YouTubeX': [paths['YouTubeX'] / 'Tweak.x'],
         'YTVideoOverlay': [paths['YTVideoOverlay'] / 'Tweak.x'],
-        'VancedGuest': [ROOT / 'VancedGuest.x', ROOT / 'VGuestEntry.m', ROOT / 'VGuestStore.m', ROOT / 'VGuestUI.m'],
+        'VancedGuest': [ROOT / 'VancedGuest.x', ROOT / 'VGuestEntry.m', ROOT / 'VGuestStore.m', ROOT / 'VGuestUI.m', ROOT / 'VDiagnostics.m'],
         'YouPiP': [paths['YouPiP'] / 'Tweak.x', paths['YouPiP'] / 'Settings.x', ROOT / 'ModernPiP.m']
     }
     evidence = {'status': 'PASS_BUILD_ONLY', 'runtime': 'NOT_TESTED', 'sdk': sdk,

@@ -4,6 +4,22 @@
 #import <string.h>
 #import <stdatomic.h>
 
+static _Thread_local unsigned int VAutomaticSignInDepth;
+static _Thread_local unsigned int VExplicitSignInDepth;
+static char VAutomaticTransactionKey;
+void VGuestBeginAutomaticSignIn(void) { ++VAutomaticSignInDepth; }
+void VGuestEndAutomaticSignIn(void) { if (VAutomaticSignInDepth) --VAutomaticSignInDepth; }
+void VGuestBeginExplicitSignIn(void) { ++VExplicitSignInDepth; }
+void VGuestEndExplicitSignIn(void) { if (VExplicitSignInDepth) --VExplicitSignInDepth; }
+void VGuestTagSignInTransaction(id transaction) {
+    if (!transaction) return;
+    // The transaction retains the routing decision even if presentation is
+    // deferred. An explicit request clears an earlier automatic marker when
+    // YouTube coalesces the requests into the same transaction.
+    objc_setAssociatedObject(transaction, &VAutomaticTransactionKey,
+        @(VAutomaticSignInDepth > 0 && VExplicitSignInDepth == 0), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
 static BOOL VMatch(id object, SEL selector, const char *type) {
     Method method = class_getInstanceMethod(object_getClass(object), selector);
     return method && strcmp(method_getTypeEncoding(method), type) == 0;
@@ -18,6 +34,7 @@ static id VObjectIvar(id object, const char *name, const char *type) {
 
 BOOL VGuestCompleteWithoutPresentation(id controller) {
     id transaction = VObjectIvar(controller, "_transaction", NULL);
+    if (![objc_getAssociatedObject(transaction, &VAutomaticTransactionKey) boolValue]) return NO;
     id state = VObjectIvar(controller, "_stateController", NULL);
     void (^completion)(void) = VObjectIvar(controller, "_successBlock", "@?");
     SEL future = @selector(setFutureIdentityForGoogleAccount:accountItem:);

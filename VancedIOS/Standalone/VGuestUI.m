@@ -1,5 +1,6 @@
 #import "VGuestUI.h"
 #import "VGuestStore.h"
+#import "VDiagnostics.h"
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import <math.h>
@@ -46,7 +47,7 @@ static UIViewController *VTopController(void) {
 - (void)close { [self dismissViewControllerAnimated:YES completion:nil]; }
 - (void)reload {
     NSDictionary *state = VGuestStore.shared.snapshot;
-    if (!self.listName) self.rows = @[@"Istoric", @"Favorite", @"Mai târziu", @"Liste de redare", @"Pauză istoric", @"Șterge istoricul"];
+    if (!self.listName) self.rows = @[@"Istoric", @"Favorite", @"Mai târziu", @"Liste de redare", @"Pauză istoric", @"Șterge istoricul", @"Raport de redare"];
     else if ([self.listName isEqual:@"playlists"]) self.rows = [state[@"playlists"] allKeys];
     else if ([self.listName hasPrefix:@"playlist:"]) self.rows = state[@"playlists"][[self.listName substringFromIndex:9]] ?: @[];
     else self.rows = state[self.listName] ?: @[];
@@ -98,6 +99,8 @@ static UIViewController *VTopController(void) {
             NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
             [defaults setBool:![defaults boolForKey:@"VancedGuestHistoryPaused"] forKey:@"VancedGuestHistoryPaused"];
             [self reload];
+        } else if (path.row == 6) {
+            [self shareDiagnostics];
         } else {
             UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Ștergi istoricul local?" message:@"Favoritele și listele de redare vor fi păstrate." preferredStyle:UIAlertControllerStyleAlert];
             [alert addAction:[UIAlertAction actionWithTitle:@"Anulează" style:UIAlertActionStyleCancel handler:nil]];
@@ -108,6 +111,20 @@ static UIViewController *VTopController(void) {
         NSString *name = self.rows[path.row];
         [self.navigationController pushViewController:[[VGuestLibraryController alloc] initWithList:[@"playlist:" stringByAppendingString:name] title:name] animated:YES];
     } else [self play:self.rows[path.row]];
+}
+- (void)shareDiagnostics {
+    NSURL *url = [[NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES] URLByAppendingPathComponent:@"Raport-redare-Vanced.txt"];
+    NSError *error = nil;
+    if (![VDiagnosticsReport() writeToURL:url atomically:YES encoding:NSUTF8StringEncoding error:&error]) {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Raportul nu poate fi salvat" message:@"Încearcă din nou." preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:alert animated:YES completion:nil];
+        return;
+    }
+    UIActivityViewController *share = [[UIActivityViewController alloc] initWithActivityItems:@[url] applicationActivities:nil];
+    share.popoverPresentationController.sourceView = self.view;
+    share.popoverPresentationController.sourceRect = CGRectMake(self.view.bounds.size.width / 2, self.view.bounds.size.height / 2, 1, 1);
+    [self presentViewController:share animated:YES completion:nil];
 }
 - (void)play:(NSDictionary *)record {
     id controller = VAppController;

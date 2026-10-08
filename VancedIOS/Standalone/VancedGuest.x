@@ -10,6 +10,7 @@
 #import "VGuestEntry.h"
 #import "VGuestStore.h"
 #import "VGuestUI.h"
+#import "VDiagnostics.h"
 
 static __weak id VIdentityProvider;
 static NSDictionary *VActiveRecord;
@@ -101,6 +102,18 @@ static void VUpdatePosition(NSString *videoID, double position) {
 %end
 
 %hook YTIdentityController
+- (void)launchFirstTimeSignInWithSuccessBlock:(id)success errorBlock:(id)error cancelBlock:(id)cancel {
+    VGuestBeginAutomaticSignIn();
+    @try { %orig; } @finally { VGuestEndAutomaticSignIn(); }
+}
+- (void)requestSignInWithSuccessBlock:(id)success errorBlock:(id)error cancelBlock:(id)cancel {
+    VGuestBeginExplicitSignIn();
+    @try { %orig; } @finally { VGuestEndExplicitSignIn(); }
+}
+- (void)requestSignInWithSuccessBlock:(id)success errorBlock:(id)error cancelBlock:(id)cancel fromView:(id)view {
+    VGuestBeginExplicitSignIn();
+    @try { %orig; } @finally { VGuestEndExplicitSignIn(); }
+}
 - (id)nonNilActiveIdentity {
     VIdentityProvider = self;
     return %orig;
@@ -114,7 +127,43 @@ static void VUpdatePosition(NSString *videoID, double position) {
 }
 %end
 
+%hook YTIdentityTransactionCoalescer
+- (id)transactionForRequestWithSuccessBlock:(id)success errorBlock:(id)error cancelBlock:(id)cancel {
+    id transaction = %orig;
+    VGuestTagSignInTransaction(transaction);
+    return transaction;
+}
+%end
+
+%hook YTIPlayabilityStatus
+- (BOOL)isPlayable {
+    BOOL result = %orig;
+    if (!result) VDiagnosticsRecordPlayability(self);
+    return result;
+}
+%end
+
+%hook YTPlayerRequestFactory
+- (id)innerTubeRequestForPlayerWithVideoID:(id)video playlistID:(id)playlist playlistIndex:(NSUInteger)index playbackContext:(id)context forOffline:(BOOL)offline clickTrackingParams:(id)tracking playerParams:(id)params proofOfOriginToken:(id)token {
+    // Only booleans are recorded. Video IDs, proof tokens, tracking and request
+    // bodies remain inside YouTube's original request path.
+    VDiagnosticsRecordRequest(token != nil, offline);
+    return %orig;
+}
+%end
+
+%hook SSOSafariSignIn
+- (id)SSOErrorFromAuthSessionError:(id)error {
+    VDiagnosticsRecordError(@"google_auth_session", error, nil);
+    return %orig;
+}
+%end
+
 %hook YTPlayerViewController
+- (void)playbackController:(id)controller willFailWithError:(id)error {
+    VDiagnosticsRecordError(@"player_error", error, VGetObject(self, @"playerResponse"));
+    %orig;
+}
 - (void)playbackController:(id)controller didActivateNewPlaybackWithContentVideo:(id)video {
     %orig;
     VRecordContent(video);

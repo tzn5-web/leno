@@ -111,7 +111,9 @@ static id VSSOInit(id self, SEL sel, id client, id services) {
     // The OS-visible bundle ID, signing identity, sandbox and keychain stay distinct.
     VSetObject(self, "setShortAppName:", @"YouTube");
     VSetObject(self, "setApplicationIdentifier:", VOfficialClientID);
-    VSetObject(self, "setApplicationScheme:", @"youtubevanced");
+    // Preserve the scheme derived by SSOConfiguration from its OAuth client ID.
+    // SSOSafariSignIn passes it to ASWebAuthenticationSession; replacing it with
+    // an unregistered OAuth redirect breaks the native sign-in flow.
     return self;
 }
 

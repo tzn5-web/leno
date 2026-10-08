@@ -79,10 +79,30 @@ completion callbacks and work identifiers intact. No global network interception
 null-route replacement, fabricated version or global bundle spoof is added.
 Suppressing this dialog does not make an unsupported server API compatible.
 
-The user-confirmed sign-in failure remains unresolved for optional Google login;
-direct guest access, persistence, feed personalization and playback still
-require testing on the user's iPhone. Build and fixture success are not
-end-to-end runtime validation.
+The direct Guest candidate at `8ac186b` FAILED the user's device test: video
+playback remains blocked by an update-related error. It is withdrawn. Local
+upgrade suppression did not resolve the player rejection.
+
+The authentication repair preserves SSOConfiguration's OAuth-derived native
+scheme rather than replacing it with `youtubevanced`. Static disassembly confirms
+SSOSafariSignIn uses ASWebAuthenticationSession with that scheme. Apple documents
+that the callback goes to the initiating session. OS URL registrations stay
+distinct. Automatic startup transactions are marked separately; explicit sign-in
+clears that marker, including when requests are coalesced. Fixture checks do not
+prove that Google login or video streaming now works on the device.
+
+## Device error report
+
+The diagnostic candidate adds **Biblioteca Guest → Raport de redare**. Reproduce
+the video failure, then export the report in the same app session. Its memory
+ring retains at most 100 events: denied native playability status/reason, error
+domain/code, stream format count if available, and whether the player factory's
+proof argument was nonnull. A nonnull argument does not prove a valid token.
+Repeated adjacent events are coalesced. Requests, signed media URLs, video IDs,
+account data, error userInfo and actual proof tokens are not recorded. Server
+reasons are truncated and filtered for URLs, emails and long credential-like
+strings. Reports are exported locally only when the user selects that action.
+No captured event does not prove success. No raw network response is fabricated.
 
 ## Build and package
 
@@ -113,8 +133,9 @@ the original app to test it.
 Build success and ad-hoc codesign checks do not prove installation on an iPhone.
 Device tests are required for launch, normal playback, pre-roll/mid-roll ads,
 feed/search ads, screen-off background audio, PiP and user pause retention.
-Google account login uses a private callback scheme and compatibility hooks, but
-is unverified. The exact root cause of the earlier `0xe8008001` installation error
+Google login preserves its native authentication-session callback and uses
+scoped client/keychain compatibility hooks; it is unverified on device. The exact
+root cause of the earlier `0xe8008001` installation error
 is not established from the screenshot alone.
 
 ## Upstream sources
