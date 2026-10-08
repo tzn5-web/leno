@@ -52,7 +52,8 @@ def main():
               '-isysroot', sdk, '-miphoneos-version-min=15.0', '-fobjc-arc', '-fblocks',
               '-O2', '-DNDEBUG=1', '-DDEBUG=0', '-I' + str(include),
               '-I' + str(theos / 'include'), '-I' + str(theos / 'vendor/include'),
-              '-I' + str(theos / 'include/_fallback'), '-framework', 'Foundation',
+              '-I' + str(theos / 'include/_fallback'),
+              '-F' + str(theos / 'vendor/lib'), '-F' + str(theos / 'lib'), '-framework', 'Foundation',
               '-framework', 'UIKit', '-framework', 'AVFoundation', '-framework', 'AVKit']
     targets = {
         'VancedIdentity': [ROOT / 'VancedIdentity.m'],
