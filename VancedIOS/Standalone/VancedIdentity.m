@@ -2,6 +2,7 @@
 #import <Security/Security.h>
 #import <CommonCrypto/CommonDigest.h>
 #import <objc/runtime.h>
+#import <objc/message.h>
 #import <dispatch/dispatch.h>
 #import <string.h>
 
@@ -12,6 +13,8 @@ static IMP VOriginalSharedGroup;
 static IMP VOriginalCoreAccessGroup;
 static IMP VOriginalCoreSharedGroup;
 static IMP VOriginalGroupContainer;
+static IMP VOriginalClientIDs[5];
+static IMP VOriginalClientNames[3];
 
 // Validate ABI before changing a method. Missing or incompatible methods keep
 // their original behavior instead of being invoked through an assumed signature.
@@ -91,16 +94,22 @@ static id VCoreSharedGroup(id self, SEL sel) {
     return VSigningAccessGroup() ?: (VOriginalCoreSharedGroup ? ((id (*)(id, SEL))VOriginalCoreSharedGroup)(self, sel) : nil);
 }
 
+static id VClientID(__unused id self, __unused SEL sel) { return VOfficialClientID; }
+static id VClientName(__unused id self, __unused SEL sel) { return @"YouTube"; }
+
+static void VSetObject(id object, const char *name, id value) {
+    SEL selector = sel_registerName(name);
+    Method method = class_getInstanceMethod(object_getClass(object), selector);
+    if (VHasABI(method, "v", 3)) ((void (*)(id, SEL, id))objc_msgSend)(object, selector, value);
+}
+
 static id VSSOInit(id self, SEL sel, id client, id services) {
     self = ((id (*)(id, SEL, id, id))VOriginalSSOInit)(self, sel, client, services);
     // The embedded Google client still expects its registered client identity.
     // The OS-visible bundle ID, signing identity, sandbox and keychain stay distinct.
-    @try {
-        [self setValue:@"YouTube" forKey:@"_shortAppName"];
-        [self setValue:VOfficialClientID forKey:@"_applicationIdentifier"];
-    } @catch (__unused NSException *e) {
-        // Do not crash if Google changes this private configuration layout.
-    }
+    VSetObject(self, "setShortAppName:", @"YouTube");
+    VSetObject(self, "setApplicationIdentifier:", VOfficialClientID);
+    VSetObject(self, "setApplicationScheme:", @"youtubevanced");
     return self;
 }
 
@@ -126,6 +135,15 @@ static id VGroupContainer(id self, SEL sel, NSString *identifier) {
 }
 
 static void VInstallIdentity(void) {
+    // Only Google's client metadata getters use the original registered client.
+    // NSBundle, OS registration and file access retain the standalone identity.
+    VHook("YTVersionUtils", "appID", YES, 2, (IMP)VClientID, &VOriginalClientIDs[0]);
+    VHook("GCKBUtils", "appIdentifier", YES, 2, (IMP)VClientID, &VOriginalClientIDs[1]);
+    VHook("GPCDeviceInfo", "bundleId", YES, 2, (IMP)VClientID, &VOriginalClientIDs[2]);
+    VHook("OGLPhenotypeFlagServiceImpl", "bundleId", NO, 2, (IMP)VClientID, &VOriginalClientIDs[3]);
+    VHook("YTVersionUtils", "appName", YES, 2, (IMP)VClientName, &VOriginalClientNames[0]);
+    VHook("OGLBundle", "shortAppName", YES, 2, (IMP)VClientName, &VOriginalClientNames[1]);
+    VHook("GVROverlayView", "appName", YES, 2, (IMP)VClientName, &VOriginalClientNames[2]);
     VHook("SSOConfiguration", "initWithClientID:supportedAccountServices:", NO, 4, (IMP)VSSOInit, &VOriginalSSOInit);
     VHook("SSOKeychainHelper", "accessGroup", YES, 2, (IMP)VAccessGroup, &VOriginalAccessGroup);
     VHook("SSOKeychainHelper", "sharedAccessGroup", YES, 2, (IMP)VSharedGroup, &VOriginalSharedGroup);
