@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "minimum_ios": "15.0",
+  "bundle_id": "ro.ion.youtubevanced",
+  "display_name": "YouTube Vanced",
+  "original_sha256": "4fd09ba9825994720f33282a571f2faf4b673b15a7c065039b1bc6507dc7a9b2",
+  "dependencies": [
+    {"name": "YouTubeX", "repo": "PoomSmart/YouTube-X", "ref": "48b901532f9e12152684f3326d4250efcdea61e5"},
+    {"name": "YouPiP", "repo": "PoomSmart/YouPiP", "ref": "034477a48c8ec18736e26d054106df88c1f0deb3"},
+    {"name": "YTVideoOverlay", "repo": "PoomSmart/YTVideoOverlay", "ref": "8fd630b455fa49050638b126034406705ba9a191"},
+    {"name": "YouTubeHeader", "repo": "PoomSmart/YouTubeHeader", "ref": "8d12546da0a2a8337b040ebf90d3848c14fa6eaa"},
+    {"name": "PSHeader", "repo": "PoomSmart/PSHeader", "ref": "1bb7d9c7d1bc40a57f83e1e58aa53bcf4acdcbfa"}
+  ]
+}
