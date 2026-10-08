@@ -100,13 +100,19 @@ static void VUpdatePosition(NSString *videoID, double position) {
 
 %hook YTIdentityController
 - (void)launchFirstTimeSignInWithSuccessBlock:(id)success errorBlock:(id)error cancelBlock:(id)cancel {
-    VGuestRunSignIn(NO, ^{ %orig; });
+    VGuestRunSignIn(NO, ^{
+        %orig;
+    });
 }
 - (void)requestSignInWithSuccessBlock:(id)success errorBlock:(id)error cancelBlock:(id)cancel {
-    VGuestRunSignIn(YES, ^{ %orig; });
+    VGuestRunSignIn(YES, ^{
+        %orig;
+    });
 }
 - (void)requestSignInWithSuccessBlock:(id)success errorBlock:(id)error cancelBlock:(id)cancel fromView:(id)view {
-    VGuestRunSignIn(YES, ^{ %orig; });
+    VGuestRunSignIn(YES, ^{
+        %orig;
+    });
 }
 - (id)nonNilActiveIdentity {
     VIdentityProvider = self;
