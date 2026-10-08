@@ -47,3 +47,16 @@ BOOL VGuestAcceptProgress(unsigned long long now) {
     return atomic_compare_exchange_strong_explicit(&next, &expected, now + 1000000000ULL,
                                                   memory_order_relaxed, memory_order_relaxed);
 }
+
+BOOL VGuestConfigureNativeHistory(id nativeDefaults) {
+    static NSString * const configured = @"VancedGuestNativeHistoryConfiguredV1";
+    SEL setter = @selector(setWatchHistoryPaused:);
+    if (!VMatch(nativeDefaults, setter, "v20@0:8B16")) return NO;
+    NSUserDefaults *local = NSUserDefaults.standardUserDefaults;
+    if ([local boolForKey:configured]) return YES;
+    // User explicitly requested watch history to drive native Home suggestions.
+    // Enable once for this separate app; later native pause choices stay intact.
+    ((void (*)(id, SEL, _Bool))objc_msgSend)(nativeDefaults, setter, 0);
+    [local setBool:YES forKey:configured];
+    return YES;
+}

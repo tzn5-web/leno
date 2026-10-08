@@ -103,7 +103,10 @@ static void VUpdatePosition(NSString *videoID, double position) {
 }
 - (BOOL)isSignedIn {
     VIdentityProvider = self;
-    return %orig;
+    BOOL signedIn = %orig;
+    if (!signedIn && !VNativeBool(self, @selector(isIncognitoActive)))
+        VGuestConfigureNativeHistory(VGetObject(self, @"userDefaults"));
+    return signedIn;
 }
 %end
 

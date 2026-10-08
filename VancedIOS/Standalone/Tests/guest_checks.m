@@ -39,6 +39,12 @@ static void Require(BOOL ok, NSString *message) {
 }
 @end
 
+@interface TestNativeDefaults : NSObject
+@property _Bool watchHistoryPaused;
+@end
+@implementation TestNativeDefaults
+@end
+
 int main(int argc, const char **argv) {
     @autoreleasepool {
         Require(argc == 3, @"expected case and directory");
@@ -64,6 +70,16 @@ int main(int argc, const char **argv) {
             controller.transaction = nil;
             Require(!VGuestCompleteWithoutPresentation(controller), @"missing transaction falls back");
             Require(controller.completions == 1, @"fallback does not invoke callbacks");
+        } else if ([mode isEqual:@"native-history"]) {
+            NSString *key = @"VancedGuestNativeHistoryConfiguredV1";
+            [NSUserDefaults.standardUserDefaults removeObjectForKey:key];
+            TestNativeDefaults *native = [TestNativeDefaults new];
+            native.watchHistoryPaused = 1;
+            Require(!VGuestConfigureNativeHistory([NSObject new]), @"unknown ABI does not mark native setup complete");
+            Require(VGuestConfigureNativeHistory(native) && !native.watchHistoryPaused, @"native guest watch history enabled once");
+            native.watchHistoryPaused = 1;
+            Require(VGuestConfigureNativeHistory(native) && native.watchHistoryPaused, @"later explicit history pause is preserved");
+            [NSUserDefaults.standardUserDefaults removeObjectForKey:key];
         } else if ([mode isEqual:@"progress"]) {
             NSUInteger accepted = 0;
             // 100,000 callbacks over ten seconds must admit only ten updates.

@@ -62,7 +62,10 @@ or queueing; automatic JSON writes use a serial background queue.
 
 Home remains YouTube's native feed. Its native visitor-data storage, watch
 tracking and recommendation requests are preserved, including their separation
-from incognito storage. The local library is not uploaded or interpreted as a
+from incognito storage. At the user's request, native guest watch history is
+enabled once when a real signed-out, non-incognito identity provider becomes
+available. Later explicit native history-pause choices remain intact.
+The local library is not uploaded or interpreted as a
 Google account history. Guest recommendations require the native session and
 watch signals to be accepted by YouTube; no device evidence currently confirms
 this. This build does not invent a successful server response.
