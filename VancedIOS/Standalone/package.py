@@ -58,6 +58,16 @@ def unsigned_macho(original, additions=()):
             continue
         if cmd == 0x2c and struct.unpack_from('<I', raw, 16)[0] != 0:
             raise ValueError('the app contains encrypted executable code')
+        if cmd == 0x2 and signed:
+            _, _, string_offset, string_size = struct.unpack_from('<4I', raw, 8)
+            string_end = string_offset + string_size
+            # Once the trailing signature is removed, cctools requires the
+            # string table to reach __LINKEDIT's end. Include only pre-existing
+            # zero alignment padding; never alter symbol strings or offsets.
+            if string_end < end:
+                if end - string_end > 15 or any(data[string_end:end]):
+                    raise ValueError('unexpected data between string table and signature')
+                struct.pack_into('<I', raw, 20, end - string_offset)
         if cmd == 0x19:
             segment_name = raw[8:24].split(b'\0')[0]
             file_offset, file_size = struct.unpack_from('<QQ', raw, 40)
