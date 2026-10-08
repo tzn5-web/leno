@@ -2,7 +2,7 @@
 """Static read-only audit of a purported vanilla YouTube 21.40.5 IPA.
 Passing does NOT prove official origin or absence of malware.
 """
-import argparse,hashlib,json,plistlib,stat,struct,zipfile
+import argparse,hashlib,json,plistlib,re,stat,struct,zipfile
 from pathlib import Path,PurePosixPath
 SUSPECT=("vanced","revanced","ytkace","substrate","substitute","frida","cycript","tweak","youplus")
 def sha(path):
@@ -28,6 +28,9 @@ def macho(data):
   pos+=size
  if pos!=end:raise ValueError("load command size mismatch")
  return {"cryptids":crypt,"imports":libs}
+def suspicious_component(path):
+ return bool(re.search(r"(?i)(?:^|[/@._-])(?:vanced|revanced|ytkace|substrate|substitute|frida|cycript|tweak|youplus)(?:[/@._-]|$)",path))
+
 def audit(path):
  path=Path(path)
  r={"sha256":sha(path),"bytes":path.stat().st_size,"attested_official":False,"guaranteed_malware_free":False}
@@ -49,8 +52,8 @@ def audit(path):
   exe=info.get("CFBundleExecutable")
   if not isinstance(exe,str) or not exe or "/" in exe or exe.startswith("."):raise ValueError("invalid executable name")
   m=macho(z.read(root+exe))
-  flagged=[p for p in names if any(x in p.lower() for x in SUSPECT)]
-  flagged+=["IMPORT:"+s for s in m["imports"] if any(x in s.lower() for x in SUSPECT)]
+  flagged=[p for p in names if suspicious_component(p)]
+  flagged+=["IMPORT:"+s for s in m["imports"] if suspicious_component(s)]
   if z.testzip() is not None:raise ValueError("CRC failure")
   r.update({"entry_count":len(names),"bundle":root,"version":"21.40.5","macho":m,"suspicious_components":sorted(flagged),
    "warning":"Metadata can be spoofed. An unmodified official App Store executable is not proven by this check."})
