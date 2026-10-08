@@ -80,6 +80,11 @@ int main(int argc, const char **argv) {
             VGuestTagSignInTransaction(transaction);
             VGuestEndAutomaticSignIn();
             Require(!VGuestCompleteWithoutPresentation(controller), @"later automatic coalescing cannot override an explicit login");
+            @try { VGuestRunSignIn(NO, ^{ @throw [NSException exceptionWithName:@"Fixture" reason:nil userInfo:nil]; }); }
+            @catch (NSException *exception) {}
+            controller.transaction = [TestTransaction new];
+            VGuestTagSignInTransaction(controller.transaction);
+            Require(!VGuestCompleteWithoutPresentation(controller), @"exception unwinds startup scope instead of suppressing later manual login");
             Require(!VGuestCompleteWithoutPresentation([NSObject new]), @"unsupported native ABI falls back");
             controller.transaction = nil;
             Require(!VGuestCompleteWithoutPresentation(controller), @"missing transaction falls back");

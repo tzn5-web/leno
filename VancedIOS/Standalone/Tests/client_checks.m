@@ -49,6 +49,16 @@ static _Bool FixtureNo(__unused id self, __unused SEL sel) { return 0; }
 - (_Bool)isPlayableInBackground { return 0; }
 - (_Bool)isPlayableInPictureInPicture { return 0; }
 @end
+@interface YTIPlaybackTracking : NSObject
+- (_Bool)addVideoToHistory;
+- (_Bool)hasVideostatsWatchtimeURL;
+- (id)videostatsWatchtimeURL;
+@end
+@implementation YTIPlaybackTracking
+- (_Bool)addVideoToHistory { return 1; }
+- (_Bool)hasVideostatsWatchtimeURL { return 1; }
+- (id)videostatsWatchtimeURL { return @"native watch URL"; }
+@end
 
 int main(void) {
     @autoreleasepool {
@@ -64,6 +74,8 @@ int main(void) {
         Require(account.hasUnlimitedEntitlement && account.hasHasUnlimitedEntitlement, @"declared dynamic local Premium membership flag enabled");
         YTIPlayabilityStatus *status = [YTIPlayabilityStatus new];
         Require(status.isPlayableInBackground && status.isPlayableInPictureInPicture && !status.isPlayable, @"local feature gates enabled without inventing playable media");
+        YTIPlaybackTracking *tracking = [YTIPlaybackTracking new];
+        Require(!tracking.addVideoToHistory && !tracking.hasVideostatsWatchtimeURL && !tracking.videostatsWatchtimeURL, @"watch-history/statistics URLs removed before native transport");
         NSData *wrong = [@"{\"results\":[{\"trackId\":544007664,\"bundleId\":\"other.app\",\"version\":\"99.1.1\"}]}" dataUsingEncoding:NSUTF8StringEncoding];
         Require(!VAcceptVersionLookup(wrong), @"different app lookup rejected");
         NSData *invalid = [@"{\"results\":[{\"trackId\":544007664,\"bundleId\":\"com.google.ios.youtube\",\"version\":\"latest\"}]}" dataUsingEncoding:NSUTF8StringEncoding];

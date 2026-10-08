@@ -12,6 +12,11 @@ void VGuestBeginAutomaticSignIn(void) { ++VAutomaticSignInDepth; }
 void VGuestEndAutomaticSignIn(void) { if (VAutomaticSignInDepth) --VAutomaticSignInDepth; }
 void VGuestBeginExplicitSignIn(void) { ++VExplicitSignInDepth; }
 void VGuestEndExplicitSignIn(void) { if (VExplicitSignInDepth) --VExplicitSignInDepth; }
+void VGuestRunSignIn(BOOL explicitRequest, void (^work)(void)) {
+    if (explicitRequest) VGuestBeginExplicitSignIn(); else VGuestBeginAutomaticSignIn();
+    @try { if (work) work(); }
+    @finally { if (explicitRequest) VGuestEndExplicitSignIn(); else VGuestEndAutomaticSignIn(); }
+}
 void VGuestTagSignInTransaction(id transaction) {
     if (!transaction) return;
     // The transaction retains the routing decision even if presentation is

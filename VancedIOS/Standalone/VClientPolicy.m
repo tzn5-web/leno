@@ -68,6 +68,7 @@ void VRefreshReportedVersion(void) {
 
 static _Bool VYes(__unused id object, __unused SEL selector) { return 1; }
 static _Bool VNo(__unused id object, __unused SEL selector) { return 0; }
+static id VNil(__unused id object, __unused SEL selector) { return nil; }
 static id VLatest(__unused id object, __unused SEL selector) { return VReportedVersion(); }
 static Method VResolvedMethod(Class cls, SEL selector);
 static id VProtoVersion(id object, SEL selector) {
@@ -120,4 +121,15 @@ void VInstallClientPolicy(void) {
     VReplace("YTPlayerPIPController", "isEligibleForPictureInPicture", NO, "B16@0:8", (IMP)VYes, NULL);
     VReplace("YTHotConfig", "iosPlayerClientSharedConfigDefaultOffPremiumPip", NO, "B16@0:8", (IMP)VNo, NULL);
     VReplace("YTHotConfig", "premiumClientSharedConfigEnableNonMemberPremiumPlaybackCap", NO, "B16@0:8", (IMP)VNo, NULL);
+    // Remove declared statistics URLs before native/C++ senders receive them.
+    // Streaming URLs and attestation data are separate and remain untouched.
+    for (NSString *name in @[@"videostatsPlaybackURL", @"videostatsDelayplayURL", @"videostatsWatchtimeURL",
+                            @"videostatsCriticalWatchtimeURL", @"ptrackingURL", @"qoeURL", @"atrURL",
+                            @"remarketingURL", @"youtubeRemarketingURL", @"googleRemarketingURL", @"ppvRemarketingURL"]) {
+        VReplace("YTIPlaybackTracking", name.UTF8String, NO, "@16@0:8", (IMP)VNil, NULL);
+        NSString *presence = [@"has" stringByAppendingString:[name stringByReplacingCharactersInRange:NSMakeRange(0,1) withString:[[name substringToIndex:1] uppercaseString]]];
+        VReplace("YTIPlaybackTracking", presence.UTF8String, NO, "B16@0:8", (IMP)VNo, NULL);
+    }
+    VReplace("YTIPlaybackTracking", "addVideoToHistory", NO, "B16@0:8", (IMP)VNo, NULL);
+    VReplace("YTIPlaybackTracking", "adTrackingUrlsArray", NO, "@16@0:8", (IMP)VNil, NULL);
 }
