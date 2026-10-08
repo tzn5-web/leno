@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 APP = 'Payload/YouTube.app/'
-LIBRARIES = ('VancedIdentity', 'YTVideoOverlay', 'YouPiP', 'YouTubeX')
+LIBRARIES = ('VancedIdentity', 'YTVideoOverlay', 'VancedGuest', 'YouPiP', 'YouTubeX')
 
 
 def sha(data):

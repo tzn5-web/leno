@@ -71,6 +71,7 @@ def main():
         'VancedIdentity': [ROOT / 'VancedIdentity.m'],
         'YouTubeX': [paths['YouTubeX'] / 'Tweak.x'],
         'YTVideoOverlay': [paths['YTVideoOverlay'] / 'Tweak.x'],
+        'VancedGuest': [ROOT / 'VancedGuest.x', ROOT / 'VGuestEntry.m', ROOT / 'VGuestStore.m', ROOT / 'VGuestUI.m'],
         'YouPiP': [paths['YouPiP'] / 'Tweak.x', paths['YouPiP'] / 'Settings.x', ROOT / 'ModernPiP.m']
     }
     evidence = {'status': 'PASS_BUILD_ONLY', 'runtime': 'NOT_TESTED', 'sdk': sdk,
@@ -90,7 +91,7 @@ def main():
                 processed.append(source)
         binary = OUTPUT / (name + '.dylib')
         extra = ['-framework', 'Security', '-Wall', '-Wextra', '-Werror'] if name == 'VancedIdentity' else []
-        if name == 'YouPiP':
+        if name in ('YouPiP', 'VancedGuest'):
             # Enforce initialization order: overlay registration precedes PiP.
             extra += ['-Wl,-needed_library,' + str(OUTPUT / 'YTVideoOverlay.dylib')]
         run(common + extra + processed + ['-Wl,-install_name,@rpath/' + binary.name, '-o', binary])
