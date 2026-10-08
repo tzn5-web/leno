@@ -29,7 +29,7 @@ def macho(data):
  if pos!=end:raise ValueError("load command size mismatch")
  return {"cryptids":crypt,"imports":libs}
 def suspicious_component(path):
- return bool(re.search(r"(?i)(?:^|[/@._-])(?:vanced|revanced|ytkace|substrate|substitute|frida|cycript|tweak|youplus)(?:[/@._-]|$)",path))
+ return bool(re.search(r"(?i)(?:^|[/@._-])(?:vanced|revanced|ytkace|substrate|substitute|frida|cycript|tweak|youplus)",path))
 
 def audit(path):
  path=Path(path)
