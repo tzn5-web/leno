@@ -30,8 +30,6 @@ application lifecycle callback is added to force playback to resume.
 This avoids introducing automatic replay after the user pauses, but actual
 pause retention still requires a device test.
 
-## Build and package
-
 ## Guest profile
 
 The user reported that the previous standalone IPA installs and opens, but its

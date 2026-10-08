@@ -52,9 +52,26 @@ static void VRecordContent(id content) {
         id value = VGetObject(details, key);
         if ([value isKindOfClass:NSString.class]) record[[key isEqual:@"channelId"] ? @"channel" : key] = value;
     }
-    VActiveRecord = record;
-    VGuestSetCurrentRecord(record);
-    if (VRecordingEnabled()) [VGuestStore.shared recordVideo:record];
+    NSDictionary *snapshot = record.copy;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        VActiveRecord = snapshot;
+        VGuestSetCurrentRecord(snapshot);
+        if (VRecordingEnabled()) [VGuestStore.shared recordVideo:snapshot];
+    });
+}
+
+static void VUpdatePosition(NSString *videoID, double position) {
+    if (!isfinite(position) || position < 0) return;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (![videoID isEqual:VActiveRecord[@"id"]]) return;
+        NSMutableDictionary *record = VActiveRecord.mutableCopy;
+        record[@"position"] = @(position);
+        VActiveRecord = record;
+        VGuestSetCurrentRecord(record);
+        if (VRecordingEnabled()) [VGuestStore.shared updateVideo:videoID position:position];
+        CFTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+        if (now - VLastFlush > 15) { [VGuestStore.shared flush]; VLastFlush = now; }
+    });
 }
 
 %hook YTInlineIdentityStrategy
@@ -89,19 +106,11 @@ static void VRecordContent(id content) {
 - (void)potentiallyMutatedSingleVideo:(id)video currentVideoTimeDidChange:(id)time {
     %orig;
     NSString *videoID = VGetObject(video, @"videoId");
-    if (![videoID isEqual:VActiveRecord[@"id"]]) return;
     SEL getter = @selector(time);
     Method method = class_getInstanceMethod(object_getClass(time), getter);
     if (!method || strcmp(method_getTypeEncoding(method), "d16@0:8") != 0) return;
     double position = ((double (*)(id, SEL))objc_msgSend)(time, getter);
-    if (!isfinite(position) || position < 0) return;
-    NSMutableDictionary *record = VActiveRecord.mutableCopy;
-    record[@"position"] = @(position);
-    VActiveRecord = record;
-    VGuestSetCurrentRecord(record);
-    if (VRecordingEnabled()) [VGuestStore.shared updateVideo:videoID position:position];
-    CFTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
-    if (now - VLastFlush > 15) { [VGuestStore.shared flush]; VLastFlush = now; }
+    VUpdatePosition(videoID, position);
 }
 %end
 
@@ -132,7 +141,8 @@ static void VRecordContent(id content) {
 
 %hook YTAppSettingsPresentationData
 + (NSArray *)settingsCategoryOrder {
-    NSMutableArray *order = [%orig mutableCopy];
+    NSArray *original = %orig;
+    NSMutableArray *order = original.mutableCopy;
     if (![order containsObject:@(VGuestSection)]) [order addObject:@(VGuestSection)];
     return order;
 }
