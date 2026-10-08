@@ -2,18 +2,18 @@
 
 Packages the user's decrypted official YouTube **20.21.6** as an independent app.
 The earlier direct Guest candidate FAILED the user's playback test and is withdrawn.
-The current candidate is experimental until tested on the user's iPhone.
+The current compatibility candidate is experimental until tested on the user's iPhone. In particular, Google can reject a sideloaded app whose actual bundle/team identity is not registered for the original OAuth client; callback registration cannot override Google's App Check.
 
 ## Current behavior
 
-- Separate OS bundle `ro.ion.youtubevanced`, private URL schemes, sandbox and signing keychain group.
+- Separate OS bundle `ro.ion.youtubevanced`, private URL schemes, sandbox and signing keychain group. Packaging preserves declared Google SSO callback schemes and the GoogleService reversed OAuth client scheme while keeping official YouTube deep links unclaimed.
 - Preserve Google's OAuth-derived SSO callback; SSOSafariSignIn uses ASWebAuthenticationSession.
-- Only automatic startup transactions enter Guest; explicit Google login remains native, including coalesced requests.
-- Local Unlimited/Premium account-menu flag and branding, background/PiP availability gates enabled.
+- Native Google login and the native Guest choice are preserved by default. The legacy automatic Guest completion is disabled unless explicitly opted in; it was a plausible source of missing player authorization.
+- Local Premium account branding/entitlement is disabled by default (it never conferred a server membership). Background/PiP client-side availability gates stay enabled.
 - YouTube-X continues to filter ads; YouPiP/overlay provide native PiP.
 - Dedicated upgrade-check requests finish locally with their native completion. Native worker lifecycle remains intact.
-- Reported IOS client version uses the verified Apple catalog version (21.40.5 on 2026-10-08), refreshed asynchronously from Apple's lookup at most once per day after a successful lookup. Other client types retain their original protobuf version.
-- The actual executable remains 20.21.6. A version label does not implement newer response protocols or prove compatibility with future versions.
+- Native client versions (20.21.6) are preserved in network requests by default. The legacy reported-version override is experimental opt-in only; it cannot make an old binary implement newer protocols.
+- The executable remains 20.21.6. Native upgrade dialogs/checks are suppressed locally without inventing a new protocol version; this does not prevent a future server-side minimum-version requirement.
 - Identified YouTube watch/statistics and Google telemetry URLs are intercepted in URLSession and acknowledged locally; no upload is performed through those routes.
 - The app-local native history flag is paused. The local library records history, position, favorites and playlists both with and without Google login, except in incognito or when local recording is paused.
 - No local diagnostic/error report or telemetry log is included.

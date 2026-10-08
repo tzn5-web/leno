@@ -17,14 +17,18 @@ class PackageTests(unittest.TestCase):
     def test_identity_is_independent(self):
         original = plistlib.dumps({
             'CFBundleIdentifier': 'com.google.ios.youtube',
-            'CFBundleURLTypes': [{'CFBundleURLSchemes': ['youtube', 'vnd.youtube']}],
+            'CFBundleURLTypes': [{'CFBundleURLSchemes': ['youtube', 'vnd.youtube', 'com.google.sso.fixture-native-client']}],
             'LSApplicationQueriesSchemes': ['youtube', 'googlechrome'],
             'UIBackgroundModes': ['audio', 'remote-notification'],
         })
         config = {'bundle_id': 'ro.ion.youtubevanced', 'display_name': 'YouTube Vanced'}
-        info = plistlib.loads(module.standalone_info(original, config))
+        info = plistlib.loads(module.standalone_info(original, config, 'com.googleusercontent.apps.fixture-reversed-id'))
         self.assertEqual(info['CFBundleIdentifier'], config['bundle_id'])
         self.assertEqual(info['CFBundleURLTypes'][0]['CFBundleURLSchemes'], ['youtubevanced', config['bundle_id']])
+        self.assertEqual(info['CFBundleURLTypes'][1]['CFBundleURLSchemes'],
+                         ['com.google.sso.fixture-native-client', 'com.googleusercontent.apps.fixture-reversed-id'])
+        self.assertNotIn('youtube', [scheme for entry in info['CFBundleURLTypes']
+                                    for scheme in entry['CFBundleURLSchemes']])
         self.assertNotIn('youtube', info['LSApplicationQueriesSchemes'])
         self.assertIn('audio', info['UIBackgroundModes'])
 

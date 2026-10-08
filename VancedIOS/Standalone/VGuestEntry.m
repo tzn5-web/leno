@@ -45,6 +45,9 @@ static id VObjectIvar(id object, const char *name, const char *type) {
 }
 
 BOOL VGuestCompleteWithoutPresentation(id controller) {
+    // Default to the native sign-in / guest chooser. Synthesizing a Guest
+    // completion during startup can leave player authorization unresolved.
+    if (![NSUserDefaults.standardUserDefaults boolForKey:@"VancedLegacyAutomaticGuest"]) return NO;
     id transaction = VObjectIvar(controller, "_transaction", NULL);
     if (![objc_getAssociatedObject(transaction, &VAutomaticTransactionKey) boolValue]) return NO;
     id state = VObjectIvar(controller, "_stateController", NULL);

@@ -106,14 +106,20 @@ static void VReplace(const char *name, const char *selector, BOOL isClass,
 }
 
 void VInstallClientPolicy(void) {
-    VReplace("YTVersionUtils", "appVersion", YES, "@16@0:8", (IMP)VLatest, NULL);
-    VReplace("YTVersionUtils", "appVersionLong", YES, "@16@0:8", (IMP)VLatest, NULL);
-    VReplace("YTIClientInfo", "clientVersion", NO, "@16@0:8", (IMP)VProtoVersion, &VOriginalProtoVersion);
-    // Local Premium membership/branding and the requested feature gates.
-    // These returns do not create a paid Google account or new media URLs.
-    VReplace("YTITopbarMenuButtonRenderer", "hasUnlimitedEntitlement", NO, "B16@0:8", (IMP)VYes, NULL);
-    VReplace("YTITopbarMenuButtonRenderer", "hasHasUnlimitedEntitlement", NO, "B16@0:8", (IMP)VYes, NULL);
-    VReplace("YTHeaderLogoControllerImpl", "isPremiumLogo", NO, "B16@0:8", (IMP)VYes, NULL);
+    // Compatibility default: never advertise a newer client protocol than the
+    // 20.21.6 executable implements. The experimental override is opt-in only.
+    if ([NSUserDefaults.standardUserDefaults boolForKey:@"VancedExperimentalVersionSpoof"]) {
+        VReplace("YTVersionUtils", "appVersion", YES, "@16@0:8", (IMP)VLatest, NULL);
+        VReplace("YTVersionUtils", "appVersionLong", YES, "@16@0:8", (IMP)VLatest, NULL);
+        VReplace("YTIClientInfo", "clientVersion", NO, "@16@0:8", (IMP)VProtoVersion, &VOriginalProtoVersion);
+    }
+    // Account membership and branding are server-owned, not proof of an
+    // entitlement. Preserve their native values by default.
+    if ([NSUserDefaults.standardUserDefaults boolForKey:@"VancedExperimentalPremiumUI"]) {
+        VReplace("YTITopbarMenuButtonRenderer", "hasUnlimitedEntitlement", NO, "B16@0:8", (IMP)VYes, NULL);
+        VReplace("YTITopbarMenuButtonRenderer", "hasHasUnlimitedEntitlement", NO, "B16@0:8", (IMP)VYes, NULL);
+        VReplace("YTHeaderLogoControllerImpl", "isPremiumLogo", NO, "B16@0:8", (IMP)VYes, NULL);
+    }
     VReplace("YTIPlayabilityStatus", "isPlayableInBackground", NO, "B16@0:8", (IMP)VYes, NULL);
     VReplace("YTIPlayabilityStatus", "isPlayableInPictureInPicture", NO, "B16@0:8", (IMP)VYes, NULL);
     VReplace("YTBackgroundabilityPolicyImpl", "isBackgroundableByUserSettings", NO, "B16@0:8", (IMP)VYes, NULL);

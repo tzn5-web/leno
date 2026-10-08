@@ -64,14 +64,16 @@ int main(void) {
     @autoreleasepool {
         [NSUserDefaults.standardUserDefaults removeObjectForKey:@"VancedReportedYouTubeVersionV1"];
         [NSUserDefaults.standardUserDefaults removeObjectForKey:@"VancedReportedYouTubeVersionDateV1"];
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:@"VancedExperimentalVersionSpoof"];
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:@"VancedExperimentalPremiumUI"];
         VInstallClientPolicy(); VInstallClientPolicy();
-        Require([YTVersionUtils.appVersion isEqual:@"21.40.5"], @"verified initial reported version");
+        Require([YTVersionUtils.appVersion isEqual:@"20.21.6"], @"native app version preserved by default");
         YTIClientInfo *ios = [YTIClientInfo new]; ios.clientKind = 5;
         YTIClientInfo *other = [YTIClientInfo new]; other.clientKind = 75;
-        Require([ios.clientVersion isEqual:VReportedVersion()], @"dynamic native IOS proto getter uses reported version");
+        Require([ios.clientVersion isEqual:@"native-client-version"], @"native IOS proto version preserved by default");
         Require([other.clientVersion isEqual:@"native-client-version"], @"casting and other client types retain native version");
         YTITopbarMenuButtonRenderer *account = [YTITopbarMenuButtonRenderer new];
-        Require(account.hasUnlimitedEntitlement && account.hasHasUnlimitedEntitlement, @"declared dynamic local Premium membership flag enabled");
+        Require(!account.hasUnlimitedEntitlement && !account.hasHasUnlimitedEntitlement, @"Premium entitlement cannot be fabricated as a real membership");
         YTIPlayabilityStatus *status = [YTIPlayabilityStatus new];
         Require(status.isPlayableInBackground && status.isPlayableInPictureInPicture && !status.isPlayable, @"local feature gates enabled without inventing playable media");
         YTIPlaybackTracking *tracking = [YTIPlaybackTracking new];
@@ -81,8 +83,16 @@ int main(void) {
         NSData *invalid = [@"{\"results\":[{\"trackId\":544007664,\"bundleId\":\"com.google.ios.youtube\",\"version\":\"latest\"}]}" dataUsingEncoding:NSUTF8StringEncoding];
         Require(!VAcceptVersionLookup(invalid), @"malformed version rejected");
         NSData *valid = [@"{\"results\":[{\"trackId\":544007664,\"bundleId\":\"com.google.ios.youtube\",\"version\":\"22.0.1\"}]}" dataUsingEncoding:NSUTF8StringEncoding];
-        Require(VAcceptVersionLookup(valid) && [ios.clientVersion isEqual:@"22.0.1"] && [YTVersionUtils.appVersionLong isEqual:@"22.0.1"], @"new official-format fixture updates cached reported version");
+        Require(VAcceptVersionLookup(valid) && [ios.clientVersion isEqual:@"native-client-version"] &&
+                [YTVersionUtils.appVersionLong isEqual:@"20.21.6"],
+                @"lookup cache does not silently change native network protocol");
         Require(!VAcceptVersionLookup([@"{\"results\":[{\"trackId\":544007664,\"bundleId\":\"com.google.ios.youtube\",\"version\":\"20.21.6\"}]}" dataUsingEncoding:NSUTF8StringEncoding]), @"older lookup cannot downgrade cache");
+        [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"VancedExperimentalVersionSpoof"];
+        VInstallClientPolicy();
+        Require([ios.clientVersion isEqual:@"22.0.1"] &&
+                [YTVersionUtils.appVersionLong isEqual:@"22.0.1"],
+                @"explicit experimental version override is still testable");
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:@"VancedExperimentalVersionSpoof"];
         puts("PASS");
     }
 }

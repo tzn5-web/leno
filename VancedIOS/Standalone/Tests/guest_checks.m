@@ -66,6 +66,9 @@ int main(int argc, const char **argv) {
             VGuestBeginAutomaticSignIn();
             VGuestTagSignInTransaction(transaction);
             VGuestEndAutomaticSignIn();
+            [NSUserDefaults.standardUserDefaults removeObjectForKey:@"VancedLegacyAutomaticGuest"];
+            Require(!VGuestCompleteWithoutPresentation(controller), @"default preserves native sign-in presentation");
+            [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"VancedLegacyAutomaticGuest"];
             Require(VGuestCompleteWithoutPresentation(controller), @"marked automatic guest completion remains available after launch scope ends");
             Require(transaction.committed && transaction.futureIdentity == nil && controller.completions == 1 && !controller.nativeSignedIn, @"guest commits without faking login");
             Require(controller.stateController.endings == 1 && controller.stateController.shows == 1, @"startup state completes and Home is shown");
@@ -89,6 +92,7 @@ int main(int argc, const char **argv) {
             controller.transaction = nil;
             Require(!VGuestCompleteWithoutPresentation(controller), @"missing transaction falls back");
             Require(controller.completions == 1, @"fallback does not invoke callbacks");
+            [NSUserDefaults.standardUserDefaults removeObjectForKey:@"VancedLegacyAutomaticGuest"];
         } else if ([mode isEqual:@"native-history"]) {
             NSString *key = @"VancedLocalHistoryOnlyConfiguredV2";
             [NSUserDefaults.standardUserDefaults removeObjectForKey:key];

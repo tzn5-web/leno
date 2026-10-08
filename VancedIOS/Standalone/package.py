@@ -105,13 +105,31 @@ def unsigned_macho(original, additions=()):
     return bytes(data)
 
 
-def standalone_info(raw, config):
+def standalone_info(raw, config, google_oauth_scheme=None):
     info = plistlib.loads(raw)
     info['CFBundleIdentifier'] = config['bundle_id']
     info['CFBundleDisplayName'] = config['display_name']
     info['CFBundleName'] = config['display_name']
-    info['CFBundleURLTypes'] = [{'CFBundleURLName': config['bundle_id'],
-                               'CFBundleURLSchemes': ['youtubevanced', config['bundle_id']]}]
+    # Keep only the independent app's deep links plus OAuth callback schemes.
+    # Do not take over the official YouTube URL handlers on the same device.
+    oauth_callbacks = []
+    for entry in info.get('CFBundleURLTypes', []):
+        for scheme in entry.get('CFBundleURLSchemes', []):
+            if isinstance(scheme, str) and (
+                    scheme.startswith('com.google.sso.') or
+                    scheme.startswith('com.googleusercontent.apps.')):
+                oauth_callbacks.append(scheme)
+    if isinstance(google_oauth_scheme, str) and google_oauth_scheme.startswith('com.googleusercontent.apps.'):
+        oauth_callbacks.append(google_oauth_scheme)
+    info['CFBundleURLTypes'] = [
+        {'CFBundleURLName': config['bundle_id'],
+         'CFBundleURLSchemes': ['youtubevanced', config['bundle_id']]}
+    ]
+    if oauth_callbacks:
+        info['CFBundleURLTypes'].append({
+            'CFBundleURLName': config['bundle_id'] + '.oauth',
+            'CFBundleURLSchemes': sorted(set(oauth_callbacks))
+        })
     info['NSUserActivityTypes'] = [v.replace('com.google.ios.youtube', config['bundle_id']) for v in info.get('NSUserActivityTypes', [])]
     queries = info.get('LSApplicationQueriesSchemes', [])
     info['LSApplicationQueriesSchemes'] = [s for s in queries if 'youtube' not in s.lower()]
@@ -138,6 +156,10 @@ def package(source, artifacts, output):
     removed, changed, preserved, added = [], [], [], []
     output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(source) as z, zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as out:
+        google_service = APP + 'GoogleService-Info.plist'
+        oauth_scheme = None
+        if google_service in z.namelist():
+            oauth_scheme = plistlib.loads(z.read(google_service)).get('REVERSED_CLIENT_ID')
         if len(set(z.namelist())) != len(z.namelist()):
             raise ValueError('duplicate ZIP entries in input')
         for entry in z.infolist():
@@ -148,7 +170,7 @@ def package(source, artifacts, output):
             data = z.read(name)
             original = data
             if name == APP + 'Info.plist':
-                data = standalone_info(data, config)
+                data = standalone_info(data, config, oauth_scheme)
             elif name == APP + 'YouTube':
                 data = unsigned_macho(data, ['@executable_path/Frameworks/' + n + '.dylib' for n in LIBRARIES])
             elif data[:4] == b'\xcf\xfa\xed\xfe':

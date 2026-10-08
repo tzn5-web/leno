@@ -170,7 +170,7 @@ __attribute__((constructor)) static void VIdentityInit(void) {
             @"NonBackgroundableKey": @YES
         }];
         VInstallIdentity();
-        VRefreshReportedVersion();
+        if ([NSUserDefaults.standardUserDefaults boolForKey:@"VancedExperimentalVersionSpoof"]) VRefreshReportedVersion();
         dispatch_async(dispatch_get_main_queue(), ^{
             VInstallIdentity();
             for (NSNumber *delay in @[@1, @3, @8]) {
