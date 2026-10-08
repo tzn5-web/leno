@@ -13,6 +13,7 @@ class IdentityTests(unittest.TestCase):
             binary = Path(tmp) / 'identity_checks'
             subprocess.run(['xcrun', 'clang', '-fobjc-arc', '-fblocks', '-framework', 'Foundation',
                             '-framework', 'Security', str(ROOT / 'VUpdatePolicy.m'),
+                            str(ROOT / 'VClientPolicy.m'), str(ROOT / 'VPrivacy.m'),
                             str(ROOT / 'Tests/identity_checks.m'), '-o', str(binary)], check=True)
             result = subprocess.run([str(binary)], capture_output=True, text=True, check=True)
             self.assertIn('PASS', result.stdout)

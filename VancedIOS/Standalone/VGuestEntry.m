@@ -7,6 +7,7 @@
 static _Thread_local unsigned int VAutomaticSignInDepth;
 static _Thread_local unsigned int VExplicitSignInDepth;
 static char VAutomaticTransactionKey;
+static char VExplicitTransactionKey;
 void VGuestBeginAutomaticSignIn(void) { ++VAutomaticSignInDepth; }
 void VGuestEndAutomaticSignIn(void) { if (VAutomaticSignInDepth) --VAutomaticSignInDepth; }
 void VGuestBeginExplicitSignIn(void) { ++VExplicitSignInDepth; }
@@ -16,8 +17,14 @@ void VGuestTagSignInTransaction(id transaction) {
     // The transaction retains the routing decision even if presentation is
     // deferred. An explicit request clears an earlier automatic marker when
     // YouTube coalesces the requests into the same transaction.
-    objc_setAssociatedObject(transaction, &VAutomaticTransactionKey,
-        @(VAutomaticSignInDepth > 0 && VExplicitSignInDepth == 0), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    @synchronized (transaction) {
+        if (VExplicitSignInDepth > 0) {
+            objc_setAssociatedObject(transaction, &VExplicitTransactionKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(transaction, &VAutomaticTransactionKey, @NO, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        } else if (VAutomaticSignInDepth > 0 && ![objc_getAssociatedObject(transaction, &VExplicitTransactionKey) boolValue]) {
+            objc_setAssociatedObject(transaction, &VAutomaticTransactionKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    }
 }
 
 static BOOL VMatch(id object, SEL selector, const char *type) {
@@ -66,14 +73,14 @@ BOOL VGuestAcceptProgress(unsigned long long now) {
 }
 
 BOOL VGuestConfigureNativeHistory(id nativeDefaults) {
-    static NSString * const configured = @"VancedGuestNativeHistoryConfiguredV1";
+    static NSString * const configured = @"VancedLocalHistoryOnlyConfiguredV2";
     SEL setter = @selector(setWatchHistoryPaused:);
     if (!VMatch(nativeDefaults, setter, "v20@0:8B16")) return NO;
     NSUserDefaults *local = NSUserDefaults.standardUserDefaults;
     if ([local boolForKey:configured]) return YES;
-    // User explicitly requested watch history to drive native Home suggestions.
-    // Enable once for this separate app; later native pause choices stay intact.
-    ((void (*)(id, SEL, _Bool))objc_msgSend)(nativeDefaults, setter, 0);
+    // The user's latest instruction keeps watch history local, also after login.
+    // This app-local flag complements transport suppression of watch/stat events.
+    ((void (*)(id, SEL, _Bool))objc_msgSend)(nativeDefaults, setter, 1);
     [local setBool:YES forKey:configured];
     return YES;
 }

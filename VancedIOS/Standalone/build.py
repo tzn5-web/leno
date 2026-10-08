@@ -77,10 +77,10 @@ def main():
               '-F' + str(theos / 'vendor/lib'), '-F' + str(theos / 'lib'), '-framework', 'Foundation',
               '-framework', 'UIKit', '-framework', 'AVFoundation', '-framework', 'AVKit', '-framework', 'CoreGraphics']
     targets = {
-        'VancedIdentity': [ROOT / 'VancedIdentity.m', ROOT / 'VUpdatePolicy.m'],
+        'VancedIdentity': [ROOT / 'VancedIdentity.m', ROOT / 'VUpdatePolicy.m', ROOT / 'VClientPolicy.m', ROOT / 'VPrivacy.m'],
         'YouTubeX': [paths['YouTubeX'] / 'Tweak.x'],
         'YTVideoOverlay': [paths['YTVideoOverlay'] / 'Tweak.x'],
-        'VancedGuest': [ROOT / 'VancedGuest.x', ROOT / 'VGuestEntry.m', ROOT / 'VGuestStore.m', ROOT / 'VGuestUI.m', ROOT / 'VDiagnostics.m'],
+        'VancedGuest': [ROOT / 'VancedGuest.x', ROOT / 'VGuestEntry.m', ROOT / 'VGuestStore.m', ROOT / 'VGuestUI.m'],
         'YouPiP': [paths['YouPiP'] / 'Tweak.x', paths['YouPiP'] / 'Settings.x', ROOT / 'ModernPiP.m']
     }
     evidence = {'status': 'PASS_BUILD_ONLY', 'runtime': 'NOT_TESTED', 'sdk': sdk,
@@ -88,7 +88,9 @@ def main():
                 'adapters': ['internal Objective-C hook backend', 'identity paths for a jailed app',
                              'iOS 15+ PiP only; legacy compatibility code and settings row excluded',
                              'explicit dynamic protobuf hasPictureInPicture accessor',
-                             'upgrade policy/presentation disabled; native worker completion preserved'],
+                             'dedicated upgrade request completed locally; native worker completion preserved',
+                             'local Premium flags; IOS reported version follows official Apple lookup',
+                             'identified telemetry/watch routes acknowledged locally; no diagnostic recording'],
                 'artifacts': {}}
     for name, sources in targets.items():
         processed = []

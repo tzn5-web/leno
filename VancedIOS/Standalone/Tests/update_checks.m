@@ -57,7 +57,8 @@ int main(void) {
         YTUpgradeWorker *runner = [YTUpgradeWorker new];
         [runner startWorkWithCompletionBlock:^{ completions++; } errorBlock:^{ exit(2); }];
         Require(controller.dialogs == 0 && runner.checks == 0 && completions == 2, @"no dialog or check; both native completions preserved");
-        Require(worker == class_getMethodImplementation(YTUpgradeWorker.class, @selector(startWorkWithCompletionBlock:errorBlock:)) && request == class_getMethodImplementation(YTUpgradeController.class, @selector(requestUpgradeCheckWithCompletionBlock:)), @"worker and request lifecycle unchanged");
+        Require(worker == class_getMethodImplementation(YTUpgradeWorker.class, @selector(startWorkWithCompletionBlock:errorBlock:)) && request != class_getMethodImplementation(YTUpgradeController.class, @selector(requestUpgradeCheckWithCompletionBlock:)), @"worker lifecycle preserved; upgrade request completed locally");
+        [controller requestUpgradeCheckWithCompletionBlock:nil];
         puts("PASS");
     }
 }

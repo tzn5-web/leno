@@ -76,19 +76,22 @@ int main(int argc, const char **argv) {
             VGuestEndExplicitSignIn();
             VGuestEndAutomaticSignIn();
             Require(!VGuestCompleteWithoutPresentation(controller), @"explicit coalesced login clears the automatic marker");
+            VGuestBeginAutomaticSignIn();
+            VGuestTagSignInTransaction(transaction);
+            VGuestEndAutomaticSignIn();
+            Require(!VGuestCompleteWithoutPresentation(controller), @"later automatic coalescing cannot override an explicit login");
             Require(!VGuestCompleteWithoutPresentation([NSObject new]), @"unsupported native ABI falls back");
             controller.transaction = nil;
             Require(!VGuestCompleteWithoutPresentation(controller), @"missing transaction falls back");
             Require(controller.completions == 1, @"fallback does not invoke callbacks");
         } else if ([mode isEqual:@"native-history"]) {
-            NSString *key = @"VancedGuestNativeHistoryConfiguredV1";
+            NSString *key = @"VancedLocalHistoryOnlyConfiguredV2";
             [NSUserDefaults.standardUserDefaults removeObjectForKey:key];
             TestNativeDefaults *native = [TestNativeDefaults new];
-            native.watchHistoryPaused = 1;
+            native.watchHistoryPaused = 0;
             Require(!VGuestConfigureNativeHistory([NSObject new]), @"unknown ABI does not mark native setup complete");
-            Require(VGuestConfigureNativeHistory(native) && !native.watchHistoryPaused, @"native guest watch history enabled once");
-            native.watchHistoryPaused = 1;
-            Require(VGuestConfigureNativeHistory(native) && native.watchHistoryPaused, @"later explicit history pause is preserved");
+            Require(VGuestConfigureNativeHistory(native) && native.watchHistoryPaused, @"app-local native history flag pauses service watch tracking");
+            Require(VGuestConfigureNativeHistory(native) && native.watchHistoryPaused, @"repeated setup keeps service watch tracking paused");
             [NSUserDefaults.standardUserDefaults removeObjectForKey:key];
         } else if ([mode isEqual:@"progress"]) {
             NSUInteger accepted = 0;

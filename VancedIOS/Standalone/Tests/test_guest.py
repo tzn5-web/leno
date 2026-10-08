@@ -31,7 +31,7 @@ class GuestTests(unittest.TestCase):
     def test_progress_flood_is_throttled(self):
         self.run_case('progress')
 
-    def test_native_guest_history_enabled_once(self):
+    def test_native_watch_tracking_paused_for_local_history(self):
         self.run_case('native-history')
 
     def test_history_favorites_and_playlists_survive_reload(self):

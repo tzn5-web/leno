@@ -10,7 +10,6 @@
 #import "VGuestEntry.h"
 #import "VGuestStore.h"
 #import "VGuestUI.h"
-#import "VDiagnostics.h"
 
 static __weak id VIdentityProvider;
 static NSDictionary *VActiveRecord;
@@ -42,11 +41,8 @@ static BOOL VNativeBool(id object, SEL selector) {
 }
 
 static BOOL VRecordingEnabled(void) {
-    id nativeDefaults = VGetObject(VIdentityProvider, @"userDefaults");
     return VIdentityProvider != nil &&
            ![NSUserDefaults.standardUserDefaults boolForKey:@"VancedGuestHistoryPaused"] &&
-           !VNativeBool(nativeDefaults, @selector(watchHistoryPaused)) &&
-           !VNativeBool(VIdentityProvider, @selector(isSignedIn)) &&
            !VNativeBool(VIdentityProvider, @selector(isIncognitoActive));
 }
 
@@ -95,6 +91,7 @@ static void VUpdatePosition(NSString *videoID, double position) {
 
 %hook YTUserDefaults
 - (BOOL)shouldSuppressFrictionlessSignIn { return YES; }
+- (BOOL)watchHistoryPaused { return YES; }
 %end
 
 %hook YTRetroactiveSignInController
@@ -121,7 +118,7 @@ static void VUpdatePosition(NSString *videoID, double position) {
 - (BOOL)isSignedIn {
     VIdentityProvider = self;
     BOOL signedIn = %orig;
-    if (!signedIn && !VNativeBool(self, @selector(isIncognitoActive)))
+    if (!VNativeBool(self, @selector(isIncognitoActive)))
         VGuestConfigureNativeHistory(VGetObject(self, @"userDefaults"));
     return signedIn;
 }
@@ -135,35 +132,7 @@ static void VUpdatePosition(NSString *videoID, double position) {
 }
 %end
 
-%hook YTIPlayabilityStatus
-- (BOOL)isPlayable {
-    BOOL result = %orig;
-    if (!result) VDiagnosticsRecordPlayability(self);
-    return result;
-}
-%end
-
-%hook YTPlayerRequestFactory
-- (id)innerTubeRequestForPlayerWithVideoID:(id)video playlistID:(id)playlist playlistIndex:(NSUInteger)index playbackContext:(id)context forOffline:(BOOL)offline clickTrackingParams:(id)tracking playerParams:(id)params proofOfOriginToken:(id)token {
-    // Only booleans are recorded. Video IDs, proof tokens, tracking and request
-    // bodies remain inside YouTube's original request path.
-    VDiagnosticsRecordRequest(token != nil, offline);
-    return %orig;
-}
-%end
-
-%hook SSOSafariSignIn
-- (id)SSOErrorFromAuthSessionError:(id)error {
-    VDiagnosticsRecordError(@"google_auth_session", error, nil);
-    return %orig;
-}
-%end
-
 %hook YTPlayerViewController
-- (void)playbackController:(id)controller willFailWithError:(id)error {
-    VDiagnosticsRecordError(@"player_error", error, VGetObject(self, @"playerResponse"));
-    %orig;
-}
 - (void)playbackController:(id)controller didActivateNewPlaybackWithContentVideo:(id)video {
     %orig;
     VRecordContent(video);
@@ -232,7 +201,7 @@ static void VUpdatePosition(NSString *videoID, double position) {
         %orig;
         return;
     }
-    YTSettingsSectionItem *item = [%c(YTSettingsSectionItem) itemWithTitle:@"Deschide Biblioteca Guest"
+    YTSettingsSectionItem *item = [%c(YTSettingsSectionItem) itemWithTitle:@"Deschide Biblioteca locală"
         titleDescription:@"Istoric, favorite și liste salvate pe acest telefon."
         accessibilityIdentifier:@"VancedGuestLibrary" detailTextBlock:nil
         selectBlock:^BOOL(id cell, NSUInteger index) { VGuestPresentLibrary(); return YES; }];
@@ -241,7 +210,7 @@ static void VUpdatePosition(NSString *videoID, double position) {
     SEL selector = NSSelectorFromString(@"setSectionItems:forCategory:title:icon:titleDescription:headerHidden:");
     Method method = class_getInstanceMethod(object_getClass(delegate), selector);
     if (item && method && strcmp(method_getTypeEncoding(method), "v60@0:8@16Q24@32@40@48B56") == 0) {
-        ((void (*)(id,SEL,id,NSUInteger,id,id,id,BOOL))objc_msgSend)(delegate,selector,@[item],category,@"Biblioteca Guest",nil,nil,NO);
+        ((void (*)(id,SEL,id,NSUInteger,id,id,id,BOOL))objc_msgSend)(delegate,selector,@[item],category,@"Biblioteca locală",nil,nil,NO);
     }
 }
 %end
@@ -255,7 +224,7 @@ static void VUpdatePosition(NSString *videoID, double position) {
     SEL registerSelector = NSSelectorFromString(@"registerTweak:metadata:");
     if ([manager respondsToSelector:registerSelector]) {
         ((void (*)(id, SEL, id, id))objc_msgSend)(manager, registerSelector, @"VancedGuest",
-            @{@"accessibilityLabel":@"Biblioteca Guest", @"selector":@"didPressVancedGuest:", @"toggle":@"VancedGuestButtonEnabled"});
+        @{@"accessibilityLabel":@"Biblioteca locală", @"selector":@"didPressVancedGuest:", @"toggle":@"VancedGuestButtonEnabled"});
     }
     %init;
     for (NSNotificationName name in @[UIApplicationDidEnterBackgroundNotification, UIApplicationWillTerminateNotification]) {
