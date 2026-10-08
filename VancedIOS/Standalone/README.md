@@ -36,12 +36,16 @@ pause retention still requires a device test.
 ## Guest profile
 
 The user reported that the previous standalone IPA installs and opens, but its
-Google sign-in returns HTTP 404 and Continue as Guest stalls. `VancedGuest`
-uses the native first-time guest transaction instead of presenting OAuth UI.
-Its ABI and transaction behavior were checked against YouTube 20.21.6: a nil
-future identity becomes a native unauthenticated guest, and the native success
-block commits the transaction and finishes its coalescer. It does not fake
-`isSignedIn` or report a successful Google login.
+Google sign-in returns HTTP 404 and Continue as Guest stalls. The first Guest
+candidate also performed poorly and displayed a mandatory upgrade prompt on
+the user's device. That candidate failed runtime validation.
+
+`VancedGuest` now intercepts only `YTFirstTimeSignInController.launchViewController`,
+after the native controller has initialized its transaction and callbacks.
+It completes the native guest transaction, ends the native sign-in state and
+shows the state's normal Home controller, without constructing or presenting
+a sign-in view. The previous strategy shortcut skipped those state transitions.
+Unknown ABIs retain the original behavior. This code does not fake `isSignedIn`.
 
 The Guest Library is accessible from settings and a clock/history overlay button.
 It stores watch history with progress, favorites, Watch Later and named playlists
@@ -53,9 +57,28 @@ Deleting history does not delete favorites or playlists. Native signed-out searc
 history remains managed by YouTube. Local lists do not act as Google likes or
 subscriptions, and they do not synchronize to a Google account. Uninstalling the
 app deletes the local profile. Corrupt libraries are preserved instead of overwritten.
+Progress callbacks are admitted at most once per second before introspection
+or queueing; automatic JSON writes use a serial background queue.
+
+Home remains YouTube's native feed. Its native visitor-data storage, watch
+tracking and recommendation requests are preserved, including their separation
+from incognito storage. The local library is not uploaded or interpreted as a
+Google account history. Guest recommendations require the native session and
+watch signals to be accepted by YouTube; no device evidence currently confirms
+this. This build does not invent a successful server response.
+
+## Upgrade policy
+
+The known native upgrade flags, renderer getter and both presentation methods
+are suppressed. The upgrade worker takes its original no-check branch, keeping
+completion callbacks and work identifiers intact. No global network interception,
+null-route replacement, fabricated version or global bundle spoof is added.
+Suppressing this dialog does not make an unsupported server API compatible.
 
 The user-confirmed sign-in failure remains unresolved for optional Google login;
-guest access and persistence still require testing on the user's iPhone.
+direct guest access, persistence, feed personalization and playback still
+require testing on the user's iPhone. Build and fixture success are not
+end-to-end runtime validation.
 
 ## Build and package
 

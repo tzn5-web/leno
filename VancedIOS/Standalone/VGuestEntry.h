@@ -1,2 +1,3 @@
 #import <Foundation/Foundation.h>
-BOOL VGuestCompleteFirstTimeTransaction(id strategy, id transaction);
+BOOL VGuestCompleteWithoutPresentation(id controller);
+BOOL VGuestAcceptProgress(unsigned long long monotonicNanoseconds);

@@ -77,7 +77,7 @@ def main():
               '-F' + str(theos / 'vendor/lib'), '-F' + str(theos / 'lib'), '-framework', 'Foundation',
               '-framework', 'UIKit', '-framework', 'AVFoundation', '-framework', 'AVKit', '-framework', 'CoreGraphics']
     targets = {
-        'VancedIdentity': [ROOT / 'VancedIdentity.m'],
+        'VancedIdentity': [ROOT / 'VancedIdentity.m', ROOT / 'VUpdatePolicy.m'],
         'YouTubeX': [paths['YouTubeX'] / 'Tweak.x'],
         'YTVideoOverlay': [paths['YTVideoOverlay'] / 'Tweak.x'],
         'VancedGuest': [ROOT / 'VancedGuest.x', ROOT / 'VGuestEntry.m', ROOT / 'VGuestStore.m', ROOT / 'VGuestUI.m'],
@@ -87,7 +87,8 @@ def main():
                 'dependencies': config['dependencies'],
                 'adapters': ['internal Objective-C hook backend', 'identity paths for a jailed app',
                              'iOS 15+ PiP only; legacy compatibility code and settings row excluded',
-                             'explicit dynamic protobuf hasPictureInPicture accessor'],
+                             'explicit dynamic protobuf hasPictureInPicture accessor',
+                             'upgrade policy/presentation disabled; native worker completion preserved'],
                 'artifacts': {}}
     for name, sources in targets.items():
         processed = []

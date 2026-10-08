@@ -14,16 +14,28 @@ static void Require(BOOL ok, NSString *message) {
 @implementation TestTransaction
 @end
 
-@interface TestStrategy : NSObject
-@property NSUInteger completions;
-@property BOOL firstTime;
-@property BOOL nativeSignedIn;
-- (void (^)(void))successBlockForTransaction:(TestTransaction *)transaction firstTime:(_Bool)first;
+@interface TestState : NSObject
+@property NSUInteger endings;
+@property NSUInteger shows;
+- (void)endedSignIn;
+- (void)showViewController;
 @end
-@implementation TestStrategy
-- (void (^)(void))successBlockForTransaction:(TestTransaction *)transaction firstTime:(_Bool)first {
-    self.firstTime = first;
-    return ^{ transaction.committed = YES; self.completions++; self.nativeSignedIn = transaction.futureIdentity != nil; };
+@implementation TestState
+- (void)endedSignIn { self.endings++; }
+- (void)showViewController { Require(self.endings == 1, @"sign-in ends before Home"); self.shows++; }
+@end
+
+@interface TestController : NSObject
+@property TestTransaction *transaction;
+@property TestState *stateController;
+@property (copy) void (^successBlock)(void);
+@property NSUInteger completions;
+@property BOOL nativeSignedIn;
+- (void)setFutureIdentityForGoogleAccount:(id)account accountItem:(id)item;
+@end
+@implementation TestController
+- (void)setFutureIdentityForGoogleAccount:(id)account accountItem:(id)item {
+    self.transaction.futureIdentity = account;
 }
 @end
 
@@ -33,14 +45,31 @@ int main(int argc, const char **argv) {
         NSString *mode = @(argv[1]);
         NSURL *root = [NSURL fileURLWithPath:@(argv[2]) isDirectory:YES];
         if ([mode isEqual:@"transaction"]) {
-            TestStrategy *strategy = [TestStrategy new];
+            TestController *controller = [TestController new];
             TestTransaction *transaction = [TestTransaction new];
             transaction.futureIdentity = @"old pending identity";
-            Require(VGuestCompleteFirstTimeTransaction(strategy, transaction), @"native guest completion available");
-            Require(transaction.committed && transaction.futureIdentity == nil && strategy.firstTime && strategy.completions == 1 && !strategy.nativeSignedIn, @"guest commits once without faking login");
-            Require(!VGuestCompleteFirstTimeTransaction([NSObject new], transaction), @"unsupported native ABI falls back");
-            Require(!VGuestCompleteFirstTimeTransaction(strategy, nil), @"missing transaction falls back");
-            Require(strategy.completions == 1, @"fallback does not invoke callbacks");
+            controller.transaction = transaction;
+            controller.stateController = [TestState new];
+            __weak TestController *weakController = controller;
+            controller.successBlock = ^{
+                transaction.committed = YES;
+                weakController.completions++;
+                weakController.nativeSignedIn = transaction.futureIdentity != nil;
+            };
+            Require(VGuestCompleteWithoutPresentation(controller), @"native guest completion available");
+            Require(transaction.committed && transaction.futureIdentity == nil && controller.completions == 1 && !controller.nativeSignedIn, @"guest commits without faking login");
+            Require(controller.stateController.endings == 1 && controller.stateController.shows == 1, @"startup state completes and Home is shown");
+            Require(VGuestCompleteWithoutPresentation(controller) && controller.completions == 1, @"repeat callback does not create another guest");
+            Require(!VGuestCompleteWithoutPresentation([NSObject new]), @"unsupported native ABI falls back");
+            controller.transaction = nil;
+            Require(!VGuestCompleteWithoutPresentation(controller), @"missing transaction falls back");
+            Require(controller.completions == 1, @"fallback does not invoke callbacks");
+        } else if ([mode isEqual:@"progress"]) {
+            NSUInteger accepted = 0;
+            // 100,000 callbacks over ten seconds must admit only ten updates.
+            for (unsigned long long n = 0; n < 100000; n++)
+                if (VGuestAcceptProgress(1000000000ULL + n * 100000ULL)) accepted++;
+            Require(accepted == 10, @"progress flood is throttled before queueing");
         } else if ([mode isEqual:@"persistence"]) {
             VGuestStore *store = [[VGuestStore alloc] initWithDirectory:root];
             NSDictionary *record = @{@"id":@"dQw4w9WgXcQ", @"title":@"Test video", @"author":@"Test author"};

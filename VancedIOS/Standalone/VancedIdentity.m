@@ -5,6 +5,7 @@
 #import <objc/message.h>
 #import <dispatch/dispatch.h>
 #import <string.h>
+#import "VUpdatePolicy.h"
 
 static NSString * const VOfficialClientID = @"com.google.ios.youtube";
 static IMP VOriginalSSOInit;
@@ -136,6 +137,7 @@ static id VGroupContainer(id self, SEL sel, NSString *identifier) {
 }
 
 static void VInstallIdentity(void) {
+    VInstallUpdatePolicy();
     // Only Google's client metadata getters use the original registered client.
     // NSBundle, OS registration and file access retain the standalone identity.
     VHook("YTVersionUtils", "appID", YES, 2, (IMP)VClientID, &VOriginalClientIDs[0]);

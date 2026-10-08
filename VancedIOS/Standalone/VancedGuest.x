@@ -2,6 +2,7 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import <math.h>
+#import <time.h>
 #import <YouTubeHeader/YTSettingsSectionItem.h>
 #import <YouTubeHeader/YTSettingsSectionItemManager.h>
 #import <YouTubeHeader/YTSettingsViewController.h>
@@ -14,6 +15,13 @@ static __weak id VIdentityProvider;
 static NSDictionary *VActiveRecord;
 static CFTimeInterval VLastFlush;
 static const NSUInteger VGuestSection = 900001;
+
+static dispatch_queue_t VStoreQueue(void) {
+    static dispatch_queue_t queue;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ queue = dispatch_queue_create("ro.ion.youtubevanced.guest-store", DISPATCH_QUEUE_SERIAL); });
+    return queue;
+}
 
 static id VGetObject(id object, NSString *name) {
     SEL selector = NSSelectorFromString(name);
@@ -56,7 +64,7 @@ static void VRecordContent(id content) {
     dispatch_async(dispatch_get_main_queue(), ^{
         VActiveRecord = snapshot;
         VGuestSetCurrentRecord(snapshot);
-        if (VRecordingEnabled()) [VGuestStore.shared recordVideo:snapshot];
+        if (VRecordingEnabled()) dispatch_async(VStoreQueue(), ^{ [VGuestStore.shared recordVideo:snapshot]; });
     });
 }
 
@@ -68,17 +76,18 @@ static void VUpdatePosition(NSString *videoID, double position) {
         record[@"position"] = @(position);
         VActiveRecord = record;
         VGuestSetCurrentRecord(record);
-        if (VRecordingEnabled()) [VGuestStore.shared updateVideo:videoID position:position];
-        CFTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
-        if (now - VLastFlush > 15) { [VGuestStore.shared flush]; VLastFlush = now; }
+        if (VRecordingEnabled()) dispatch_async(VStoreQueue(), ^{
+            [VGuestStore.shared updateVideo:videoID position:position];
+            CFTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+            if (now - VLastFlush > 15) { [VGuestStore.shared flush]; VLastFlush = now; }
+        });
     });
 }
 
-%hook YTInlineIdentityStrategy
-- (void)firstTimeSignInWithTransaction:(id)transaction {
-    // Complete the real native guest transaction without presenting OAuth UI.
-    if (strcmp(method_getTypeEncoding(class_getInstanceMethod(object_getClass(self), _cmd)), "v24@0:8@16") == 0 &&
-        VGuestCompleteFirstTimeTransaction(self, transaction)) return;
+%hook YTFirstTimeSignInController
+- (void)launchViewController {
+    // Native launchSignIn initialized the transaction; suppress only its UI.
+    if (VGuestCompleteWithoutPresentation(self)) return;
     %orig;
 }
 %end
@@ -105,6 +114,9 @@ static void VUpdatePosition(NSString *videoID, double position) {
 }
 - (void)potentiallyMutatedSingleVideo:(id)video currentVideoTimeDidChange:(id)time {
     %orig;
+    struct timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0 ||
+        !VGuestAcceptProgress((unsigned long long)now.tv_sec * 1000000000ULL + now.tv_nsec)) return;
     NSString *videoID = VGetObject(video, @"videoId");
     SEL getter = @selector(time);
     Method method = class_getInstanceMethod(object_getClass(time), getter);
@@ -191,6 +203,18 @@ static void VUpdatePosition(NSString *videoID, double position) {
     }
     %init;
     for (NSNotificationName name in @[UIApplicationDidEnterBackgroundNotification, UIApplicationWillTerminateNotification]) {
-        [NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) { [VGuestStore.shared flush]; }];
+        [NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+            if ([note.name isEqual:UIApplicationWillTerminateNotification]) {
+                dispatch_sync(VStoreQueue(), ^{ [VGuestStore.shared flush]; });
+                return;
+            }
+            UIBackgroundTaskIdentifier task = [UIApplication.sharedApplication beginBackgroundTaskWithExpirationHandler:nil];
+            dispatch_async(VStoreQueue(), ^{
+                [VGuestStore.shared flush];
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (task != UIBackgroundTaskInvalid) [UIApplication.sharedApplication endBackgroundTask:task];
+                });
+            });
+        }];
     }
 }
