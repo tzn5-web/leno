@@ -24,6 +24,27 @@ jobs:
           sha256sum reports/candidate.ipa > reports/SHA256.txt
       - name: Audit IPA without executing it
         run: python3 VancedIOS/Official21/verify_source.py reports/candidate.ipa --out reports/report.json
+      - name: Defensive static inspection of app code and permissions
+        run: python3 VancedIOS/Official21/security_scan.py reports/candidate.ipa --out reports/security_static.json
+      - name: ClamAV known-malware scan (signature detection only)
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq clamav clamav-freshclam
+          sudo systemctl stop clamav-freshclam || true
+          sudo freshclam --stdout | tee reports/clamav_update.txt
+          clamscan --version | tee reports/clamav_version.txt
+          set +e
+          clamscan --scan-archive=yes --max-filesize=512M --max-scansize=2048M \\
+            --max-files=50000 reports/candidate.ipa > reports/clamav_result.txt 2>&1
+          code=$?
+          set -e
+          cat reports/clamav_result.txt
+          if [ "$code" -ne 0 ]; then
+            echo "BLOCKED: antivirus detected a problem or scanner error ($code)"
+            exit "$code"
+          fi
+          echo "Signature scan completed; result is not proof of no malware."
       - name: Upload ONLY audit report (no third-party IPA)
         if: always()
         uses: actions/upload-artifact@v4
@@ -32,6 +53,10 @@ jobs:
           path: |
             reports/report.json
             reports/SHA256.txt
+            reports/security_static.json
+            reports/clamav_result.txt
+            reports/clamav_version.txt
+            reports/clamav_update.txt
           if-no-files-found: warn
 
   build-local-profile:
