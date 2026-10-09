@@ -1,0 +1,92 @@
+name: YouTube Vanced 21.40.5 unsigned IPA
+on:
+  push:
+    branches: [codex/vanced-21405-build]
+    paths: ['VancedIOS/Official21/**', '.github/workflows/youtube-vanced-21405-ipa.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unit tests of verified base and source checks
+        run: python3 -m unittest discover -s VancedIOS/Official21/tests -v
+      - name: Obtain SHA-256-pinned candidate and pinned YTKACE module
+        run: |
+          set -euo pipefail
+          mkdir -p audit
+          curl --fail --location --retry 2 --max-time 420 'https://www.dropbox.com/scl/fi/i6qurxkwjn8xw8exmtaiw/com.google.ios.youtube-21.40.5-eeveedecrypter.ipa?rlkey=mh42ixectfcuudxaht5t4uh35&dl=1' -o audit/vanilla.ipa
+          echo "6cfef4ca82720f385b4ab3a7e7171cefb2d95d552d88f15cabe1b559bcf80154  audit/vanilla.ipa" | sha256sum -c -
+          curl --fail --location --retry 2 'https://github.com/itzzace/ytkace/releases/download/v1.1.2/com.itzzace.ytkace_1.1.2_rootless.deb' -o audit/ytkace.deb
+          echo "b1aeb09aabe48be37aee848e59ded90d8d981f3c1faa8146fcc23987a503e939  audit/ytkace.deb" | sha256sum -c -
+      - name: Analyze original IPA as untrusted data
+        run: |
+          python3 VancedIOS/Official21/verify_source.py audit/vanilla.ipa --out audit/provenance.json
+          python3 VancedIOS/Official21/security_scan.py audit/vanilla.ipa --out audit/security.json
+      - name: ClamAV signature scan both binaries, fail closed
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq clamav clamav-freshclam
+          sudo systemctl stop clamav-freshclam || true
+          sudo freshclam --stdout > audit/signatures.txt
+          clamscan --scan-archive=yes --max-filesize=512M --max-scansize=2048M --max-files=50000 audit/vanilla.ipa audit/ytkace.deb > audit/clamav.txt
+          cat audit/clamav.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: youtube-21405-security-evidence
+          path: |
+            audit/provenance.json
+            audit/security.json
+            audit/signatures.txt
+            audit/clamav.txt
+          if-no-files-found: warn
+  build:
+    needs: verify
+    runs-on: macos-15-intel
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install macOS signing and deb package tools
+        run: brew install ldid dpkg
+      - name: Download and verify pinned inputs
+        run: |
+          set -euo pipefail
+          mkdir -p work
+          curl --fail --location --retry 2 --max-time 420 'https://www.dropbox.com/scl/fi/i6qurxkwjn8xw8exmtaiw/com.google.ios.youtube-21.40.5-eeveedecrypter.ipa?rlkey=mh42ixectfcuudxaht5t4uh35&dl=1' -o work/vanilla.ipa
+          echo "6cfef4ca82720f385b4ab3a7e7171cefb2d95d552d88f15cabe1b559bcf80154  work/vanilla.ipa" | shasum -a 256 -c
+          curl --fail --location --retry 2 'https://github.com/itzzace/ytkace/releases/download/v1.1.2/com.itzzace.ytkace_1.1.2_rootless.deb' -o work/ytkace.deb
+          echo "b1aeb09aabe48be37aee848e59ded90d8d981f3c1faa8146fcc23987a503e939  work/ytkace.deb" | shasum -a 256 -c
+          git clone --quiet https://github.com/itzzace/ytkace.git work/ytkace
+          git -C work/ytkace checkout --quiet 9175f63f9d0982ff3adcbb7ecd37e9a0cedec760
+          test "$(git -C work/ytkace rev-parse HEAD)" = "9175f63f9d0982ff3adcbb7ecd37e9a0cedec760"
+          mkdir -p work/deb
+          dpkg-deb -x work/ytkace.deb work/deb
+          test -s work/deb/var/jb/Library/MobileSubstrate/DynamicLibraries/YTKACE.dylib
+      - name: Build signed local profile from project source
+        run: |
+          set -euo pipefail
+          mkdir -p work/custom
+          sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
+          xcrun clang -arch arm64 -dynamiclib -fobjc-arc -fblocks -isysroot "$sdk" -miphoneos-version-min=17.0 -O2 -Wall -Wextra -Werror -framework Foundation -framework UIKit -framework CoreGraphics VancedIOS/Official21/LocalProfile.m -Wl,-install_name,@rpath/VancedLocalProfile.dylib -o work/custom/VancedLocalProfile.dylib
+          codesign --force --sign - work/custom/VancedLocalProfile.dylib
+          codesign --verify --strict work/custom/VancedLocalProfile.dylib
+      - name: Inject YTKACE and local account without touching Google OAuth
+        run: |
+          set -euo pipefail
+          bash work/ytkace/Scripts/sideload-repack.sh work/vanilla.ipa work/deb/var/jb/Library/MobileSubstrate/DynamicLibraries/YTKACE.dylib work/ytkace_first.ipa
+          python3 VancedIOS/Official21/package_release.py --source work/vanilla.ipa --intermediate work/ytkace_first.ipa --profile work/custom/VancedLocalProfile.dylib --ytkace-root work/ytkace --output work/YouTube_Vanced_21.40.5_LOCAL_UNSIGNED.ipa
+          shasum -a 256 work/YouTube_Vanced_21.40.5_LOCAL_UNSIGNED.ipa > work/SHA256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: YouTube-Vanced-21.40.5-LOCAL-UNSIGNED
+          path: |
+            work/YouTube_Vanced_21.40.5_LOCAL_UNSIGNED.ipa
+            work/YouTube_Vanced_21.40.5_LOCAL_UNSIGNED.audit.json
+            work/SHA256.txt
+          retention-days: 7
+          if-no-files-found: error
