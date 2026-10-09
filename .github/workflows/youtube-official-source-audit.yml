@@ -35,7 +35,7 @@ jobs:
           sudo freshclam --stdout | tee reports/clamav_update.txt
           clamscan --version | tee reports/clamav_version.txt
           set +e
-          clamscan --scan-archive=yes --max-filesize=512M --max-scansize=2048M \\
+          clamscan --scan-archive=yes --max-filesize=512M --max-scansize=2048M \
             --max-files=50000 reports/candidate.ipa > reports/clamav_result.txt 2>&1
           code=$?
           set -e
