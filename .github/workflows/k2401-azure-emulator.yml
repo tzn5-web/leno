@@ -30,7 +30,7 @@ jobs:
   azure-android:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[k2401-azure-run]')
     runs-on: ubuntu-24.04
-    timeout-minutes: 42
+    timeout-minutes: 180
     steps:
       - name: Verify Azure OIDC identifiers before billing
         env:
@@ -107,7 +107,7 @@ jobs:
           echo "::add-mask::$KEY"
           az storage container create --name artifacts --account-name "$STORAGE" --account-key "$KEY" -o none
           az storage blob upload --container-name artifacts --name launcher.apk --file "$APK" --account-name "$STORAGE" --account-key "$KEY" --overwrite true -o none
-          EXPIRY="$(date -u -d '+3 hours' '+%Y-%m-%dT%H:%MZ')"
+          EXPIRY="$(date -u -d '+4 hours' '+%Y-%m-%dT%H:%MZ')"
           SAS="$(az storage container generate-sas -n artifacts --account-name "$STORAGE" --account-key "$KEY" --permissions racwl --expiry "$EXPIRY" --https-only -o tsv)"
           echo "::add-mask::$SAS"
           SAS_URL="https://$STORAGE.blob.core.windows.net/artifacts?$SAS"
@@ -124,7 +124,7 @@ jobs:
           az vm start -g "$RESOURCE_GROUP" -n "$VM_NAME" -o none
           az vm show -g "$RESOURCE_GROUP" -n "$VM_NAME" --show-details --query powerState -o tsv
       - name: Execute Android emulator inside Azure Windows VM
-        timeout-minutes: 25
+        timeout-minutes: 160
         shell: bash
         run: |
           set -euo pipefail
