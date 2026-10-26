@@ -1,0 +1,65 @@
+name: K2401 Azure AI - execution verification
+
+# Strictly read-only: inspects the existing AI job, model deployment and VM.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/k2401-azure-ai-verify.yml'
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Verify real AI job execution and read-only VM status
+        shell: bash
+        run: |
+          set -euo pipefail
+          az config set extension.use_dynamic_install=yes_without_prompt
+          RESOURCE_GROUP=rg-chatgpt-azure
+          JOB=k2401-ai-agent
+          echo 'K2401_AI_JOB_EXECUTIONS:'
+          az containerapp job execution list -g "$RESOURCE_GROUP" -n "$JOB" -o json | tee /tmp/k2401-executions.json
+          EXEC="$(jq -r '[.[] | select(.name | startswith("k2401-ai-agent-"))] | sort_by(.properties.startTime) | last | .name // empty' /tmp/k2401-executions.json)"
+          if [[ -z "$EXEC" ]]; then
+            echo '::error::No actual Azure AI job execution found.'
+            exit 3
+          fi
+          echo "K2401_AI_EXECUTION=$EXEC"
+          az containerapp job execution show -g "$RESOURCE_GROUP" -n "$JOB" --job-execution-name "$EXEC" -o json || true
+          POWER="$(az vm show -g rg-phaser360-driverlab -n int34d2-lab --show-details --query powerState -o tsv)"
+          MODEL="$(az cognitiveservices account deployment show -g NetworkWatcherRG -n andreplaja-6488-resource --deployment-name k2401-gpt41mini --query properties.provisioningState -o tsv)"
+          echo "K2401_WINDOWS_VM_POWER=$POWER"
+          echo "K2401_AZURE_AI_MODEL=$MODEL"
+          {
+            echo '## K2401 Azure native AI job verification'
+            echo "- Execution: $EXEC"
+            echo "- AI deployment: $MODEL"
+            echo "- Windows VM: $POWER"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$POWER" != "VM deallocated" ]]; then
+            echo "::error::Windows VM is not deallocated."
+            exit 4
+          fi
+      - name: Retrieve Azure AI job logs (best effort)
+        if: always()
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          set +e
+          az config set extension.use_dynamic_install=yes_without_prompt
+          echo 'K2401_AZURE_AGENT_LOGS_BEGIN'
+          az containerapp job logs show -g rg-chatgpt-azure -n k2401-ai-agent --container k2401-agent --follow false --tail 80
+          echo 'K2401_AZURE_AGENT_LOGS_END'
+      - name: Azure logout
+        if: always()
+        run: az logout || true
