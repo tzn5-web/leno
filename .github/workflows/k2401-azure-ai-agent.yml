@@ -1,0 +1,84 @@
+name: K2401 Azure native AI agent
+
+# Azure job has its own read-only identity; model output capped to 450 tokens.
+# No VM start, no code mutation, no public endpoint; job is manual scale-to-zero.
+on:
+  workflow_run:
+    workflows: ['K2401 EVO - Azure Android 10 emulator']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'GitHub Actions run to diagnose'
+        required: false
+        default: '40382269545'
+  push:
+    branches: [main]
+    paths:
+      - 'projects/k2401-evo-launcher/agent/azure_entry.py'
+      - 'projects/k2401-evo-launcher/agent/bootstrap-azure-agent.sh'
+      - '.github/workflows/k2401-azure-ai-agent.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: k2401-native-agent-${{ github.event.workflow_run.id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit Azure agent code, scripts and cost gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n projects/k2401-evo-launcher/agent/bootstrap-azure-agent.sh
+          python3 -m py_compile projects/k2401-evo-launcher/agent/azure_entry.py
+          grep -Fq -- '--replica-timeout 180' projects/k2401-evo-launcher/agent/bootstrap-azure-agent.sh
+          grep -Fq -- '--replica-retry-limit 0' projects/k2401-evo-launcher/agent/bootstrap-azure-agent.sh
+          grep -Fq -- '--sku-name Standard' projects/k2401-evo-launcher/agent/bootstrap-azure-agent.sh
+          grep -Fq 'PINNED_SHA=' projects/k2401-evo-launcher/agent/bootstrap-azure-agent.sh
+          echo 'AZURE_NATIVE_AGENT_STATIC=PASS'
+
+  run-when-authorized:
+    needs: preflight
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Authenticate using existing persistent GitHub OIDC
+        uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Start exactly one time-limited AI job without starting VM
+        env:
+          RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RUN_ID" =~ ^[0-9]{8,13}$ ]] || { echo '::error::Bad run id'; exit 2; }
+          JOB=k2401-ai-agent
+          GROUP=rg-chatgpt-azure
+          if ! az containerapp job show -g "$GROUP" -n "$JOB" --query name -o tsv > /tmp/agent-job.txt 2>/tmp/agent-access.err; then
+            echo '::warning::Azure-native AI agent not deployed or GitHub OIDC lacks job Operator RBAC. Subscription Owner bootstrap is required.'
+            echo 'AZURE_AI_JOB_PENDING_OWNER_BOOTSTRAP=YES' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          az containerapp job start -g "$GROUP" -n "$JOB" --env-vars "K2401_RUN_ID=$RUN_ID" --query '{name:name,id:id}' -o json
+          {
+            echo '## Azure-native AI agent execution started'
+            echo "- Azure Container Apps Job: $JOB"
+            echo "- Inspected GitHub run: $RUN_ID"
+            echo '- Budget limits: single replica, 180 second timeout, zero retries, model capped 450 tokens'
+            echo '- Azure Windows VM is NEVER started by this agent.'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Azure sign out
+        if: always()
+        run: az logout || true
