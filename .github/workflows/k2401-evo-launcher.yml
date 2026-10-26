@@ -1,0 +1,78 @@
+name: K2401 EVO Android 10 APK and emulator
+on:
+  push:
+    branches: [feature/k2401-evo-launcher]
+    paths:
+      - 'projects/k2401-evo-launcher/**'
+      - '.github/workflows/k2401-evo-launcher.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - name: Locate Android SDK manager
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMANAGER"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.11.1' }
+      - name: Install Android SDK
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Build debug APK
+        run: gradle --no-daemon -p projects/k2401-evo-launcher :app:assembleDebug
+      - name: Verify APK
+        run: |
+          test -s projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.apk
+          sha256sum projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: k2401-evo-apk
+          path: projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
+          disable-animations: true
+          script: |
+            adb shell wm size 1280x720
+            adb shell wm density 160
+            adb install -r projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.apk
+            adb shell am start -n ro.evolauncher.k2401/.MainActivity
+            sleep 4
+            mkdir -p projects/k2401-evo-launcher/screenshots
+            adb shell screencap -p /sdcard/evo-home.png
+            adb pull /sdcard/evo-home.png projects/k2401-evo-launcher/screenshots/home.png
+            adb shell input tap 50 220
+            sleep 2
+            adb shell screencap -p /sdcard/evo-music.png
+            adb pull /sdcard/evo-music.png projects/k2401-evo-launcher/screenshots/music.png
+            adb shell input tap 50 650
+            sleep 2
+            adb shell screencap -p /sdcard/evo-settings.png
+            adb pull /sdcard/evo-settings.png projects/k2401-evo-launcher/screenshots/settings.png
+            adb shell dumpsys meminfo ro.evolauncher.k2401 > projects/k2401-evo-launcher/screenshots/memory.txt
+            adb logcat -d -s AndroidRuntime:E > projects/k2401-evo-launcher/screenshots/crashes.txt
+            ! grep -q 'FATAL EXCEPTION' projects/k2401-evo-launcher/screenshots/crashes.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: k2401-evo-emulator-screens
+          path: projects/k2401-evo-launcher/screenshots/
+          retention-days: 14
