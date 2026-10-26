@@ -139,8 +139,9 @@ jobs:
         run: |
           set +e
           mkdir -p azure-evo-results
-          QUERY="${SAS_URL#*\?}"
-          az storage blob download-batch --source artifacts --destination azure-evo-results --pattern "results/*" --account-name "$STORAGE" --sas-token "$QUERY" --overwrite true -o none
+          KEY="$(az storage account keys list -g "$STORAGE_RG" -n "$STORAGE" --query '[0].value' -o tsv)"
+          echo "::add-mask::$KEY"
+          az storage blob download-batch --source artifacts --destination azure-evo-results --pattern "results/*" --account-name "$STORAGE" --account-key "$KEY" --overwrite true -o none
           find azure-evo-results -type f -maxdepth 4 -printf '%P (%s bytes)\n'
       - name: Publish diagnostic files (not a release APK)
         if: always()
