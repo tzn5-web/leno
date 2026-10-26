@@ -41,7 +41,7 @@ try {
         if ($actualHash -ne $expectedHash) { throw 'ANDROID_SDK_TOOL_ARCHIVE_SHA256_MISMATCH' }
         $unpacked = Join-Path $root 'android-cli-unpacked'
         Expand-Archive $toolsZip -DestinationPath $unpacked -Force
-        New-Item -ItemType Directory -Force -Path (Split-Path (Split-Path $tools -Parent) -Parent) | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $sdk 'cmdline-tools') | Out-Null
         Move-Item -Path (Join-Path $unpacked 'cmdline-tools') -Destination (Join-Path $sdk 'cmdline-tools\latest')
     }
     $env:ANDROID_HOME = $sdk
