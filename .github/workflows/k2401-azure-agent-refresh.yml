@@ -52,8 +52,15 @@ jobs:
           EXISTING="$(az containerapp job show -g "$GROUP" -n "$JOB" -o json)"
           echo "$EXISTING" | jq -e '.properties.configuration.triggerType=="Manual" and .properties.configuration.replicaTimeout==180 and .properties.configuration.replicaRetryLimit==0 and .properties.template.containers[0].name=="k2401-agent"' >/dev/null
           SCRIPT="import urllib.request; exec(compile(urllib.request.urlopen('$URL',timeout=20).read(),'azure_entry.py','exec'))"
-          az containerapp job update -g "$GROUP" -n "$JOB" --container-name k2401-agent \
-            --command python3 --args=-c "$SCRIPT" -o none
+          # Azure CLI's job update argument parser rejects Python's -c switch.
+          # Use the supported ARM JSON Merge Patch API and preserve every other
+          # container setting (image, env, resources and identity).
+          ARM_URL="https://management.azure.com/subscriptions/0ac7a514-32b3-47bf-bf89-e17906b1cc86/resourceGroups/$GROUP/providers/Microsoft.App/jobs/$JOB?api-version=2025-07-01"
+          echo "$EXISTING" | jq --arg script "$SCRIPT" \
+            '{properties:{template:(.properties.template | .containers |= map(if .name == "k2401-agent" then .command=["python3"] | .args=["-c",$script] else . end))}}' > /tmp/k2401-job-patch.json
+          jq -e --arg commit "$PINNED" \
+            '.properties.template.containers[0].args | length==2 and .[0]=="-c" and (.[1]|contains($commit))' /tmp/k2401-job-patch.json >/dev/null
+          az rest --method patch --url "$ARM_URL" --body @/tmp/k2401-job-patch.json --headers Content-Type=application/json -o none
           CURRENT="$(az containerapp job show -g "$GROUP" -n "$JOB" -o json)"
           echo "$CURRENT" | jq -e --arg commit "$PINNED" \
             '.properties.template.containers[0].args | length==2 and .[0]=="-c" and (.[1]|contains($commit))' >/dev/null
