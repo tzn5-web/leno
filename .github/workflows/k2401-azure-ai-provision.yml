@@ -65,15 +65,34 @@ jobs:
           SCRIPT="import urllib.request; exec(compile(urllib.request.urlopen('$URL',timeout=20).read(),'azure_entry.py','exec'))"
           IDENTITY="/subscriptions/0ac7a514-32b3-47bf-bf89-e17906b1cc86/resourceGroups/rg-chatgpt-azure/providers/Microsoft.ManagedIdentity/userAssignedIdentities/k2401-github-oidc"
           if ! az containerapp job show -g "$GROUP" -n "$JOB" -o none >/dev/null 2>&1; then
-            az containerapp job create -g "$GROUP" -n "$JOB" \
-              --environment chatgpt-azure-control-env --trigger-type Manual \
-              --replica-timeout 180 --replica-retry-limit 0 --parallelism 1 \
-              --replica-completion-count 1 \
-              --image mcr.microsoft.com/azure-cli:2.74.0 \
-              --cpu 0.25 --memory 0.5Gi \
-              --mi-user-assigned "$IDENTITY" \
-              --command python3 --args=-c "$SCRIPT" \
-              --env-vars 'AZURE_CLIENT_ID=50a5c260-15a0-4aa0-9e02-5f0ad5c23df9' 'K2401_RUN_ID=40382269545' -o none
+            # ARM uses a JSON array for command arguments (avoids CLI -c parsing ambiguity).
+            ENV_ID="/subscriptions/0ac7a514-32b3-47bf-bf89-e17906b1cc86/resourceGroups/$GROUP/providers/Microsoft.App/managedEnvironments/chatgpt-azure-control-env"
+            jq -n --arg env_id "$ENV_ID" --arg identity "$IDENTITY" --arg url "$URL" \
+              --arg client '50a5c260-15a0-4aa0-9e02-5f0ad5c23df9' \
+              '{
+                location:"swedencentral",
+                identity:{type:"UserAssigned",userAssignedIdentities:{($identity):{}}},
+                properties:{
+                  environmentId:$env_id,
+                  configuration:{
+                    triggerType:"Manual",replicaTimeout:180,replicaRetryLimit:0,
+                    manualTriggerConfig:{parallelism:1,replicaCompletionCount:1}
+                  },
+                  template:{
+                    containers:[{
+                      name:"k2401-agent",
+                      image:"mcr.microsoft.com/azure-cli:2.74.0",
+                      command:["python3"],
+                      args:["-c", ("import urllib.request; exec(compile(urllib.request.urlopen(" + ($url|@json) + ",timeout=20).read(),\\"azure_entry.py\\",\\"exec\\"))")],
+                      resources:{cpu:0.25,memory:"0.5Gi"},
+                      env:[{name:"AZURE_CLIENT_ID",value:$client},{name:"K2401_RUN_ID",value:"40382269545"}]
+                    }]
+                  }
+                }
+              }' > /tmp/k2401-agent-job.json
+            JOB_ARM_URL="https://management.azure.com/subscriptions/0ac7a514-32b3-47bf-bf89-e17906b1cc86/resourceGroups/$GROUP/providers/Microsoft.App/jobs/$JOB?api-version=2024-03-01"
+            az rest --method put --url "$JOB_ARM_URL" --body @/tmp/k2401-agent-job.json \
+              --headers Content-Type=application/json -o none
           fi
           az containerapp job show -g "$GROUP" -n "$JOB" \
             --query '{name:name,trigger:properties.configuration.triggerType,timeout:properties.configuration.replicaTimeout,retries:properties.configuration.replicaRetryLimit}' -o json
