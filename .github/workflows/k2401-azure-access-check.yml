@@ -1,0 +1,53 @@
+name: K2401 Azure - permanent OIDC access check
+# No VM starts, no Azure resource creation, no paid compute.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/k2401-azure-access-check.yml'
+      - 'projects/k2401-evo-launcher/scripts/bootstrap-azure-oidc.sh'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  syntax:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate persistent Azure repair script
+        run: |
+          set -euo pipefail
+          bash -n projects/k2401-evo-launcher/scripts/bootstrap-azure-oidc.sh
+          grep -Fq 'repo:tzn5-web@331569227/leno@1404038746:ref:refs/heads/main' projects/k2401-evo-launcher/scripts/bootstrap-azure-oidc.sh
+          grep -Fq 'Virtual Machine Contributor' projects/k2401-evo-launcher/scripts/bootstrap-azure-oidc.sh
+          grep -Fq 'Storage Account Contributor' projects/k2401-evo-launcher/scripts/bootstrap-azure-oidc.sh
+          echo 'AZURE_BOOTSTRAP_STATIC=PASS'
+  oidc:
+    needs: syntax
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Authenticate using existing permanent managed identity and OIDC
+        uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Verify identity and read-only VM access
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(az account show --query id -o tsv)" = '0ac7a514-32b3-47bf-bf89-e17906b1cc86'
+          test "$(az account show --query tenantId -o tsv)" = '779623db-ec2e-495b-9828-85d42baa77ee'
+          az vm show -g rg-phaser360-driverlab -n int34d2-lab --query '{name:name,size:hardwareProfile.vmSize}' -o json
+          state="$(az vm get-instance-view -g rg-phaser360-driverlab -n int34d2-lab --query "statuses[?starts_with(code, 'PowerState/')].code | [0]" -o tsv)"
+          echo "VM_STATE=$state"
+          echo 'AZURE_PERSISTENT_OIDC_AUTH=PASS'
+          echo 'VM_READ_PERMISSION=PASS'
+      - name: Sign out
+        if: always()
+        run: az logout || true
