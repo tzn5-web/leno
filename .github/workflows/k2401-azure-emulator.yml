@@ -3,6 +3,10 @@ name: K2401 EVO - Azure Android 10 emulator
 # Run on demand ONLY: Azure VM is billable while started.
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/k2401-azure-emulator.yml'
 
 permissions:
   contents: read
@@ -21,6 +25,7 @@ env:
 
 jobs:
   azure-android:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[k2401-azure-run]')
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     steps:
