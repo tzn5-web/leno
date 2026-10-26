@@ -2,7 +2,7 @@
 # Called only through Azure VM Run Command. No changes to MCU, car hardware or Windows boot config.
 param([Parameter(Mandatory=$true)][string]$SasUrlB64, [Parameter(Mandatory=$true)][string]$ExpectedApkSha)
 $SasUrl = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($SasUrlB64))
-if ($ExpectedApkSha -notmatch '^[0-9a-fA-F]{64}
+if ($ExpectedApkSha -notmatch '^[0-9a-fA-F]{64}$') { throw 'Invalid APK SHA256 parameter' }
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $root = 'C:\K2401-EVO-LAB'
