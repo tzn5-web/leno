@@ -6,3 +6,7 @@
 # The workflow still requires a passing OIDC login and a deallocated VM.
 #
 # Last request: NONE
+
+request-id: azure-first-authorized-oidc-20261026
+reason: real Android 10 emulator smoke test in Azure after persistent OIDC PASS
+expected-vm-initial-state: PowerState/deallocated
