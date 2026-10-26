@@ -2,6 +2,7 @@ name: K2401 Azure native AI agent
 
 # Azure job has its own read-only identity; model output capped to 450 tokens.
 # No VM start, no code mutation, no public endpoint; job is manual scale-to-zero.
+# OIDC AI data-plane RBAC verified; perform one bounded inference smoke test.
 on:
   workflow_run:
     workflows: ['K2401 EVO - Azure Android 10 emulator']
