@@ -5,6 +5,7 @@ on:
     paths:
       - 'projects/k2401-evo-launcher/scripts/**'
       - '.github/workflows/k2401-azure-emulator.yml'
+      - '.github/workflows/k2401-evo-launcher.yml'
       - '.github/workflows/k2401-azure-static-check.yml'
 permissions:
   contents: read
