@@ -1,0 +1,140 @@
+name: K2401 EVO - Azure Android 10 emulator
+
+# Run on demand ONLY: Azure VM is billable while started.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: k2401-evo-azure-vm-int34d2-lab
+  cancel-in-progress: false
+
+env:
+  RESOURCE_GROUP: rg-phaser360-driverlab
+  VM_NAME: int34d2-lab
+  STORAGE_RG: rg-chatgpt-azure
+  STORAGE_REGION: swedencentral
+  APK: projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.apk
+
+jobs:
+  azure-android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - name: Verify Azure OIDC configuration before billing
+        env:
+          AZURE_CLIENT_ID: ${{ vars.K2401_AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.K2401_AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.K2401_AZURE_SUBSCRIPTION_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Missing repository variable K2401_$key. No Azure resources started."
+              exit 2
+            fi
+          done
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/k2401-evo-launcher
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.11.1' }
+      - name: Install compile SDK
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          "$SDKMANAGER" 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Build APK and record SHA256
+        run: |
+          set -euo pipefail
+          gradle --no-daemon -p projects/k2401-evo-launcher :app:assembleDebug
+          test -s "$APK"
+          sha256sum "$APK"
+      - name: Azure OIDC authentication
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.K2401_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.K2401_AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.K2401_AZURE_SUBSCRIPTION_ID }}
+      - name: Confirm VM identity and safety preconditions
+        shell: bash
+        run: |
+          set -euo pipefail
+          az vm show -g "$RESOURCE_GROUP" -n "$VM_NAME" --query '{name:name,vmSize:hardwareProfile.vmSize,provisioningState:provisioningState}' -o json
+          POWER="$(az vm get-instance-view -g "$RESOURCE_GROUP" -n "$VM_NAME" --query 'instanceView.statuses[?starts_with(code,`PowerState/`)].code|[0]' -o tsv 2>/dev/null || true)"
+          # The get-instance-view CLI returns statuses directly; use this simpler fallback.
+          POWER="$(az vm get-instance-view -g "$RESOURCE_GROUP" -n "$VM_NAME" --query "statuses[?starts_with(code, 'PowerState/')].code | [0]" -o tsv)"
+          if [[ "$POWER" != "PowerState/deallocated" ]]; then
+            echo "::error::Existing VM must be deallocated before running to avoid interfering with other work. Current state: $POWER"
+            exit 3
+          fi
+          echo 'VM_PREFLIGHT=PASS'
+      - name: Prepare isolated temporary Azure Blob transfer
+        shell: bash
+        run: |
+          set -euo pipefail
+          STORAGE="k24${{ github.run_id }}"
+          echo "STORAGE=$STORAGE" >> "$GITHUB_ENV"
+          az storage account create -g "$STORAGE_RG" -n "$STORAGE" -l "$STORAGE_REGION" --sku Standard_LRS --kind StorageV2 --https-only true --allow-blob-public-access false --min-tls-version TLS1_2 -o none
+          KEY="$(az storage account keys list -g "$STORAGE_RG" -n "$STORAGE" --query '[0].value' -o tsv)"
+          echo "::add-mask::$KEY"
+          az storage container create --name artifacts --account-name "$STORAGE" --account-key "$KEY" -o none
+          az storage blob upload --container-name artifacts --name launcher.apk --file "$APK" --account-name "$STORAGE" --account-key "$KEY" --overwrite true -o none
+          EXPIRY="$(date -u -d '+3 hours' '+%Y-%m-%dT%H:%MZ')"
+          SAS="$(az storage container generate-sas -n artifacts --account-name "$STORAGE" --account-key "$KEY" --permissions racwl --expiry "$EXPIRY" --https-only -o tsv)"
+          echo "::add-mask::$SAS"
+          SAS_URL="https://$STORAGE.blob.core.windows.net/artifacts?$SAS"
+          echo "::add-mask::$SAS_URL"
+          echo "SAS_URL=$SAS_URL" >> "$GITHUB_ENV"
+      - name: Start existing Azure VM
+        id: vmstart
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Mark before start so cleanup still deallocates if Azure start partially succeeds.
+          echo "VM_START_ATTEMPTED=true" >> "$GITHUB_ENV"
+          az vm start -g "$RESOURCE_GROUP" -n "$VM_NAME" -o none
+          az vm get-instance-view -g "$RESOURCE_GROUP" -n "$VM_NAME" --query "statuses[?starts_with(code, 'PowerState/')].code | [0]" -o tsv
+      - name: Execute Android emulator inside Azure Windows VM
+        timeout-minutes: 48
+        shell: bash
+        run: |
+          set -euo pipefail
+          az vm run-command invoke -g "$RESOURCE_GROUP" -n "$VM_NAME" --command-id RunPowerShellScript --scripts @projects/k2401-evo-launcher/scripts/azure-vm-emulator.ps1 --parameters "SasUrl=$SAS_URL" --query 'value[].message' -o tsv | tee azure-run-command-summary.txt
+          grep -q 'K2401_AZURE_TEST_STATUS=PASS' azure-run-command-summary.txt
+      - name: Retrieve VM screenshots and diagnostic reports
+        if: always() && env.STORAGE != ''
+        timeout-minutes: 6
+        shell: bash
+        run: |
+          set +e
+          mkdir -p azure-evo-results
+          QUERY="${SAS_URL#*?}"
+          az storage blob download-batch --source artifacts --destination azure-evo-results --pattern "results/*" --account-name "$STORAGE" --sas-token "$QUERY" --overwrite true -o none
+          find azure-evo-results -type f -maxdepth 4 -printf '%P (%s bytes)\n'
+      - name: Publish diagnostic files (not a release APK)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k2401-azure-emulator-diagnostics
+          path: |
+            azure-evo-results/
+            azure-run-command-summary.txt
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Deallocate VM to prevent further compute charges
+        if: always() && env.VM_START_ATTEMPTED == 'true'
+        timeout-minutes: 10
+        run: az vm deallocate -g "$RESOURCE_GROUP" -n "$VM_NAME" -o none
+      - name: Delete temporary blob transfer account
+        if: always() && env.STORAGE != ''
+        timeout-minutes: 8
+        shell: bash
+        run: az storage account delete -g "$STORAGE_RG" -n "$STORAGE" --yes -o none
