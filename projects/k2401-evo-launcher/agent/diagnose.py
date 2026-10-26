@@ -161,6 +161,8 @@ def main() -> int:
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
             out.write(summary)
     print(f"K2401_AGENT=PASS vm={power!r} run={run['conclusion']!r} ai={ai_state}")
+    if ai_state != 'success':
+        print(f"K2401_AI_PROVIDER_STATUS={ai_text}")
     if power == "VM running" and run["status"] == "completed":
         print("K2401_AGENT_COST_ALERT=VM_LEFT_RUNNING", file=sys.stderr)
         return 4
