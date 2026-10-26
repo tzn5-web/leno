@@ -18,7 +18,7 @@ from urllib.request import Request, urlopen
 REPO = "tzn5-web/leno"
 RUN_ID = os.getenv("K2401_RUN_ID", "40382269545")
 AZURE_RESOURCE = "andreplaja-6488-resource"
-AZURE_ENDPOINT = "https://andreplaja-6488-resource.cognitiveservices.azure.com"
+AZURE_ENDPOINT = "https://andreplaja-6488-resource.openai.azure.com"
 AZURE_DEPLOYMENT = "k2401-gpt41mini"
 AZURE_API_VERSION = "2024-10-21"
 
@@ -44,8 +44,9 @@ def azure_ai(prompt: dict) -> dict:
     token = ""
     if not account_key:
         token = cli(["account", "get-access-token", "--resource",
-                     "https://cognitiveservices.azure.com", "--query", "accessToken", "-o", "tsv"])
+                     "https://ai.azure.com", "--query", "accessToken", "-o", "tsv"])
     payload = {
+        "model": AZURE_DEPLOYMENT,
         "messages": [
             {"role": "system", "content": ("You are K2401 EVO's bounded Azure diagnostic agent. "
              "Explain verified cause and safe next patch in Romanian. "
@@ -56,8 +57,7 @@ def azure_ai(prompt: dict) -> dict:
         "temperature": 0.1,
         "max_tokens": 450,
     }
-    url = (f"{AZURE_ENDPOINT}/openai/deployments/{AZURE_DEPLOYMENT}/chat/completions"
-           f"?api-version={AZURE_API_VERSION}")
+    url = f"{AZURE_ENDPOINT}/openai/v1/chat/completions"
     headers = {"Content-Type": "application/json"}
     if account_key:
         headers["api-key"] = account_key
