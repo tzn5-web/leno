@@ -67,6 +67,14 @@ jobs:
           [[ "$RUN_ID" =~ ^[0-9]{8,13}$ ]] || { echo '::error::Bad run id'; exit 2; }
           JOB=k2401-ai-agent
           GROUP=rg-chatgpt-azure
+          SCOPE=/subscriptions/0ac7a514-32b3-47bf-bf89-e17906b1cc86/resourceGroups/NetworkWatcherRG/providers/Microsoft.CognitiveServices/accounts/andreplaja-6488-resource
+          PRINCIPAL=32e6befe-9e61-4470-9758-ed89a907c1f4
+          ROLE_COUNT="$(az role assignment list --assignee "$PRINCIPAL" --scope "$SCOPE" --role 'Cognitive Services OpenAI User' --query 'length(@)' -o tsv)"
+          if [[ "$ROLE_COUNT" == 0 ]]; then
+            echo '::error::Missing Azure AI data-plane role for existing managed identity. No billable AI job was started.'
+            echo 'AZURE_AI_OWNER_RBAC_BOOTSTRAP_REQUIRED=YES' >> "$GITHUB_STEP_SUMMARY"
+            exit 3
+          fi
           if ! az containerapp job show -g "$GROUP" -n "$JOB" --query name -o tsv > /tmp/agent-job.txt 2>/tmp/agent-access.err; then
             echo '::warning::Azure-native AI agent not deployed or GitHub OIDC lacks job Operator RBAC. Subscription Owner bootstrap is required.'
             echo 'AZURE_AI_JOB_PENDING_OWNER_BOOTSTRAP=YES' >> "$GITHUB_STEP_SUMMARY"
