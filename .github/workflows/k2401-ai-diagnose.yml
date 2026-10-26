@@ -1,0 +1,65 @@
+name: K2401 Azure AI diagnostic agent
+
+# Bounded diagnostics; no VM start, no Azure resource writes.
+on:
+  workflow_run:
+    workflows: ['K2401 EVO - Azure Android 10 emulator']
+    types: [completed]
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/k2401-ai-diagnose.yml'
+      - 'projects/k2401-evo-launcher/agent/**'
+
+permissions:
+  contents: read
+  actions: read
+  models: read
+  id-token: write
+
+concurrency:
+  group: k2401-ai-diagnostics-${{ github.event.workflow_run.id || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      K2401_RUN_ID: ${{ github.event.workflow_run.id || '40382269545' }}
+      K2401_USE_AI: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile/check bounded agent before Azure access
+        run: |
+          set -euo pipefail
+          python3 -m py_compile projects/k2401-evo-launcher/agent/diagnose.py
+          python3 - <<'PY'
+          import ast
+          from pathlib import Path
+          s=Path("projects/k2401-evo-launcher/agent/diagnose.py").read_text()
+          ast.parse(s)
+          assert "az vm start" not in s and "az vm deallocate" not in s
+          print("AGENT_READONLY_STATIC=PASS")
+          PY
+      - name: Login with persistent Azure GitHub identity
+        uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Query GitHub results, Azure VM and AI diagnosis (no mutations)
+        run: python3 projects/k2401-evo-launcher/agent/diagnose.py
+      - name: Publish traceable AI agent report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k2401-ai-diagnosis
+          path: agent-output/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Azure logout
+        if: always()
+        run: az logout || true
