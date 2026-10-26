@@ -23,7 +23,7 @@ jobs:
           $errors = $null
           $ast = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script).Path, [ref]$tokens, [ref]$errors)
           if ($null -eq $ast -or $errors.Count -gt 0) {
-            $errors | Format-List | Out-String | Write-Error
+            $errors | ForEach-Object { Write-Host ("PARSE_ERROR line {0}, column {1}: {2}" -f $_.Extent.StartLineNumber, $_.Extent.StartColumnNumber, $_.Message) }
             throw 'POWERSHELL_PARSE_FAIL'
           }
           Write-Host 'POWERSHELL_PARSE_PASS'
