@@ -1,0 +1,99 @@
+name: K2401 Azure native AI - repair runtime and verify
+
+# Repairs the EXISTING bounded Container Apps Job (no VM, no new Azure service).
+# One manually triggered test inference, then verify the actual job result.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/k2401-azure-agent-refresh.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: k2401-azure-native-runtime-repair
+  cancel-in-progress: false
+
+jobs:
+  repair-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - name: Static checks before any Azure modification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile projects/k2401-evo-launcher/agent/azure_entry.py
+          grep -Fq 'https://ai.azure.com' projects/k2401-evo-launcher/agent/azure_entry.py
+          grep -Fq '.openai.azure.com' projects/k2401-evo-launcher/agent/azure_entry.py
+          grep -Fq '/openai/v1/chat/completions' projects/k2401-evo-launcher/agent/azure_entry.py
+          echo 'AZURE_NATIVE_AI_SOURCE=PASS'
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Update existing Container App Job only (no VM or new resources)
+        shell: bash
+        run: |
+          set -euo pipefail
+          az config set extension.use_dynamic_install=yes_without_prompt
+          GROUP=rg-chatgpt-azure
+          JOB=k2401-ai-agent
+          PINNED=6b037e33cd263b4fe7912e42588e4de213b28f5b
+          URL="https://raw.githubusercontent.com/tzn5-web/leno/$PINNED/projects/k2401-evo-launcher/agent/azure_entry.py"
+          curl -fsSL --max-time 20 "$URL" -o /tmp/native-agent.py
+          python3 -m py_compile /tmp/native-agent.py
+          cmp projects/k2401-evo-launcher/agent/azure_entry.py /tmp/native-agent.py
+          EXISTING="$(az containerapp job show -g "$GROUP" -n "$JOB" -o json)"
+          echo "$EXISTING" | jq -e '.properties.configuration.triggerType=="Manual" and .properties.configuration.replicaTimeout==180 and .properties.configuration.replicaRetryLimit==0 and .properties.template.containers[0].name=="k2401-agent"' >/dev/null
+          SCRIPT="import urllib.request; exec(compile(urllib.request.urlopen('$URL',timeout=20).read(),'azure_entry.py','exec'))"
+          az containerapp job update -g "$GROUP" -n "$JOB" --container-name k2401-agent \
+            --command python3 --args '-c' "$SCRIPT" -o none
+          CURRENT="$(az containerapp job show -g "$GROUP" -n "$JOB" -o json)"
+          echo "$CURRENT" | jq -e --arg commit "$PINNED" \
+            '.properties.template.containers[0].args | length==2 and .[0]=="-c" and (.[1]|contains($commit))' >/dev/null
+          echo 'AZURE_NATIVE_AI_JOB_RUNTIME_UPDATED=PASS'
+      - name: Start one 450-token-capped inference execution
+        id: start
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT="$(az containerapp job start -g rg-chatgpt-azure -n k2401-ai-agent -o json)"
+          EXEC="$(jq -r '.name // empty' <<< "$RESULT")"
+          [[ "$EXEC" == k2401-ai-agent-* ]] || { echo '::error::Azure did not return an execution name'; exit 3; }
+          echo "execution=$EXEC" >> "$GITHUB_OUTPUT"
+          echo "K2401_AZURE_AGENT_EXECUTION_STARTED=$EXEC"
+      - name: Verify actual Azure job completion
+        shell: bash
+        env:
+          EXECUTION: ${{ steps.start.outputs.execution }}
+        run: |
+          set -euo pipefail
+          STATE=Unknown
+          for _ in $(seq 1 15); do
+            RESPONSE="$(az containerapp job execution list -g rg-chatgpt-azure -n k2401-ai-agent -o json)"
+            STATE="$(jq -r --arg name "$EXECUTION" '[.[]|select(.name==$name)|.properties.status]|first//"Unknown"' <<< "$RESPONSE")"
+            echo "AZURE_AGENT_EXECUTION_STATE=$STATE"
+            case "$STATE" in
+              Succeeded) echo 'K2401_AZURE_NATIVE_AGENT=PASS'; break;;
+              Failed|Stopped|Cancelled) echo "::error::Native agent failed ($STATE)"; exit 5;;
+              *) sleep 12;;
+            esac
+          done
+          [[ "$STATE" == Succeeded ]] || { echo "::error::Native agent did not finish successfully inside the verification window"; exit 6; }
+          POWER="$(az vm show -g rg-phaser360-driverlab -n int34d2-lab --show-details --query powerState -o tsv)"
+          echo "K2401_WINDOWS_VM_POWER=$POWER"
+          [[ "$POWER" == "VM deallocated" ]] || { echo '::error::VM is not deallocated'; exit 7; }
+      - name: Agent execution logs (non-blocking)
+        if: always() && steps.start.outputs.execution != ''
+        shell: bash
+        run: |
+          az containerapp job logs show -g rg-chatgpt-azure -n k2401-ai-agent --container k2401-agent --follow false --tail 40 || true
+      - name: Azure logout
+        if: always()
+        run: az logout || true
