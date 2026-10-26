@@ -71,7 +71,9 @@ jobs:
             echo 'AZURE_AI_JOB_PENDING_OWNER_BOOTSTRAP=YES' >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          az containerapp job start -g "$GROUP" -n "$JOB" --env-vars "K2401_RUN_ID=$RUN_ID" --query '{name:name,id:id}' -o json
+          # Do not use --env-vars on start: it implicitly builds an incomplete container override.
+          # The pinned job template already contains the initial test run id.
+          az containerapp job start -g "$GROUP" -n "$JOB" --query '{name:name,id:id}' -o json
           {
             echo '## Azure-native AI agent execution started'
             echo "- Azure Container Apps Job: $JOB"
