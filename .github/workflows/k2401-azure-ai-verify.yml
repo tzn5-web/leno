@@ -35,7 +35,13 @@ jobs:
             exit 3
           fi
           echo "K2401_AI_EXECUTION=$EXEC"
-          az containerapp job execution show -g "$RESOURCE_GROUP" -n "$JOB" --job-execution-name "$EXEC" -o json || true
+          az containerapp job execution show -g "$RESOURCE_GROUP" -n "$JOB" --job-execution-name "$EXEC" -o json
+          EXEC_STATE="$(jq -r --arg name "$EXEC" '[.[] | select(.name == $name) | .properties.status] | first // "Unknown"' /tmp/k2401-executions.json)"
+          echo "K2401_AZURE_AI_JOB_STATE=$EXEC_STATE"
+          if [[ "$EXEC_STATE" != "Succeeded" ]]; then
+            echo "::error::Azure AI job has not passed: $EXEC_STATE. Review logs and inference RBAC."
+            # Continue reading VM state and model before returning nonzero.
+          fi
           POWER="$(az vm show -g rg-phaser360-driverlab -n int34d2-lab --show-details --query powerState -o tsv)"
           MODEL="$(az cognitiveservices account deployment show -g NetworkWatcherRG -n andreplaja-6488-resource --deployment-name k2401-gpt41mini --query properties.provisioningState -o tsv)"
           echo "K2401_WINDOWS_VM_POWER=$POWER"
@@ -49,6 +55,9 @@ jobs:
           if [[ "$POWER" != "VM deallocated" ]]; then
             echo "::error::Windows VM is not deallocated."
             exit 4
+          fi
+          if [[ "$EXEC_STATE" != "Succeeded" ]]; then
+            exit 5
           fi
       - name: Retrieve Azure AI job logs (best effort)
         if: always()
