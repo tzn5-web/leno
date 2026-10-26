@@ -142,6 +142,9 @@ jobs:
           KEY="$(az storage account keys list -g "$STORAGE_RG" -n "$STORAGE" --query '[0].value' -o tsv)"
           echo "::add-mask::$KEY"
           az storage blob download-batch --source artifacts --destination azure-evo-results --pattern "results/*" --account-name "$STORAGE" --account-key "$KEY" --overwrite true -o none
+          if ! test -s azure-evo-results/results/report.txt; then
+            echo '::warning::VM report missing; inspect run-command timeout and uploaded artifacts'
+          fi
           find azure-evo-results -type f -maxdepth 4 -printf '%P (%s bytes)\n'
       - name: Publish diagnostic files (not a release APK)
         if: always()
