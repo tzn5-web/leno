@@ -56,6 +56,7 @@ jobs:
           gradle --no-daemon -p projects/k2401-evo-launcher :app:assembleDebug
           test -s "$APK"
           sha256sum "$APK"
+          echo "APK_SHA=$(sha256sum "$APK" | awk '{print $1}')" >> "$GITHUB_ENV"
       - name: Azure OIDC authentication
         uses: azure/login@v3
         with:
@@ -105,7 +106,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          az vm run-command invoke -g "$RESOURCE_GROUP" -n "$VM_NAME" --command-id RunPowerShellScript --scripts @projects/k2401-evo-launcher/scripts/azure-vm-emulator.ps1 --parameters "SasUrl=$SAS_URL" --query 'value[].message' -o tsv | tee azure-run-command-summary.txt
+          SAS_B64="$(printf '%s' "$SAS_URL" | base64 -w0)"
+          echo "::add-mask::$SAS_B64"
+          az vm run-command invoke -g "$RESOURCE_GROUP" -n "$VM_NAME" --command-id RunPowerShellScript --scripts @projects/k2401-evo-launcher/scripts/azure-vm-emulator.ps1 --parameters "SasUrlB64=$SAS_B64" "ExpectedApkSha=$APK_SHA" --query 'value[].message' -o tsv | tee azure-run-command-summary.txt
           grep -q 'K2401_AZURE_TEST_STATUS=PASS' azure-run-command-summary.txt
       - name: Retrieve VM screenshots and diagnostic reports
         if: always() && env.STORAGE != ''
