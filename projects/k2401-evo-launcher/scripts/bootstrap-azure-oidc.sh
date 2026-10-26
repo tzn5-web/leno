@@ -24,12 +24,22 @@ CLIENT_ID="$(az identity show -g "$ID_RG" -n "$IDENTITY" --query clientId -o tsv
 PRINCIPAL_ID="$(az identity show -g "$ID_RG" -n "$IDENTITY" --query principalId -o tsv)"
 [[ -n "$CLIENT_ID" && -n "$PRINCIPAL_ID" ]] || { echo 'IDENTITY_UNAVAILABLE'; exit 1; }
 
-if ! az identity federated-credential show -g "$ID_RG" --identity-name "$IDENTITY" --name "$FIC" >/dev/null 2>&1; then
+# GitHub repositories created after July 15 2026 use an immutable OIDC subject
+# containing owner/repository IDs. Match the subject recorded in the CI login error.
+FIC_SUBJECT='repo:tzn5-web@331569227/leno@1404038746:ref:refs/heads/main'
+CURRENT_SUBJECT="$(az identity federated-credential show -g "$ID_RG" --identity-name "$IDENTITY" --name "$FIC" --query subject -o tsv 2>/dev/null || true)"
+if [[ -z "$CURRENT_SUBJECT" ]]; then
   az identity federated-credential create -g "$ID_RG" --identity-name "$IDENTITY" -n "$FIC" \
     --issuer 'https://token.actions.githubusercontent.com' \
-    --subject "repo:$REPO:ref:refs/heads/main" \
+    --subject "$FIC_SUBJECT" \
     --audiences 'api://AzureADTokenExchange' -o none
+elif [[ "$CURRENT_SUBJECT" != "$FIC_SUBJECT" ]]; then
+  az identity federated-credential update -g "$ID_RG" --identity-name "$IDENTITY" -n "$FIC" \
+    --subject "$FIC_SUBJECT" -o none
 fi
+ACTUAL_SUBJECT="$(az identity federated-credential show -g "$ID_RG" --identity-name "$IDENTITY" --name "$FIC" --query subject -o tsv)"
+[[ "$ACTUAL_SUBJECT" == "$FIC_SUBJECT" ]] || { echo 'OIDC_SUBJECT_MISMATCH'; exit 4; }
+echo 'AZURE_OIDC_FEDERATION_SUBJECT=PASS'
 
 VM_SCOPE="$(az vm show -g "$VM_RG" -n "$VM_NAME" --query id -o tsv)"
 STORAGE_SCOPE="/subscriptions/$SUB/resourceGroups/$ID_RG"
@@ -55,14 +65,5 @@ printf 'K2401_AZURE_CLIENT_ID=%s\n' "$CLIENT_ID"
 printf 'K2401_AZURE_TENANT_ID=%s\n' "$TENANT"
 printf 'K2401_AZURE_SUBSCRIPTION_ID=%s\n' "$SUB"
 printf '\n'
-if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-  printf '%s' "$CLIENT_ID" | gh variable set K2401_AZURE_CLIENT_ID -R "$REPO"
-  printf '%s' "$TENANT" | gh variable set K2401_AZURE_TENANT_ID -R "$REPO"
-  printf '%s' "$SUB" | gh variable set K2401_AZURE_SUBSCRIPTION_ID -R "$REPO"
-  echo "GITHUB_REPOSITORY_VARIABLES=SET"
-else
-  echo "GITHUB_REPOSITORY_VARIABLES=PENDING"
-  echo "Enter the three values above in GitHub > Settings > Secrets and variables > Actions > Variables."
-  echo "These three values are identifiers, not private keys."
-fi
-echo 'Only then dispatch K2401 EVO - Azure Android 10 emulator from GitHub Actions.'
+echo 'GitHub workflow now embeds the three non-secret IDs; no repository variables are needed.'
+echo 'OIDC_FEDERATION_READY=PASS'
