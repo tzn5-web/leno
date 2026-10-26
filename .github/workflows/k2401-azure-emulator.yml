@@ -81,6 +81,11 @@ jobs:
             echo "::error::Existing VM must be deallocated before running to avoid interfering with other work. Current state: $POWER"
             exit 3
           fi
+          PROVIDER="$(az provider show --namespace Microsoft.Storage --query registrationState -o tsv)"
+          if [[ "$PROVIDER" != "Registered" ]]; then
+            echo "::error::Microsoft.Storage provider is $PROVIDER. Register it once as the subscription Owner before an Azure emulator run."
+            exit 4
+          fi
           echo 'VM_PREFLIGHT=PASS'
       - name: Prepare isolated temporary Azure Blob transfer
         shell: bash
