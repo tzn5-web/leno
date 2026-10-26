@@ -76,7 +76,7 @@ jobs:
         run: |
           set -euo pipefail
           az vm show -g "$RESOURCE_GROUP" -n "$VM_NAME" --query '{name:name,vmSize:hardwareProfile.vmSize,provisioningState:provisioningState}' -o json
-          POWER="$(az vm get-instance-view -g "$RESOURCE_GROUP" -n "$VM_NAME" --query "statuses[?starts_with(code, 'PowerState/')].code | [0]" -o tsv)"
+          POWER="$(az vm get-instance-view -g "$RESOURCE_GROUP" -n "$VM_NAME" --query "instanceView.statuses[?starts_with(code, 'PowerState/')].code | [0]" -o tsv)"
           if [[ "$POWER" != "PowerState/deallocated" ]]; then
             echo "::error::Existing VM must be deallocated before running to avoid interfering with other work. Current state: $POWER"
             exit 3
@@ -108,7 +108,7 @@ jobs:
           # Mark before start so cleanup still deallocates if Azure start partially succeeds.
           echo "VM_START_ATTEMPTED=true" >> "$GITHUB_ENV"
           az vm start -g "$RESOURCE_GROUP" -n "$VM_NAME" -o none
-          az vm get-instance-view -g "$RESOURCE_GROUP" -n "$VM_NAME" --query "statuses[?starts_with(code, 'PowerState/')].code | [0]" -o tsv
+          az vm get-instance-view -g "$RESOURCE_GROUP" -n "$VM_NAME" --query "instanceView.statuses[?starts_with(code, 'PowerState/')].code | [0]" -o tsv
       - name: Execute Android emulator inside Azure Windows VM
         timeout-minutes: 48
         shell: bash
