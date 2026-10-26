@@ -1,0 +1,8 @@
+# K2401 EVO Azure emulator execution request
+# This file is a safe on-demand trigger for the existing workflow.
+# A normal commit DOES NOT start the Azure VM.
+# To start an Azure run, an authorized repository editor must update this file
+# with a new request ID and use the exact commit marker [k2401-azure-run].
+# The workflow still requires a passing OIDC login and a deallocated VM.
+#
+# Last request: NONE
