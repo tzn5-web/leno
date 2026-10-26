@@ -122,8 +122,8 @@ try {
         ExecNative $adb @('-e','pull',"/sdcard/$name.png",(Join-Path $results "$name.png"))
         $bytes = [System.IO.File]::ReadAllBytes((Join-Path $results "$name.png"))
         if ($bytes.Length -lt 24 -or $bytes[0] -ne 137) { throw "SCREENSHOT_INVALID_$name" }
-        [Array]::Reverse($bytes,16,4); [Array]::Reverse($bytes,20,4)
-        $width = [BitConverter]::ToUInt32($bytes,16); $height = [BitConverter]::ToUInt32($bytes,20)
+        $width = [uint32](([uint32]$bytes[16] -shl 24) -bor ([uint32]$bytes[17] -shl 16) -bor ([uint32]$bytes[18] -shl 8) -bor [uint32]$bytes[19])
+        $height = [uint32](([uint32]$bytes[20] -shl 24) -bor ([uint32]$bytes[21] -shl 16) -bor ([uint32]$bytes[22] -shl 8) -bor [uint32]$bytes[23])
         if ($width -ne 1280 -or $height -ne 720) { throw "SCREEN_DIMENSIONS_$name=$($width)x$height" }
     }
     ExecNative $adb @('-e','shell','am','force-stop','ro.evolauncher.k2401')
