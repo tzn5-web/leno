@@ -53,7 +53,7 @@ jobs:
           echo "$EXISTING" | jq -e '.properties.configuration.triggerType=="Manual" and .properties.configuration.replicaTimeout==180 and .properties.configuration.replicaRetryLimit==0 and .properties.template.containers[0].name=="k2401-agent"' >/dev/null
           SCRIPT="import urllib.request; exec(compile(urllib.request.urlopen('$URL',timeout=20).read(),'azure_entry.py','exec'))"
           az containerapp job update -g "$GROUP" -n "$JOB" --container-name k2401-agent \
-            --command python3 --args '-c' "$SCRIPT" -o none
+            --command python3 --args=-c "$SCRIPT" -o none
           CURRENT="$(az containerapp job show -g "$GROUP" -n "$JOB" -o json)"
           echo "$CURRENT" | jq -e --arg commit "$PINNED" \
             '.properties.template.containers[0].args | length==2 and .[0]=="-c" and (.[1]|contains($commit))' >/dev/null
