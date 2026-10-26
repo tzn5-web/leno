@@ -20,6 +20,18 @@ az account show --query '{tenantId:tenantId,subscription:id}' -o json
 ACTUAL_TENANT="$(az account show --query tenantId -o tsv)"
 [[ "$ACTUAL_TENANT" == "$TENANT" ]] || { echo "TENANT_MISMATCH: no changes made"; exit 2; }
 
+# Required for creating the short-lived APK transfer account. Fresh Azure subscriptions
+# often lack this resource-provider registration; Storage Account Contributor on an RG
+# cannot register providers at subscription scope. Run as the subscription owner.
+STORAGE_PROVIDER_STATE="$(az provider show --namespace Microsoft.Storage --query registrationState -o tsv)"
+if [[ "$STORAGE_PROVIDER_STATE" != 'Registered' ]]; then
+  echo "REGISTERING_MICROSOFT_STORAGE_PROVIDER: $STORAGE_PROVIDER_STATE"
+  az provider register --namespace Microsoft.Storage --wait
+fi
+STORAGE_PROVIDER_STATE="$(az provider show --namespace Microsoft.Storage --query registrationState -o tsv)"
+[[ "$STORAGE_PROVIDER_STATE" == 'Registered' ]] || { echo "MICROSOFT_STORAGE_PROVIDER_NOT_REGISTERED=$STORAGE_PROVIDER_STATE"; exit 5; }
+echo 'MICROSOFT_STORAGE_PROVIDER=PASS'
+
 # Identity already exists. Do not create a duplicate or increase permissions.
 if ! az identity show -g "$ID_RG" -n "$IDENTITY" >/dev/null 2>&1; then
   echo 'IDENTITY_NOT_FOUND: stop and investigate; do not create a replacement.'
