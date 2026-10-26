@@ -67,8 +67,6 @@ jobs:
         run: |
           set -euo pipefail
           az vm show -g "$RESOURCE_GROUP" -n "$VM_NAME" --query '{name:name,vmSize:hardwareProfile.vmSize,provisioningState:provisioningState}' -o json
-          POWER="$(az vm get-instance-view -g "$RESOURCE_GROUP" -n "$VM_NAME" --query 'instanceView.statuses[?starts_with(code,`PowerState/`)].code|[0]' -o tsv 2>/dev/null || true)"
-          # The get-instance-view CLI returns statuses directly; use this simpler fallback.
           POWER="$(az vm get-instance-view -g "$RESOURCE_GROUP" -n "$VM_NAME" --query "statuses[?starts_with(code, 'PowerState/')].code | [0]" -o tsv)"
           if [[ "$POWER" != "PowerState/deallocated" ]]; then
             echo "::error::Existing VM must be deallocated before running to avoid interfering with other work. Current state: $POWER"
