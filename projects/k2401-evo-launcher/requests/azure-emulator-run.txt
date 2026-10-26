@@ -5,8 +5,8 @@
 # with a new request ID and use the exact commit marker [k2401-azure-run].
 # The workflow still requires a passing OIDC login and a deallocated VM.
 #
-# Last request: azure-emulator-20261026-after-storage-registered
+# Last request: azure-emulator-20261026-three-hour-retest
 
-request-id: azure-emulator-20261026-after-storage-registered
-reason: execute Android 10 smoke test in Azure after verified OIDC and Microsoft.Storage Registered
+request-id: azure-emulator-20261026-three-hour-retest
+reason: retest Android 10 after diagnostic authentication and PNG fixes with 180 minute emulator limit
 expected-vm-initial-state: PowerState/deallocated
