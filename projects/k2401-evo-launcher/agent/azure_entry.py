@@ -38,8 +38,13 @@ def github_json(path: str) -> dict:
 
 
 def azure_ai(prompt: dict) -> dict:
-    token = cli(["account", "get-access-token", "--resource",
-                 "https://cognitiveservices.azure.com", "--query", "accessToken", "-o", "tsv"])
+    # Preferred: managed identity. Fallback: an Azure Container Apps secret with
+    # the existing Foundry account's key, never exported to logs or the repository.
+    account_key = os.environ.get("AZURE_OPENAI_API_KEY", "")
+    token = ""
+    if not account_key:
+        token = cli(["account", "get-access-token", "--resource",
+                     "https://cognitiveservices.azure.com", "--query", "accessToken", "-o", "tsv"])
     payload = {
         "messages": [
             {"role": "system", "content": ("You are K2401 EVO's bounded Azure diagnostic agent. "
@@ -53,8 +58,13 @@ def azure_ai(prompt: dict) -> dict:
     }
     url = (f"{AZURE_ENDPOINT}/openai/deployments/{AZURE_DEPLOYMENT}/chat/completions"
            f"?api-version={AZURE_API_VERSION}")
+    headers = {"Content-Type": "application/json"}
+    if account_key:
+        headers["api-key"] = account_key
+    else:
+        headers["Authorization"] = "Bearer " + token
     req = Request(url, data=json.dumps(payload).encode("utf-8"), method="POST",
-                  headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"})
+                  headers=headers)
     with urlopen(req, timeout=45) as response:
         return json.load(response)
 
@@ -63,9 +73,12 @@ def main() -> int:
     if not re.fullmatch(r"[0-9]{8,13}", RUN_ID):
         raise ValueError("Invalid K2401 run id")
     identity_client_id = os.getenv("AZURE_CLIENT_ID", "")
-    if not re.fullmatch(r"[0-9a-f-]{36}", identity_client_id):
-        raise ValueError("Agent requires dedicated managed identity client id")
-    cli(["login", "--identity", "--client-id", identity_client_id, "-o", "none"], timeout=25)
+    if identity_client_id:
+        if not re.fullmatch(r"[0-9a-f-]{36}", identity_client_id):
+            raise ValueError("Invalid managed identity client id")
+        cli(["login", "--identity", "--client-id", identity_client_id, "-o", "none"], timeout=25)
+    elif not os.getenv("AZURE_OPENAI_API_KEY"):
+        raise ValueError("Neither Azure MI nor encrypted Azure AI API-key secret is available")
     run = github_json(f"actions/runs/{RUN_ID}")
     jobs = github_json(f"actions/runs/{RUN_ID}/jobs?per_page=100")
     steps = [
@@ -73,8 +86,13 @@ def main() -> int:
          "failed": [s.get("name") for s in j.get("steps", []) if s.get("conclusion") == "failure"]}
         for j in jobs.get("jobs", [])[:25]
     ]
-    power = cli(["vm", "show", "-g", "rg-phaser360-driverlab", "-n", "int34d2-lab",
-                 "--show-details", "--query", "powerState", "-o", "tsv"])
+    if identity_client_id:
+        power = cli(["vm", "show", "-g", "rg-phaser360-driverlab", "-n", "int34d2-lab",
+                     "--show-details", "--query", "powerState", "-o", "tsv"])
+    else:
+        # Report externally verified GitHub OIDC check as a timestamped snapshot.
+        # Do not pretend the Azure job itself holds VM Reader privileges.
+        power = os.getenv("K2401_VM_POWER", "UNVERIFIED")
     safe_context = {
         "run_id": RUN_ID,
         "run_status": run.get("status"),
