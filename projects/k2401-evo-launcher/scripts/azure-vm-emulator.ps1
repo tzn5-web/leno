@@ -24,6 +24,25 @@ function ExecNative([string]$Exe,[string[]]$Arguments) {
     if ($LASTEXITCODE -ne 0) { throw "Command failed ($LASTEXITCODE): $Exe $($Arguments -join ' ')" }
 }
 try {
+    # BEFORE any JDK/SDK downloads or costly software emulation: prove WHPX is enabled.
+    # Do not change Windows features on the shared Phaser360 driver-lab VM.
+    $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
+    $system = Get-CimInstance Win32_ComputerSystem
+    $whpx = Get-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform -ErrorAction Stop
+    $capability = [ordered]@{
+        checkedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+        hypervisorPresent = [bool]$system.HypervisorPresent
+        firmwareVirtualization = [bool]$cpu.VirtualizationFirmwareEnabled
+        secondLevelAddressTranslation = [bool]$cpu.SecondLevelAddressTranslationExtensions
+        whpxFeatureState = [string]$whpx.State
+        processorName = [string]$cpu.Name
+        decision = 'NO_SOFTWARE_EMULATOR'
+    }
+    ($capability | ConvertTo-Json -Depth 3) | Out-File -FilePath (Join-Path $results 'windows-capability.json') -Encoding UTF8
+    if ($whpx.State -ne 'Enabled' -or
+        (-not $system.HypervisorPresent -and -not $cpu.VirtualizationFirmwareEnabled)) {
+        throw 'WHPX_NOT_READY: Windows HypervisorPlatform or nested virtualization is unavailable. Azure VM cannot run the fast Android emulator; run Android 10 KVM test in GitHub instead.'
+    }
     $java = Get-ChildItem -Path $root -Recurse -Filter java.exe -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '\\bin\\java.exe$' } | Select-Object -First 1
     if (!$java) {
         $jdkZip = Join-Path $root 'jdk17.zip'
@@ -73,7 +92,10 @@ try {
     $accelInfo | Out-File -FilePath (Join-Path $results 'accel.txt')
     $args = @('-avd','k2401api29','-no-window','-no-audio','-no-boot-anim','-no-snapshot','-no-metrics','-gpu','swiftshader_indirect','-memory','2048','-partition-size','2048','-skin','1280x720','-accel','off')
     # Deliberately avoid enabling Hyper-V/WHPX or changing Windows features on an existing driver-lab VM.
-    if ($accelInfo -match '(?i)acceleration.*usable|WHPX.*installed and usable') { $args[-1] = 'on' }
+    if ($accelInfo -notmatch '(?i)acceleration.*usable|WHPX.*installed and usable') {
+        throw 'ANDROID_EMULATOR_ACCELERATION_UNAVAILABLE: refusing an unaccelerated 48-minute loop'
+    }
+    $args[-1] = 'on'
     $proc = Start-Process -FilePath $emulator -ArgumentList $args -PassThru -WindowStyle Hidden
     $booted = $false
     for ($attempt=0;$attempt -lt 120;$attempt++) {
