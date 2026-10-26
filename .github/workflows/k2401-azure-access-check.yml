@@ -1,5 +1,6 @@
 name: K2401 Azure - permanent OIDC access check
 # No VM starts, no Azure resource creation, no paid compute.
+# Re-check Microsoft.Storage registration after subscription owner enabled it.
 on:
   workflow_dispatch:
   push:
