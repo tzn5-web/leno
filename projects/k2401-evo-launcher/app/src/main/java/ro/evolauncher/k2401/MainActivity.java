@@ -2,11 +2,14 @@ package ro.evolauncher.k2401;
 import android.app.*;import android.content.*;import android.graphics.*;import android.media.*;import android.media.session.*;import android.net.*;import android.os.*;import android.provider.*;import android.view.*;import java.lang.ref.*;import java.text.*;import java.util.*;
 public final class MainActivity extends Activity {
   static WeakReference<MainActivity> active=new WeakReference<>(null);
-  Handler handler=new Handler(); MediaController media; Dashboard view; int page=0; boolean emu;
+  Handler handler=new Handler(); MediaController media; Dashboard view; ObdReader obd; int page=0; boolean emu;
   final Runnable update=new Runnable(){public void run(){if(view!=null)view.invalidate();handler.postDelayed(this,30000);}};
-  public void onCreate(Bundle state){super.onCreate(state);getWindow().getDecorView().setSystemUiVisibility(5894|View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);emu=Build.FINGERPRINT.contains("generic")||Build.PRODUCT.contains("sdk");view=new Dashboard();setContentView(view);active=new WeakReference<>(this);}
-  protected void onResume(){super.onResume();refresh();handler.removeCallbacks(update);handler.post(update);}
-  protected void onPause(){handler.removeCallbacks(update);super.onPause();}
+  public void onCreate(Bundle state){super.onCreate(state);getWindow().getDecorView().setSystemUiVisibility(5894|View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);emu=Build.FINGERPRINT.contains("generic")||Build.PRODUCT.contains("sdk");view=new Dashboard();obd=new ObdReader(()->runOnUiThread(()->{if(view!=null)view.invalidate();}));setContentView(view);active=new WeakReference<>(this);}
+  protected void onResume(){super.onResume();refresh();handler.removeCallbacks(update);handler.post(update);startObd();}
+  protected void onPause(){handler.removeCallbacks(update);if(obd!=null)obd.stop();super.onPause();}
+  protected void onDestroy(){if(obd!=null)obd.stop();active.clear();super.onDestroy();}
+  void startObd(){if(emu)return;if(Build.VERSION.SDK_INT>=31&&(checkSelfPermission("android.permission.BLUETOOTH_CONNECT")!=android.content.pm.PackageManager.PERMISSION_GRANTED||checkSelfPermission("android.permission.BLUETOOTH_SCAN")!=android.content.pm.PackageManager.PERMISSION_GRANTED)){requestPermissions(new String[]{"android.permission.BLUETOOTH_CONNECT","android.permission.BLUETOOTH_SCAN"},2401);return;}obd.start();}
+  @Override public void onRequestPermissionsResult(int code,String[] permissions,int[] grantResults){super.onRequestPermissionsResult(code,permissions,grantResults);if(code!=2401||obd==null)return;for(int result:grantResults)if(result!=android.content.pm.PackageManager.PERMISSION_GRANTED)return;if(grantResults.length>0)obd.start();}
   public void onBackPressed(){page=0;view.invalidate();}
   static void changed(){MainActivity a=active.get();if(a!=null)a.runOnUiThread(()->{a.refresh();a.view.invalidate();});}
   void refresh(){media=null;try{MediaSessionManager m=(MediaSessionManager)getSystemService(MEDIA_SESSION_SERVICE);List<MediaController> all=m.getActiveSessions(new ComponentName(this,MediaAccessService.class));for(MediaController c:all)if("com.google.android.apps.youtube.music".equals(c.getPackageName())){media=c;return;}}catch(Exception ignored){}}
@@ -46,13 +49,16 @@ public final class MainActivity extends Activity {
        t(c,media!=null?"Sesiune media activă":"MediaSession • conectează aplicația",x+205,y+214,15,muted);
        t(c,"◀◀",x+247,y+h-36,27,white);dot(c,x+390,y+h-46,28,red);t(c,"Ⅱ",x+376,y+h-34,27,white);t(c,"▶▶",x+493,y+h-36,27,white);
    }
+   String formatObd(float value){return Float.isFinite(value)?String.format(Locale.US,"%.1f",value):"--";}
    void gauges(Canvas c,int x,int y,int w,int h){
-       r(c,x,y,w,h,card,16);outline(c,x,y,w,h,0xff7e2638);t(c,"TORQUE   •   DATE MOTOR",x+23,y+34,22,white);t(c,emu?"SIMULARE OBD":"OBD • NECONECTAT",x+w-239,y+33,15,0xffffb875);
+       r(c,x,y,w,h,card,16);outline(c,x,y,w,h,0xff7e2638);t(c,"TORQUE   •   DATE MOTOR",x+23,y+34,22,white);t(c,emu?"SIMULARE OBD":obd.status(),x+w-239,y+33,15,0xffffb875);
        l(c,x+20,y+48,x+w-20,y+48,0xff394657,1);
-       String[] name={"Boost / MAP","Temp. lichid","Turație motor","Tensiune"},unit={"bar","°C","x1000","V"},value=emu?new String[]{"0.8","92","2.8","14.1"}:new String[]{"--","--","--","--"};
+       String[] name={"MAP (abs.)","Temp. lichid","Turație motor","Tensiune"},unit={"bar","°C","x1000","V"};
+       ObdReader.Reading reading=obd==null?ObdReader.Reading.empty():obd.current();
+       String[] value=emu?new String[]{"0.8","92","2.8","14.1"}:new String[]{formatObd(reading.mapBar),Float.isFinite(reading.coolantC)?""+Math.round(reading.coolantC):"--",formatObd(reading.rpm),formatObd(reading.batteryV)};
        for(int i=0;i<4;i++){float cx=x+78+i*(w-160)/3f,cy=y+166;
            p.setColor(0xff435063);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(9);c.drawArc(cx-59,cy-59,cx+59,cy+59,132,276,false,p);
-           if(emu){p.setColor(red);c.drawArc(cx-59,cy-59,cx+59,cy+59,132,170,false,p);}p.setStyle(Paint.Style.FILL);
+           if(emu||reading.live){p.setColor(red);c.drawArc(cx-59,cy-59,cx+59,cy+59,132,170,false,p);}p.setStyle(Paint.Style.FILL);
            t(c,value[i],cx-30,cy+15,35,white);t(c,unit[i],cx-10,cy+39,16,muted);t(c,name[i],cx-58,cy+91,15,white);
        }
    }
@@ -61,15 +67,15 @@ public final class MainActivity extends Activity {
       if(page==0){map(original,124,78,522,622);music(original,659,78,600,298);gauges(original,659,389,600,310);}
       if(page==1){title(original,"MUZICĂ","YouTube Music / control prin sesiunea Android");music(original,158,185,1070,435);}
       if(page==2){title(original,"NAVIGAȚIE","Apasă harta pentru a porni Google Maps");map(original,158,169,1052,527);}
-      if(page==3){title(original,"MAȘINĂ","Ceasuri OBD în stil EVO • modul live necesită adaptor ELM327");gauges(original,156,200,1069,335);row(original,560,"OBD-II neconectat","Nu sunt afișate valori ale motorului fără telemetrie reală.");}
+      if(page==3){title(original,"MAȘINĂ","Ceasuri OBD în stil EVO • modul live necesită adaptor ELM327");gauges(original,156,200,1069,335);row(original,560,obd!=null&&obd.current().live?"OBD-II conectat":"ELM327 Bluetooth",obd!=null&&obd.current().live?"Date live din ECU, numai citire, fără comenzi de modificare.":"Împerechează adaptorul în Bluetooth, apoi revino în launcher.");}
       if(page==4){title(original,"APLICAȚII","Deschide direct aplicațiile Android instalate");String[] labels={"Google Maps","YouTube Music","Torque","Radio OEM","Android Settings","Bluetooth"};for(int i=0;i<6;i++){int x=158+(i%3)*360,y=210+(i/3)*181;r(original,x,y,324,150,card,14);t(original,labels[i],x+24,y+90,24,white);}}
       if(page==5){title(original,"SETĂRI","EVO Dark Red • fără animații sau servicii permanente");row(original,186,"Acces notificări","Permite controlul YouTube Music prin MediaSession.");row(original,316,"Google Maps","Harta ecranului principal este o simulare.");row(original,446,"Torque / OBD","Integrarea ELM327 se validează pe navigația reală.");row(original,576,"Protecție","Nu modificăm MCU, boot, recovery sau CANBUS.");}
       original.restore();}
    public boolean onTouchEvent(MotionEvent e){if(e.getAction()!=MotionEvent.ACTION_UP)return true;float x=e.getX()*1280/getWidth(),y=e.getY()*720/getHeight();
        if(x<109&&y>=73){int idx=(int)((y-73)/105);if(idx>=0&&idx<6)page=idx;invalidate();return true;}
-       if(page==0){if(x>=124&&x<=646)maps();else if(x>=659&&y<386){if(y>294)mediaAction(x<1000?0:x<1130?1:2);else app("com.google.android.apps.youtube.music");}else if(x>=659&&y>=389)app("org.prowl.torque");}
+       if(page==0){if(x>=124&&x<=646)maps();else if(x>=659&&y<386){if(y>294)mediaAction(x<1000?0:x<1130?1:2);else app("com.google.android.apps.youtube.music");}else if(x>=659&&y>=389){page=3;invalidate();}}
        else if(page==1){if(y>=520&&y<=620&&x>=350&&x<=715){mediaAction(x<477?0:x<608?1:2);}else if(x>=158&&x<=1228&&y>=185&&y<520){app("com.google.android.apps.youtube.music");}}
-       else if(page==2)maps();else if(page==3)app("org.prowl.torque");
+       else if(page==2)maps();else if(page==3&&obd!=null&&!obd.current().live){try{startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS));}catch(Exception ignored){}}
        else if(page==4){int col=(int)((x-158)/360),r=(int)((y-210)/181),i=r*3+col;if(col>=0&&col<3&&r>=0&&r<2){if(i==0)maps();else if(i==1)app("com.google.android.apps.youtube.music");else if(i==2)app("org.prowl.torque");else startActivity(new Intent(Settings.ACTION_SETTINGS));}}
        else if(page==5&&y>=186&&y<=300)permissions();invalidate();return true;}
   }
