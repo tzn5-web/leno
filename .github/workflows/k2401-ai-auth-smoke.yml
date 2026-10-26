@@ -1,0 +1,67 @@
+name: K2401 Azure OpenAI keyless inference smoke test
+# One low-token inference, using the existing managed identity. No VM and no new Azure resource.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/k2401-ai-auth-smoke.yml']
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  inference:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Azure OIDC login (existing identity)
+        uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Verify role and OpenAI v1 inference with correct Entra audience
+        shell: bash
+        run: |
+          set -euo pipefail
+          az account show --query '{tenant:tenantId,subscription:id}' -o json
+          TOKEN="$(az account get-access-token --resource https://ai.azure.com --query accessToken -o tsv)"
+          [[ -n "$TOKEN" ]] || exit 3
+          echo "::add-mask::$TOKEN"
+          PAYLOAD='{"model":"k2401-gpt41mini","messages":[{"role":"user","content":"Return only OK"}],"max_tokens":24,"temperature":0}'
+          HTTP="$(curl --fail-with-body -sS --max-time 35 \
+            -o /tmp/k2401-ai-response.json \
+            -w '%{http_code}' \
+            -H "Authorization: Bearer $TOKEN" \
+            -H 'Content-Type: application/json' \
+            -d "$PAYLOAD" \
+            'https://andreplaja-6488-resource.openai.azure.com/openai/v1/chat/completions')" || {
+              echo 'INFERENCE_REQUEST_FAILED=YES'
+              python3 - <<'PY'
+          import json
+          try:
+            o=json.load(open('/tmp/k2401-ai-response.json',encoding='utf-8'))
+            e=o.get('error',{}) if isinstance(o,dict) else {}
+            print('AI_ERROR_CODE='+str(e.get('code','unknown'))[:100])
+            print('AI_ERROR_MESSAGE='+str(e.get('message','unknown'))[:300])
+          except Exception:
+            print('AI_RESPONSE_UNREADABLE=YES')
+          PY
+              exit 4
+            }
+          if [[ "$HTTP" != "200" ]]; then
+            echo "AI_HTTP=$HTTP"
+            exit 5
+          fi
+          python3 - <<'PY'
+          import json
+          data=json.load(open('/tmp/k2401-ai-response.json',encoding='utf-8'))
+          msg=data.get('choices',[{}])[0].get('message',{}).get('content','')
+          assert isinstance(msg,str) and len(msg.strip())>0
+          print('AZURE_OPENAI_KEYLESS_INFERENCE=PASS')
+          print('MODEL=k2401-gpt41mini')
+          PY
+      - name: Azure logout
+        if: always()
+        run: az logout || true
