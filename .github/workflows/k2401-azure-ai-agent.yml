@@ -40,8 +40,8 @@ jobs:
           bash -n projects/k2401-evo-launcher/agent/bootstrap-azure-agent.sh
           python3 -m py_compile projects/k2401-evo-launcher/agent/azure_entry.py
           bash -n projects/k2401-evo-launcher/agent/fix-azure-ai-inference-rbac.sh
-          grep -Fq -- '--replica-timeout 180' .github/workflows/k2401-azure-ai-provision.yml
-          grep -Fq -- '--replica-retry-limit 0' .github/workflows/k2401-azure-ai-provision.yml
+          grep -Fq 'replicaTimeout:180' .github/workflows/k2401-azure-ai-provision.yml
+          grep -Fq 'replicaRetryLimit:0' .github/workflows/k2401-azure-ai-provision.yml
           grep -Fq -- '--sku-name GlobalStandard' .github/workflows/k2401-azure-ai-provision.yml
           grep -Fq 'AZURE_AI_INFERENCE_RBAC=PASS' projects/k2401-evo-launcher/agent/bootstrap-azure-agent.sh
           echo 'AZURE_NATIVE_AGENT_STATIC=PASS'
