@@ -1,12 +1,15 @@
 name: K2401 EVO - Azure Android 10 emulator
 
-# Run on demand ONLY: Azure VM is billable while started.
+# On-demand only. A protected commit with marker [k2401-azure-run] on the dedicated request file
+# is equivalent to workflow_dispatch. There is no daily/hourly schedule.
+# Azure VM is billable only while started; cleanup deallocates it.
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths:
       - '.github/workflows/k2401-azure-emulator.yml'
+      - 'projects/k2401-evo-launcher/requests/azure-emulator-run.txt'
 
 permissions:
   contents: read
