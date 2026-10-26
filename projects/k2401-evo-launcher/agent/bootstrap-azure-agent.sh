@@ -51,13 +51,13 @@ ensure_role "$PRINCIPAL_ID" "$VM_SCOPE" Reader
 ensure_role "$PRINCIPAL_ID" "$AI_SCOPE" 'Cognitive Services OpenAI User'
 echo 'AZURE_AGENT_RBAC=PASS'
 
-# Standard (not provisioned) deployment: inference billed PER TOKEN; no PTU reservations.
+# Global Standard (not provisioned) deployment: inference billed PER TOKEN; no PTU reservations.
 # 1k TPM unit, max 450 output tokens per diagnosis. Reuse if already present.
 if ! az cognitiveservices account deployment show -g "$FOUNDRY_RG" -n "$FOUNDRY" \
   --deployment-name "$DEPLOYMENT" --query name -o tsv >/dev/null 2>&1; then
   az cognitiveservices account deployment create -g "$FOUNDRY_RG" -n "$FOUNDRY" \
     --deployment-name "$DEPLOYMENT" --model-name gpt-4.1-mini --model-version 2025-04-14 \
-    --model-format OpenAI --sku-name Standard --sku-capacity 1 -o none
+    --model-format OpenAI --sku-name GlobalStandard --sku-capacity 1 -o none
 fi
 echo 'AZURE_AGENT_MODEL=PASS'
 
