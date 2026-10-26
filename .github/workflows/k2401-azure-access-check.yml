@@ -49,6 +49,12 @@ jobs:
           [[ "$state" == "VM deallocated" ]] || { echo "::error::Unexpected VM power state $state"; exit 3; }
           echo 'AZURE_PERSISTENT_OIDC_AUTH=PASS'
           echo 'VM_READ_PERMISSION=PASS'
+          # Diagnostic only: a missing Microsoft.Storage registration can cause SubscriptionNotFound.
+          if provider_state="$(az provider show --namespace Microsoft.Storage --query registrationState -o tsv 2>&1)"; then
+            echo "MICROSOFT_STORAGE_PROVIDER_STATE=$provider_state"
+          else
+            echo "::warning::Microsoft.Storage provider status inaccessible: $provider_state"
+          fi
       - name: Sign out
         if: always()
         run: az logout || true
