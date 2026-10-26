@@ -30,7 +30,7 @@ jobs:
   azure-android:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[k2401-azure-run]')
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 210
     steps:
       - name: Verify Azure OIDC identifiers before billing
         env:
@@ -124,7 +124,7 @@ jobs:
           az vm start -g "$RESOURCE_GROUP" -n "$VM_NAME" -o none
           az vm show -g "$RESOURCE_GROUP" -n "$VM_NAME" --show-details --query powerState -o tsv
       - name: Execute Android emulator inside Azure Windows VM
-        timeout-minutes: 160
+        timeout-minutes: 180
         shell: bash
         run: |
           set -euo pipefail
