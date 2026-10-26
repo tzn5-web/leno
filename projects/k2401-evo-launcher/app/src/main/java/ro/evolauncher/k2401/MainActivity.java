@@ -9,7 +9,7 @@ public final class MainActivity extends Activity {
   protected void onPause(){handler.removeCallbacks(update);super.onPause();}
   public void onBackPressed(){page=0;view.invalidate();}
   static void changed(){MainActivity a=active.get();if(a!=null)a.runOnUiThread(()->{a.refresh();a.view.invalidate();});}
-  void refresh(){media=null;try{MediaSessionManager m=(MediaSessionManager)getSystemService(MEDIA_SESSION_SERVICE);List<MediaController> all=m.getActiveSessions(new ComponentName(this,MediaAccessService.class));for(MediaController c:all)if("com.google.android.apps.youtube.music".equals(c.getPackageName())){media=c;return;}if(!all.isEmpty())media=all.get(0);}catch(Exception ignored){}}
+  void refresh(){media=null;try{MediaSessionManager m=(MediaSessionManager)getSystemService(MEDIA_SESSION_SERVICE);List<MediaController> all=m.getActiveSessions(new ComponentName(this,MediaAccessService.class));for(MediaController c:all)if("com.google.android.apps.youtube.music".equals(c.getPackageName())){media=c;return;}}catch(Exception ignored){}}
   void app(String pkg){try{Intent i=getPackageManager().getLaunchIntentForPackage(pkg);if(i!=null){startActivity(i);return;}startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("market://details?id="+pkg)));}catch(Exception ignored){}}
   void maps(){try{Intent i=getPackageManager().getLaunchIntentForPackage("com.google.android.apps.maps");if(i!=null)startActivity(i);else startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("geo:0,0?q=destinatie")));}catch(Exception ignored){}}
   void mediaAction(int id){refresh();if(media==null){app("com.google.android.apps.youtube.music");return;}try{MediaController.TransportControls t=media.getTransportControls();if(id==0)t.skipToPrevious();else if(id==2)t.skipToNext();else if(media.getPlaybackState()!=null&&media.getPlaybackState().getState()==PlaybackState.STATE_PLAYING)t.pause();else t.play();}catch(Exception ignored){}view.invalidate();}
@@ -68,7 +68,7 @@ public final class MainActivity extends Activity {
    public boolean onTouchEvent(MotionEvent e){if(e.getAction()!=MotionEvent.ACTION_UP)return true;float x=e.getX()*1280/getWidth(),y=e.getY()*720/getHeight();
        if(x<109&&y>=73){int idx=(int)((y-73)/105);if(idx>=0&&idx<6)page=idx;invalidate();return true;}
        if(page==0){if(x>=124&&x<=646)maps();else if(x>=659&&y<386){if(y>294)mediaAction(x<1000?0:x<1130?1:2);else app("com.google.android.apps.youtube.music");}else if(x>=659&&y>=389)app("org.prowl.torque");}
-       else if(page==1){if(y>490)mediaAction(x<700?0:x<1020?1:2);else app("com.google.android.apps.youtube.music");}
+       else if(page==1){if(y>=520&&y<=620&&x>=350&&x<=715){mediaAction(x<477?0:x<608?1:2);}else if(x>=158&&x<=1228&&y>=185&&y<520){app("com.google.android.apps.youtube.music");}}
        else if(page==2)maps();else if(page==3)app("org.prowl.torque");
        else if(page==4){int col=(int)((x-158)/360),r=(int)((y-210)/181),i=r*3+col;if(col>=0&&col<3&&r>=0&&r<2){if(i==0)maps();else if(i==1)app("com.google.android.apps.youtube.music");else if(i==2)app("org.prowl.torque");else startActivity(new Intent(Settings.ACTION_SETTINGS));}}
        else if(page==5&&y>=186&&y<=300)permissions();invalidate();return true;}
