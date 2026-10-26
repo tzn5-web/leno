@@ -1,0 +1,36 @@
+name: K2401 Azure emulator access probe
+on:
+  push:
+    branches: [feature/k2401-evo-launcher]
+    paths: ['.github/workflows/k2401-azure-probe.yml']
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  azure-access:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check Azure credentials
+        shell: bash
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          set -euo pipefail
+          for k in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
+            test -n "${!k}" || { echo "AZURE_CREDENTIAL_MISSING: $k"; exit 2; }
+          done
+      - name: Azure OIDC login
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Inspect existing VM only
+        shell: bash
+        run: |
+          set -euo pipefail
+          az vm get-instance-view --resource-group rg-phaser360-driverlab --name int34d2-lab --query 'statuses[?starts_with(code, `PowerState/`)].displayStatus|[0]' --output tsv
+          echo "AZURE_ACCESS_PROBE=PASS; NO_VM_START=YES; NO_WRITE=YES"
