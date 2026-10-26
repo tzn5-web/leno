@@ -30,7 +30,7 @@ jobs:
   azure-android:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[k2401-azure-run]')
     runs-on: ubuntu-24.04
-    timeout-minutes: 75
+    timeout-minutes: 42
     steps:
       - name: Verify Azure OIDC identifiers before billing
         env:
@@ -58,6 +58,15 @@ jobs:
           set -euo pipefail
           SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
           "$SDKMANAGER" 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Parse and audit Windows VM script
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v pwsh
+          pwsh -NoProfile -Command '$tokens=$null; $errs=$null; [System.Management.Automation.Language.Parser]::ParseFile("projects/k2401-evo-launcher/scripts/azure-vm-emulator.ps1",[ref]$tokens,[ref]$errs)|Out-Null; if($errs.Count -gt 0){$errs|ForEach-Object{Write-Error $_};exit 2}; Write-Output "WINDOWS_PS_PARSE=PASS"'
+          grep -Fq 'WHPX_NOT_READY:' projects/k2401-evo-launcher/scripts/azure-vm-emulator.ps1
+          grep -Fq 'ANDROID_EMULATOR_ACCELERATION_UNAVAILABLE:' projects/k2401-evo-launcher/scripts/azure-vm-emulator.ps1
+          echo 'COST_PREFLIGHT_STATIC=PASS'
       - name: Build APK and record SHA256
         run: |
           set -euo pipefail
@@ -115,7 +124,7 @@ jobs:
           az vm start -g "$RESOURCE_GROUP" -n "$VM_NAME" -o none
           az vm show -g "$RESOURCE_GROUP" -n "$VM_NAME" --show-details --query powerState -o tsv
       - name: Execute Android emulator inside Azure Windows VM
-        timeout-minutes: 48
+        timeout-minutes: 25
         shell: bash
         run: |
           set -euo pipefail
@@ -130,7 +139,7 @@ jobs:
         run: |
           set +e
           mkdir -p azure-evo-results
-          QUERY="${SAS_URL#*?}"
+          QUERY="${SAS_URL#*\?}"
           az storage blob download-batch --source artifacts --destination azure-evo-results --pattern "results/*" --account-name "$STORAGE" --sas-token "$QUERY" --overwrite true -o none
           find azure-evo-results -type f -maxdepth 4 -printf '%P (%s bytes)\n'
       - name: Publish diagnostic files (not a release APK)
