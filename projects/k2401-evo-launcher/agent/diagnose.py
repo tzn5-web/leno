@@ -122,8 +122,10 @@ def inference(run: dict, findings: list[str], repairs: list[str], token: str) ->
         if not answer.strip():
             return "empty", ""
         return "success", answer[:5000]
-    except (HTTPError, URLError, TimeoutError, ValueError, KeyError, IndexError) as exc:
-        # Do not abort deterministic monitoring because AI access is denied/limited.
+    except HTTPError as exc:
+        # An HTTP status identifies configuration/rate-limit problems without printing tokens.
+        return "unavailable", f"HTTP {exc.code} from GitHub Models"
+    except (URLError, TimeoutError, ValueError, KeyError, IndexError) as exc:
         return "unavailable", type(exc).__name__
 
 
