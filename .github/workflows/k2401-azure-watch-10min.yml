@@ -7,10 +7,14 @@ on:
   schedule:
     - cron: '*/10 * * * *'
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/k2401-azure-watch-10min.yml'
 
 permissions:
   contents: read
-  actions: read
+  actions: write
   id-token: write
 
 concurrency:
@@ -36,6 +40,15 @@ jobs:
             echo 'active=false' >> "$GITHUB_OUTPUT"
             echo 'K2401_MONITOR_WINDOW=FINISHED; no Azure calls will run.'
           fi
+      - name: Disable this watcher after the 24-hour window
+        if: steps.window.outputs.active == 'false'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/k2401-azure-watch-10min.yml/disable"
+          echo 'K2401_MONITOR_AUTODISABLED=PASS'
       - name: Log in using persistent GitHub OIDC
         if: steps.window.outputs.active == 'true'
         uses: azure/login@v3
