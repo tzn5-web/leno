@@ -47,7 +47,7 @@ jobs:
             az cognitiveservices account deployment create -g NetworkWatcherRG -n andreplaja-6488-resource \
               --deployment-name k2401-gpt41mini --model-name gpt-4.1-mini \
               --model-version 2025-04-14 --model-format OpenAI \
-              --sku-name Standard --sku-capacity 1 -o none
+              --sku-name GlobalStandard --sku-capacity 1 -o none
           fi
           az cognitiveservices account deployment show -g NetworkWatcherRG -n andreplaja-6488-resource --deployment-name k2401-gpt41mini \
             --query '{model:properties.model.name,state:properties.provisioningState,sku:sku.name}' -o json
