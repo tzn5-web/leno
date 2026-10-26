@@ -1,8 +1,6 @@
 name: K2401 Azure emulator access probe
 on:
-  push:
-    branches: [feature/k2401-evo-launcher]
-    paths: ['.github/workflows/k2401-azure-probe.yml']
+  workflow_dispatch:
 permissions:
   contents: read
   id-token: write
