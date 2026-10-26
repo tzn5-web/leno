@@ -1,0 +1,83 @@
+name: K2401 Azure native AI provision (OIDC)
+
+# Bounded one-time deployment. No credentials or API keys in the repository.
+# Uses existing subscription and Container Apps environment, Standard token-billed AI.
+# No VM startup, no recurring Container Apps compute.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/k2401-azure-ai-provision.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: k2401-ai-model-job-provision
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 13
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax and budget assertions
+        run: |
+          set -euo pipefail
+          python3 -m py_compile projects/k2401-evo-launcher/agent/azure_entry.py
+          bash -n projects/k2401-evo-launcher/agent/bootstrap-azure-agent.sh
+          grep -Fq '"max_tokens": 450' projects/k2401-evo-launcher/agent/azure_entry.py
+          echo 'AZURE_AI_BOUNDED_STATIC=PASS'
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Verify resources and deploy standard pay-per-token model
+        shell: bash
+        run: |
+          set -euo pipefail
+          az config set extension.use_dynamic_install=yes_without_prompt
+          az containerapp env show -g rg-chatgpt-azure -n chatgpt-azure-control-env --query id -o tsv
+          az cognitiveservices account show -g NetworkWatcherRG -n andreplaja-6488-resource --query '{name:name,kind:kind,location:location}' -o json
+          if ! az cognitiveservices account deployment show -g NetworkWatcherRG -n andreplaja-6488-resource --deployment-name k2401-gpt41mini -o none >/dev/null 2>&1; then
+            az cognitiveservices account deployment create -g NetworkWatcherRG -n andreplaja-6488-resource \
+              --deployment-name k2401-gpt41mini --model-name gpt-4.1-mini \
+              --model-version 2025-04-14 --model-format OpenAI \
+              --sku-name Standard --sku-capacity 1 -o none
+          fi
+          az cognitiveservices account deployment show -g NetworkWatcherRG -n andreplaja-6488-resource --deployment-name k2401-gpt41mini \
+            --query '{model:properties.model.name,state:properties.provisioningState,sku:sku.name}' -o json
+          echo 'AZURE_MODEL_STANDARD=PASS'
+      - name: Create single-replica idle-free native diagnostic job
+        shell: bash
+        run: |
+          set -euo pipefail
+          GROUP=rg-chatgpt-azure
+          JOB=k2401-ai-agent
+          PINNED=ac6e16d2e4f064960a5bec6252461fa79349c016
+          URL="https://raw.githubusercontent.com/tzn5-web/leno/$PINNED/projects/k2401-evo-launcher/agent/azure_entry.py"
+          curl --fail --silent --show-error --max-time 20 "$URL" -o /tmp/azure_entry.py
+          python3 -m py_compile /tmp/azure_entry.py
+          SCRIPT="import urllib.request; exec(compile(urllib.request.urlopen('$URL',timeout=20).read(),'azure_entry.py','exec'))"
+          IDENTITY="/subscriptions/0ac7a514-32b3-47bf-bf89-e17906b1cc86/resourceGroups/rg-chatgpt-azure/providers/Microsoft.ManagedIdentity/userAssignedIdentities/k2401-github-oidc"
+          if ! az containerapp job show -g "$GROUP" -n "$JOB" -o none >/dev/null 2>&1; then
+            az containerapp job create -g "$GROUP" -n "$JOB" \
+              --environment chatgpt-azure-control-env --trigger-type Manual \
+              --replica-timeout 180 --replica-retry-limit 0 --parallelism 1 \
+              --replica-completion-count 1 \
+              --image mcr.microsoft.com/azure-cli:2.74.0 \
+              --cpu 0.25 --memory 0.5Gi \
+              --mi-user-assigned "$IDENTITY" \
+              --command python3 --args=-c "$SCRIPT" \
+              --env-vars 'AZURE_CLIENT_ID=50a5c260-15a0-4aa0-9e02-5f0ad5c23df9' 'K2401_RUN_ID=40382269545' -o none
+          fi
+          az containerapp job show -g "$GROUP" -n "$JOB" \
+            --query '{name:name,trigger:properties.configuration.triggerType,timeout:properties.configuration.replicaTimeout,retries:properties.configuration.replicaRetryLimit}' -o json
+          echo 'AZURE_NATIVE_AI_JOB=PASS'
+      - name: Azure logout
+        if: always()
+        run: az logout || true
