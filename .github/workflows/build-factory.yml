@@ -1,0 +1,163 @@
+name: Multi-platform build factory
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Choose a platform for an on-demand build'
+        required: true
+        type: choice
+        options: [windows, android, tizen, ios]
+  push:
+    branches: [feature/multiplatform-build-factory]
+    paths:
+      - '.github/workflows/build-factory.yml'
+      - 'build-factory/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-factory-${{ github.ref }}-${{ inputs.platform || 'smoke' }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    if: github.event_name == 'push' || inputs.platform == 'windows'
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Publish self-contained Windows executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet publish build-factory/windows/BuildFactoryDemo.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o build-factory/windows/installer/payload
+          if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
+          if (!(Test-Path build-factory/windows/installer/payload/BuildFactoryDemo.exe)) { throw 'Missing EXE' }
+      - name: Build MSI using WiX Toolset SDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet build build-factory/windows/installer/BuildFactoryDemo.wixproj -c Release -p:Platform=x64 -o dist/windows
+          if ($LASTEXITCODE -ne 0) { throw 'WiX MSI build failed' }
+          if (!(Get-ChildItem dist/windows -Filter '*.msi' -Recurse -ErrorAction SilentlyContinue)) { throw 'Missing MSI' }
+      - name: Collect artifacts and hashes
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist/windows | Out-Null
+          Copy-Item build-factory/windows/installer/payload/BuildFactoryDemo.exe dist/windows/BuildFactoryDemo.exe
+          Get-ChildItem dist/windows -File | Get-FileHash -Algorithm SHA256 | Format-Table -AutoSize
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe-msi-demo
+          path: |
+            dist/windows/*.exe
+            dist/windows/*.msi
+          if-no-files-found: error
+          retention-days: 7
+
+  android:
+    if: github.event_name == 'push' || inputs.platform == 'android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Install pinned Android SDK components
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Build APK
+        run: gradle --no-daemon -p build-factory/android :app:assembleDebug
+      - name: Verify APK, save hash
+        run: |
+          set -euo pipefail
+          APK='build-factory/android/app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          sha256sum "$APK"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk-demo
+          path: build-factory/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  tizen:
+    if: github.event_name == 'workflow_dispatch' && inputs.platform == 'tizen'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout existing Q60R build project
+        uses: actions/checkout@v4
+        with:
+          repository: tzn5-web/adfree-tizen-q60r
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: node scripts/test-overlay-fixture.mjs
+      - run: bash ./scripts/prepare-upstream.sh
+      - run: node scripts/apply-q60r.mjs .upstream
+      - name: Reuse proven upstream Tizen pipeline
+        working-directory: .upstream
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run doctor
+          npm run version:check
+          npm run build
+          npm test
+          npm run package
+      - name: Verify WGT
+        run: |
+          set -euo pipefail
+          node tests/q60r-regression.mjs .upstream
+          test -s .upstream/release/tube-tizen-5.0.wgt
+          node tests/wgt-regression.mjs .upstream/release/tube-tizen-5.0.wgt
+          sha256sum .upstream/release/tube-tizen-5.0.wgt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tizen-q60r-wgt
+          path: .upstream/release/tube-tizen-5.0.wgt
+          if-no-files-found: error
+          retention-days: 7
+
+  ios:
+    if: github.event_name == 'workflow_dispatch' && inputs.platform == 'ios'
+    runs-on: xcode-27
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - name: Generate Xcode project
+        run: |
+          set -euo pipefail
+          xcrun swift Scripts/GenerateAppIcon.swift Leno/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
+          xcodegen generate
+      - name: Compile unsigned iPhone application
+        run: |
+          set -euo pipefail
+          xcodebuild -project YoutubeVcd.xcodeproj -scheme YoutubeVcd -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/FactoryDerived CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO clean build
+          test -d build/FactoryDerived/Build/Products/Release-iphoneos/YoutubeVcd.app
+      - name: Wrap app as unsigned IPA container
+        run: |
+          set -euo pipefail
+          mkdir -p Payload
+          cp -R build/FactoryDerived/Build/Products/Release-iphoneos/YoutubeVcd.app Payload/
+          ditto -c -k --sequesterRsrc --keepParent Payload Leno-unsigned.ipa
+          test -s Leno-unsigned.ipa
+          shasum -a 256 Leno-unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-unsigned-ipa
+          path: Leno-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 7

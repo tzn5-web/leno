@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="BuildFactoryDemo" Manufacturer="BuildFactory" Version="1.0.0" UpgradeCode="B6595B6A-BD18-48FC-A623-1FAE09373262">
+    <MajorUpgrade DowngradeErrorMessage="A newer version is already installed." />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="BuildFactoryDemo">
+        <Component Id="MainExe" Guid="*">
+          <File Id="MainFile" Source="payload/BuildFactoryDemo.exe" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Complete" Title="BuildFactoryDemo" Level="1">
+      <ComponentRef Id="MainExe" />
+    </Feature>
+  </Package>
+</Wix>
