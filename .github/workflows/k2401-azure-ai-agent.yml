@@ -59,7 +59,7 @@ jobs:
           subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
       - name: Start exactly one time-limited AI job without starting VM
         env:
-          RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+          RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id || '40382269545' }}
         shell: bash
         run: |
           set -euo pipefail
