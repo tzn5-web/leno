@@ -24,11 +24,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     steps:
-      - name: Verify Azure OIDC configuration before billing
+      - name: Verify Azure OIDC identifiers before billing
         env:
-          AZURE_CLIENT_ID: ${{ vars.K2401_AZURE_CLIENT_ID }}
-          AZURE_TENANT_ID: ${{ vars.K2401_AZURE_TENANT_ID }}
-          AZURE_SUBSCRIPTION_ID: ${{ vars.K2401_AZURE_SUBSCRIPTION_ID }}
+          AZURE_CLIENT_ID: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          AZURE_TENANT_ID: 779623db-ec2e-495b-9828-85d42baa77ee
+          AZURE_SUBSCRIPTION_ID: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
         shell: bash
         run: |
           set -euo pipefail
@@ -60,9 +60,9 @@ jobs:
       - name: Azure OIDC authentication
         uses: azure/login@v3
         with:
-          client-id: ${{ vars.K2401_AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.K2401_AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.K2401_AZURE_SUBSCRIPTION_ID }}
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
       - name: Confirm VM identity and safety preconditions
         shell: bash
         run: |
