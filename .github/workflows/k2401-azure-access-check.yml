@@ -44,9 +44,9 @@ jobs:
           test "$(az account show --query id -o tsv)" = '0ac7a514-32b3-47bf-bf89-e17906b1cc86'
           test "$(az account show --query tenantId -o tsv)" = '779623db-ec2e-495b-9828-85d42baa77ee'
           az vm show -g rg-phaser360-driverlab -n int34d2-lab --query '{name:name,size:hardwareProfile.vmSize}' -o json
-          state="$(az vm get-instance-view -g rg-phaser360-driverlab -n int34d2-lab --query "instanceView.statuses[?starts_with(code, 'PowerState/')].code | [0]" -o tsv)"
+          state="$(az vm show -g rg-phaser360-driverlab -n int34d2-lab --show-details --query powerState -o tsv)"
           echo "VM_STATE=$state"
-          [[ "$state" == "PowerState/deallocated" ]] || { echo "::error::Unexpected VM power state $state"; exit 3; }
+          [[ "$state" == "VM deallocated" ]] || { echo "::error::Unexpected VM power state $state"; exit 3; }
           echo 'AZURE_PERSISTENT_OIDC_AUTH=PASS'
           echo 'VM_READ_PERMISSION=PASS'
       - name: Sign out
