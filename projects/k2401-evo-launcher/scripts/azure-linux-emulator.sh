@@ -6,6 +6,8 @@ set -Eeuo pipefail
 umask 077
 SAS_B64="${1:?SAS URL base64 required}"
 EXPECTED_SHA="${2:?APK sha256 required}"
+SAS_B64="${SAS_B64#SasUrlB64=}"
+EXPECTED_SHA="${EXPECTED_SHA#ExpectedApkSha=}"
 ROOT=/opt/k2401-android10
 RESULTS="$ROOT/results"
 mkdir -p "$RESULTS"
