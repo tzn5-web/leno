@@ -63,6 +63,17 @@ jobs:
           fi
           az keyvault set-policy --name "$VAULT" --object-id "$OIDC_PRINCIPAL" \
             --secret-permissions get list set -o none
+          # Access-policy propagation is eventually consistent; a 403 is NOT
+          # proof that a signing key is missing. Wait for list access first.
+          AUTH_OK=false
+          for attempt in $(seq 1 18); do
+            if az keyvault secret list --vault-name "$VAULT" --query 'length(@)' -o tsv >/dev/null 2>&1; then
+              AUTH_OK=true
+              break
+            fi
+            sleep 10
+          done
+          [[ "$AUTH_OK" == true ]] || { echo '::error::Key Vault secret access policy not effective'; exit 7; }
           # Check the secret: NEVER replace an existing signing key on subsequent builds.
           if ! az keyvault secret show --vault-name "$VAULT" \
               --name k2401-android-signing-v1 -o none 2>/dev/null; then
