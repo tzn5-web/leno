@@ -47,6 +47,7 @@ jobs:
           name: shareit-ads-v2-ui-test
           path: /tmp/shareit-ads-visual
           retention-days: 1
+          compression-level: 0
           compression-level: 1
           if-no-files-found: warn
       - if: always()
