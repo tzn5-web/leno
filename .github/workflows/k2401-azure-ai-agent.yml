@@ -81,9 +81,22 @@ jobs:
             echo 'AZURE_AI_JOB_PENDING_OWNER_BOOTSTRAP=YES' >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          # Do not use --env-vars on start: it implicitly builds an incomplete container override.
-          # The pinned job template already contains the initial test run id.
-          az containerapp job start -g "$GROUP" -n "$JOB" --query '{name:name,id:id}' -o json
+          # Preserve the complete execution template; override only this run's id.
+          # Never update the shared job configuration (concurrent runs may differ).
+          TEMPLATE="$(mktemp --suffix=.yaml)"
+          trap 'rm -f "$TEMPLATE"' EXIT
+          az containerapp job show -g "$GROUP" -n "$JOB" --query properties.template -o json |
+            jq --arg run_id "$RUN_ID" '
+              if ([.containers[] | select(.name == "k2401-agent")] | length) != 1
+              then error("Expected exactly one k2401-agent container")
+              else .containers |= map(
+                if .name == "k2401-agent" then
+                  .env = ((.env // [] | map(select(.name != "K2401_RUN_ID"))) +
+                    [{name:"K2401_RUN_ID",value:$run_id}])
+                else . end)
+              end' > "$TEMPLATE"
+          # JSON is a valid YAML document; command, image, resources and secretRefs survive.
+          az containerapp job start -g "$GROUP" -n "$JOB" --yaml "$TEMPLATE" --query '{name:name,id:id}' -o json
           {
             echo '## Azure-native AI agent execution started'
             echo "- Azure Container Apps Job: $JOB"
