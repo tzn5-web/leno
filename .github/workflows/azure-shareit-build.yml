@@ -43,9 +43,10 @@ jobs:
           echo 'AZURE_VM_START=PASS'
           az vm auto-shutdown -g "$RG" -n "$VM" --location eastus2 --time 2200 -o none
           set +e
+          SAS_B64="$(printf '%s' "$WRITESAS" | base64 -w0)"
+          VM_SCRIPT="set -e; curl -fsSL --retry 3 https://raw.githubusercontent.com/tzn5-web/leno/545928751fe96bafaaf0809d21c7c163c6baf38c/infra/azure-dev-vm/shareit-azure-build.sh -o /tmp/azure-shareit-build.sh; bash /tmp/azure-shareit-build.sh \"\$(printf '%s' '$SAS_B64' | base64 -d)\""
           az vm run-command invoke -g "$RG" -n "$VM" --command-id RunShellScript \
-            --scripts 'set -e; curl -fsSL --retry 3 https://raw.githubusercontent.com/tzn5-web/leno/545928751fe96bafaaf0809d21c7c163c6baf38c/infra/azure-dev-vm/shareit-azure-build.sh -o /tmp/azure-shareit-build.sh; bash /tmp/azure-shareit-build.sh "$1"' \
-            --parameters "sas=$WRITESAS" \
+            --scripts "$VM_SCRIPT" \
             --query 'value[0].message' -o tsv >/tmp/shareit-guest-result.log 2>/tmp/shareit-guest-error.log
           RC=$?
           set -e
