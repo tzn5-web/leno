@@ -1,0 +1,55 @@
+name: Azure SHAREit - encrypted private delivery
+on:
+  workflow_dispatch:
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  encrypted_export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Download and verify build from Azure private container; encrypt before artifact upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 0700 /tmp/shareit-private-delivery
+          export AZURE_STORAGE_KEY="$(az storage account keys list -g rg-chatgpt-azure -n tzn5androidartifacts26 --query '[0].value' -o tsv)"
+          ACCOUNT=tzn5androidartifacts26
+          CONTAINER=apks-private
+          az storage blob download --account-name "$ACCOUNT" --container-name "$CONTAINER" \
+            --name output/SHAREit_6.27.58_NoAds_SPLITS.apks --file /tmp/shareit-private-delivery/output.apks --overwrite --only-show-errors
+          az storage blob download --account-name "$ACCOUNT" --container-name "$CONTAINER" \
+            --name output/SHAREit_6.27.58_NoAds_Azure_Report.json --file /tmp/shareit-private-delivery/audit.json --overwrite --only-show-errors
+          python3 -c 'import json,hashlib,zipfile,pathlib; d=pathlib.Path("/tmp/shareit-private-delivery"); p=d/"output.apks"; j=json.loads((d/"audit.json").read_text()); digest=hashlib.file_digest(open(p,"rb"),"sha256").hexdigest(); assert digest==j["output_sha256"]; z=zipfile.ZipFile(p); assert len(z.namelist())==6; assert z.testzip() is None; print("AZURE_OUTPUT_INTEGRITY=PASS",digest)'
+          openssl rand -base64 39 > /tmp/shareit-private-delivery/secret.txt
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 150000 \
+            -pass file:/tmp/shareit-private-delivery/secret.txt \
+            -in /tmp/shareit-private-delivery/output.apks \
+            -out /tmp/shareit-private-delivery/SHAREit_Azure.apks.enc
+          openssl pkeyutl -encrypt -pubin \
+            -inkey infra/azure-dev-vm/shareit-noads/delivery_public.pem \
+            -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 \
+            -in /tmp/shareit-private-delivery/secret.txt \
+            -out /tmp/shareit-private-delivery/secret.rsa
+          shred -u /tmp/shareit-private-delivery/secret.txt /tmp/shareit-private-delivery/output.apks
+          echo 'ENCRYPTED_DELIVERY_PREPARED=PASS'
+      - name: Publish encrypted short-lived artifact (no proprietary APK or decryption key exposed)
+        uses: actions/upload-artifact@v4
+        with:
+          name: shareit-azure-encrypted-delivery
+          path: |
+            /tmp/shareit-private-delivery/SHAREit_Azure.apks.enc
+            /tmp/shareit-private-delivery/secret.rsa
+            /tmp/shareit-private-delivery/audit.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+      - if: always()
+        run: az logout || true
