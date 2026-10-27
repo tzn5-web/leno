@@ -2,16 +2,16 @@ package ro.evolauncher.k2401;
 import android.app.*;import android.content.*;import android.graphics.*;import android.media.*;import android.media.session.*;import android.net.*;import android.os.*;import android.provider.*;import android.view.*;import java.lang.ref.*;import java.text.*;import java.util.*;
 public final class MainActivity extends Activity {
   static WeakReference<MainActivity> active=new WeakReference<>(null);
-  Handler handler=new Handler(); MediaController media; Dashboard view; ObdReader obd; LiveMapPanel liveMap; LauncherSettings launcherSettings; ShortcutDock shortcutDock; android.widget.FrameLayout stage; int page=0; boolean emu;
+  Handler handler=new Handler(); MediaController media; Dashboard view; ObdReader obd; LiveMapPanel liveMap; LauncherSettings launcherSettings; ShortcutDock shortcutDock; android.widget.FrameLayout stage; int page=0;
   final MediaController.Callback mediaCallback=new MediaController.Callback(){@Override public void onPlaybackStateChanged(PlaybackState s){if(view!=null)view.invalidate();}@Override public void onMetadataChanged(MediaMetadata m){if(view!=null)view.invalidate();}@Override public void onSessionDestroyed(){refresh();if(view!=null)view.invalidate();}};
   final Runnable update=new Runnable(){public void run(){if(view!=null)view.invalidate();handler.postDelayed(this,1000);}};
-  public void onCreate(Bundle state){super.onCreate(state);getWindow().getDecorView().setSystemUiVisibility(5894|View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);emu=Build.FINGERPRINT.contains("generic")||Build.PRODUCT.contains("sdk");launcherSettings=new LauncherSettings(this,()->{if(view!=null)view.invalidate();});view=new Dashboard();obd=new ObdReader(this,()->runOnUiThread(()->{if(view!=null)view.invalidate();}));stage=new android.widget.FrameLayout(this);stage.addView(view,new android.widget.FrameLayout.LayoutParams(-1,-1));liveMap=new LiveMapPanel(this);stage.addView(liveMap,new android.widget.FrameLayout.LayoutParams(200,200));shortcutDock=new ShortcutDock(this);stage.addView(shortcutDock,new android.widget.FrameLayout.LayoutParams(200,100));stage.addView(launcherSettings,new android.widget.FrameLayout.LayoutParams(200,200));stage.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or2,ob)->placeMap());setContentView(stage);active=new WeakReference<>(this);placeMap();}
+  public void onCreate(Bundle state){super.onCreate(state);getWindow().getDecorView().setSystemUiVisibility(5894|View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);launcherSettings=new LauncherSettings(this,()->{if(view!=null)view.invalidate();});view=new Dashboard();obd=new ObdReader(this,()->runOnUiThread(()->{if(view!=null)view.invalidate();}));stage=new android.widget.FrameLayout(this);stage.addView(view,new android.widget.FrameLayout.LayoutParams(-1,-1));liveMap=new LiveMapPanel(this);stage.addView(liveMap,new android.widget.FrameLayout.LayoutParams(200,200));shortcutDock=new ShortcutDock(this);stage.addView(shortcutDock,new android.widget.FrameLayout.LayoutParams(200,100));stage.addView(launcherSettings,new android.widget.FrameLayout.LayoutParams(200,200));stage.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or2,ob)->placeMap());setContentView(stage);active=new WeakReference<>(this);placeMap();}
   protected void onStart(){super.onStart();if(liveMap!=null)liveMap.onHostStart();}
-  protected void onResume(){super.onResume();if(liveMap!=null)liveMap.onHostResume();refresh();handler.removeCallbacks(update);handler.post(update);startObd();if(!emu&&checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)!=android.content.pm.PackageManager.PERMISSION_GRANTED&&checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION)!=android.content.pm.PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION,android.Manifest.permission.ACCESS_COARSE_LOCATION},2402);}}
+  protected void onResume(){super.onResume();if(liveMap!=null)liveMap.onHostResume();refresh();handler.removeCallbacks(update);handler.post(update);startObd();if(checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)!=android.content.pm.PackageManager.PERMISSION_GRANTED&&checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION)!=android.content.pm.PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION,android.Manifest.permission.ACCESS_COARSE_LOCATION},2402);}}
   protected void onPause(){handler.removeCallbacks(update);if(obd!=null)obd.stop();if(liveMap!=null)liveMap.onHostPause();super.onPause();}
   protected void onStop(){if(liveMap!=null)liveMap.onHostStop();super.onStop();}
   protected void onDestroy(){if(media!=null){try{media.unregisterCallback(mediaCallback);}catch(Exception ignored){}}if(obd!=null)obd.close();if(liveMap!=null)liveMap.onHostDestroy();if(launcherSettings!=null)launcherSettings.dispose();active.clear();super.onDestroy();}
-  void startObd(){if(!emu)obd.start();}
+  void startObd(){if(obd!=null)obd.start();}
   @Override public void onRequestPermissionsResult(int code,String[] permissions,int[] grantResults){super.onRequestPermissionsResult(code,permissions,grantResults);if(code==2402&&liveMap!=null){liveMap.onHostPause();liveMap.onHostStart();}if(code==2401&&obd!=null){for(int result:grantResults)if(result!=android.content.pm.PackageManager.PERMISSION_GRANTED)return;if(grantResults.length>0)obd.start();}}
   @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(launcherSettings!=null)launcherSettings.onPicked(request,result,data);}
   public void onBackPressed(){page=0;view.invalidate();placeMap();}
@@ -53,7 +53,7 @@ public final class MainActivity extends Activity {
        r(c,x,y,w,h,card,16);outline(c,x,y,w,h,0xff7e2638);
        t(c,"TORQUE PRO  •  OBD-II",x+20,y+32,20,white);
        ObdReader.Reading rd=obd==null?ObdReader.Reading.empty():obd.current();
-       t(c,emu?"FĂRĂ ECU":obd.status(),x+w-205,y+30,13,rd.live?0xff36c888:muted);
+       t(c,obd==null?"TORQUE NECONECTAT":obd.status(),x+w-205,y+30,13,rd.live?0xff36c888:muted);
        l(c,x+16,y+45,x+w-16,y+45,0xff394657,1);
        // Order explicitly approved: STFT B1, LTFT B1, RPM, coolant.
        String[] names={"STFT B1","LTFT B1","RPM","TEMP APĂ"};
@@ -71,7 +71,7 @@ public final class MainActivity extends Activity {
          }
          p.setStyle(Paint.Style.FILL);
          // No needle at all when Torque has not supplied a fresh finite value.
-         float val=emu?Float.NaN:vals[i];
+         float val=vals[i];
          if(Float.isFinite(val)){
            float fraction=Math.max(0f,Math.min(1f,(val-minimum[i])/(maximum[i]-minimum[i])));
            double a=Math.toRadians(135+270*fraction);
