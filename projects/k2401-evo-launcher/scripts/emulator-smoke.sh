@@ -53,7 +53,7 @@ python3 - <<'PY'
 import re,subprocess,xml.etree.ElementTree as ET
 nodes=ET.parse("projects/k2401-evo-launcher/screenshots/dock-picker.xml").findall(".//node")
 assert any(n.attrib.get("text")=="Alege aplicația" for n in nodes), "K2401_DOCK_PICKER_MISSING"
-items=[n for n in nodes if n.attrib.get("class","").endswith("CheckedTextView") and n.attrib.get("text")]
+items=[n for n in nodes if n.attrib.get("class","").endswith(("CheckedTextView","TextView")) and n.attrib.get("text") and n.attrib.get("text") not in ("Alege aplicația","ANULEAZĂ","Anulează","CANCEL")]
 assert items, "K2401_DOCK_PICKER_EMPTY"
 x1,y1,x2,y2=map(int,re.findall(r"[0-9]+",items[0].attrib["bounds"]))
 subprocess.check_call(["adb","shell","input","tap",str((x1+x2)//2),str((y1+y2)//2)])
