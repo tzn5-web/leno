@@ -1,0 +1,53 @@
+name: SHAREit NoAds v2 - post-onboarding home visual verification
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/shareit-ads-v2-visual-verification.yml']
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  screenshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Download privately stored test APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          export AZURE_STORAGE_KEY="$(az storage account keys list -g rg-chatgpt-azure -n tzn5androidartifacts26 --query '[0].value' -o tsv)"
+          mkdir -p /tmp/shareit-emu
+          az storage blob download --account-name tzn5androidartifacts26 --container-name apks-private --name output/SHAREit_6.27.58_NoAds_v2_SDK_Blocked_ARM64.apk --file /tmp/shareit-emu/merged.apk --overwrite --only-show-errors
+      - name: Configure Android emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Capture SHAREit UI and ad logs
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_4
+          emulator-boot-timeout: 900
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash .github/scripts/shareit_ads_visual_probe.sh
+      - name: Capture test screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shareit-ads-v2-ui-test
+          path: /tmp/shareit-ads-visual
+          retention-days: 1
+          compression-level: 1
+          if-no-files-found: warn
+      - if: always()
+        run: az logout || true
