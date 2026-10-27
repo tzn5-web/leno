@@ -1,0 +1,58 @@
+name: Azure SHAREit private direct upload session
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/azure-shareit-upload-session.yml']
+  workflow_dispatch:
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  upload:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Configure private one-blob Android package upload, encrypt token for requester
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACC=tzn5androidartifacts26
+          RG=rg-chatgpt-azure
+          KEY="$(az storage account keys list -g "$RG" -n "$ACC" --query '[0].value' -o tsv)"
+          echo "::add-mask::$KEY"
+          az storage cors clear --account-name "$ACC" --account-key "$KEY" --services b -o none
+          az storage cors add --account-name "$ACC" --account-key "$KEY" --services b \
+             --origins '*' --methods PUT OPTIONS \
+             --allowed-headers 'x-ms-blob-type' 'content-type' 'x-ms-version' \
+             --exposed-headers 'etag' --max-age 3600 -o none
+          EXP="$(date -u -d '+18 hours' +%Y-%m-%dT%H:%MZ)"
+          SAS="$(az storage blob generate-sas --account-name "$ACC" --account-key "$KEY" \
+            --container-name apks-private --name input/shareit-6.27.58-user.apks \
+            --permissions cw --expiry "$EXP" --https-only -o tsv)"
+          echo "::add-mask::$SAS"
+          cat >/tmp/requester-pubkey.pem <<'EOF'
+          -----BEGIN PUBLIC KEY-----
+          MIIBIjANBgkqhG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAgZckcU1v0suQwrYZboZl
+          z7oGqouqAHreM8YtYxMsGna8jRkSR8w6M7czau99i/mnwcvXbYjDO/EwZWjkUvmg
+          qAg2xbm/PtRxRqnQX4vZm/DFPLUmTf5c32nZ3kzhjpKXAbfrI0IV0bbGCjA7+dPr
+          qXIJfV/pTNkB5J67qwiRM3Yz2eugKePY4Mjdr4V5wlOUsjI1PWG5Fyiov2WHz0Cb
+          2qJoA0r1CXJpJZQ1wJeLuOw1vK/KLTHBzRjy3OvdY67UYhGqdlW59iHpF/GECbMx
+          YVSuXhAREBX9hSMiJrYOvxh5kmSIm2yeLgLql81G4yuByD/52hrGNL8dEvOBabdP
+          SQIDAQAB
+          -----END PUBLIC KEY-----
+          EOF
+          printf '%s' "$SAS" >/tmp/upload.sas
+          openssl pkeyutl -encrypt -pubin -inkey /tmp/requester-pubkey.pem \
+            -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 \
+            -in /tmp/upload.sas -out /tmp/upload-token.bin
+          echo "ENCRYPTED_UPLOAD_SAS=$(base64 -w0 /tmp/upload-token.bin)"
+          echo "UPLOADER_EXPIRY_UTC=$EXP"
+          echo "UPLOAD_CONTAINER_PRIVATE=PASS"
+          rm -f /tmp/upload.sas /tmp/upload-token.bin
+      - if: always()
+        run: az logout || true
