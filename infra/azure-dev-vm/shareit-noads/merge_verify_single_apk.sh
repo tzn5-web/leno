@@ -15,7 +15,8 @@ JAR_SHA256=a9cd40df818845456be6d696de6110c89edf4b0a0580cb83438ed6b25a366e67
 curl -fL --retry 3 --silent --show-error "$JAR_URL" -o "$EDITOR"
 echo "$JAR_SHA256  $EDITOR" | sha256sum -c -
 test -s source.apks
-java -Xmx8g -jar "$EDITOR" m -i source.apks -o merged-unsigned.apk -clean-meta >merge.log 2>&1 || {
+rm -f merged-unsigned.apk merged-aligned.apk SHAREit_6.27.58_NoAds_SINGLE_ARM64.apk single-apk-report.json
+java -Xmx8g -jar "$EDITOR" m -i source.apks -o merged-unsigned.apk -clean-meta -f >merge.log 2>&1 || {
   tail -n 85 merge.log; exit 20;
 }
 test -s merged-unsigned.apk
