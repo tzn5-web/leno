@@ -153,8 +153,8 @@ public final class MainActivity extends Activity {
     }
     ArrayList<android.bluetooth.BluetoothDevice> devices=new ArrayList<>();
     try{devices.addAll(adapter.getBondedDevices());}
-    catch(SecurityException e){
-      new AlertDialog.Builder(this).setMessage("Permisiunea Bluetooth este indisponibilă.")
+    catch(RuntimeException e){
+      new AlertDialog.Builder(this).setMessage("Bluetooth nu oferă lista de dispozitive pe acest firmware.")
         .setPositiveButton("Setări Bluetooth",(d,w)->startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS)))
         .setNegativeButton("Închide",null).show();return;
     }
@@ -177,6 +177,8 @@ public final class MainActivity extends Activity {
       .setItems(titles,(dialog,which)->{
         try{
           obd.chooseDirectAdapter(devices.get(which).getAddress());
+          getSharedPreferences("evo_launcher_prefs",MODE_PRIVATE).edit()
+            .putBoolean("evo_skip_obd_at_start",false).commit();
           android.widget.Toast.makeText(this,"ELM327 selectat. Citire directă ECU, fără Torque oficial.",android.widget.Toast.LENGTH_LONG).show();
           if(view!=null)view.invalidate();
         }catch(RuntimeException e){
