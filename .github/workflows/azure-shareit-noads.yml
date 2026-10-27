@@ -1,8 +1,5 @@
 name: Azure SHAREit NoAds - process original APKS in Ubuntu VM
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/azure-shareit-noads.yml']
   workflow_dispatch:
     inputs:
       operation:
