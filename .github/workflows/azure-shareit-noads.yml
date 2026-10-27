@@ -1,8 +1,5 @@
 name: Azure SHAREit NoAds - process original APKS in Ubuntu VM
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/azure-shareit-noads.yml']
   workflow_dispatch:
     inputs:
       operation:
@@ -47,7 +44,7 @@ jobs:
           echo 'PRIVATE_ACCOUNT_AND_CREDENTIALS=PASS'
           az storage blob list --account-name "$ACCOUNT" --container-name "$CONTAINER" \
             --query '[].{file:name,bytes:properties.contentLength}' -o table
-          if [[ "${{ inputs.operation }}" = process || "${{ github.event_name }}" = push ]]; then
+          if [[ "${{ inputs.operation }}" = process ]]; then
             EXISTS="$(az storage blob exists --account-name "$ACCOUNT" --container-name "$CONTAINER" --name "$ORIGINAL" --query exists -o tsv)"
             if [[ "$(echo "$EXISTS" | tr "[:upper:]" "[:lower:]")" != "true" ]]; then
               echo 'AZURE_SOURCE_MISSING: upload original APKS into the private blob container first'
@@ -60,7 +57,7 @@ jobs:
             python3 -c 'import os,zipfile; p="/tmp/azure-original-shareit.apks"; expected={"base.apk","split_InnoPlayerDynamicFeature.apk","split_InnoPlayerDynamicFeature.config.arm64_v8a.apk","split_ModuleEntertainment.apk","split_ModuleOnline.apk","split_config.arm64_v8a.apk"}; z=zipfile.ZipFile(p); assert os.path.getsize(p)==70930002; assert set(z.namelist())==expected; assert z.testzip() is None; print("ORIGINAL_SOURCE_SHA256_AND_SPLITS=PASS")'
           fi
       - name: Process original user APK in Azure VM and upload signed splits privately
-        if: ${{ inputs.operation == 'process' || github.event_name == 'push' }}
+        if: ${{ inputs.operation == 'process' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -93,7 +90,7 @@ jobs:
           echo "$OUT" | grep -q SHAREIT_AZURE_PROCESS_SUCCESS
           echo 'AZURE_SHAREIT_PIPELINE=PASS'
       - name: Deallocate VM after any processing result to conserve trial credit
-        if: ${{ always() && (inputs.operation == 'process' || github.event_name == 'push') }}
+        if: ${{ always() && inputs.operation == 'process' }}
         shell: bash
         run: |
           MARK="$(az vm show -g "$GROUP" -n "$VM" --query tags.managedBy -o tsv 2>/dev/null || true)"
