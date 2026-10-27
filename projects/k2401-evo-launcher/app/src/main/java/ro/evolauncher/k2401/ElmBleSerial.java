@@ -136,35 +136,51 @@ final class ElmBleSerial implements AutoCloseable {
     @Override public void onServicesDiscovered(BluetoothGatt session,int status){
       if(status!=BluetoothGatt.GATT_SUCCESS){fail("BLE services status="+status);return;}
       try{
-        for(int i=0;i<PROFILES.length;i++){
-          UUID[] entry=PROFILES[i];
+        int writeMask=BluetoothGattCharacteristic.PROPERTY_WRITE|
+          BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE;
+        int notifyMask=BluetoothGattCharacteristic.PROPERTY_NOTIFY|
+          BluetoothGattCharacteristic.PROPERTY_INDICATE;
+        // Prefer documented ELM UART GATT mappings.
+        for(UUID[] entry:PROFILES){
           BluetoothGattService service=session.getService(entry[0]);
           if(service==null)continue;
           BluetoothGattCharacteristic writer=service.getCharacteristic(entry[1]);
           BluetoothGattCharacteristic notifier=service.getCharacteristic(entry[2]);
-          if(writer==null||notifier==null)continue;
-          int writeMask=BluetoothGattCharacteristic.PROPERTY_WRITE|
-            BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE;
-          if((writer.getProperties()&writeMask)==0)continue;
-          if((notifier.getProperties()&(BluetoothGattCharacteristic.PROPERTY_NOTIFY|
-             BluetoothGattCharacteristic.PROPERTY_INDICATE))==0)continue;
-          tx=writer;rx=notifier;profile="BLE "+entry[0].toString();
-          servicesLatch.countDown();
-          if(!session.setCharacteristicNotification(notifier,true)){
-            fail("BLE enable notifications refused");return;
+          if(writer!=null&&notifier!=null
+            &&(writer.getProperties()&writeMask)!=0
+            &&(notifier.getProperties()&notifyMask)!=0){
+            bindUart(session,writer,notifier,"BLE "+entry[0].toString());return;
           }
-          BluetoothGattDescriptor cccd=notifier.getDescriptor(CCCD);
-          if(cccd==null){
-            fail("BLE notification CCCD missing");return;
-          }
-          byte[] value=(notifier.getProperties()&BluetoothGattCharacteristic.PROPERTY_NOTIFY)!=0?
-            BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE:
-            BluetoothGattDescriptor.ENABLE_INDICATION_VALUE;
-          cccd.setValue(value);
-          if(!session.writeDescriptor(cccd)){fail("BLE descriptor write refused");return;}
-          return;
         }
-        fail("BLE ELM UART service not found (supported: 18F0, FFF0, FFE0, NUS, Vgate)");
+        // Vendor BLE OBD adapters have no standardized GATT profile. When
+        // exactly one proprietary service has a write + notify pair (and
+        // writable ELM serial replies), allow a validated ATI handshake.
+        // Never guess among multiple ambiguous UART services.
+        BluetoothGattCharacteristic fallbackWrite=null,fallbackNotify=null;
+        String fallbackLabel=null;
+        int candidates=0;
+        for(BluetoothGattService svc:session.getServices()){
+          if(svc.getType()!=BluetoothGattService.SERVICE_TYPE_PRIMARY)continue;
+          UUID id=svc.getUuid();
+          if(id.equals(uuid16(0x1800))||id.equals(uuid16(0x1801))||
+             id.equals(uuid16(0x180A))||id.equals(uuid16(0x180F)))continue;
+          BluetoothGattCharacteristic writer=null,notifier=null;
+          for(BluetoothGattCharacteristic chara:svc.getCharacteristics()){
+            if((chara.getProperties()&writeMask)!=0&&writer==null)writer=chara;
+            if((chara.getProperties()&notifyMask)!=0&&
+               chara.getDescriptor(CCCD)!=null&&notifier==null)notifier=chara;
+          }
+          if(writer!=null&&notifier!=null){
+            fallbackWrite=writer;fallbackNotify=notifier;
+            fallbackLabel="BLE UART detectat "+id;
+            candidates++;
+          }
+        }
+        if(candidates==1){
+          bindUart(session,fallbackWrite,fallbackNotify,fallbackLabel);return;
+        }
+        fail(candidates==0?"BLE ELM UART service not found":
+          "BLE UART layout ambiguous: "+candidates+" candidate services");
       }catch(RuntimeException error){fail("BLE GATT services: "+error.getMessage());}
     }
     @Override public void onDescriptorWrite(BluetoothGatt session,BluetoothGattDescriptor desc,int status){
@@ -192,6 +208,21 @@ final class ElmBleSerial implements AutoCloseable {
       if(latch!=null)latch.countDown();
     }
   };
+  private void bindUart(BluetoothGatt session,BluetoothGattCharacteristic writer,
+                        BluetoothGattCharacteristic notifier,String name){
+    tx=writer;rx=notifier;profile=name;
+    servicesLatch.countDown();
+    if(!session.setCharacteristicNotification(notifier,true)){
+      fail("BLE enable notifications refused");return;
+    }
+    BluetoothGattDescriptor cccd=notifier.getDescriptor(CCCD);
+    if(cccd==null){fail("BLE notification CCCD missing");return;}
+    byte[] value=(notifier.getProperties()&BluetoothGattCharacteristic.PROPERTY_NOTIFY)!=0?
+      BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE:
+      BluetoothGattDescriptor.ENABLE_INDICATION_VALUE;
+    cccd.setValue(value);
+    if(!session.writeDescriptor(cccd)){fail("BLE descriptor write refused");}
+  }
   ElmBleSerial(Context context,BluetoothDevice device){
     this.context=context.getApplicationContext();this.device=device;
   }
