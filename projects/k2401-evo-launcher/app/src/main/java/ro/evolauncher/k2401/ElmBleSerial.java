@@ -13,7 +13,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayDeque;
-import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -170,15 +169,16 @@ final class ElmBleSerial implements AutoCloseable {
     }
     @Override public void onDescriptorWrite(BluetoothGatt session,BluetoothGattDescriptor desc,int status){
       if(status!=BluetoothGatt.GATT_SUCCESS){fail("BLE CCCD status "+status);return;}
+      // Short OBD ASCII commands fit the default 23-byte MTU. Do not start
+      // an overlapping MTU request just before the first UART write on OEM GATT.
       ready=true;notificationLatch.countDown();
-      try{session.requestMtu(185);}catch(RuntimeException ignored){}
     }
     @Override public void onMtuChanged(BluetoothGatt session,int size,int status){
       if(status==BluetoothGatt.GATT_SUCCESS)mtu=size;
     }
     @Override public void onCharacteristicChanged(BluetoothGatt session,BluetoothGattCharacteristic c){
       byte[] bytes=c.getValue();
-      if(c.getUuid().equals(rx==null?UUID.randomUUID():rx.getUuid())&&bytes!=null){
+      if(rx!=null&&c.getUuid().equals(rx.getUuid())&&bytes!=null){
         synchronized(bufferLock){
           if(receive.size()+bytes.length>8192){fail("BLE notification buffer overflow");return;}
           for(byte item:bytes)receive.addLast(item&255);
