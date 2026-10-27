@@ -37,13 +37,13 @@ jobs:
           echo "::add-mask::$SAS"
           cat >/tmp/requester-pubkey.pem <<'EOF'
           -----BEGIN PUBLIC KEY-----
-          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAgZckcU1v0suQwrYZboZl
-          z7oGqouqAHreM8YtYxMsGna8jRkSR8w6M7czau99i/mnwcvXbYjDO/EwZWjkUvmg
-          qAg2xbm/PtRxRqnQX4vZm/DFPLUmTf5c32nZ3kzhjpKXAbfrI0IV0bbGCjA7+dPr
-          qXIJfV/pTNkB5J67qwiRM3Yz2eugKePY4Mjdr4V5wlOUsjI1PWG5Fyiov2WHz0Cb
-          2qJoA0r1CXJpJZQ1wJeLuOw1vK/KLTHBzRjy3OvdY67UYhGqdlW59iHpF/GECbMx
-          YVSuXhAREBX9hSMiJrYOvxh5kmSIm2yeLgLql81G4yuByD/52hrGNL8dEvOBabdP
-          SQIDAQAB
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQEA0AkXDCj+tnhKGDDNKsbc
+          9+iW9O9vTK8oj96yWZuUqJOxnta7TugZVnsmdHsqXlhICdqa3VuzZbaxePDFRxgz
+          bvn9kTgAV+23XZd+wq+8s+cqXFWukI3/jlOnr3kMz3/ff8bhDa1wbAQvr9KBTow3
+          j/OTJfj+cb06c6FmgSxoV4HHeuMCNVT70/n1B5VWWXyJLPZQDgd44SZiLz3+aPpB
+          calTFWhy5YtxGbmY5GW59ti3F3LROyduCvWezw30Jn1lqzBzuaq0xi8y2JMP1705
+          1YD4KJHZ31VtdF4lmxbK0DnZvozDyHuho02su1/1nzzBU/kU50l4y2jt+NYR/O9V
+          KQIDAQAB
           -----END PUBLIC KEY-----
           EOF
           printf '%s' "$SAS" >/tmp/upload.sas
