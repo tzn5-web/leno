@@ -63,7 +63,37 @@ assert any("Alege playerul instalat" in t for t in texts), "K2401_MEDIA_PICKER_M
 assert any("permisiune mediasession" in t.casefold() for t in texts), "K2401_MEDIA_PERMISSION_ACTION_MISSING"
 print("K2401_MEDIA_PLAYER_SELECT_INSIDE_HOME=PASS")
 PY
-adb shell input keyevent 4
+# Select an ACTUAL installed player and verify persistence, not a mock.
+python3 - <<'PY'
+import re, subprocess, xml.etree.ElementTree as ET
+root=ET.parse("projects/k2401-evo-launcher/screenshots/media-picker-ui.xml")
+items=[n for n in root.findall(".//node") if n.attrib.get("class","").endswith("CheckedTextView") and n.attrib.get("text")]
+assert items, "K2401_MEDIA_PICKER_HAS_NO_INSTALLED_PLAYERS"
+a,b,c,d=map(int,re.findall(r"[0-9]+",items[0].attrib["bounds"]))
+subprocess.check_call(["adb","shell","input","tap",str((a+c)//2),str((b+d)//2)])
+PY
+for n in $(seq 1 15); do
+  adb shell run-as "$APP" cat shared_prefs/evo_launcher_prefs.xml > "$OUT/media-prefs-before-restart.xml"
+  if grep -Fq 'name="evo_media_package"' "$OUT/media-prefs-before-restart.xml"; then break; fi
+  sleep 0.3
+done
+grep -Fq 'name="evo_media_package"' "$OUT/media-prefs-before-restart.xml"
+adb shell am force-stop "$APP"
+adb shell am start -W -n "$APP/.MainActivity" >/dev/null
+sleep 2
+adb shell run-as "$APP" cat shared_prefs/evo_launcher_prefs.xml > "$OUT/media-prefs-after-restart.xml"
+python3 - <<'PY'
+import xml.etree.ElementTree as ET
+from pathlib import Path
+folder=Path("projects/k2401-evo-launcher/screenshots")
+def get(name):
+    root=ET.parse(folder/name).getroot()
+    return next((n.text for n in root.findall("string") if n.get("name")=="evo_media_package"),None)
+a=get("media-prefs-before-restart.xml")
+b=get("media-prefs-after-restart.xml")
+assert a and a==b,"K2401_SELECTED_MEDIA_PLAYER_NOT_PERSISTENT"
+print("K2401_MEDIA_SELECTED_PLAYER_PERSISTENCE=PASS",a)
+PY
 adb shell pidof "$APP" >/dev/null
 # Native dock is inspectable by Android accessibility, unlike decorative canvas.
 adb shell uiautomator dump /sdcard/k2401-dock.xml >/dev/null
@@ -174,7 +204,7 @@ adb pull /sdcard/settings-customized.png "$OUT/settings-customized.png" >/dev/nu
 echo "K2401_SETTINGS_WALLPAPER_CHANGE=PASS"
 # Settings are scrollable: lower controls are intentionally offscreen in the
 # first UI hierarchy. Scroll before asserting their presence.
-adb shell input swipe 940 620 940 240 550
+for i in $(seq 1 3); do adb shell input swipe 940 620 940 230 350; done
 sleep 1
 adb shell uiautomator dump /sdcard/k2401-ui-scrolled.xml >/dev/null
 adb pull /sdcard/k2401-ui-scrolled.xml "$OUT/settings-ui-scrolled.xml" >/dev/null
