@@ -46,6 +46,7 @@ final class LiveMapPanel extends FrameLayout implements LocationListener {
   private com.google.android.gms.maps.model.Marker googleSearchMarker;
   private LocationManager locations;
   private boolean mapStarted, mapResumed, active, hasFix, followLocation=true;
+  private boolean initialZoomSet;
   private final boolean usingGoogle;
   private final TextView status;
   private final GeoPoint initialCenter = new GeoPoint(45.94,24.97); // Neutral initial view, NOT a fake GPS fix.
@@ -103,7 +104,7 @@ final class LiveMapPanel extends FrameLayout implements LocationListener {
     locate.setOnClickListener(v->{
       followLocation=true;
       Location l=lastLocation();
-      if(l!=null){moveTo(l);status.setText("LOCATIA REALA • GPS");}
+      if(l!=null){moveTo(l,true);}
       else{
         status.setText("GPS INDISPONIBIL • VERIFICA LOCATIA");
         Toast.makeText(activity,"Activează GPS și permite accesul la locație.",Toast.LENGTH_LONG).show();
@@ -220,12 +221,22 @@ final class LiveMapPanel extends FrameLayout implements LocationListener {
       if(a==null)return b;if(b==null)return a;return a.getTime()>=b.getTime()?a:b;
     }catch(SecurityException|IllegalArgumentException e){return null;}
   }
-  private void moveTo(Location loc) {
+  private void moveTo(Location loc){moveTo(loc,false);}
+  private void moveTo(Location loc,boolean userInitiated) {
     if(loc==null||!Double.isFinite(loc.getLatitude())||!Double.isFinite(loc.getLongitude())||
       Math.abs(loc.getLatitude())>90||Math.abs(loc.getLongitude())>180)return;
     if(!hasFix){hasFix=true;followLocation=true;}
+    if(userInitiated){followLocation=true;initialZoomSet=false;}
     if(!followLocation)return;
-    if(osm!=null)osm.getController().animateTo(new GeoPoint(loc.getLatitude(),loc.getLongitude()));
+    long age=Math.max(0L,System.currentTimeMillis()-loc.getTime());
+    boolean stale=loc.getTime()>0&&age>120000L;
+    status.setText(stale?"GPS • ULTIMA POZIȚIE ("+(age/60000)+" min)":
+      "GPS • POZIȚIE REALĂ"+(loc.hasAccuracy()?" ±"+Math.round(loc.getAccuracy())+"m":""));
+    if(osm!=null){
+      if(!initialZoomSet){osm.getController().setZoom(16.0);initialZoomSet=true;}
+      osm.getController().animateTo(new GeoPoint(loc.getLatitude(),loc.getLongitude()));
+      osm.invalidate();
+    }
     if(googleMap!=null)googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(
       new LatLng(loc.getLatitude(),loc.getLongitude()),16f));
   }
