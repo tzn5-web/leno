@@ -1,0 +1,26 @@
+name: Azure Android VM guest bootstrap audit
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/azure-android-vm-guest-audit.yml']
+permissions: {contents: read, id-token: write}
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Check guest cloud-init and tool install logs (read only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          az vm run-command invoke --resource-group rg-chatgpt-azure \
+            --name android-dev-linux --command-id RunShellScript \
+            --scripts 'echo ======CLOUD_INIT======; cloud-init status --long || true; echo ======INSTALL_MARKERS======; ls -la /var/lib/android-dev/ 2>&1 || true; echo ======INSTALL_LOG======; tail -n 65 /var/log/android-dev-bootstrap.log 2>&1 || true; echo ======CLOUD_OUTPUT======; tail -n 40 /var/log/cloud-init-output.log 2>&1 || true; echo ======PROCESS======; ps -eo pid,comm,args | grep -E "apt-get|sdkmanager|snap install|install-android-dev" | head -10 || true' \
+            --query 'value[0].message' -o tsv
+      - if: always()
+        run: az logout || true
