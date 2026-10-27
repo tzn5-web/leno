@@ -51,11 +51,11 @@ public final class MainActivity extends Activity {
    }
    String formatObd(float value){return Float.isFinite(value)?String.format(Locale.US,"%.1f",value):"--";}
    void gauges(Canvas c,int x,int y,int w,int h){
-       r(c,x,y,w,h,card,16);outline(c,x,y,w,h,0xff7e2638);t(c,"TORQUE   •   DATE MOTOR",x+23,y+34,22,white);t(c,emu?"SIMULARE OBD":obd.status(),x+w-239,y+33,15,0xffffb875);
+       r(c,x,y,w,h,card,16);outline(c,x,y,w,h,0xff7e2638);t(c,"TORQUE   •   DATE MOTOR",x+23,y+34,22,white);t(c,emu?"DATE INDISPONIBILE":obd.status(),x+w-239,y+33,15,0xffffb875);
        l(c,x+20,y+48,x+w-20,y+48,0xff394657,1);
-       String[] name={"MAP (abs.)","Temp. lichid","Turație motor","Tensiune"},unit={"bar","°C","x1000","V"};
+       String[] name={"RPM","STFT B1","LTFT B1","TEMP. APĂ"},unit={"rpm","%","%","°C"};
        ObdReader.Reading reading=obd==null?ObdReader.Reading.empty():obd.current();
-       String[] value=emu?new String[]{"0.8","92","2.8","14.1"}:new String[]{formatObd(reading.mapBar),Float.isFinite(reading.coolantC)?""+Math.round(reading.coolantC):"--",formatObd(reading.rpm),formatObd(reading.batteryV)};
+       String[] value=emu?new String[]{"N/A","N/A","N/A","N/A"}:new String[]{formatObd(reading.rpm), "N/A", "N/A", Float.isFinite(reading.coolantC)?""+Math.round(reading.coolantC):"N/A"};
        for(int i=0;i<4;i++){float cx=x+78+i*(w-160)/3f,cy=y+166;
            p.setColor(0xff435063);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(9);c.drawArc(cx-59,cy-59,cx+59,cy+59,132,276,false,p);
            if(emu||reading.live){p.setColor(red);c.drawArc(cx-59,cy-59,cx+59,cy+59,132,170,false,p);}p.setStyle(Paint.Style.FILL);
