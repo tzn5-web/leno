@@ -43,6 +43,7 @@ final class LiveMapPanel extends FrameLayout implements LocationListener {
   private GoogleMap googleMap;
   private org.osmdroid.views.MapView osm;
   private Marker osmPosition;
+  private Marker gpsMarker;
   private com.google.android.gms.maps.model.Marker googleSearchMarker;
   private LocationManager locations;
   private boolean mapStarted, mapResumed, active, hasFix, followLocation=true;
@@ -233,8 +234,16 @@ final class LiveMapPanel extends FrameLayout implements LocationListener {
     status.setText(stale?"GPS • ULTIMA POZIȚIE ("+(age/60000)+" min)":
       "GPS • POZIȚIE REALĂ"+(loc.hasAccuracy()?" ±"+Math.round(loc.getAccuracy())+"m":""));
     if(osm!=null){
+      GeoPoint position=new GeoPoint(loc.getLatitude(),loc.getLongitude());
+      if(gpsMarker==null){
+        gpsMarker=new Marker(osm);
+        gpsMarker.setAnchor(Marker.ANCHOR_CENTER,Marker.ANCHOR_BOTTOM);
+        osm.getOverlays().add(gpsMarker);
+      }
+      gpsMarker.setPosition(position);
+      gpsMarker.setTitle(stale?"Ultima poziție GPS":"Poziția mea • GPS");
       if(!initialZoomSet){osm.getController().setZoom(16.0);initialZoomSet=true;}
-      osm.getController().animateTo(new GeoPoint(loc.getLatitude(),loc.getLongitude()));
+      osm.getController().animateTo(position);
       osm.invalidate();
     }
     if(googleMap!=null)googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(
