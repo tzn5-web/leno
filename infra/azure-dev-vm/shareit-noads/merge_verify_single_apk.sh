@@ -29,11 +29,11 @@ dst='merged-dex-stored.apk'
 with zipfile.ZipFile(src) as zi, zipfile.ZipFile(dst,'w') as zo:
     for item in zi.infolist():
         contents=zi.read(item.filename)
-        if re.fullmatch(r'classes\\d*\\.dex',item.filename):
+        if re.fullmatch(r'classes\d*\.dex',item.filename):
             item.compress_type=zipfile.ZIP_STORED
         zo.writestr(item,contents)
 with zipfile.ZipFile(dst) as check:
-    files=[i for i in check.infolist() if re.fullmatch(r'classes\\d*\\.dex',i.filename)]
+    files=[i for i in check.infolist() if re.fullmatch(r'classes\d*\.dex',i.filename)]
     assert len(files)>=8
     assert all(i.compress_type==zipfile.ZIP_STORED for i in files)
 print('DEX_UNCOMPRESSED_FOR_ANDROID_CLASSLOADER=PASS',len(files))
