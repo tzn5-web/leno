@@ -1,7 +1,7 @@
 name: K2401 Azure Linux KVM Android 10 signed release validation
 # One bounded Azure test. Creates a temporary Ubuntu VM with nested KVM.
 # VM is deallocated and deleted in cleanup. Does not touch the Windows driver VM.
-# East US 2 has unused regional vCPU quota; use a 2-vCPU Dsv5 nested-KVM size to avoid Europe capacity restrictions.
+# East US 2 VM size D2s_v5 failed capacity; preflight D4s_v5 as alternate and clean up.
 # Execute current signed v1.0 Android 10 source after the release lint correction.
 on:
   push:
@@ -17,6 +17,7 @@ concurrency:
 env:
   AZURE_RG: rg-chatgpt-azure
   AZURE_REGION: eastus2
+  AZURE_VM_SIZE: Standard_D4s_v5
   AZURE_SUB: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
   KEY_VAULT: k2401evo2026sign
   APK: projects/k2401-evo-launcher/app/build/outputs/apk/release/app-release.apk
@@ -135,6 +136,16 @@ jobs:
           echo "::add-mask::$SAS_B64_VALUE"
           echo "SAS_B64=$SAS_B64_VALUE" >> "$GITHUB_ENV"
           echo 'PRIVATE_TRANSFER_READY=PASS'
+      - name: Check SKU restrictions before provisioning Azure VM
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESTRICTIONS="$(az vm list-skus -l "$AZURE_REGION" --size "$AZURE_VM_SIZE" --all --query "[?name=='$AZURE_VM_SIZE'].restrictions[]" -o tsv)"
+          if [[ -n "$RESTRICTIONS" ]]; then
+            echo "::error::SKU_RESTRICTED=$AZURE_VM_SIZE in $AZURE_REGION"
+            exit 5
+          fi
+          echo "AZURE_VM_SKU_PREFLIGHT=PASS size=$AZURE_VM_SIZE"
       - name: Create isolated short-lived Azure Ubuntu KVM VM
         timeout-minutes: 16
         shell: bash
@@ -143,7 +154,7 @@ jobs:
           # Unique name per run. Public IP permits outbound SDK downloads; NSG
           # allows NO inbound SSH. Access is exclusively via Azure Run Command.
           az vm create -g "$AZURE_RG" -n "$VM_NAME" -l "$AZURE_REGION" \
-            --image Ubuntu2204 --size Standard_D2s_v5 \
+            --image Ubuntu2204 --size "$AZURE_VM_SIZE" \
             --admin-username k2401ci --generate-ssh-keys \
             --security-type Standard --storage-sku Standard_LRS \
             --os-disk-size-gb 64 --public-ip-sku Standard \
@@ -215,8 +226,7 @@ jobs:
           az vm delete -g "$AZURE_RG" -n "$VM_NAME" --yes -o none
           az disk list -g "$AZURE_RG" --query "[?starts_with(name, '$VM_NAME')].name" -o tsv |
             while read -r disk; do [[ -n "$disk" ]] && az disk delete -g "$AZURE_RG" -n "$disk" --yes -o none; done
-          az network nic list -g "$AZURE_RG" --query "[?starts_with(name, '$VM_NAME')].name" -o tsv |
-            while read -r nic; do [[ -n "$nic" ]] && az network nic delete -g "$AZURE_RG" -n "$nic" -o none; done
+          [[ -n "${NIC:-}" ]] && az network nic delete -g "$AZURE_RG" -n "$NIC" -o none
           [[ -n "${PIP:-}" ]] && az network public-ip delete -g "$AZURE_RG" -n "$PIP" -o none
           [[ -n "${NSG:-}" ]] && az network nsg delete -g "$AZURE_RG" -n "$NSG" -o none
           [[ -n "${VNET:-}" ]] && az network vnet delete -g "$AZURE_RG" -n "$VNET" -o none
