@@ -21,7 +21,6 @@ jobs:
           az vm run-command invoke --resource-group rg-chatgpt-azure \
             --name android-dev-linux --command-id RunShellScript \
             --scripts 'echo ======READY======; test -f /var/lib/android-dev/installed && echo INSTALLED || echo NOT_YET; echo ======SERVICE======; systemctl is-active android-dev-resume.service || true; systemctl show android-dev-resume.service -p SubState -p ExecMainStatus -p Result || true; echo ======FAIL_MARKER======; ls -l /var/lib/android-dev/failed 2>/dev/null || true; echo ======LOGTAIL======; tail -n 17 /var/log/android-dev-bootstrap.log 2>/dev/null || true; echo ======DISK======; df -h / | tail -1' \
-
             --query 'value[0].message' -o tsv
       - if: always()
         run: az logout || true
