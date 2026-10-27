@@ -1,0 +1,67 @@
+name: SHAREit NoAds v2 - private encrypted delivery from Azure
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/azure-shareit-v2-private-delivery.yml']
+  workflow_dispatch:
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Export the latest Android ART-safe standalone Azure APK after validating SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          work=/tmp/shareit-single-delivery
+          install -d -m 0700 "$work"
+          export AZURE_STORAGE_KEY="$(az storage account keys list -g rg-chatgpt-azure -n tzn5androidartifacts26 --query '[0].value' -o tsv)"
+          az storage blob download --account-name tzn5androidartifacts26 --container-name apks-private \
+            --name output/SHAREit_6.27.58_NoAds_v2_SDK_Blocked_ARM64.apk --file "$work/output.apk" --overwrite --only-show-errors
+          az storage blob download --account-name tzn5androidartifacts26 --container-name apks-private \
+            --name output/SHAREit_6.27.58_NoAds_v2_SDK_Blocked_AUDIT.json --file "$work/azure-audit.json" --overwrite --only-show-errors
+          python3 - <<'PY'
+          import pathlib,json,hashlib,zipfile
+          w=pathlib.Path('/tmp/shareit-single-delivery')
+          report=json.loads((w/'azure-audit.json').read_text())
+          p=w/'output.apk'
+          digest=hashlib.file_digest(open(p,'rb'),'sha256').hexdigest()
+          assert digest==report['sha256']
+          with zipfile.ZipFile(p) as z:
+            assert 'AndroidManifest.xml' in z.namelist()
+            assert 'resources.arsc' in z.namelist()
+            assert z.testzip() is None
+            assert len([n for n in z.namelist() if n.endswith('.dex')]) >= 8
+          print('AZURE_SINGLE_APK_EXPORT_INTEGRITY=PASS')
+          print('SHA256',digest)
+          print('BYTES',p.stat().st_size)
+          PY
+          openssl rand -base64 39 > "$work/secret.txt"
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 150000 \
+            -pass file:"$work/secret.txt" -in "$work/output.apk" -out "$work/SHAREit_Single_Azure.apk.enc"
+          openssl pkeyutl -encrypt -pubin -inkey infra/azure-dev-vm/shareit-noads/delivery_public.pem \
+            -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 \
+            -in "$work/secret.txt" -out "$work/secret.rsa"
+          shred -u "$work/output.apk" "$work/secret.txt"
+          echo 'AZURE_SIGNED_SINGLE_APK_ENCRYPTED_EXPORT=PASS'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shareit-noads-v2-azure-encrypted
+          path: |
+            /tmp/shareit-single-delivery/SHAREit_Single_Azure.apk.enc
+            /tmp/shareit-single-delivery/secret.rsa
+            /tmp/shareit-single-delivery/azure-audit.json
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+      - if: always()
+        run: az logout || true
