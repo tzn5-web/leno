@@ -47,6 +47,18 @@ public final class SafeModeActivity extends Activity {
       intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP);
       startActivity(intent);finish();
     });
+    button(box,"Pornește EVO cu harta și OBD dezactivate",()->{
+      getSharedPreferences("evo_launcher_prefs",MODE_PRIVATE).edit()
+        .putBoolean("evo_skip_obd_at_start",true).commit();
+      data.edit().remove("last_crash_wallclock").putBoolean("map_disabled",true)
+        .putBoolean("map_boot_pending",false).commit();
+      startActivity(new Intent(this,MainActivity.class));finish();
+    });
+    button(box,"Reîncearcă harta la următoarea pornire",()->{
+      data.edit().remove("last_crash_wallclock").putBoolean("map_disabled",false)
+        .putBoolean("map_boot_pending",false).commit();
+      startActivity(new Intent(this,MainActivity.class));finish();
+    });
     button(box,"Resetează doar alegerea adaptorului ELM327",()->{
       getSharedPreferences("evo_launcher_prefs",MODE_PRIVATE).edit()
         .remove("elm327_mac").putString("obd_source","direct")
