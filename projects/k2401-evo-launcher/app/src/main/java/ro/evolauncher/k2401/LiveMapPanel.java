@@ -124,9 +124,10 @@ final class LiveMapPanel extends FrameLayout implements LocationListener {
     if(osm!=null){double z=osm.getZoomLevelDouble();osm.getController().setZoom(Math.max(3,Math.min(19,z+direction)));}
     if(googleMap!=null)googleMap.animateCamera(direction>0?CameraUpdateFactory.zoomIn():CameraUpdateFactory.zoomOut());
   }
+  private volatile long lastRemoteSearchMs=0L;
   private void searchInsidePanel() {
     EditText edit=new EditText(activity);
-    edit.setSingleLine(true);edit.setHint("Oraș, adresă sau destinație");
+    edit.setSingleLine(true);edit.setHint("Oraș sau adresă");
     edit.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
     new AlertDialog.Builder(activity).setTitle("Caută pe harta integrată")
       .setView(edit).setNegativeButton("Anulează",null).setPositiveButton("Caută",(d,w)->{
@@ -135,13 +136,58 @@ final class LiveMapPanel extends FrameLayout implements LocationListener {
         status.setText("CĂUTARE: "+query);
         new Thread(()->{
           try{
-            if(!Geocoder.isPresent())throw new IllegalStateException("Serviciul de geocodare lipsește");
-            List<Address> found=new Geocoder(activity,Locale.getDefault()).getFromLocationName(query,1);
-            if(found==null||found.isEmpty())throw new IllegalStateException("Nicio locație găsită");
-            Address address=found.get(0);
-            final double lat=address.getLatitude(),lon=address.getLongitude();
+            double lat=Double.NaN,lon=Double.NaN;
+            // Android 10 OEM firmware frequently lacks a Geocoder backend
+            // despite having GPS and working OSM tiles. Try it once, then use
+            // Nominatim for one user-triggered search (never autocomplete).
+            if(Geocoder.isPresent()){
+              try{
+                List<Address> result=new Geocoder(activity,Locale.getDefault()).getFromLocationName(query,1);
+                if(result!=null&&!result.isEmpty()){
+                  lat=result.get(0).getLatitude();lon=result.get(0).getLongitude();
+                }
+              }catch(Exception ignored){/* Android OEM geocoder missing/broken */}
+            }
+            if(!Double.isFinite(lat)||!Double.isFinite(lon)){
+              // OSMF usage policy: max 1 request/sec, identifying User-Agent,
+              // attribution, no prefetch/autocomplete, explicit human query.
+              long now=android.os.SystemClock.elapsedRealtime();
+              long wait=Math.max(0L,1100L-(now-lastRemoteSearchMs));
+              if(wait>0)Thread.sleep(wait);
+              lastRemoteSearchMs=android.os.SystemClock.elapsedRealtime();
+              String uri="https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q="+
+                java.net.URLEncoder.encode(query,"UTF-8");
+              java.net.HttpURLConnection connection=(java.net.HttpURLConnection)
+                new java.net.URL(uri).openConnection();
+              try{
+                connection.setRequestMethod("GET");
+                connection.setRequestProperty("User-Agent",
+                  "K2401-EVO-Launcher/1.2 (https://github.com/tzn5-web/leno)");
+                connection.setRequestProperty("Accept-Language","ro,en");
+                connection.setRequestProperty("Accept","application/json");
+                connection.setConnectTimeout(8000);connection.setReadTimeout(8000);
+                int http=connection.getResponseCode();
+                if(http!=200)throw new java.io.IOException("HTTP "+http);
+                try(java.io.InputStream stream=connection.getInputStream()){
+                  java.io.ByteArrayOutputStream buffer=new java.io.ByteArrayOutputStream();
+                  byte[] tmp=new byte[1024];int n;
+                  while((n=stream.read(tmp))!=-1){
+                    if(buffer.size()+n>65536)throw new java.io.IOException("Răspuns prea mare");
+                    buffer.write(tmp,0,n);
+                  }
+                  org.json.JSONArray list=new org.json.JSONArray(buffer.toString("UTF-8"));
+                  if(list.length()==0)throw new java.io.IOException("Nu am găsit destinația");
+                  org.json.JSONObject item=list.getJSONObject(0);
+                  lat=Double.parseDouble(item.getString("lat"));
+                  lon=Double.parseDouble(item.getString("lon"));
+                }
+              }finally{connection.disconnect();}
+            }
+            if(!Double.isFinite(lat)||!Double.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180)
+              throw new java.io.IOException("Coordonate invalide");
+            final double resultLat=lat,resultLon=lon;
             activity.runOnUiThread(()->{
-              selectedDestination=new GeoPoint(lat,lon);followLocation=false;
+              selectedDestination=new GeoPoint(resultLat,resultLon);followLocation=false;
               if(osm!=null){
                 if(osmPosition!=null)osm.getOverlays().remove(osmPosition);
                 Marker marker=new Marker(osm);marker.setPosition(selectedDestination);
@@ -150,16 +196,16 @@ final class LiveMapPanel extends FrameLayout implements LocationListener {
               }
               if(googleMap!=null){
                 if(googleSearchMarker!=null)googleSearchMarker.remove();
-                googleSearchMarker=googleMap.addMarker(new MarkerOptions().position(new LatLng(lat,lon)).title(query));
-                googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(lat,lon),15f));
+                googleSearchMarker=googleMap.addMarker(new MarkerOptions().position(new LatLng(resultLat,resultLon)).title(query));
+                googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(resultLat,resultLon),15f));
               }
-              status.setText("DESTINAȚIE PE HARTĂ • "+query);
+              status.setText("LOC GĂSIT • "+query);
             });
           }catch(Exception e){activity.runOnUiThread(()->{
-            status.setText("CĂUTAREA NECESITĂ SERVICIUL DE LOCALIZARE");
-            Toast.makeText(activity,"Căutarea adresei nu este disponibilă: "+e.getMessage(),Toast.LENGTH_LONG).show();
+            status.setText("CĂUTARE INDISPONIBILĂ • VERIFICĂ INTERNETUL");
+            Toast.makeText(activity,"Căutarea adresei a eșuat: "+e.getMessage(),Toast.LENGTH_LONG).show();
           });}
-        },"k2401-geocoder").start();
+        },"k2401-osm-geocode").start();
       }).show();
   }
   private boolean hasLocationPermission(){
