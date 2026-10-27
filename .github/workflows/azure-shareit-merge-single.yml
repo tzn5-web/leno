@@ -35,7 +35,7 @@ jobs:
           client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
           tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
           subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
-      - name: Verify existing Azure output and provision temporary scoped transfer
+      - name: Verify newly rebuilt DEX lex-safe Azure APK splits and prepare scoped transfer
         shell: bash
         run: |
           set -euo pipefail
