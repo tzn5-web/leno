@@ -14,6 +14,11 @@ sleep 8
 adb shell am start -n com.lenovo.anyshare.gps/com.lenovo.anyshare.ChangeLogoActivity2 >/dev/null 2>&1 || true
 sleep 12
 adb shell pidof "$PKG" >"$D/pid.txt" || true
+# This is a disposable emulator, not the user's account. Accept onboarding to reach real ads.
+adb shell input tap 530 2050 || true
+sleep 17
+adb shell input tap 910 2130 || true
+sleep 6
 adb shell dumpsys activity activities | grep -E 'topResumedActivity|mResumedActivity' >"$D/foreground-activity.txt" || true
 echo "APP_FOREGROUND_INFO=$(cat "$D/foreground-activity.txt")"
 adb shell screencap -p /sdcard/shareit-screen.png
