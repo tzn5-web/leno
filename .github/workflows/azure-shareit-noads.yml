@@ -23,7 +23,7 @@ jobs:
       CONTAINER: apks-private
       GROUP: rg-chatgpt-azure
       VM: android-dev-linux
-      ORIGINAL: 'input/SHAREit_6.27.58_ww.apks'
+      ORIGINAL: 'SHAREit_6.27.58_ww.apks'
       OUTPUT: 'output/SHAREit_6.27.58_NoAds_SPLITS.apks'
       REPORT: 'output/SHAREit_6.27.58_NoAds_Azure_Report.json'
     steps:
@@ -46,7 +46,7 @@ jobs:
             --query '[].{file:name,bytes:properties.contentLength}' -o table
           if [[ "${{ inputs.operation }}" = process ]]; then
             EXISTS="$(az storage blob exists --account-name "$ACCOUNT" --container-name "$CONTAINER" --name "$ORIGINAL" --query exists -o tsv)"
-            if [[ "$EXISTS" != "True" ]]; then
+            if [[ "$(echo "$EXISTS" | tr "[:upper:]" "[:lower:]")" != "true" ]]; then
               echo 'AZURE_SOURCE_MISSING: upload original APKS into the private blob container first'
               exit 3
             fi
