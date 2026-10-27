@@ -1,0 +1,40 @@
+name: Azure private APK transfer - inspect existing storage
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/azure-shareit-storage-audit.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Inspect transfer storage and available blobs without changing resources
+        shell: bash
+        run: |
+          set -uo pipefail
+          S=tzn5androidartifacts26
+          echo ====STORAGE_ACCOUNT====
+          az storage account show -n "$S" --query '{id:id,region:location,allowBlobPublicAccess:allowBlobPublicAccess,allowSharedKeyAccess:allowSharedKeyAccess,minimumTlsVersion:minimumTlsVersion}' -o json || true
+          ID="$(az storage account show -n "$S" --query id -o tsv)"
+          echo ====ARM_CONTAINERS====
+          az rest --method get --url "https://management.azure.com$ID/blobServices/default/containers?api-version=2023-05-01" --query 'value[].{name:name,publicAccess:properties.publicAccess}' -o json || true
+          echo ====LOGIN_CONTAINERS====
+          az storage container list --account-name "$S" --auth-mode login --query '[].name' -o json 2>&1 | tail -c 1500 || true
+          echo ====STORAGE_ROLES====
+          az role assignment list --assignee 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9 --scope "$ID" --include-inherited --query '[].{role:roleDefinitionName,scope:scope}' -o json || true
+          for C in apks input output shareit uploads app-input builds; do
+            echo "BLOB_CONTAINER_CHECK=$C"
+            az storage blob list --account-name "$S" --container-name "$C" --auth-mode login \
+               --query '[].{name:name,bytes:properties.contentLength}' -o json 2>&1 | tail -c 1600 || true
+          done
+      - if: always()
+        run: az logout || true
