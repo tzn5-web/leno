@@ -18,7 +18,7 @@ jobs:
           client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
           tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
           subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
-      - name: Download fixed Azure APK with uncompressed DEX and split baseline
+      - name: Test ART-verified sort-safe patched SHAREit APK and split baseline
         shell: bash
         run: |
           set -euo pipefail
