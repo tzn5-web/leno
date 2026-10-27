@@ -1,0 +1,90 @@
+name: Azure credit balance and actual cost - read only
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/azure-credit-balance-audit.yml']
+  workflow_dispatch:
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Credit APIs and current-month charges without exposing billing identity
+        shell: bash
+        run: |
+          set -u
+          export SUB=0ac7a514-32b3-47bf-bf89-e17906b1cc86
+          echo '===== COST MANAGEMENT ====='
+          cat > /tmp/cost.json <<'EOF'
+          {"type":"ActualCost","timeframe":"MonthToDate","dataset":{"granularity":"None","aggregation":{"totalCost":{"name":"Cost","function":"Sum"}}}}
+          EOF
+          if az rest --method post --url "https://management.azure.com/subscriptions/$SUB/providers/Microsoft.CostManagement/query?api-version=2025-03-01" --body @/tmp/cost.json -o json >/tmp/cost-result.json 2>/tmp/cost-err; then
+            python3 - <<'PY'
+          import json
+          j=json.load(open('/tmp/cost-result.json'))
+          print('COST_RESULT', json.dumps({'columns':j.get('properties',{}).get('columns',[]), 'rows':j.get('properties',{}).get('rows',[])[:10]}))
+          PY
+          else
+            echo 'COST_QUERY_FAILED'
+            head -c 700 /tmp/cost-err | sed -E 's/("message" *: *)"[^"]*"/\1"redacted"/g'; echo
+          fi
+          echo '===== BILLING ACCOUNTS ====='
+          if az rest --method get --url "https://management.azure.com/providers/Microsoft.Billing/billingAccounts?api-version=2024-04-01" -o json >/tmp/billing-accounts.json 2>/tmp/billing-err; then
+            python3 - <<'PY'
+          import json
+          j=json.load(open('/tmp/billing-accounts.json'))
+          a=j.get('value',[])
+          print('BILLING_ACCOUNT_COUNT',len(a))
+          for x in a:
+            p=x.get('properties') or {}
+            print('BILLING_ACCOUNT_TYPE',p.get('agreementType'), 'STATUS',p.get('accountStatus'))
+          PY
+            python3 - <<'PY'
+          import json,subprocess
+          j=json.load(open('/tmp/billing-accounts.json'))
+          for a in j.get('value',[])[:4]:
+              aid=a['name']
+              url=f'https://management.azure.com/providers/Microsoft.Billing/billingAccounts/{aid}/billingProfiles?api-version=2024-04-01'
+              p=subprocess.run(['az','rest','--method','get','--url',url,'-o','json'],capture_output=True,text=True)
+              if p.returncode:
+                  print('BILLING_PROFILES_UNAVAILABLE',p.stderr[-250:])
+                  continue
+              vals=json.loads(p.stdout).get('value',[])
+              print('BILLING_PROFILE_COUNT',len(vals))
+              for bp in vals[:5]:
+                  bpid=bp['name']
+                  crediturl=f'https://management.azure.com/providers/Microsoft.Billing/billingAccounts/{aid}/billingProfiles/{bpid}/providers/Microsoft.Consumption/credits/balanceSummary?api-version=2026-06-01'
+                  cp=subprocess.run(['az','rest','--method','get','--url',crediturl,'-o','json'],capture_output=True,text=True)
+                  if cp.returncode:
+                      print('CREDIT_BALANCE_UNAVAILABLE',cp.stderr[-260:])
+                  else:
+                      d=json.loads(cp.stdout).get('properties',{})
+                      print('CREDIT_BALANCE_RESULT',json.dumps({'balanceSummary':d.get('balanceSummary'),'billingCurrency':d.get('billingCurrency')}))
+          PY
+          else
+            echo 'BILLING_ACCOUNTS_UNAVAILABLE'
+            head -c 700 /tmp/billing-err | sed -E 's/("message" *: *)"[^"]*"/\1"redacted"/g'; echo
+          fi
+          echo '===== FREE TRIAL SUBSCRIPTION BILLING PERIODS ====='
+          if az rest --method get --url "https://management.azure.com/subscriptions/$SUB/providers/Microsoft.Billing/billingPeriods?api-version=2017-04-24-preview" -o json >/tmp/periods.json 2>/tmp/periods-err; then
+            python3 - <<'PY'
+          import json
+          v=json.load(open('/tmp/periods.json')).get('value',[])
+          print('BILLING_PERIODS',len(v),[x.get('name') for x in v[:3]])
+          PY
+          else
+            echo 'SUBSCRIPTION_BILLING_PERIODS_UNAVAILABLE'
+            head -c 500 /tmp/periods-err | sed -E 's/("message" *: *)"[^"]*"/\1"redacted"/g'; echo
+          fi
+          echo '===== AZURE SUBSCRIPTION ====='
+          az account show --query '{subscriptionState:state, subscriptionName:name}' -o json
+      - if: always()
+        run: az logout || true
