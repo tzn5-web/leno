@@ -1,0 +1,36 @@
+name: Check private SHAREit original transfer
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/azure-shareit-original-check.yml']
+  workflow_dispatch:
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+    - uses: azure/login@v3
+      with:
+        client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+        tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+        subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+    - name: Read-only source object check
+      shell: bash
+      run: |
+        set -euo pipefail
+        A=tzn5androidartifacts26
+        KEY="$(az storage account keys list -g rg-chatgpt-azure -n "$A" --query '[0].value' -o tsv)"
+        echo "::add-mask::$KEY"
+        az storage container show --account-name "$A" --account-key "$KEY" --name apks-private --query '{name:name,publicAccess:properties.publicAccess}' -o json
+        if az storage blob exists --account-name "$A" --account-key "$KEY" --container-name apks-private --name input/shareit-6.27.58-user.apks --query exists -o tsv | grep -qi true; then
+          echo SHAREIT_ORIGINAL_IN_AZURE=YES
+          az storage blob show --account-name "$A" --account-key "$KEY" --container-name apks-private --name input/shareit-6.27.58-user.apks --query '{size:properties.contentLength,lastModified:properties.lastModified}' -o json
+        else
+          echo SHAREIT_ORIGINAL_IN_AZURE=NO
+        fi
+        az storage blob list --account-name "$A" --account-key "$KEY" --container-name apks-private --query '[].{name:name,size:properties.contentLength}' -o json
+    - if: always()
+      run: az logout || true
