@@ -77,6 +77,13 @@ jobs:
             exit 2
           fi
           grep -Fq 'createRfcommSocketToServiceRecord(SPP)' "$BASE/DirectElm327.java"
+          grep -Fq 'cancelDiscovery()' "$BASE/DirectElm327.java"
+          grep -Fq 'new ElmBleSerial(context,device)' "$BASE/DirectElm327.java"
+          grep -Fq 'scanBleAdapters()' "$BASE/MainActivity.java"
+          grep -Fq 'ObdPollPlan.next(' "$BASE/DirectElm327.java"
+          grep -Fq 'class ElmBleSerial' "$BASE/ElmBleSerial.java"
+          grep -Fq 'getBluetoothLeScanner()' "$BASE/MainActivity.java"
+          grep -Fq 'elm327_last_mode' "$BASE/DirectElm327.java"
           grep -Fq 'getBondedDevices()' "$BASE/MainActivity.java"
           grep -Fq 'Nominatim' "$BASE/LiveMapPanel.java"
           # OEM crash hotfix: never initialize Bluetooth before manual setup.
@@ -95,6 +102,10 @@ jobs:
             projects/k2401-evo-launcher/app/src/main/java/ro/evolauncher/k2401/ObdPidCodec.java \
             projects/k2401-evo-launcher/scripts/ObdPidCodecCheck.java
           java -cp "$TMP" ro.evolauncher.k2401.ObdPidCodecCheck
+          javac -encoding UTF-8 -d "$TMP" \
+            projects/k2401-evo-launcher/app/src/main/java/ro/evolauncher/k2401/ObdPollPlan.java \
+            projects/k2401-evo-launcher/scripts/ObdPollPlanCheck.java
+          java -cp "$TMP" ro.evolauncher.k2401.ObdPollPlanCheck
       - name: Authenticate to Azure Key Vault using GitHub OIDC
         uses: azure/login@v3
         with:
