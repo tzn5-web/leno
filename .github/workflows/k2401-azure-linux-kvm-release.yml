@@ -130,7 +130,9 @@ jobs:
           echo "::add-mask::$SAS"
           URL="https://$STORAGE.blob.core.windows.net/artifacts?$SAS"
           echo "::add-mask::$URL"
-          echo "SAS_B64=$(printf '%s' "$URL" | base64 -w0)" >> "$GITHUB_ENV"
+          SAS_B64_VALUE="$(printf '%s' "$URL" | base64 -w0)"
+          echo "::add-mask::$SAS_B64_VALUE"
+          echo "SAS_B64=$SAS_B64_VALUE" >> "$GITHUB_ENV"
           echo 'PRIVATE_TRANSFER_READY=PASS'
       - name: Create isolated short-lived Azure Ubuntu KVM VM
         timeout-minutes: 16
