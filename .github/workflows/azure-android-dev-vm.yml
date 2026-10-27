@@ -1,10 +1,6 @@
 name: Azure Android Linux development VM (one-time provision, budget guarded)
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/azure-android-dev-vm.yml'
   workflow_dispatch:
     inputs:
       operation:
@@ -81,7 +77,8 @@ jobs:
                   germanywestcentral:Standard_B2as_v2 \
                   eastus:Standard_B2as_v2 \
                   northeurope:Standard_D2s_v5 \
-                  uksouth:Standard_D2s_v5; do
+                  uksouth:Standard_D2s_v5 \
+                  swedencentral:Standard_D4s_v5; do
                   REGION="$(echo "$CHOICE" | cut -d: -f1)"
                   SIZE="$(echo "$CHOICE" | cut -d: -f2)"
                   echo "TRY_VM_SKU region=$REGION size=$SIZE"
