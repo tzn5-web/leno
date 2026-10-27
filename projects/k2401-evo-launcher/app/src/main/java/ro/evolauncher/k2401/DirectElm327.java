@@ -19,209 +19,297 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Direct read-only ELM327 Bluetooth Classic SPP client. Does NOT require Torque
- * Pro, an unofficial Torque clone, or a plugin. Does NOT send ECU writes:
- * Mode 01 (current sensor data) only; AT commands configure the ELM adapter.
+ * Read-only ELM327 transport. Bluetooth Classic SPP and BLE GATT UART are
+ * probed on the one PAIRED device explicitly selected by the driver.
+ * Only read-only OBD Mode 01 PIDs are sent. A single worker serializes all
+ * ECU transactions: no overlapping requests, no fake readings.
  *
- * Only the explicitly paired and saved adapter MAC is used. Never auto-connect
- * to random bonded devices. Never share one SPP socket with another app.
+ * RPM and STFT are sampled every fast cycle; coolant and LTFT are slower.
+ * Actual ECU/adapter response time, not a fictional 1ms timer, controls rate.
  */
 final class DirectElm327 {
-  private static final UUID SPP=UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
-  private static final String PREFS="evo_launcher_prefs", KEY="elm327_mac";
+  private static final UUID SPP=UUID.fromString("00001101-0000-1000-8000-00805f9b34fb");
+  private static final String PREFS="evo_launcher_prefs",KEY="elm327_mac",KEY_MODE="elm327_last_mode";
+  private static final long FAST_STALE=2200L,SLOW_STALE=14000L;
+  private final Context context;
   private final SharedPreferences preferences;
   private final Handler ui=new Handler(Looper.getMainLooper());
   private final ExecutorService io=Executors.newSingleThreadExecutor();
   private final Runnable onUpdate;
-  private volatile boolean running, closed;
-  private volatile BluetoothSocket socket;
+  private volatile boolean running,closed;
+  private volatile BluetoothSocket classic;
+  private volatile ElmBleSerial ble;
   private volatile ObdReader.Reading sample=ObdReader.Reading.empty();
-  private volatile String status="ELM327 • ALEGE ADAPTORUL";
-  private volatile String selectedMac="";
-  private volatile long epoch;
-  private volatile boolean connectionBusy;
-  private volatile String lastStage="NESTARTAT";
-  private volatile String lastFailure="";
-  String details(){return "Etapă: "+lastStage+(lastFailure.isEmpty()?"":"\nDetalii: "+lastFailure);}
-  private void phase(long token,String stage){
-    lastStage=stage;
-    if(alive(token))state(token,"ELM327 • "+stage);
-  }
+  private volatile String state="ELM327 • ALEGE ADAPTORUL";
+  private volatile String selectedMac="",mode="AUTO",stage="NECONECTAT",lastFailure="";
+  private volatile long epoch,roundTripMs;
+  private volatile int ratePerSecond;
+  // This flag is owned by the I/O worker except at start() scheduling.
+  private boolean workerActive;
+  private final float[] values={Float.NaN,Float.NaN,Float.NaN,Float.NaN};
+  private final long[] times={0,0,0,0};
+  private final int[] pids={0x0C,0x06,0x05,0x07};
+  // Index 0=RPM, 1=STFT, 2=coolant, 3=LTFT.
+  private long fastCounter;
 
-  DirectElm327(Context context,Runnable callback) {
-    preferences=context.getApplicationContext().getSharedPreferences(PREFS,Context.MODE_PRIVATE);
-    onUpdate=callback;
+  DirectElm327(Context host,Runnable callback){
+    context=host.getApplicationContext();
+    preferences=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE);
     selectedMac=preferences.getString(KEY,"");
+    mode=preferences.getString(KEY_MODE,"AUTO");
+    onUpdate=callback;
   }
   boolean configured(){return selectedMac!=null&&!selectedMac.isEmpty();}
   String adapterAddress(){return selectedMac;}
+  String status(){return state;}
+  String details(){return "Transport: "+mode+"\nEtapă: "+stage+
+    "\nUltimul răspuns: "+roundTripMs+"ms / "+ratePerSecond+" PID/s"+
+    (lastFailure.isEmpty()?"":"\nEroare: "+lastFailure);}
   void selectAdapter(String mac){
     stop();
     if(mac==null)mac="";
     if(!mac.isEmpty()&&!BluetoothAdapter.checkBluetoothAddress(mac))
-      throw new IllegalArgumentException("MAC ELM327 invalid");
+      throw new IllegalArgumentException("MAC invalid");
+    if(!mac.equalsIgnoreCase(selectedMac)){
+      mode="AUTO";
+      preferences.edit().putString(KEY_MODE,mode).commit();
+    }
     selectedMac=mac;
     preferences.edit().putString(KEY,mac).commit();
-    sample=ObdReader.Reading.empty();
-    status=mac.isEmpty()?"ELM327 • ALEGE ADAPTORUL":"ELM327 • CONFIGURAT";
-    publish();
+    state=mac.isEmpty()?"ELM327 • ALEGE ADAPTORUL":"ELM327 • CONFIGURAT";
+    notifyUI();
   }
   ObdReader.Reading current(){
-    ObdReader.Reading value=sample;
-    return value.live&&SystemClock.elapsedRealtime()-value.capturedAtMs>7000L?
-      ObdReader.Reading.empty():value;
+    // Each PID has an individual freshness budget, so a slow coolant poll
+    // never holds up a new RPM/STFT sample and never creates fake readings.
+    synchronized(values){
+      long now=SystemClock.elapsedRealtime();
+      float rpm=fresh(0,now,FAST_STALE),stft=fresh(1,now,FAST_STALE);
+      float water=fresh(2,now,SLOW_STALE),ltft=fresh(3,now,SLOW_STALE);
+      boolean live=Float.isFinite(rpm)||Float.isFinite(stft)||
+        Float.isFinite(water)||Float.isFinite(ltft);
+      return new ObdReader.Reading(rpm,stft,ltft,water,live);
+    }
   }
-  String status(){return status;}
+  private float fresh(int i,long now,long ttl){
+    return times[i]>0&&now-times[i]<=ttl?values[i]:Float.NaN;
+  }
+  private void clearValues(){
+    synchronized(values){
+      for(int i=0;i<4;i++){values[i]=Float.NaN;times[i]=0;}
+    }
+    sample=ObdReader.Reading.empty();
+    notifyUI();
+  }
   void start(){
     if(closed||running)return;
     running=true;
-    long token=++epoch;
-    if(!configured()){status="ELM327 • ALEGE ADAPTORUL";publish();return;}
-    if(connectionBusy)return;
-    connectionBusy=true;
-    io.execute(()->loop(token));
+    final long token=++epoch;
+    if(!configured()){state="ELM327 • ALEGE ADAPTORUL";notifyUI();return;}
+    synchronized(this){
+      if(workerActive)return;
+      workerActive=true;
+    }
+    io.execute(()->runWorker(token));
   }
   void stop(){
     running=false;++epoch;
-    BluetoothSocket old=socket;socket=null;
-    if(old!=null)try{old.close();}catch(IOException ignored){}
-    sample=ObdReader.Reading.empty();status="ELM327 • OPRIT";publish();
+    BluetoothSocket socket=classic;classic=null;
+    if(socket!=null)try{socket.close();}catch(IOException ignored){}
+    ElmBleSerial session=ble;ble=null;
+    if(session!=null)session.close();
+    clearValues();state="ELM327 • OPRIT";notifyUI();
   }
   void close(){closed=true;stop();io.shutdownNow();}
   private boolean alive(long token){return running&&!closed&&epoch==token;}
-  private void publish(){ui.post(onUpdate);}
-  private void state(long token,String value){
-    if(!alive(token))return;
-    status=value;publish();
+  private void notifyUI(){ui.post(onUpdate);}
+  private void step(long token,String next){
+    stage=next;
+    if(alive(token)){state="ELM327 • "+next;notifyUI();}
   }
-  private void loop(long token){
+  private void runWorker(long token){
     try{
       while(alive(token)&&configured()){
-        BluetoothSocket link=null;
         try{
-          lastFailure="";
-          BluetoothAdapter adapter=BluetoothAdapter.getDefaultAdapter();
-          if(adapter==null){state(token,"ELM327 • FĂRĂ BLUETOOTH");return;}
-          if(!adapter.isEnabled()){state(token,"ELM327 • ACTIVEAZĂ BLUETOOTH");return;}
-          BluetoothDevice device=null;
-          for(BluetoothDevice d:adapter.getBondedDevices())
-            if(d.getAddress().equalsIgnoreCase(selectedMac)){device=d;break;}
-          if(device==null){state(token,"ELM327 • ASOCIAZĂ ÎN BLUETOOTH");return;}
-          if(device.getType()==BluetoothDevice.DEVICE_TYPE_LE){
-            state(token,"ELM327 • DISPOZITIV BLE (NU SPP)");
-            lastFailure="Adaptorul e Bluetooth Low Energy; acest transport necesită GATT, nu Bluetooth Classic.";
-            return;
-          }
-          phase(token,"CONECTARE Bluetooth SPP");
-          try{
-            link=device.createRfcommSocketToServiceRecord(SPP);
-            socket=link;link.connect();
-          }catch(IOException secureFailure){
-            if(link!=null)try{link.close();}catch(IOException ignored){}
-            if(!alive(token))return;
-            link=device.createInsecureRfcommSocketToServiceRecord(SPP);
-            socket=link;link.connect();
-          }
+          runConnection(token);
+        }catch(SecurityException failure){
+          lastFailure="Bluetooth permission: "+failure.getMessage();
+          step(token,"PERMISIUNE BLUETOOTH");
+          return;
+        }catch(Exception failure){
           if(!alive(token))return;
-          phase(token,"INIȚIALIZARE ADAPTOR");
-          InputStream input=link.getInputStream();
-          OutputStream output=link.getOutputStream();
-          // Only ELM adapter setup commands. These do not alter ECU state.
-          phase(token,"RESET ELM / ATZ");
-          String reset=command(input,output,"ATZ",8000L,token);
-          if(reset.contains("UNABLE TO CONNECT"))throw new IOException("ATZ: adaptor invalid");
-          phase(token,"ATE0");command(input,output,"ATE0",4000L,token);
-          phase(token,"ATL0");command(input,output,"ATL0",4000L,token);
-          phase(token,"ATS0");command(input,output,"ATS0",4000L,token);
-          phase(token,"ATH0");command(input,output,"ATH0",4000L,token);
-          phase(token,"ATSP0");command(input,output,"ATSP0",8000L,token);
-          state(token,"ELM327 • INTEROGHEZ ECU");
-          int emptyScans=0;
-          while(alive(token)){
-            // Each value is replaced per scan; old or disconnected values are NOT retained.
-            float stft=Float.NaN,ltft=Float.NaN,rpm=Float.NaN,coolant=Float.NaN;
-            // Read the universally useful sensors first: unsupported trim PID
-            // or a flaky clone must not suppress RPM and coolant.
-            phase(token,"ECU PID 010C • RPM");
-            String s0c=command(input,output,"010C",5500L,token);
-            rpm=parse(s0c,0x0C);
-            phase(token,"ECU PID 0105 • APĂ");
-            String s05=command(input,output,"0105",5500L,token);
-            coolant=parse(s05,0x05);
-            phase(token,"ECU PID 0106 • STFT");
-            String s06=command(input,output,"0106",5500L,token);
-            stft=parse(s06,0x06);
-            phase(token,"ECU PID 0107 • LTFT");
-            String s07=command(input,output,"0107",5500L,token);
-            ltft=parse(s07,0x07);
-            if(!alive(token))return;
-            boolean live=Float.isFinite(stft)||Float.isFinite(ltft)||
-              Float.isFinite(rpm)||Float.isFinite(coolant);
-            sample=new ObdReader.Reading(rpm,stft,ltft,coolant,live);
-            status=live?"ELM327 • ECU LIVE":"ELM327 • ECU FĂRĂ DATE";
-            publish();
-            if(!live){emptyScans++;if(emptyScans>2)state(token,"ELM327 • ECU NU RĂSPUNDE");}
-            else emptyScans=0;
-            Thread.sleep(250);
-          }
-        }catch(SecurityException e){state(token,"ELM327 • PERMISIUNE BLUETOOTH");return;}
-        catch(Exception e){
-          if(!alive(token))return;
-          sample=ObdReader.Reading.empty();
-          // Do not label an ELM prompt timeout as a Bluetooth disconnect:
-          // both yield IOException in the old implementation.
-          String detail=e.getMessage()==null?e.getClass().getSimpleName():e.getMessage();
-          if(detail.length()>100)detail=detail.substring(0,100);
-          lastFailure=lastStage+" • "+detail;
-          String reason=(e instanceof IOException && detail.startsWith("ELM timeout"))
-            ?"ELM327 • ADAPTORUL NU RĂSPUNDE ("+lastStage+")"
-            :(lastStage.contains("CONECTARE")?"ELM327 • Bluetooth SPP REFUZAT":
-              "ELM327 • RĂSPUNS INVALID / LEGĂTURĂ ÎNTRERUPTĂ");
-          state(token,reason);
-          try{Thread.sleep(5000);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();return;}
+          lastFailure=stage+": "+safe(failure.getMessage());
+          clearValues();
+          step(token,"EROARE "+stage);
+          try{Thread.sleep(2200L);}catch(InterruptedException ignored){Thread.currentThread().interrupt();return;}
         }finally{
-          if(link!=null)try{link.close();}catch(IOException ignored){}
-          if(socket==link)socket=null;
+          BluetoothSocket socket=classic;classic=null;
+          if(socket!=null)try{socket.close();}catch(IOException ignored){}
+          ElmBleSerial session=ble;ble=null;
+          if(session!=null)session.close();
         }
       }
     }finally{
-      connectionBusy=false;
-      // A pause/resume may happen while the old socket is stopping.
-      // Restart safely for a newly selected adapter only if no worker is active.
-      if(running&&!closed&&token!=epoch&&configured()){stop();start();}
+      synchronized(this){workerActive=false;}
+      // Explicitly restart a NEW requested generation; never stop the new
+      // one from the old worker's finally block.
+      if(running&&!closed&&epoch!=token&&configured())startPending();
     }
   }
-  private String command(InputStream input,OutputStream output,String cmd,long timeout,long token)
-      throws IOException,InterruptedException {
+  private synchronized void startPending(){
+    if(workerActive||!running||closed||!configured())return;
+    workerActive=true;
+    final long token=epoch;
+    io.execute(()->runWorker(token));
+  }
+  private void runConnection(long token)throws Exception{
+    BluetoothAdapter adapter=BluetoothAdapter.getDefaultAdapter();
+    if(adapter==null)throw new IOException("Android Bluetooth adapter missing");
+    if(!adapter.isEnabled()){step(token,"ACTIVEAZĂ BLUETOOTH");return;}
+    BluetoothDevice device=null;
+    for(BluetoothDevice paired:adapter.getBondedDevices())
+      if(paired.getAddress().equalsIgnoreCase(selectedMac)){device=paired;break;}
+    if(device==null){step(token,"ASOCIAZĂ ADAPTORUL ÎN ANDROID");return;}
+    try{adapter.cancelDiscovery();}catch(RuntimeException ignored){}
+    String pref=preferences.getString(KEY_MODE,"AUTO");
+    boolean bleFirst="BLE".equals(pref)||device.getType()==BluetoothDevice.DEVICE_TYPE_LE;
+    IOException combined=null;
+    for(int attempt=0;attempt<2&&alive(token);attempt++){
+      boolean useBle=attempt==0?bleFirst:!bleFirst;
+      if(device.getType()==BluetoothDevice.DEVICE_TYPE_LE&&!useBle)continue;
+      try{
+        final InputStream in;
+        final OutputStream out;
+        if(useBle){
+          step(token,"BLE GATT • DESCOPERĂ UART");
+          ElmBleSerial session=new ElmBleSerial(context,device);
+          ble=session;
+          session.connect();
+          in=session.input();out=session.output();
+          mode="BLE";
+          step(token,"BLE • "+session.profile());
+        }else{
+          step(token,"BLUETOOTH CLASSIC • RFCOMM SPP");
+          BluetoothSocket socket;
+          try{
+            socket=device.createRfcommSocketToServiceRecord(SPP);
+            classic=socket;socket.connect();
+          }catch(IOException secured){
+            BluetoothSocket old=classic;classic=null;
+            if(old!=null)try{old.close();}catch(IOException ignored){}
+            if(!alive(token))return;
+            step(token,"SPP COMPATIBILITATE");
+            socket=device.createInsecureRfcommSocketToServiceRecord(SPP);
+            classic=socket;socket.connect();
+          }
+          in=socket.getInputStream();out=socket.getOutputStream();mode="SPP";
+        }
+        if(!alive(token))return;
+        step(token,"ATI • VERIFICĂ ELM");
+        String identity=command(in,out,"ATI",5000L,token);
+        if(identity.trim().isEmpty()||identity.contains("?"))
+          throw new IOException("ATI rejected: "+safe(identity));
+        step(token,"INIȚIALIZARE ELM");
+        command(in,out,"ATE0",3500L,token);
+        command(in,out,"ATL0",3500L,token);
+        command(in,out,"ATH0",3500L,token);
+        try{command(in,out,"ATS0",3500L,token);}catch(IOException ignored){}
+        command(in,out,"ATSP0",5500L,token);
+        // Let the adapter discover ECU protocol just once. Do not reset
+        // during normal reconnects. Keep ELM adaptive timing enabled.
+        step(token,"ECU • NEGOCIAZĂ PROTOCOLUL");
+        String response=command(in,out,"0100",22000L,token);
+        if(!response.replace(" ","").toUpperCase(Locale.US).contains("4100")){
+          throw new IOException("ECU did not answer 0100: "+safe(response));
+        }
+        try{command(in,out,"ATAT1",3500L,token);}catch(IOException ignored){}
+        // ~100ms maximum response wait; ATAT1 adapts to ECU speed.
+        try{command(in,out,"ATST19",3500L,token);}catch(IOException ignored){}
+        preferences.edit().putString(KEY_MODE,mode).commit();
+        step(token,"ECU LIVE • "+mode);
+        fastCounter=0;
+        pollLoop(in,out,token);
+        return;
+      }catch(IOException failure){
+        lastFailure=(useBle?"BLE":"SPP")+": "+safe(failure.getMessage());
+        combined=failure;
+        BluetoothSocket socket=classic;classic=null;
+        if(socket!=null)try{socket.close();}catch(IOException ignored){}
+        ElmBleSerial session=ble;ble=null;if(session!=null)session.close();
+        if(useBle && device.getType()==BluetoothDevice.DEVICE_TYPE_LE)break;
+      }
+    }
+    if(combined!=null)throw combined;
+  }
+  private void pollLoop(InputStream in,OutputStream out,long token)throws Exception{
+    long lastCoolant=0,lastLtft=0,lastNotify=0,rateStart=SystemClock.elapsedRealtime();
+    int completed=0;
+    long nextAllowed=0;
+    while(alive(token)){
+      long now=SystemClock.elapsedRealtime();
+      boolean slowCoolant=lastCoolant==0||now-lastCoolant>=2000;
+      boolean slowLtft=lastLtft==0||now-lastLtft>=5000;
+      int[] requests=slowCoolant&&slowLtft?new int[]{0,1,2,3}:
+        slowCoolant?new int[]{0,1,2}:slowLtft?new int[]{0,1,3}:new int[]{0,1};
+      // Fast sensor requests are always first. One command outstanding.
+      for(int i:requests){
+        if(!alive(token))return;
+        long pause=Math.max(0,nextAllowed-SystemClock.elapsedRealtime());
+        if(pause>0)Thread.sleep(pause);
+        long t0=SystemClock.elapsedRealtime();
+        String data=command(in,out,String.format(Locale.US,"01%02X",pids[i]),
+          3300L,token);
+        long t1=SystemClock.elapsedRealtime();
+        roundTripMs=t1-t0;completed++;
+        float number=ObdPidCodec.parse(data,pids[i]);
+        synchronized(values){
+          values[i]=number;
+          times[i]=Float.isFinite(number)?t1:0L;
+        }
+        if(i==2)lastCoolant=t1;
+        if(i==3)lastLtft=t1;
+        // Avoid blindly hammering ELM firmware; adapt to real response.
+        nextAllowed=t1+Math.max(20L,Math.min(80L,roundTripMs/4L));
+        if(t1-lastNotify>=85L){
+          lastNotify=t1;notifyUI();
+        }
+      }
+      long t=SystemClock.elapsedRealtime();
+      if(t-rateStart>=1200L){
+        ratePerSecond=(int)(completed*1000L/Math.max(1L,t-rateStart));
+        completed=0;rateStart=t;
+      }
+      state="ELM327 • ECU LIVE • "+mode+" • "+ratePerSecond+" PID/s";
+    }
+  }
+  private static String safe(String raw){
+    if(raw==null)return "unknown";
+    String flat=raw.replace('\r',' ').replace('\n',' ');
+    return flat.length()>85?flat.substring(0,85):flat;
+  }
+  private String command(InputStream in,OutputStream out,String code,long timeout,long token)
+      throws IOException,InterruptedException{
     if(!alive(token))throw new IOException("OBD stopped");
-    // Drain leftovers from the previous response, bounded to prevent a blocking call.
-    int extra=0;
-    while(input.available()>0&&extra++<2048)input.read();
-    output.write((cmd+"\r").getBytes(StandardCharsets.US_ASCII));output.flush();
-    ByteArrayOutputStream reply=new ByteArrayOutputStream(256);
+    // Only clear bytes from a previously completed command; do not read while
+    // another request is outstanding. Prompt '>' terminates one response.
+    int leftover=0;
+    while(in.available()>0&&leftover++<1024)in.read();
+    out.write((code+"\r").getBytes(StandardCharsets.US_ASCII));out.flush();
+    ByteArrayOutputStream reply=new ByteArrayOutputStream(128);
     long deadline=SystemClock.elapsedRealtime()+timeout;
     while(alive(token)&&SystemClock.elapsedRealtime()<deadline){
-      int available=input.available();
-      if(available>0){
-        for(int i=0;i<Math.min(available,512);i++){
-          int ch=input.read();
-          if(ch<0)throw new IOException("ELM disconnected");
+      int size=in.available();
+      if(size>0){
+        for(int n=0;n<Math.min(size,512);n++){
+          int ch=in.read();
+          if(ch<0)throw new IOException("Transport closed");
           if(ch=='>')return reply.toString("US-ASCII");
-          if(reply.size()<8192)reply.write(ch);
-          else throw new IOException("ELM oversized reply");
+          if(reply.size()>=8192)throw new IOException("ELM response too long");
+          reply.write(ch);
         }
-      }else Thread.sleep(25);
+      }else Thread.sleep(8L);
     }
     if(!alive(token))throw new IOException("OBD stopped");
-    // A missing prompt is never accepted as a fresh ECU response.
-    throw new IOException("ELM timeout "+cmd);
+    throw new IOException("Timeout "+code+" waiting for ELM prompt");
   }
-
-  /**
-   * Decode only a matching ECU Mode 01 response (41 + requested PID).
-   * Understands "41 0C 1A F8" and compact "410C1AF8".
-   * Never treats NO DATA, command echo, or a mismatched PID as a reading.
-   */
-  static float parse(String raw,int pid){return ObdPidCodec.parse(raw,pid);}
-
 }
