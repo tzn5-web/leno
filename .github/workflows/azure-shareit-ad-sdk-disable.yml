@@ -1,0 +1,108 @@
+name: SHAREit NoAds v2 - disable advertisement SDK entrypoints in Azure VM
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/azure-shareit-ad-sdk-disable.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: azure-shareit-ad-sdk-disable
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      ACCOUNT: tzn5androidartifacts26
+      CONTAINER: apks-private
+      RG: rg-chatgpt-azure
+      VM: android-dev-linux
+      INPUT: output/SHAREit_6.27.58_NoAds_SINGLE_ARM64.apk
+      OUTPUT: output/SHAREit_6.27.58_NoAds_v2_SDK_Blocked_ARM64.apk
+      AUDIT: output/SHAREit_6.27.58_NoAds_v2_SDK_Blocked_AUDIT.json
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate code and uploaded APK before billable VM starts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile infra/azure-dev-vm/shareit-noads/disable_ad_rendering.py
+          export AZURE_STORAGE_KEY=dummy
+          echo "NOADS_V2_SOURCE_PYTHON=PASS"
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Verify input and ad method targets using cost-free GitHub runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          export AZURE_STORAGE_KEY="$(az storage account keys list -g "$RG" -n "$ACCOUNT" --query '[0].value' -o tsv)"
+          az storage blob download --account-name "$ACCOUNT" --container-name "$CONTAINER" \
+            --name "$INPUT" --file /tmp/shareit-v1.apk --overwrite --only-show-errors
+          echo 'a377f7789b957b33d5efa130ed35fc7f61b82afcff18ea318099eea22c33c64f  /tmp/shareit-v1.apk' | sha256sum -c -
+          python3 infra/azure-dev-vm/shareit-noads/disable_ad_rendering.py \
+            /tmp/shareit-v1.apk /tmp/shareit-v2-unsigned.apk --report /tmp/noads-v2-targets.json
+          python3 - <<'PY'
+          import json
+          a=json.load(open('/tmp/noads-v2-targets.json'))
+          print('AD_SDK_METHOD_ENTRYPOINTS_DISABLED',a['method_entrypoints_disabled'])
+          assert a['method_entrypoints_disabled']>=12
+          PY
+          echo "NOADS_V2_PATCH_PREFLIGHT=PASS"
+      - name: Process, zipalign and sign on Azure development VM
+        shell: bash
+        run: |
+          set -euo pipefail
+          MARK="$(az vm show -g "$RG" -n "$VM" --query tags.managedBy -o tsv)"
+          test "$MARK" = github-azure-android-dev
+          export AZURE_STORAGE_KEY="$(az storage account keys list -g "$RG" -n "$ACCOUNT" --query '[0].value' -o tsv)"
+          EXP="$(date -u -d '+2 hours' +%Y-%m-%dT%H:%MZ)"
+          I="$(az storage blob generate-sas --account-name "$ACCOUNT" -c "$CONTAINER" -n "$INPUT" --permissions r --expiry "$EXP" --https-only -o tsv)"
+          O="$(az storage blob generate-sas --account-name "$ACCOUNT" -c "$CONTAINER" -n "$OUTPUT" --permissions cw --expiry "$EXP" --https-only -o tsv)"
+          R="$(az storage blob generate-sas --account-name "$ACCOUNT" -c "$CONTAINER" -n "$AUDIT" --permissions cw --expiry "$EXP" --https-only -o tsv)"
+          test -n "$I" && test -n "$O" && test -n "$R"
+          INPUT_URL="https://${ACCOUNT}.blob.core.windows.net/${CONTAINER}/${INPUT}?${I}"
+          OUT_URL="https://${ACCOUNT}.blob.core.windows.net/${CONTAINER}/${OUTPUT}?${O}"
+          REPORT_URL="https://${ACCOUNT}.blob.core.windows.net/${CONTAINER}/${AUDIT}?${R}"
+          CODE_URL="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/infra/azure-dev-vm/shareit-noads/disable_ad_rendering.py"
+          az vm start -g "$RG" -n "$VM" -o none
+          REMOTE="set -eu
+          umask 077
+          install -d -m 0700 /var/lib/shareit-noads/v2
+          cd /var/lib/shareit-noads/v2
+          curl -fsSL --retry 3 '$CODE_URL' -o disable_ad_rendering.py
+          curl -fsSL --retry 3 '$INPUT_URL' -o source.apk
+          echo 'a377f7789b957b33d5efa130ed35fc7f61b82afcff18ea318099eea22c33c64f  source.apk' | sha256sum -c -
+          python3 disable_ad_rendering.py source.apk patched-unsigned.apk --report sdk-report.json
+          /opt/android-sdk/build-tools/36.0.0/zipalign -f -P 16 4 patched-unsigned.apk aligned.apk
+          PW=\$(cat /var/lib/shareit-noads/keystore_password)
+          /opt/android-sdk/build-tools/36.0.0/apksigner sign \
+            --ks /var/lib/shareit-noads/signing.jks --ks-key-alias shareit-private \
+            --ks-pass pass:\$PW --key-pass pass:\$PW \
+            --v2-signing-enabled true --v3-signing-enabled true \
+            --out SHAREit_NoAds_v2_ARM64.apk aligned.apk
+          unset PW
+          /opt/android-sdk/build-tools/36.0.0/apksigner verify --verbose SHAREit_NoAds_v2_ARM64.apk >/dev/null
+          /opt/android-sdk/build-tools/36.0.0/zipalign -c -P 16 4 SHAREit_NoAds_v2_ARM64.apk
+          python3 -c 'import json,hashlib; p="SHAREit_NoAds_v2_ARM64.apk"; j=json.load(open("sdk-report.json")); j["sha256"]=hashlib.file_digest(open(p,"rb"),"sha256").hexdigest(); j["bytes"]=__import__("os").stat(p).st_size; open("sdk-report.json","w").write(json.dumps(j,indent=2))'
+          curl -fsSL --retry 3 -X PUT -H 'x-ms-blob-type: BlockBlob' --data-binary @SHAREit_NoAds_v2_ARM64.apk '$OUT_URL' >/dev/null
+          curl -fsSL --retry 3 -X PUT -H 'x-ms-blob-type: BlockBlob' --data-binary @sdk-report.json '$REPORT_URL' >/dev/null
+          echo 'SHAREIT_NOADS_V2_SIGNED_IN_AZURE=PASS'"
+          OUT="$(az vm run-command invoke -g "$RG" -n "$VM" --command-id RunShellScript --scripts "$REMOTE" --query 'value[0].message' -o tsv)"
+          echo "$OUT" | tail -c 3500
+          echo "$OUT" | grep -q 'SHAREIT_NOADS_V2_SIGNED_IN_AZURE=PASS'
+      - name: Always deallocate VM to limit Free Trial cost
+        if: always()
+        shell: bash
+        run: |
+          MARK="$(az vm show -g "$RG" -n "$VM" --query tags.managedBy -o tsv 2>/dev/null || true)"
+          if [ "$MARK" = github-azure-android-dev ]; then
+            az vm deallocate -g "$RG" -n "$VM" -o none
+            echo 'VM_DEALLOCATED=PASS'
+          fi
+      - if: always()
+        run: az logout || true
