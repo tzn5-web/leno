@@ -51,7 +51,7 @@ export PATH="$PATH:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/pl
 (yes | sdkmanager --licenses >/var/log/android-sdk-licenses.log 2>&1) || true
 sdkmanager --sdk_root=/opt/android-sdk \
   'platform-tools' 'platforms;android-36' 'platforms;android-35' \
-  'build-tools;36.0.0' 'cmdline-tools;latest'
+  'build-tools;36.0.0' # CLI tools already installed from the pinned Google archive
 # Install Android Studio graphical IDE via snap; CLI SDK remains fully independent.
 systemctl enable --now snapd.socket || true
 snap install android-studio --classic
