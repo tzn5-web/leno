@@ -75,12 +75,13 @@ jobs:
                 test "$(wc -c </tmp/azure-android-dev-cloud-init.yml)" -lt 65536
                 CREATED=0
                 for CHOICE in \
-                  northeurope:Standard_E2as_v5 \
-                  northeurope:Standard_D4as_v6 \
-                  francecentral:Standard_E2as_v5 \
-                  germanywestcentral:Standard_E2as_v5 \
-                  uksouth:Standard_E2as_v5 \
-                  eastus:Standard_E2as_v5; do
+                  northeurope:Standard_B2as_v2 \
+                  uksouth:Standard_B2as_v2 \
+                  francecentral:Standard_B2as_v2 \
+                  germanywestcentral:Standard_B2as_v2 \
+                  eastus:Standard_B2as_v2 \
+                  northeurope:Standard_D2s_v5 \
+                  uksouth:Standard_D2s_v5; do
                   REGION="$(echo "$CHOICE" | cut -d: -f1)"
                   SIZE="$(echo "$CHOICE" | cut -d: -f2)"
                   echo "TRY_VM_SKU region=$REGION size=$SIZE"
