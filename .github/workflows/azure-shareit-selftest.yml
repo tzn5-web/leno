@@ -1,0 +1,37 @@
+name: Test Azure SHAREit processor sources
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/azure-shareit-selftest.yml']
+permissions: {contents: read}
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Static compilation and DEX patch integrity unit test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile infra/azure-dev-vm/shareit-noads/patch_and_sign.py
+          python3 - <<'PY'
+          import importlib.util, pathlib, zlib, hashlib
+          p=pathlib.Path('infra/azure-dev-vm/shareit-noads/patch_and_sign.py')
+          spec=importlib.util.spec_from_file_location('patch_and_sign',p)
+          m=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(m)
+          domain=b'api.rqmob.com'
+          d=bytearray(b'dex\n035\x00'+b'\x00'*24 +b'A'*60+domain+b'Z'*11)
+          counts={}
+          result=m.patched_dex(bytes(d),counts)
+          assert domain not in result
+          assert b'.invalid' in result
+          assert len(d)==len(result)
+          assert counts['api.rqmob.com']==1
+          assert result[12:32]==hashlib.sha1(result[32:]).digest()
+          assert int.from_bytes(result[8:12],'little')==zlib.adler32(result[12:])&0xffffffff
+          assert len(m.EXPECTED_SOURCE_SHA256)==64
+          assert len(m.APK_FILES)==6
+          print('SHAREIT_DEX_PATCH_UNIT_TEST=PASS')
+          PY
