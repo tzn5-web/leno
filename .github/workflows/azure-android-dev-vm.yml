@@ -109,7 +109,7 @@ jobs:
                 echo 'AZURE_VM_CREATED=YES'
               fi
               # Both nightly auto-deallocation and end-of-workflow deallocation protect credits.
-              az vm auto-shutdown -g "$RESOURCE_GROUP" -n "$VM_NAME" --time 2200 -o none
+              az vm auto-shutdown -g "$RESOURCE_GROUP" -n "$VM_NAME" --location "$(az vm show -g "$RESOURCE_GROUP" -n "$VM_NAME" --query location -o tsv)" --time 2200 -o none
               echo 'AUTO_SHUTDOWN_UTC_2200=PASS'
               COMPLETE=0
               for i in $(seq 1 36); do
@@ -134,7 +134,7 @@ jobs:
             start)
               MARK="$(az vm show -g "$RESOURCE_GROUP" -n "$VM_NAME" --query tags.managedBy -o tsv)"
               test "$MARK" = github-azure-android-dev
-              az vm auto-shutdown -g "$RESOURCE_GROUP" -n "$VM_NAME" --time 2200 -o none
+              az vm auto-shutdown -g "$RESOURCE_GROUP" -n "$VM_NAME" --location "$(az vm show -g "$RESOURCE_GROUP" -n "$VM_NAME" --query location -o tsv)" --time 2200 -o none
               az vm start -g "$RESOURCE_GROUP" -n "$VM_NAME" -o none
               echo 'AZURE_ANDROID_DEV=STARTED; AUTO_SHUTDOWN=22:00_UTC'
               ;;
