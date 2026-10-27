@@ -1,0 +1,24 @@
+name: Verify mobile browser direct Azure Blob upload CORS
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/azure-shareit-cors-check.yml']
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Preflight of direct PUT browser upload, no tokens
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://tzn5androidartifacts26.blob.core.windows.net/apks-private/input/shareit-6.27.58-user.apks'
+          curl --silent --show-error --max-time 15 -X OPTIONS "$URL" \
+            -H 'Origin: null' \
+            -H 'Access-Control-Request-Method: PUT' \
+            -H 'Access-Control-Request-Headers: content-type,x-ms-blob-type,x-ms-version' \
+            -D /tmp/headers -o /tmp/body
+          cat /tmp/headers | grep -Ei 'HTTP/|access-control-|vary'
+          grep -qi '^HTTP/.* 200' /tmp/headers
+          grep -qi '^Access-Control-Allow-Origin:' /tmp/headers
+          echo 'AZURE_BROWSER_DIRECT_UPLOAD_CORS=PASS'
