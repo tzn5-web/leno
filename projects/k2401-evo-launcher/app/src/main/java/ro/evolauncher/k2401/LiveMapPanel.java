@@ -21,6 +21,7 @@ import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.MapView;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.MapStyleOptions;
 import java.util.Locale;
 
 /** Actual interactive basemap, never a simulated route or simulated GPS.
@@ -29,6 +30,8 @@ import java.util.Locale;
  * Route guidance is delegated to the installed Google Maps application.
  */
 final class LiveMapPanel extends FrameLayout implements LocationListener {
+  // Real Google Maps SDK vector styling, never a simulated basemap.
+  private static final String DARK_MAP_STYLE="[{\"elementType\":\"geometry\",\"stylers\":[{\"color\":\"#17202b\"}]},{\"elementType\":\"labels.text.fill\",\"stylers\":[{\"color\":\"#9ba9b8\"}]},{\"elementType\":\"labels.text.stroke\",\"stylers\":[{\"color\":\"#101822\"}]},{\"featureType\":\"road\",\"elementType\":\"geometry\",\"stylers\":[{\"color\":\"#293747\"}]},{\"featureType\":\"road.highway\",\"elementType\":\"geometry\",\"stylers\":[{\"color\":\"#495768\"}]},{\"featureType\":\"water\",\"elementType\":\"geometry\",\"stylers\":[{\"color\":\"#0b2333\"}]},{\"featureType\":\"poi\",\"stylers\":[{\"visibility\":\"off\"}]}]";
   private final Activity activity;
   private MapView googleView;
   private GoogleMap googleMap;
@@ -55,6 +58,7 @@ final class LiveMapPanel extends FrameLayout implements LocationListener {
       googleView.onCreate(null);
       googleView.getMapAsync(map->{
         googleMap=map;
+        try{map.setMapStyle(new MapStyleOptions(DARK_MAP_STYLE));}catch(RuntimeException ignored){}
         map.getUiSettings().setZoomControlsEnabled(true);
         map.getUiSettings().setCompassEnabled(true);
         if(hasLocationPermission()) {
@@ -81,7 +85,7 @@ final class LiveMapPanel extends FrameLayout implements LocationListener {
         "<style>html,body,#m{height:100%;width:100%;margin:0;background:#172331}</style></head><body><div id='m'></div>" +
         "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script><script>" +
         "var evoMap=L.map('m',{zoomControl:true}).setView([0,0],2);" +
-        "L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(evoMap);" +
+        "L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:19,attribution:'&copy; OpenStreetMap contributors &copy; CARTO'}).addTo(evoMap);" +
         "var pin=null;function setEvoLocation(a,b){evoMap.setView([a,b],16);if(pin){pin.setLatLng([a,b]);}else{pin=L.circleMarker([a,b],{radius:7,color:'#ef2840',fillOpacity:0.9}).addTo(evoMap);}}" +
         "</script></body></html>";
       openMap.loadDataWithBaseURL("https://www.openstreetmap.org/",html,"text/html","UTF-8",null);
