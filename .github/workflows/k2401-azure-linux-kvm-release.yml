@@ -1,6 +1,7 @@
 name: K2401 Azure Linux KVM Android 10 signed release validation
 # One bounded Azure test. Creates a temporary Ubuntu VM with nested KVM.
 # VM is deallocated and deleted in cleanup. Does not touch the Windows driver VM.
+# Execute current signed v1.0 Android 10 source after the release lint correction.
 on:
   push:
     branches: [feature/k2401-evo-launcher]
