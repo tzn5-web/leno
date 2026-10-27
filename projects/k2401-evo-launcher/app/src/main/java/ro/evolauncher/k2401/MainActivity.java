@@ -286,18 +286,62 @@ public final class MainActivity extends Activity {
     });
     // BLE UART devices commonly do NOT appear in the Android bonded list.
     // Offer an explicit bounded BLE scan; never connect to arbitrary devices.
-    String[] items=new String[paired.size()+1];
+    String[] items=new String[paired.size()+3];
     for(int i=0;i<paired.size();i++){
       android.bluetooth.BluetoothDevice d=paired.get(i);
       String name=d.getName()==null?"Bluetooth":d.getName();
       items[i]=name+" • "+d.getAddress()+" (asociat)";
     }
-    items[paired.size()]="Caută adaptoare ELM327 BLE din apropiere";
-    new AlertDialog.Builder(this).setTitle("Alege ELM327 • Classic sau BLE")
+    items[paired.size()]="Caută ELM327 Bluetooth Classic (OBDII, ELM327, V-LINK)";
+    items[paired.size()+1]="Caută ELM327 Bluetooth BLE (GATT)";
+    items[paired.size()+2]="Diagnostic modul Bluetooth al navigației";
+    new AlertDialog.Builder(this).setTitle("Alege ELM327 • Classic / BLE")
+      .setMessage("BLE și Bluetooth Classic sunt diferite. Majoritatea adaptoarelor ELM327 clasice trebuie asociate prin PIN 1234/0000. Dispozitive Android asociate: "+paired.size())
       .setItems(items,(dialog,which)->{
-        if(which==paired.size())scanBleAdapters();
+        if(which==paired.size())scanClassicAdapters();
+        else if(which==paired.size()+1)scanBleAdapters();
+        else if(which==paired.size()+2)showBluetoothDiagnosis();
         else selectObdDevice(paired.get(which).getAddress(),false);
       }).setNegativeButton("Închide",null).show();
+  }
+  void scanClassicAdapters(){
+    // Explicit Classic search + Android pairing. An empty BLE scan must not
+    // send the driver through more BLE retries for a Classic-only ELM327.
+    new ClassicObdDiscovery(this,mac->selectObdDevice(mac,false)).begin();
+  }
+  void showBluetoothDiagnosis(){
+    android.bluetooth.BluetoothAdapter bt=android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+    StringBuilder msg=new StringBuilder();
+    if(bt==null){msg.append("Android BluetoothAdapter: ABSENT\\n");}
+    else{
+      msg.append("Adapter Android: ").append(bt.isEnabled()?"ON":"OFF").append("\\n");
+      msg.append("LE advertising/scanning: ")
+        .append(getPackageManager().hasSystemFeature("android.hardware.bluetooth_le")?"DECLARED":"NOT DECLARED")
+        .append("\\n");
+      int bondedCount=-1;
+      try{bondedCount=bt.getBondedDevices().size();}
+      catch(RuntimeException e){msg.append("getBondedDevices: ").append(e.getClass().getSimpleName()).append("\\n");}
+      msg.append("Dispozitive asociate Android: ").append(bondedCount).append("\\n");
+      if(bondedCount>0)try{
+        for(android.bluetooth.BluetoothDevice device:bt.getBondedDevices()){
+          String name=device.getName()==null?"necunoscut":device.getName();
+          msg.append(" • ").append(name).append(" — tip ")
+            .append(device.getType()==android.bluetooth.BluetoothDevice.DEVICE_TYPE_LE?"BLE":
+                    device.getType()==android.bluetooth.BluetoothDevice.DEVICE_TYPE_DUAL?"DUAL":
+                    device.getType()==android.bluetooth.BluetoothDevice.DEVICE_TYPE_CLASSIC?"CLASSIC":"UNKNOWN")
+            .append("\\n");
+        }
+      }catch(RuntimeException ignored){}
+    }
+    if(obd!=null)msg.append("\\nSursă OBD: ")
+      .append(obd.isDirect()?"ELM327 direct":"Torque AIDL")
+      .append("\\n").append(obd.status()).append("\\n").append(obd.diagnostic());
+    msg.append("\\n\\nDacă Torque/ELM funcționează pe telefon, dar Android din navigație nu vede dispozitivul Classic sau BLE, Bluetooth-ul head-unit poate fi limitat la apeluri (MCU). Nu se poate corecta din polling OBD.");
+    new AlertDialog.Builder(this).setTitle("Audit Bluetooth navigație")
+      .setMessage(msg.toString())
+      .setPositiveButton("Caută Classic",(d,w)->scanClassicAdapters())
+      .setNeutralButton("Caută BLE",(d,w)->scanBleAdapters())
+      .setNegativeButton("Închide",null).show();
   }
   void scanBleAdapters(){
     if(checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
@@ -342,9 +386,11 @@ public final class MainActivity extends Activity {
       progress.dismiss();
       if(isFinishing())return;
       if(found.isEmpty()){
-        new AlertDialog.Builder(this).setTitle("Niciun adaptor BLE găsit")
-          .setMessage("Activează Locația în Android 10; adaptorul trebuie alimentat și să emită BLE. Unele ELM327 suportă exclusiv Bluetooth Classic.")
-          .setPositiveButton("OK",null).show();
+        new AlertDialog.Builder(this).setTitle("BLE: niciun dispozitiv detectat")
+          .setMessage("Scanarea BLE a returnat zero dispozitive. Asta NU înseamnă că ELM327 lipsește: cele mai multe adaptoare OBDII clasice folosesc Bluetooth Classic/SPP, nu BLE. Încearcă scanarea Classic ori vezi auditul modulului Bluetooth Android.")
+          .setPositiveButton("Caută Classic",(d,w)->scanClassicAdapters())
+          .setNeutralButton("Diagnostic BT",(d,w)->showBluetoothDiagnosis())
+          .setNegativeButton("Închide",null).show();
         return;
       }
       ArrayList<android.bluetooth.le.ScanResult> choices=new ArrayList<>(found.values());
