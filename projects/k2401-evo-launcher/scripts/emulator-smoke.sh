@@ -36,6 +36,35 @@ capture() {
   adb pull "/sdcard/$name.png" "$OUT/$name.png"
 }
 capture home 120
+# Verify the actual embedded map controls are native and do not expose
+# an external Maps launch button or a missing WebView/Leaflet dependency.
+adb shell uiautomator dump /sdcard/k2401-native-map.xml >/dev/null
+adb pull /sdcard/k2401-native-map.xml "$OUT/native-map-ui.xml" >/dev/null
+python3 - <<'PY'
+import xml.etree.ElementTree as ET
+nodes=ET.parse("projects/k2401-evo-launcher/screenshots/native-map-ui.xml").findall(".//node")
+texts=[n.attrib.get("text","") for n in nodes]
+for label in ("OpenStreetMap", "CAUTA LOC", "LOCATIA MEA"):
+    assert any(label in t for t in texts), "K2401_NATIVE_MAP_CONTROL_MISSING="+label
+assert not any(t=="RUTĂ GOOGLE MAPS" for t in texts), "K2401_EXTERNAL_MAPS_BUTTON_PRESENT"
+print("K2401_IN_PANEL_NATIVE_MAP_CONTROLS=PASS")
+PY
+# Tapping the music card should offer a player picker (including Vanced when
+# actually installed), NEVER switch to Store or an external media Activity.
+adb shell input tap 830 155
+sleep 1
+adb shell uiautomator dump /sdcard/k2401-media-picker.xml >/dev/null
+adb pull /sdcard/k2401-media-picker.xml "$OUT/media-picker-ui.xml" >/dev/null
+python3 - <<'PY'
+import xml.etree.ElementTree as ET
+nodes=ET.parse("projects/k2401-evo-launcher/screenshots/media-picker-ui.xml").findall(".//node")
+texts=[n.attrib.get("text","") for n in nodes]
+assert any("Alege playerul instalat" in t for t in texts), "K2401_MEDIA_PICKER_MISSING"
+assert any("Permisiune MediaSession" in t for t in texts), "K2401_MEDIA_PERMISSION_ACTION_MISSING"
+print("K2401_MEDIA_PLAYER_SELECT_INSIDE_HOME=PASS")
+PY
+adb shell input keyevent 4
+adb shell pidof "$APP" >/dev/null
 # Native dock is inspectable by Android accessibility, unlike decorative canvas.
 adb shell uiautomator dump /sdcard/k2401-dock.xml >/dev/null
 adb pull /sdcard/k2401-dock.xml "$OUT/dock-ui.xml" >/dev/null
