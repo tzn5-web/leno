@@ -231,6 +231,7 @@ final class DirectElm327 {
         // ~100ms maximum response wait; ATAT1 adapts to ECU speed.
         try{command(in,out,"ATST19",3500L,token);}catch(IOException ignored){}
         preferences.edit().putString(KEY_MODE,mode).commit();
+        lastFailure="";
         step(token,"ECU LIVE • "+mode);
         fastCounter=0;
         pollLoop(in,out,token);
@@ -252,10 +253,7 @@ final class DirectElm327 {
     long nextAllowed=0;
     while(alive(token)){
       long now=SystemClock.elapsedRealtime();
-      boolean slowCoolant=lastCoolant==0||now-lastCoolant>=2000;
-      boolean slowLtft=lastLtft==0||now-lastLtft>=5000;
-      int[] requests=slowCoolant&&slowLtft?new int[]{0,1,2,3}:
-        slowCoolant?new int[]{0,1,2}:slowLtft?new int[]{0,1,3}:new int[]{0,1};
+      int[] requests=ObdPollPlan.next(now,lastCoolant,lastLtft);
       // Fast sensor requests are always first. One command outstanding.
       for(int i:requests){
         if(!alive(token))return;
@@ -274,7 +272,7 @@ final class DirectElm327 {
         if(i==2)lastCoolant=t1;
         if(i==3)lastLtft=t1;
         // Avoid blindly hammering ELM firmware; adapt to real response.
-        nextAllowed=t1+Math.max(20L,Math.min(80L,roundTripMs/4L));
+        nextAllowed=t1+ObdPollPlan.minimumGapMs(roundTripMs);
         if(t1-lastNotify>=85L){
           lastNotify=t1;notifyUI();
         }
