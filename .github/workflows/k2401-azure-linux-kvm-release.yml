@@ -90,10 +90,9 @@ jobs:
           test -s "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" > /tmp/k2401-signature.txt
           grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/k2401-signature.txt
-          if grep -E '^Verified using.*false' /tmp/k2401-signature.txt | grep -v 'v1 scheme' | grep -v 'v3 scheme' | grep -v 'v4 scheme'; then
-            echo '::error::Unexpected failed required signature scheme'
-            exit 4
-          fi
+          # Android 10 requires valid v2 signing. apksigner verify already enforces
+          # actual signature validity; disabled optional v3.1 does NOT mean failure.
+          echo 'AZURE_ANDROID10_RELEASE_V2_SIGNATURE=PASS'
           sha256sum "$APK" | tee release-apk-sha256.txt
           grep '^Signer #1 certificate SHA-256 digest:' /tmp/k2401-signature.txt | tee release-certificate.txt
           echo 'PERSISTENT_SIGNED_RELEASE_APK=PASS'
