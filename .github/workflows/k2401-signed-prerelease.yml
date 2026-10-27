@@ -53,6 +53,21 @@ jobs:
           grep -Fq 'wallpaper_preset' "$BASE/LauncherSettings.java"
           grep -Fq 'capturedAtMs' "$BASE/ObdReader.java"
           grep -Fq 'generation' "$BASE/ObdReader.java"
+          # Fail release if the three formerly broken embedded integrations regress.
+          grep -Fq 'org.osmdroid.views.MapView' "$BASE/LiveMapPanel.java"
+          grep -Fq 'CAUTA LOC' "$BASE/LiveMapPanel.java"
+          if grep -Eq 'unpkg\.com|L\.tileLayer|new WebView' "$BASE/LiveMapPanel.java"; then
+            echo "::error::Map must not depend on remote Leaflet JS or WebView"
+            exit 3
+          fi
+          grep -Fq 'void choosePlayer()' "$BASE/MainActivity.java"
+          grep -Fq 'evo_media_package' "$BASE/MainActivity.java"
+          if grep -Fq 'market://details' "$BASE/MainActivity.java"; then
+            echo "::error::Player taps must never open the Play Store"
+            exit 4
+          fi
+          grep -Fq 'getValueForPid(ids[i],true)' "$BASE/ObdReader.java"
+          grep -Fq 'getUpdateTimeForPID(ids[i])' "$BASE/ObdReader.java"
           if grep -Eq 'Build.FINGERPRINT.contains\\("generic"\\)|emu\\?Float.NaN|if\\(!emu\\)obd.start' "$BASE/MainActivity.java"; then
             echo "::error::Real K2401 device may be falsely classified as emulator; OBD/GPS blocked"
             exit 2
