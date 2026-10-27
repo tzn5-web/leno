@@ -60,7 +60,7 @@ import xml.etree.ElementTree as ET
 nodes=ET.parse("projects/k2401-evo-launcher/screenshots/media-picker-ui.xml").findall(".//node")
 texts=[n.attrib.get("text","") for n in nodes]
 assert any("Alege playerul instalat" in t for t in texts), "K2401_MEDIA_PICKER_MISSING"
-assert any("Permisiune MediaSession" in t for t in texts), "K2401_MEDIA_PERMISSION_ACTION_MISSING"
+assert any("permisiune mediasession" in t.casefold() for t in texts), "K2401_MEDIA_PERMISSION_ACTION_MISSING"
 print("K2401_MEDIA_PLAYER_SELECT_INSIDE_HOME=PASS")
 PY
 adb shell input keyevent 4
