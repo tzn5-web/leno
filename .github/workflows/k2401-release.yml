@@ -3,6 +3,7 @@ name: K2401 EVO signed APK release
 # Builds a non-debuggable release APK. Creates signing material only once inside
 # a private Azure Key Vault and reuses EXACTLY the same certificate on every run.
 # No Windows VM starts or billable Android emulator in this workflow.
+# Rebuild after Android 10 private sideload lint compatibility fix.
 on:
   push:
     branches: [main]
