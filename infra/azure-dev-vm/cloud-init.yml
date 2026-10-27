@@ -1,0 +1,18 @@
+#cloud-config
+# Azure Ubuntu 24.04 deterministic boot bootstrap; placeholders are replaced in CI.
+package_update: true
+package_upgrade: false
+write_files:
+  - path: /usr/local/sbin/install-android-dev.sh
+    owner: root:root
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env bash
+      set -Eeuo pipefail
+      curl --fail --location --retry 8 --retry-delay 10 --silent --show-error \
+        https://raw.githubusercontent.com/tzn5-web/leno/__BOOTSTRAP_COMMIT__/infra/azure-dev-vm/bootstrap.sh \
+        -o /tmp/android-dev-bootstrap.sh
+      echo '__BOOTSTRAP_SHA256__  /tmp/android-dev-bootstrap.sh' | sha256sum -c -
+      bash /tmp/android-dev-bootstrap.sh
+runcmd:
+  - [bash, /usr/local/sbin/install-android-dev.sh]
