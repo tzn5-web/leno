@@ -1,0 +1,46 @@
+name: Azure SHAREit browser transfer verification
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/azure-shareit-bridge-validation-final.yml']
+permissions:
+  id-token: write
+  contents: read
+  actions: write
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Configure private account browser upload and turn on automatic build check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACC=tzn5androidartifacts26
+          KEY="$(az storage account keys list -g rg-chatgpt-azure -n "$ACC" --query '[0].value' -o tsv)"
+          echo "::add-mask::$KEY"
+          test "$(az storage account show -g rg-chatgpt-azure -n "$ACC" --query allowBlobPublicAccess -o tsv)" = false
+          az storage cors clear --account-name "$ACC" --account-key "$KEY" --services b -o none
+          az storage cors add --account-name "$ACC" --account-key "$KEY" --services b --origins '*' --methods PUT OPTIONS --allowed-headers 'x-ms-blob-type' 'content-type' 'x-ms-version' --exposed-headers 'etag' --max-age 3600 -o none
+          echo BROWSER_CORS_CONFIG=PASS
+          HTTP="$(curl --max-time 18 -sS -D /tmp/h -o /tmp/body -w '%{http_code}' -X OPTIONS -H 'Origin: null' -H 'Access-Control-Request-Method: PUT' -H 'Access-Control-Request-Headers: x-ms-blob-type,content-type' 'https://tzn5androidartifacts26.blob.core.windows.net/apks-private/input/shareit-6.27.58-user.apks')"
+          echo "HTTP_OPTIONS=$HTTP"
+          grep -i '^access-control-allow-origin:' /tmp/h || true
+          test "$HTTP" = 200
+          STATE="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/azure-shareit-auto-trigger.yml" --jq .state)"
+          if [ "$STATE" = disabled_manually ]; then
+            gh api --method PUT "repos/$GITHUB_REPOSITORY/actions/workflows/azure-shareit-auto-trigger.yml/enable" >/dev/null
+          fi
+          FINAL="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/azure-shareit-auto-trigger.yml" --jq .state)"
+          echo "SHAREIT_WATCHER=$FINAL"
+          test "$FINAL" = active
+          echo AZURE_UPLOAD_AND_VM_BUILD_AUTOMATION=PASS
+      - if: always()
+        run: az logout || true
