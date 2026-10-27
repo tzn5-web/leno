@@ -6,6 +6,10 @@ mkdir -p "$OUT"
 adb shell wm density 160
 adb shell settings put system accelerometer_rotation 0
 adb install -r projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.apk
+# Real devices request location permission at runtime; emulator smoke tests
+# grant it explicitly to avoid a permission dialog obscuring the six screens.
+adb shell pm grant "$APP" android.permission.ACCESS_FINE_LOCATION
+adb shell pm grant "$APP" android.permission.ACCESS_COARSE_LOCATION
 adb logcat -c
 adb shell am start -W -n "$APP/.MainActivity" | tee "$OUT/launch.txt"
 sleep 3
