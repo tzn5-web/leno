@@ -424,6 +424,8 @@ final class SkinEngine {
               if(++entries>32)throw new IOException("Prea multe fișiere în pachet");
               if(entry.isDirectory())continue;
               String file=entry.getName();
+              // The original 21-design ZIP includes documentation.
+              if("README.txt".equalsIgnoreCase(file)){zip.closeEntry();continue;}
               if(file.startsWith("skins/"))file=file.substring(6);
               boolean isAtlas="atlas.webp".equals(file);
               int index=-1;
