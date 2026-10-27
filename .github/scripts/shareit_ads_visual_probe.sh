@@ -16,9 +16,15 @@ sleep 12
 adb shell pidof "$PKG" >"$D/pid.txt" || true
 # This is a disposable emulator, not the user's account. Accept onboarding to reach real ads.
 adb shell input tap 530 2050 || true
-sleep 17
-adb shell input tap 910 2130 || true
-sleep 6
+sleep 8
+# The next dialog is SHAREit's own permission notice; approve in disposable emulator.
+adb shell input tap 845 1592 || true
+adb shell appops set "$PKG" MANAGE_EXTERNAL_STORAGE allow 2>/dev/null || true
+adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS 2>/dev/null || true
+sleep 10
+# Dismiss optional secondary permission sheet if it appears.
+adb shell input tap 840 1595 || true
+sleep 10
 adb shell dumpsys activity activities | grep -E 'topResumedActivity|mResumedActivity' >"$D/foreground-activity.txt" || true
 echo "APP_FOREGROUND_INFO=$(cat "$D/foreground-activity.txt")"
 adb shell screencap -p /sdcard/shareit-screen.png
