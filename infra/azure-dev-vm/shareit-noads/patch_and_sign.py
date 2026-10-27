@@ -54,24 +54,93 @@ def run(*args):
 def sha256(data):
     return hashlib.sha256(data).hexdigest()
 
+def _dex_entries(data):
+    """Parse real DEX string_data offsets; never patch arbitrary raw DEX bytes.
+
+    DEX string_ids are lexicographically sorted by UTF-16. Rewriting an entire
+    ad domain with unrelated filler invalidates this order and causes ART
+    java.lang.ClassNotFoundException due to a rejected DEX file.
+    """
+    import struct
+    n, off = struct.unpack_from("<II", data, 56)
+    if n > 2_000_000 or off + 4 * n > len(data):
+        raise ValueError("Invalid DEX string_id section")
+    entries = []
+    for idx in range(n):
+        start = struct.unpack_from("<I", data, off + 4 * idx)[0]
+        p = start
+        for _ in range(5):
+            b = data[p]
+            p += 1
+            if not (b & 0x80):
+                break
+        else:
+            raise ValueError("Invalid DEX ULEB128 length")
+        end = data.index(0, p)
+        entries.append((p, end, data[p:end]))
+    return entries
+
+
 def patched_dex(data, counts):
     if not data.startswith(b"dex\n"):
         return data
-    result = data
-    # Longer hosts first to avoid consuming substrings of another host.
-    for domain in sorted(AD_HOSTS, key=len, reverse=True):
-        src = domain.encode("ascii")
-        replacement = b"x" * (len(src) - len(b".invalid")) + b".invalid"
-        hits = result.count(src)
-        if hits:
-            result = result.replace(src, replacement)
-            counts[domain] = counts.get(domain, 0) + hits
-    if result != data:
-        mutable = bytearray(result)
-        mutable[12:32] = hashlib.sha1(mutable[32:]).digest()
-        mutable[8:12] = (zlib.adler32(mutable[12:]) & 0xffffffff).to_bytes(4, "little")
-        result = bytes(mutable)
-    return result
+    entries = _dex_entries(data)
+    values = [e[2] for e in entries]
+    orig = values.copy()
+    modifications = []
+    skipped = 0
+    # Change only the final hostname character and keep its length unchanged.
+    # This breaks the original advertising DNS hostname, while preserving
+    # sorted DEX string_ids and all code/data offsets.
+    # Each candidate is validated against the two neighbouring DEX string_ids.
+    for i, (start, end, raw) in enumerate(entries):
+        previous = values[i - 1] if i else None
+        following = orig[i + 1] if i + 1 < len(entries) else None
+        value = raw
+        for domain in sorted(AD_HOSTS, key=len, reverse=True):
+            original_host = domain.encode("ascii")
+            if original_host not in value:
+                continue
+            changed = False
+            for last_char in b"zxyvwutsrqponmlkjihgfedcba0123456789":
+                if last_char == original_host[-1]:
+                    continue
+                replacement_host = original_host[:-1] + bytes([last_char])
+                candidate = value.replace(original_host, replacement_host)
+                # The neighbouring strings are unmodified ASCII URL/class
+                # strings. The comparison deliberately checks only strings
+                # touching a modification because MUTF-8 encodes NUL specially.
+                if (previous is None or previous < candidate) and (
+                    following is None or candidate < following
+                ):
+                    counts[domain] = counts.get(domain, 0) + value.count(original_host)
+                    value = candidate
+                    changed = True
+                    break
+            if not changed:
+                skipped += value.count(original_host)
+        if value != raw:
+            assert len(value) == end - start, "Unsafe DEX string size change"
+            values[i] = value
+            modifications.append((start, end, value))
+    if skipped:
+        raise ValueError("Failed to mutate " + str(skipped) + " hosts without breaking DEX sorting")
+    # Ensure every modified neighbour pair retains original string_id ordering.
+    for i in range(1, len(values)):
+        if (values[i] != orig[i] or values[i - 1] != orig[i - 1]) and not (
+            values[i - 1] < values[i]
+        ):
+            raise ValueError("DEX string_ids are no longer sorted at index " + str(i))
+    if not modifications:
+        return data
+    mutable = bytearray(data)
+    for start, end, new_value in modifications:
+        mutable[start:end] = new_value
+    # Recompute DEX integrity only after a lexically safe update.
+    mutable[12:32] = hashlib.sha1(mutable[32:]).digest()
+    mutable[8:12] = (zlib.adler32(mutable[12:]) & 0xffffffff).to_bytes(4, "little")
+    return bytes(mutable)
+
 
 def prepare_key():
     KEYSTORE.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
