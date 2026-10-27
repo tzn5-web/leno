@@ -1,0 +1,58 @@
+name: Azure Linux VM SKU feasibility - read-only
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/azure-linux-sku-audit.yml']
+  workflow_dispatch:
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Inventory actual SKU restrictions and region quota, no deployments
+        shell: bash
+        run: |
+          set -euo pipefail
+          az account show --query '{subscription:id,subscriptionName:name,tenantId:tenantId,state:state}' -o json
+          for region in swedencentral uksouth northeurope germanywestcentral eastus eastus2 francecentral polandcentral italynorth spaincentral; do
+            echo "==== SKU_REGION=$region ===="
+            if ! az vm list-skus --location "$region" --resource-type virtualMachines --all -o json >/tmp/skus.json 2>/tmp/skus-error.txt; then
+              echo "SKU_LIST_ERROR: $(tail -2 /tmp/skus-error.txt)"
+              continue
+            fi
+            az vm list-usage --location "$region" --query "[?name.value=='cores'].{used:currentValue,limit:limit}" -o json || true
+            python3 - <<'PY'
+          import json
+          data=json.load(open('/tmp/skus.json'))
+          result=[]
+          for x in data:
+              cap={v.get('name'):v.get('value') for v in x.get('capabilities',[])}
+              try:
+                  c=int(float(cap.get('vCPUs','0')))
+                  ram=float(cap.get('MemoryGB','0'))
+              except (ValueError,TypeError):
+                  continue
+              if not 1<=c<=4 or ram<3.0:
+                  continue
+              restrictions=x.get('restrictions') or []
+              result.append(dict(name=x.get('name'),cpu=c,ram=ram,restricted=bool(restrictions),
+                reasons=[{'type':r.get('type'),'reasonCode':r.get('reasonCode')} for r in restrictions]))
+          allowed=[x for x in result if not x['restricted']]
+          print('SKU_COUNT',len(data),'UNRESTRICTED_3PLUS_GB',len(allowed))
+          for x in sorted(allowed,key=lambda z:(-z['ram'],z['cpu']))[:25]:
+              print('ELIGIBLE_SKU',json.dumps(x))
+          for x in result[:4]:
+              if x['restricted']:print('RESTRICTION_SAMPLE',json.dumps(x))
+          PY
+          done
+      - name: Logout
+        if: always()
+        run: az logout || true
