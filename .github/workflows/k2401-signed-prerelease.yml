@@ -103,6 +103,29 @@ jobs:
           grep -Fq 'private volatile DirectElm327 direct' "$BASE/ObdReader.java"
           grep -Fq 'last_exception' "$BASE/EvoApplication.java"
           grep -Fq 'K2401 EVO — RECUPERARE' "$BASE/SafeModeActivity.java"
+          # User requirement: originals must be IN THE APK, never require ZIP import.
+          SKINS=projects/k2401-evo-launcher/app/src/main/assets/skins
+          test -s "$SKINS/atlas.webp"
+          for i in $(seq -w 0 20); do
+            test -s "$SKINS/skin_$i.webp" || {
+              echo "::error::Missing bundled original skin $i"
+              exit 7
+            }
+          done
+          python3 - <<'PY'
+          import pathlib,struct
+          folder=pathlib.Path("projects/k2401-evo-launcher/app/src/main/assets/skins")
+          files=sorted(folder.glob("skin_??.webp"))
+          assert len(files)==21, f"Expected 21 originals; found {len(files)}"
+          for image in files:
+              body=image.read_bytes()
+              assert body[:4]==b'RIFF' and body[8:12]==b'WEBP',image
+              assert len(body)>=128,image
+          print('K2401_21_ORIGINAL_SKIN_ASSETS=PASS')
+          PY
+          grep -Fq 'showSkinPicker()' "$BASE/MainActivity.java"
+          grep -Fq 'selected_skin_v2' "$BASE/SkinEngine.java"
+          grep -Fq 'getAssets().open(' "$BASE/SkinEngine.java"
           echo 'K2401_RELEASE_SOURCE_GATE=PASS'
       - name: Verify real ECU PID decoding, no fake readings
         shell: bash
@@ -159,6 +182,17 @@ jobs:
           fi
           gradle --no-daemon -p projects/k2401-evo-launcher :app:assembleRelease
           test -s "$APK"
+          python3 - <<'PY'
+          import zipfile
+          apk="projects/k2401-evo-launcher/app/build/outputs/apk/release/app-release.apk"
+          with zipfile.ZipFile(apk) as z:
+            entries=set(z.namelist())
+            base="assets/skins/"
+            required={base+"atlas.webp"}|{base+f"skin_{i:02d}.webp" for i in range(21)}
+            missing=required-entries
+            assert not missing, "SKINS MISSING FROM APK: "+", ".join(sorted(missing))
+            print("K2401_SIGNED_APK_EMBEDS_ALL_21_SKINS=PASS")
+          PY
       - name: Verify Android 10 APK signature and persistent certificate
         shell: bash
         env:
