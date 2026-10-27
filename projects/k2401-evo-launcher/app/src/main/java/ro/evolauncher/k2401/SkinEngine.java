@@ -76,6 +76,7 @@ final class SkinEngine {
   private Bitmap atlas;
   private Bitmap fullArt;
   private int fullArtId=-1;
+  private AlertDialog galleryDialog;
   private int selected;
   private final Rect mediaRect=new Rect(640,86,1260,364);
   private final Rect statsRect=new Rect(640,387,1260,699);
@@ -504,10 +505,12 @@ final class SkinEngine {
       list.addView(entry,new LinearLayout.LayoutParams(-1,dp(146)));
       entry.setOnClickListener(v->previewDialog(index));
     }
-    new AlertDialog.Builder(host).setTitle("Skinuri EVO • 21 modele • primul EVO DIGITAL DASH")
-      .setView(scroll).setNegativeButton("Închide",null).show();
+    galleryDialog=new AlertDialog.Builder(host).setTitle("Skinuri EVO • 21 modele • primul EVO DIGITAL DASH")
+      .setView(scroll).setNegativeButton("Închide",null).create();
+    galleryDialog.show();
   }
   private void previewDialog(int which){
+    if(galleryDialog!=null){galleryDialog.dismiss();galleryDialog=null;}
     Bitmap image=preview(which);
     ImageView view=new ImageView(host);
     view.setImageBitmap(image);view.setScaleType(ImageView.ScaleType.FIT_CENTER);
