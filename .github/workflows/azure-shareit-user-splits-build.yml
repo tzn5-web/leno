@@ -1,0 +1,85 @@
+name: Azure private SHAREit original six-split rebuild
+on:
+  workflow_dispatch:
+permissions:
+  id-token: write
+  contents: read
+concurrency:
+  group: azure-private-shareit-from-upload
+  cancel-in-progress: false
+jobs:
+  rebuild:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      ACC: tzn5androidartifacts26
+      RG: rg-chatgpt-azure
+      CONT: apks-private
+      INPUT: input/shareit-6.27.58-user.apks
+      OUTPUT: output/shareit-6.27.58-azure-nosads-splits.apks
+      VM: android-dev-linux
+    steps:
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Validate privately uploaded original before allocating VM
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEY="$(az storage account keys list -g "$RG" -n "$ACC" --query '[0].value' -o tsv)"
+          echo "::add-mask::$KEY"
+          SIZE="$(az storage blob show --account-name "$ACC" --account-key "$KEY" \
+              --container-name "$CONT" --name "$INPUT" --query properties.contentLength -o tsv)"
+          echo "INPUT_APKS_SIZE=$SIZE"
+          test "$SIZE" = 70930002
+          echo 'PRIVATE_ORIGINAL_UPLOAD_PRESENT=PASS'
+      - name: Rebuild all signed split APKs in Azure VM
+        shell: bash
+        run: |
+          set -euo pipefail
+          MARK="$(az vm show -g "$RG" -n "$VM" --query tags.managedBy -o tsv)"
+          test "$MARK" = github-azure-android-dev
+          KEY="$(az storage account keys list -g "$RG" -n "$ACC" --query '[0].value' -o tsv)"
+          echo "::add-mask::$KEY"
+          EXP="$(date -u -d '+3 hours' +%Y-%m-%dT%H:%MZ)"
+          INPUT_SAS="$(az storage blob generate-sas --account-name "$ACC" --account-key "$KEY" --container-name "$CONT" --name "$INPUT" --permissions r --expiry "$EXP" --https-only -o tsv)"
+          OUTPUT_SAS="$(az storage blob generate-sas --account-name "$ACC" --account-key "$KEY" --container-name "$CONT" --name "$OUTPUT" --permissions cw --expiry "$EXP" --https-only -o tsv)"
+          echo "::add-mask::$INPUT_SAS"
+          echo "::add-mask::$OUTPUT_SAS"
+          I64="$(printf '%s' "$INPUT_SAS" | base64 -w0)"
+          O64="$(printf '%s' "$OUTPUT_SAS" | base64 -w0)"
+          az vm start -g "$RG" -n "$VM" -o none
+          az vm auto-shutdown -g "$RG" -n "$VM" --location eastus2 --time 2200 -o none
+          echo 'VM_READY_FOR_PRIVATE_BUILD=PASS'
+          SCRIPT="set -e; curl -fsSL --retry 3 https://raw.githubusercontent.com/tzn5-web/leno/749ba4a8799f133122f9669886360f45f683f520/infra/azure-dev-vm/shareit-splits-azure-build.sh -o /tmp/shareit-splits-azure-build.sh; bash /tmp/shareit-splits-azure-build.sh \"\$(printf '%s' '$I64' | base64 -d)\" \"\$(printf '%s' '$O64' | base64 -d)\""
+          set +e
+          az vm run-command invoke -g "$RG" -n "$VM" --command-id RunShellScript \
+            --scripts "$SCRIPT" --query 'value[0].message' -o tsv \
+            >/tmp/azure-splits-build.log 2>/tmp/azure-splits-build.err
+          RC=$?
+          set -e
+          tail -c 10000 /tmp/azure-splits-build.log || true
+          if [ "$RC" -ne 0 ]; then tail -c 1500 /tmp/azure-splits-build.err; exit "$RC"; fi
+          grep -q 'AZURE_SHAREIT_USER_SPLITS_BUILD=PASS' /tmp/azure-splits-build.log || { echo 'GUEST_BUILD_NO_PASS'; exit 8; }
+          SIZE="$(az storage blob show --account-name "$ACC" --account-key "$KEY" --container-name "$CONT" --name "$OUTPUT" --query properties.contentLength -o tsv)"
+          test "$SIZE" -gt 50000000
+          echo "PRIVATE_AZURE_SIGNED_SPLITS=PASS size=$SIZE"
+          # Read-only URL is short-lived; do not publish storage account keys.
+          RE="$(date -u -d '+4 hours' +%Y-%m-%dT%H:%MZ)"
+          RS="$(az storage blob generate-sas --account-name "$ACC" --account-key "$KEY" --container-name "$CONT" --name "$OUTPUT" --permissions r --expiry "$RE" --https-only -o tsv)"
+          echo "AZURE_SPLITS_DOWNLOAD=https://$ACC.blob.core.windows.net/$CONT/$OUTPUT?$RS"
+          echo "AZURE_SPLITS_DOWNLOAD_EXPIRY_UTC=$RE"
+      - name: Always release Azure VM compute
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          MARK="$(az vm show -g "$RG" -n "$VM" --query tags.managedBy -o tsv 2>/dev/null || true)"
+          if [ "$MARK" = github-azure-android-dev ]; then
+             az vm deallocate -g "$RG" -n "$VM" -o none
+             echo 'AZURE_VM_DEALLOCATED=PASS'
+          fi
+      - if: always()
+        run: az logout || true
