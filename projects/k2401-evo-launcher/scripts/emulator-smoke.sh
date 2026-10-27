@@ -49,7 +49,7 @@ from pathlib import Path
 xml=ET.parse(Path("projects/k2401-evo-launcher/screenshots/settings-ui.xml"))
 nodes=xml.findall(".//node")
 texts=[n.attrib.get("text","") for n in nodes]
-for name in ("WALLPAPER","EVO Carbon","Graphite","Midnight","Alege fotografie","Setari Android","Bluetooth / Torque"):
+for name in ("WALLPAPER","EVO Carbon","Graphite","Midnight","Alege fotografie"):
     assert any(name in t for t in texts), f"MISSING_NATIVE_SETTING={name}"
 target=next(n for n in nodes if n.attrib.get("text")=="Graphite")
 points=list(map(int,re.findall(r"\d+",target.attrib["bounds"])))
@@ -63,6 +63,20 @@ grep -Fq 'name="wallpaper_preset">graphite</string>' "$OUT/preferences-after-cha
 adb shell screencap -p /sdcard/settings-customized.png
 adb pull /sdcard/settings-customized.png "$OUT/settings-customized.png" >/dev/null
 echo "K2401_SETTINGS_WALLPAPER_CHANGE=PASS"
+# Settings are scrollable: lower controls are intentionally offscreen in the
+# first UI hierarchy. Scroll before asserting their presence.
+adb shell input swipe 940 620 940 240 550
+sleep 1
+adb shell uiautomator dump /sdcard/k2401-ui-scrolled.xml >/dev/null
+adb pull /sdcard/k2401-ui-scrolled.xml "$OUT/settings-ui-scrolled.xml" >/dev/null
+python3 - <<'PY'
+import xml.etree.ElementTree as ET
+nodes=ET.parse("projects/k2401-evo-launcher/screenshots/settings-ui-scrolled.xml").findall(".//node")
+texts=[n.attrib.get("text","") for n in nodes]
+for name in ("Setari Android","Bluetooth / Torque","GPS / Locatie"):
+    assert any(name in t for t in texts), f"MISSING_SCROLLABLE_SETTING={name}"
+print("K2401_SCROLLABLE_SETTINGS=PASS")
+PY
 for i in $(seq 1 6); do
   adb shell input tap 45 225
   adb shell input tap 45 645
