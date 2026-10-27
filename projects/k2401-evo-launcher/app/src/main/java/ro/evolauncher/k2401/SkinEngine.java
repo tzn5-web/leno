@@ -328,6 +328,17 @@ final class SkinEngine {
     text(c,"➤",316,675,29,accent,true);
     text(c,"HARTĂ",310,700,14,Color.WHITE,true);
   }
+  private void sideRail(Canvas c,int accent){
+    panel(c,3,228,82,385,0xd20a111b,14);
+    String[] icons={"⌂","♫","➤","◉","▦","⚙"};
+    String[] names={"HOME","MEDIA","HARTĂ","OBD","APPS","SET"};
+    for(int i=0;i<6;i++){
+      int top=233+i*61;
+      panel(c,9,top,69,56,0xff172032,8);
+      centered(c,icons[i],43,top+31,25,i==4?accent:0xffe9f1f9,true);
+      centered(c,names[i],43,top+48,10,0xffc3ccdc,true);
+    }
+  }
   void draw(Canvas c){
     int id=selected,accent=COLORS[id],style=STYLES[id];
     drawArt(c,id);
@@ -336,9 +347,19 @@ final class SkinEngine {
     renderMusic(c,accent,style);
     stats(c,accent,style);
     strip(c,accent);
+    sideRail(c,accent);
     text(c,shorten(NAMES[id],30),410,700,18,Color.WHITE,true);
   }
   boolean touch(float x,float y){
+    if(x<108&&y<66){host.showInstalledApps();return true;}
+    if(x<90&&y>=228&&y<=615){
+      int slot=Math.min(5,Math.max(0,(int)((y-233)/61)));
+      if(slot==4){host.showInstalledApps();return true;}
+      int[] pageMap={0,1,2,3,4,5};
+      host.page=pageMap[slot];
+      if(host.view!=null)host.view.invalidate();
+      host.placeMap();return true;
+    }
     if(appRect.contains((int)x,(int)y)){host.showInstalledApps();return true;}
     if(skinRect.contains((int)x,(int)y)){showPicker();return true;}
     if(mapsRect.contains((int)x,(int)y)){host.page=2;host.view.invalidate();host.placeMap();return true;}
@@ -359,9 +380,9 @@ final class SkinEngine {
       return Bitmap.createBitmap(atlas,(id%3)*w,(id/3)*h,w,h);
     }
     // No absent-asset crash: render the actual live layout for preview.
-    Bitmap fallback=Bitmap.createBitmap(640,360,Bitmap.Config.RGB_565);
+    Bitmap fallback=Bitmap.createBitmap(320,180,Bitmap.Config.RGB_565);
     Canvas canvas=new Canvas(fallback);
-    canvas.scale(.5f,.5f);
+    canvas.scale(.25f,.25f);
     int previous=selected;selected=id;
     try{draw(canvas);}finally{selected=previous;}
     return fallback;
