@@ -10,10 +10,12 @@ adb shell pm grant "$PKG" android.permission.READ_EXTERNAL_STORAGE 2>/dev/null |
 adb logcat -c
 adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >"$D/launch.txt" 2>&1
 sleep 8
-adb shell input keyevent KEYCODE_BACK || true
-sleep 5
-adb shell input tap 500 1700 || true
-sleep 4
+# Do not send BACK: it exits SHAREit and yields a misleading Android launcher screenshot.
+adb shell am start -n com.lenovo.anyshare.gps/com.lenovo.anyshare.ChangeLogoActivity2 >/dev/null 2>&1 || true
+sleep 12
+adb shell pidof "$PKG" >"$D/pid.txt" || true
+adb shell dumpsys activity activities | grep -E 'topResumedActivity|mResumedActivity' >"$D/foreground-activity.txt" || true
+echo "APP_FOREGROUND_INFO=$(cat "$D/foreground-activity.txt")"
 adb shell screencap -p /sdcard/shareit-screen.png
 adb pull /sdcard/shareit-screen.png "$D/home.png" >/dev/null 2>&1 || true
 adb shell uiautomator dump /sdcard/shareit-ui.xml >"$D/uiautomator-result.txt" 2>&1 || true
