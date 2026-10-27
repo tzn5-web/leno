@@ -22,6 +22,56 @@ capture() {
   adb pull "/sdcard/$name.png" "$OUT/$name.png"
 }
 capture home 120
+# Native dock is inspectable by Android accessibility, unlike decorative canvas.
+adb shell uiautomator dump /sdcard/k2401-dock.xml >/dev/null
+adb pull /sdcard/k2401-dock.xml "$OUT/dock-ui.xml" >/dev/null
+python3 - <<'PY'
+from pathlib import Path
+import xml.etree.ElementTree as ET
+nodes=ET.parse(Path("projects/k2401-evo-launcher/screenshots/dock-ui.xml")).findall(".//node")
+assert any(n.attrib.get("text")=="Adaugă" for n in nodes), "K2401_DOCK_ADD_MISSING"
+assert any(n.attrib.get("content-desc","").startswith("Adaugă aplicație") for n in nodes), "K2401_DOCK_ACCESSIBILITY_MISSING"
+print("K2401_REAL_ICON_DOCK_NATIVE=PASS")
+PY
+# Exercise the real app picker and persistence. The emulator's launcher-app
+# inventory varies; select the first actual Android launcher entry.
+python3 - <<'PY'
+import re,subprocess,xml.etree.ElementTree as ET
+nodes=ET.parse("projects/k2401-evo-launcher/screenshots/dock-ui.xml").findall(".//node")
+target=next(n for n in nodes if n.attrib.get("content-desc")=="Adaugă aplicație")
+x1,y1,x2,y2=map(int,re.findall(r"\\d+",target.attrib["bounds"]))
+subprocess.check_call(["adb","shell","input","tap",str((x1+x2)//2),str((y1+y2)//2)])
+PY
+sleep 1
+adb shell uiautomator dump /sdcard/k2401-picker.xml >/dev/null
+adb pull /sdcard/k2401-picker.xml "$OUT/dock-picker.xml" >/dev/null
+python3 - <<'PY'
+import re,subprocess,xml.etree.ElementTree as ET
+nodes=ET.parse("projects/k2401-evo-launcher/screenshots/dock-picker.xml").findall(".//node")
+assert any(n.attrib.get("text")=="Alege aplicația" for n in nodes), "K2401_DOCK_PICKER_MISSING"
+items=[n for n in nodes if n.attrib.get("class","").endswith("CheckedTextView") and n.attrib.get("text")]
+assert items, "K2401_DOCK_PICKER_EMPTY"
+x1,y1,x2,y2=map(int,re.findall(r"\\d+",items[0].attrib["bounds"]))
+subprocess.check_call(["adb","shell","input","tap",str((x1+x2)//2),str((y1+y2)//2)])
+print("K2401_DOCK_PICKER_SELECT=PASS")
+PY
+adb shell run-as "$APP" cat shared_prefs/evo_launcher_prefs.xml > "$OUT/dock-prefs-before-restart.xml"
+grep -Fq 'name="dock_pins_v1"' "$OUT/dock-prefs-before-restart.xml"
+adb shell am force-stop "$APP"
+adb shell am start -W -n "$APP/.MainActivity" >/dev/null
+sleep 2
+adb shell run-as "$APP" cat shared_prefs/evo_launcher_prefs.xml > "$OUT/dock-prefs-after-restart.xml"
+python3 - <<'PY'
+import xml.etree.ElementTree as ET
+from pathlib import Path
+folder=Path("projects/k2401-evo-launcher/screenshots")
+def get(filename):
+    root=ET.parse(folder/filename).getroot()
+    return next(n.text or "" for n in root.findall("string") if n.attrib.get("name")=="dock_pins_v1")
+a,b=get("dock-prefs-before-restart.xml"),get("dock-prefs-after-restart.xml")
+assert a and a==b, "K2401_DOCK_PINS_NOT_PERSISTENT"
+print("K2401_DOCK_PERSISTENCE_AFTER_RESTART=PASS")
+PY
 capture music 225
 capture navigation 332
 capture car 435
