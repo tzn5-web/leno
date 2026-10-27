@@ -143,7 +143,7 @@ jobs:
           # Unique name per run. Public IP permits outbound SDK downloads; NSG
           # allows NO inbound SSH. Access is exclusively via Azure Run Command.
           az vm create -g "$AZURE_RG" -n "$VM_NAME" -l "$AZURE_REGION" \
-            --image Ubuntu2204 --size Standard_D4s_v3 \
+            --image Ubuntu2204 --size Standard_D4s_v5 \
             --admin-username k2401ci --generate-ssh-keys \
             --security-type Standard --storage-sku Standard_LRS \
             --os-disk-size-gb 64 --public-ip-sku Standard \
