@@ -26,6 +26,41 @@ assert any("fără conexiuni OBD" in t for t in texts), "K2401_SAFE_BOOT_BUTTON_
 assert any("Copiază diagnosticul" in t for t in texts), "K2401_CRASH_REPORT_ACTION_MISSING"
 print("K2401_OEM_SAFE_RECOVERY_ACTIVITY=PASS")
 PY
+# Actually exercise booting without a map: normal Home and settings must stay
+# accessible even if the OEM renderer is incompatible.
+python3 - <<'PY'
+import re,subprocess,xml.etree.ElementTree as ET
+nodes=ET.parse("projects/k2401-evo-launcher/screenshots/recovery-ui.xml").findall(".//node")
+button=next(n for n in nodes if "harta și OBD dezactivate" in n.attrib.get("text",""))
+x1,y1,x2,y2=map(int,re.findall(r"[0-9]+",button.attrib["bounds"]))
+subprocess.check_call(["adb","shell","input","tap",str((x1+x2)//2),str((y1+y2)//2)])
+PY
+sleep 2
+adb shell pidof "$APP" >/dev/null
+adb shell uiautomator dump /sdcard/k2401-map-safe.xml >/dev/null
+adb pull /sdcard/k2401-map-safe.xml "$OUT/map-safe-ui.xml" >/dev/null
+python3 - <<'PY'
+import xml.etree.ElementTree as ET
+nodes=ET.parse("projects/k2401-evo-launcher/screenshots/map-safe-ui.xml").findall(".//node")
+assert any("HARTĂ TEMPORAR DEZACTIVATĂ" in n.attrib.get("text","") for n in nodes), "K2401_MAP_CRASH_FALLBACK_MISSING"
+print("K2401_RECOVER_WITHOUT_MAP_AND_OBD=PASS")
+PY
+# Restore native map for regular emulator tests without clearing app data,
+# thus also verifying the manual recovery button.
+adb shell am start -W -n "$APP/.SafeModeActivity" >/dev/null
+sleep 1
+adb shell uiautomator dump /sdcard/k2401-map-retry.xml >/dev/null
+adb pull /sdcard/k2401-map-retry.xml "$OUT/map-retry-ui.xml" >/dev/null
+python3 - <<'PY'
+import re,subprocess,xml.etree.ElementTree as ET
+nodes=ET.parse("projects/k2401-evo-launcher/screenshots/map-retry-ui.xml").findall(".//node")
+button=next(n for n in nodes if "Reîncearcă harta la următoarea pornire" in n.attrib.get("text",""))
+x1,y1,x2,y2=map(int,re.findall(r"[0-9]+",button.attrib["bounds"]))
+subprocess.check_call(["adb","shell","input","tap",str((x1+x2)//2),str((y1+y2)//2)])
+PY
+sleep 2
+adb shell pidof "$APP" >/dev/null
+echo "K2401_RECOVERY_REENABLE_MAP=PASS"
 adb shell am force-stop "$APP"
 adb shell am start -W -n "$APP/.MainActivity" | tee "$OUT/launch.txt"
 sleep 3
