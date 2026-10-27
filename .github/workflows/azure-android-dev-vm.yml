@@ -31,7 +31,7 @@ jobs:
       RESOURCE_GROUP: rg-chatgpt-azure
       VM_NAME: android-dev-linux
       VM_REGION: uksouth
-      VM_SIZE: Standard_D4as_v5
+      VM_SIZE: Standard_D4s_v5
       ACTION: ${{ github.event.inputs.operation || 'provision' }}
     steps:
       - uses: actions/checkout@v4
