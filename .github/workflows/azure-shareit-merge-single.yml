@@ -1,0 +1,86 @@
+name: Azure SHAREit - single APK merge and verification
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/azure-shareit-merge-single.yml']
+  workflow_dispatch:
+permissions:
+  id-token: write
+  contents: read
+concurrency:
+  group: azure-shareit-merge
+  cancel-in-progress: false
+jobs:
+  merge_in_azure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      ACCOUNT: tzn5androidartifacts26
+      CONTAINER: apks-private
+      GROUP: rg-chatgpt-azure
+      VM: android-dev-linux
+      INPUT: output/SHAREit_6.27.58_NoAds_SPLITS.apks
+      OUTPUT: output/SHAREit_6.27.58_NoAds_SINGLE_ARM64.apk
+      AUDIT: output/SHAREit_6.27.58_NoAds_SINGLE_AUDIT.json
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint merge processor (no Azure charges)
+        shell: bash
+        run: |
+          set -e
+          sh -n infra/azure-dev-vm/shareit-noads/merge_verify_single_apk.sh
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Verify existing Azure output and provision temporary scoped transfer
+        shell: bash
+        run: |
+          set -euo pipefail
+          export AZURE_STORAGE_KEY="$(az storage account keys list -g "$GROUP" -n "$ACCOUNT" --query '[0].value' -o tsv)"
+          az storage blob exists --account-name "$ACCOUNT" --container-name "$CONTAINER" --name "$INPUT" --query exists -o tsv | grep -qi true
+          echo "INPUT_FROM_PRIVATE_AZURE_BLOB=PASS"
+      - name: Merge on existing 32GB Ubuntu Azure VM
+        shell: bash
+        run: |
+          set -euo pipefail
+          MARK="$(az vm show -g "$GROUP" -n "$VM" --query tags.managedBy -o tsv)"
+          test "$MARK" = github-azure-android-dev
+          export AZURE_STORAGE_KEY="$(az storage account keys list -g "$GROUP" -n "$ACCOUNT" --query '[0].value' -o tsv)"
+          EXP="$(date -u -d '+2 hours' +%Y-%m-%dT%H:%MZ)"
+          I="$(az storage blob generate-sas -c "$CONTAINER" -n "$INPUT" --account-name "$ACCOUNT" --permissions r --expiry "$EXP" --https-only -o tsv)"
+          O="$(az storage blob generate-sas -c "$CONTAINER" -n "$OUTPUT" --account-name "$ACCOUNT" --permissions cw --expiry "$EXP" --https-only -o tsv)"
+          R="$(az storage blob generate-sas -c "$CONTAINER" -n "$AUDIT" --account-name "$ACCOUNT" --permissions cw --expiry "$EXP" --https-only -o tsv)"
+          test -n "$I" && test -n "$O" && test -n "$R"
+          INPUT_URL="https://${ACCOUNT}.blob.core.windows.net/${CONTAINER}/${INPUT}?${I}"
+          OUTPUT_URL="https://${ACCOUNT}.blob.core.windows.net/${CONTAINER}/${OUTPUT}?${O}"
+          REPORT_URL="https://${ACCOUNT}.blob.core.windows.net/${CONTAINER}/${AUDIT}?${R}"
+          SOURCE_URL="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/infra/azure-dev-vm/shareit-noads/merge_verify_single_apk.sh"
+          az vm start -g "$GROUP" -n "$VM" -o none
+          echo "AZURE_VM_STARTED=PASS"
+          REMOTE="set -eu
+          umask 077
+          install -d -m 0700 /var/lib/shareit-noads/single
+          cd /var/lib/shareit-noads/single
+          curl -fsSL --retry 3 '$INPUT_URL' -o source.apks
+          curl -fsSL --retry 3 '$SOURCE_URL' -o merge.sh
+          sh merge.sh
+          curl -fsSL --retry 3 -X PUT -H 'x-ms-blob-type: BlockBlob' --data-binary @SHAREit_6.27.58_NoAds_SINGLE_ARM64.apk '$OUTPUT_URL' >/dev/null
+          curl -fsSL --retry 3 -X PUT -H 'x-ms-blob-type: BlockBlob' --data-binary @single-apk-report.json '$REPORT_URL' >/dev/null
+          echo AZURE_SINGLE_APK_UPLOAD_SUCCESS"
+          MSG="$(az vm run-command invoke -g "$GROUP" -n "$VM" --command-id RunShellScript --scripts "$REMOTE" --query 'value[0].message' -o tsv)"
+          echo "$MSG" | tail -c 8000
+          echo "$MSG" | grep -q 'AZURE_SINGLE_APK_UPLOAD_SUCCESS'
+          echo "SINGLE_APK_COMPILE_AND_STATIC_AUDIT=PASS"
+      - name: Deallocate cost-controlled VM even after merge failure
+        if: always()
+        shell: bash
+        run: |
+          MARK="$(az vm show -g "$GROUP" -n "$VM" --query tags.managedBy -o tsv 2>/dev/null || true)"
+          if [[ "$MARK" = github-azure-android-dev ]]; then
+            az vm deallocate -g "$GROUP" -n "$VM" -o none
+            echo "AZURE_VM_DEALLOCATED_AFTER_MERGE=PASS"
+          fi
+      - if: always()
+        run: az logout || true
