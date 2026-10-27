@@ -141,6 +141,10 @@ final class LauncherSettings extends ScrollView {
     button(obdRow,"Sursa ceasurilor",()->((MainActivity)host).chooseObdSource());
     LinearLayout obdState=row();
     button(obdState,"Stare ECU / PID",()->((MainActivity)host).showObdStatus());
+    heading("HARTA INTEGRATA / RECUPERARE");
+    sub("Daca firmware-ul inchide launcherul la pornirea hartii, aceasta se dezactiveaza doar dupa un crash. O poti reactiva manual.");
+    LinearLayout mapRow=row();
+    button(mapRow,"Reincearca harta",()->((MainActivity)host).retryEmbeddedMap());
     heading("CONEXIUNI SI APLICATII");
     LinearLayout connections=row();
     button(connections,"Acces MediaSession",()->((MainActivity)host).permissions());
