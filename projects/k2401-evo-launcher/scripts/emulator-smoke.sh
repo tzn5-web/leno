@@ -47,8 +47,9 @@ print("K2401_RECOVER_WITHOUT_MAP_AND_OBD=PASS")
 PY
 # Restore native map for regular emulator tests without clearing app data,
 # thus also verifying the manual recovery button.
+adb shell am force-stop "$APP"
 adb shell am start -W -n "$APP/.SafeModeActivity" >/dev/null
-sleep 1
+sleep 2
 adb shell uiautomator dump /sdcard/k2401-map-retry.xml >/dev/null
 adb pull /sdcard/k2401-map-retry.xml "$OUT/map-retry-ui.xml" >/dev/null
 python3 - <<'PY'
