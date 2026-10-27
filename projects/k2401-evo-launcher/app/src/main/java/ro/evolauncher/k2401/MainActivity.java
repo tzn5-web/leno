@@ -244,52 +244,137 @@ public final class MainActivity extends Activity {
         if(view!=null)view.invalidate();
       }).setNegativeButton("Anulează",null).show();
   }
+  private void selectObdDevice(String mac,boolean ble){
+    if(obd==null)return;
+    try{
+      getSharedPreferences("evo_launcher_prefs",MODE_PRIVATE).edit()
+        .putBoolean("elm327_ble_hint",ble).commit();
+      obd.chooseDirectAdapter(mac);
+      getSharedPreferences("evo_launcher_prefs",MODE_PRIVATE).edit()
+        .putBoolean("evo_skip_obd_at_start",false).commit();
+      android.widget.Toast.makeText(this,
+        (ble?"BLE GATT":"Bluetooth Classic")+" ales. ECU este interogat direct; fără Torque.",
+        android.widget.Toast.LENGTH_LONG).show();
+      if(view!=null)view.invalidate();
+    }catch(RuntimeException error){
+      android.widget.Toast.makeText(this,"ELM327: "+error.getClass().getSimpleName(),
+        android.widget.Toast.LENGTH_LONG).show();
+    }
+  }
   void selectElmAdapter(){
     android.bluetooth.BluetoothAdapter adapter=android.bluetooth.BluetoothAdapter.getDefaultAdapter();
     if(adapter==null){
-      new AlertDialog.Builder(this).setTitle("ELM327").setMessage("Navigația nu raportează un adaptor Bluetooth disponibil.")
+      new AlertDialog.Builder(this).setTitle("ELM327")
+        .setMessage("Android nu oferă un adaptor Bluetooth.")
         .setPositiveButton("OK",null).show();return;
     }
     if(!adapter.isEnabled()){
       new AlertDialog.Builder(this).setTitle("Bluetooth oprit")
-        .setMessage("Activează Bluetooth în Android, asociază ELM327 și revino pentru a-l alege.")
+        .setMessage("Activează Bluetooth și apoi configurează ELM327.")
         .setPositiveButton("Setări Bluetooth",(d,w)->startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS)))
         .setNegativeButton("Închide",null).show();return;
     }
-    ArrayList<android.bluetooth.BluetoothDevice> devices=new ArrayList<>();
-    try{devices.addAll(adapter.getBondedDevices());}
+    ArrayList<android.bluetooth.BluetoothDevice> paired=new ArrayList<>();
+    try{paired.addAll(adapter.getBondedDevices());}
     catch(RuntimeException e){
-      new AlertDialog.Builder(this).setMessage("Bluetooth nu oferă lista de dispozitive pe acest firmware.")
-        .setPositiveButton("Setări Bluetooth",(d,w)->startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS)))
-        .setNegativeButton("Închide",null).show();return;
+      android.widget.Toast.makeText(this,"Firmware Bluetooth: "+e.getMessage(),
+        android.widget.Toast.LENGTH_LONG).show();
     }
-    if(devices.isEmpty()){
-      new AlertDialog.Builder(this).setTitle("ELM327 neasociat")
-        .setMessage("Asociază mai întâi adaptorul ELM327 în setările Bluetooth Android. După asociere alege-l aici. Nu poate fi utilizat în paralel de o altă aplicație.")
-        .setPositiveButton("Setări Bluetooth",(d,w)->startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS)))
-        .setNegativeButton("Închide",null).show();return;
-    }
-    Collections.sort(devices,(a,b)->{
+    Collections.sort(paired,(a,b)->{
       String x=a.getName()==null?"":a.getName(),y=b.getName()==null?"":b.getName();
       return x.compareToIgnoreCase(y);
     });
-    String[] titles=new String[devices.size()];
-    for(int n=0;n<titles.length;n++){
-      android.bluetooth.BluetoothDevice device=devices.get(n);
-      titles[n]=(device.getName()==null?"Bluetooth":device.getName())+"  •  "+device.getAddress();
+    // BLE UART devices commonly do NOT appear in the Android bonded list.
+    // Offer an explicit bounded BLE scan; never connect to arbitrary devices.
+    String[] items=new String[paired.size()+1];
+    for(int i=0;i<paired.size();i++){
+      android.bluetooth.BluetoothDevice d=paired.get(i);
+      String name=d.getName()==null?"Bluetooth":d.getName();
+      items[i]=name+" • "+d.getAddress()+" (asociat)";
     }
-    new AlertDialog.Builder(this).setTitle("Alege ELM327 asociat (Bluetooth Classic)")
-      .setItems(titles,(dialog,which)->{
-        try{
-          obd.chooseDirectAdapter(devices.get(which).getAddress());
-          getSharedPreferences("evo_launcher_prefs",MODE_PRIVATE).edit()
-            .putBoolean("evo_skip_obd_at_start",false).commit();
-          android.widget.Toast.makeText(this,"ELM327 selectat. Citire directă ECU, fără Torque oficial.",android.widget.Toast.LENGTH_LONG).show();
-          if(view!=null)view.invalidate();
-        }catch(RuntimeException e){
-          android.widget.Toast.makeText(this,"Selectarea adaptorului a eșuat",android.widget.Toast.LENGTH_LONG).show();
-        }
-      }).setNegativeButton("Anulează",null).show();
+    items[paired.size()]="Caută adaptoare ELM327 BLE din apropiere";
+    new AlertDialog.Builder(this).setTitle("Alege ELM327 • Classic sau BLE")
+      .setItems(items,(dialog,which)->{
+        if(which==paired.size())scanBleAdapters();
+        else selectObdDevice(paired.get(which).getAddress(),false);
+      }).setNegativeButton("Închide",null).show();
+  }
+  void scanBleAdapters(){
+    if(checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
+       !=android.content.pm.PackageManager.PERMISSION_GRANTED){
+      requestPermissions(new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION},2407);
+      android.widget.Toast.makeText(this,
+        "Permite locația pentru scanarea BLE în Android 10, apoi repetă căutarea.",
+        android.widget.Toast.LENGTH_LONG).show();
+      return;
+    }
+    final android.bluetooth.BluetoothAdapter adapter=android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+    final android.bluetooth.le.BluetoothLeScanner scanner=adapter==null?null:adapter.getBluetoothLeScanner();
+    if(scanner==null){
+      new AlertDialog.Builder(this).setTitle("BLE indisponibil")
+        .setMessage("Bluetooth Low Energy nu este disponibil pe această navigație sau locația Android este dezactivată.")
+        .setPositiveButton("OK",null).show();return;
+    }
+    final java.util.LinkedHashMap<String,android.bluetooth.le.ScanResult> found=
+      new java.util.LinkedHashMap<>();
+    final android.app.ProgressDialog progress=new android.app.ProgressDialog(this);
+    progress.setTitle("ELM327 BLE");progress.setMessage("Caut adaptoare BLE timp de 8 secunde...");
+    progress.setCancelable(true);
+    final boolean[] completed={false};
+    final android.bluetooth.le.ScanCallback callback=new android.bluetooth.le.ScanCallback(){
+      @Override public void onScanResult(int type,android.bluetooth.le.ScanResult result){
+        if(result==null||result.getDevice()==null||completed[0])return;
+        runOnUiThread(()->{
+          if(!completed[0])found.put(result.getDevice().getAddress(),result);
+        });
+      }
+      @Override public void onScanFailed(int error){
+        runOnUiThread(()->{
+          if(!completed[0])progress.setMessage("Scanare BLE: eroare "+error+
+            ". Verifică GPS/locația Android.");
+        });
+      }
+    };
+    final Runnable finish=()->{
+      if(completed[0])return;
+      completed[0]=true;
+      try{scanner.stopScan(callback);}catch(RuntimeException ignored){}
+      progress.dismiss();
+      if(isFinishing())return;
+      if(found.isEmpty()){
+        new AlertDialog.Builder(this).setTitle("Niciun adaptor BLE găsit")
+          .setMessage("Activează Locația în Android 10; adaptorul trebuie alimentat și să emită BLE. Unele ELM327 suportă exclusiv Bluetooth Classic.")
+          .setPositiveButton("OK",null).show();
+        return;
+      }
+      ArrayList<android.bluetooth.le.ScanResult> choices=new ArrayList<>(found.values());
+      String[] labels=new String[choices.size()];
+      for(int i=0;i<choices.size();i++){
+        android.bluetooth.le.ScanResult result=choices.get(i);
+        String name=result.getScanRecord()==null?null:result.getScanRecord().getDeviceName();
+        if(name==null||name.isEmpty())name=result.getDevice().getName();
+        labels[i]=(name==null?"BLE necunoscut":name)+"  •  "+
+          result.getDevice().getAddress()+"  ("+result.getRssi()+" dBm)";
+      }
+      new AlertDialog.Builder(this).setTitle("Alege adaptorul BLE / ELM327")
+        .setItems(labels,(dialog,which)->selectObdDevice(
+          choices.get(which).getDevice().getAddress(),true))
+        .setNegativeButton("Anulează",null).show();
+    };
+    progress.setOnCancelListener(dialog->{handler.removeCallbacks(finish);finish.run();});
+    try{
+      android.bluetooth.le.ScanSettings settings=
+        new android.bluetooth.le.ScanSettings.Builder()
+          .setScanMode(android.bluetooth.le.ScanSettings.SCAN_MODE_LOW_LATENCY).build();
+      scanner.startScan(null,settings,callback);
+      progress.show();
+      handler.postDelayed(finish,8000);
+    }catch(RuntimeException error){
+      try{scanner.stopScan(callback);}catch(RuntimeException ignored){}
+      new AlertDialog.Builder(this).setTitle("BLE")
+        .setMessage("Scanarea este indisponibilă: "+error.getMessage())
+        .setPositiveButton("OK",null).show();
+    }
   }
   void showObdStatus(){
     ObdReader.Reading r=obd==null?ObdReader.Reading.empty():obd.current();
