@@ -72,7 +72,7 @@ final class DirectElm327 {
       throw new IllegalArgumentException("MAC invalid");
     if(!mac.equalsIgnoreCase(selectedMac)){
       mode="AUTO";
-      preferences.edit().putString(KEY_MODE,mode).putBoolean("elm327_ble_hint",false).commit();
+      preferences.edit().putString(KEY_MODE,mode).commit();
     }
     selectedMac=mac;
     preferences.edit().putString(KEY,mac).commit();
