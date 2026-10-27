@@ -1,0 +1,27 @@
+name: Probe official SHAREit standalone arm64 APK source
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/shareit-source-probe.yml']
+permissions: {contents: read}
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Test public APKMirror release download into ephemeral runner only
+        shell: bash
+        run: |
+          set -eu
+          URL='https://www.apkmirror.com/wp-content/themes/APKMirror/download.php?forcebaseapk=true&id=16551097&key=10065617d14382cdf1621315e59033d04a24bd0a'
+          curl --location --fail --silent --show-error --retry 2 --max-time 100 -A 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36' -e 'https://www.apkmirror.com/' -o /tmp/shareit-original.apk "$URL" || { echo 'PUBLIC_SOURCE_FETCH_FAILED'; exit 9; }
+          python3 - <<'PY'
+          import os,zipfile,hashlib
+          p='/tmp/shareit-original.apk'
+          print('DOWNLOADED_BYTES',os.stat(p).st_size)
+          print('SHA256',hashlib.file_digest(open(p,'rb'),'sha256').hexdigest())
+          if os.stat(p).st_size<30000000 or not zipfile.is_zipfile(p): raise ValueError('Invalid binary')
+          z=zipfile.ZipFile(p)
+          print('ZIP_MEMBERS',len(z.namelist()))
+          print('DEX_COUNT',len([x for x in z.namelist() if x.endswith('.dex')]))
+          PY
