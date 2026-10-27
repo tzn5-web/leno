@@ -1,0 +1,26 @@
+name: Azure Android VM - resume interrupted Linux bootstrap
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/azure-android-vm-resume-install.yml']
+permissions: {contents: read, id-token: write}
+jobs:
+  resume:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Start idempotent setup under systemd, not tied to VM run-command lifetime
+        shell: bash
+        run: |
+          set -euo pipefail
+          az vm run-command invoke -g rg-chatgpt-azure -n android-dev-linux \
+            --command-id RunShellScript \
+            --scripts 'set -eu; if test -f /var/lib/android-dev/installed; then echo ANDROID_DEV_ALREADY_READY; elif systemctl is-active --quiet android-dev-resume.service; then echo ANDROID_DEV_RESUME_ALREADY_ACTIVE; elif test -f /usr/local/sbin/install-android-dev.sh; then systemctl reset-failed android-dev-resume.service 2>/dev/null || true; systemd-run --unit=android-dev-resume --property=Restart=no /usr/bin/bash /usr/local/sbin/install-android-dev.sh; echo ANDROID_DEV_RESUME_STARTED; else echo ERROR_CLOUD_INIT_SETUP_SCRIPT_MISSING; exit 4; fi' \
+            --query 'value[0].message' -o tsv
+      - if: always()
+        run: az logout || true
