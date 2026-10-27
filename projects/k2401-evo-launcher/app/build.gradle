@@ -1,8 +1,22 @@
 plugins { id 'com.android.application' }
+def googleMapsApiKey = (System.getenv('K2401_MAPS_API_KEY') ?: '').trim()
 android {
  namespace 'ro.evolauncher.k2401'
  compileSdk 35
- defaultConfig { applicationId 'ro.evolauncher.k2401'; minSdk 26; targetSdk 28; versionCode 2; versionName '0.2.0-dev' }
+ defaultConfig {
+   applicationId 'ro.evolauncher.k2401'
+   minSdk 26
+   targetSdk 28
+   versionCode 3
+   versionName '0.3.0-dev'
+   manifestPlaceholders = [MAPS_API_KEY: googleMapsApiKey]
+   buildConfigField 'boolean', 'GOOGLE_MAPS_CONFIGURED', googleMapsApiKey.isEmpty() ? 'false' : 'true'
+ }
+ buildFeatures { aidl true; buildConfig true }
  buildTypes { debug { minifyEnabled false } }
  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+dependencies {
+  // SDK is present; it is only initialized with a configured restricted Maps key.
+  implementation 'com.google.android.gms:play-services-maps:19.2.0'
 }
