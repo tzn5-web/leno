@@ -96,8 +96,12 @@ python3 - <<'PY'
 import xml.etree.ElementTree as ET
 nodes=ET.parse("projects/k2401-evo-launcher/screenshots/native-map-ui.xml").findall(".//node")
 texts=[n.attrib.get("text","") for n in nodes]
-for label in ("OpenStreetMap", "CAUTA LOC", "LOCATIA MEA"):
+# GPS status replaces the initial OpenStreetMap label on first location fix.
+for label in ("CAUTA LOC", "LOCATIA MEA"):
     assert any(label in t for t in texts), "K2401_NATIVE_MAP_CONTROL_MISSING="+label
+assert any(("OpenStreetMap" in t or "GOOGLE MAPS" in t or "GPS •" in t)
+           for t in texts), "K2401_NATIVE_MAP_STATUS_MISSING"
+assert not any("HARTĂ TEMPORAR DEZACTIVATĂ" in t for t in texts), "K2401_MAP_RECOVERY_NOT_CLEARED"
 assert not any(t=="RUTĂ GOOGLE MAPS" for t in texts), "K2401_EXTERNAL_MAPS_BUTTON_PRESENT"
 print("K2401_IN_PANEL_NATIVE_MAP_CONTROLS=PASS")
 PY
