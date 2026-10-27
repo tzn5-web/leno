@@ -69,6 +69,7 @@ jobs:
           OUT_URL="https://${ACCOUNT}.blob.core.windows.net/${CONTAINER}/${OUTPUT}?${O}"
           REPORT_URL="https://${ACCOUNT}.blob.core.windows.net/${CONTAINER}/${AUDIT}?${R}"
           CODE_URL="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/infra/azure-dev-vm/shareit-noads/disable_ad_rendering.py"
+          FINALIZER_URL="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/infra/azure-dev-vm/shareit-noads/finalize_sdk_report.py"
           az vm start -g "$RG" -n "$VM" -o none
           REMOTE="set -eu
           umask 077
@@ -88,7 +89,8 @@ jobs:
           unset PW
           /opt/android-sdk/build-tools/36.0.0/apksigner verify --verbose SHAREit_NoAds_v2_ARM64.apk >/dev/null
           /opt/android-sdk/build-tools/36.0.0/zipalign -c -P 16 4 SHAREit_NoAds_v2_ARM64.apk
-          python3 -c 'import json,hashlib; p="SHAREit_NoAds_v2_ARM64.apk"; j=json.load(open("sdk-report.json")); j["sha256"]=hashlib.file_digest(open(p,"rb"),"sha256").hexdigest(); j["bytes"]=__import__("os").stat(p).st_size; open("sdk-report.json","w").write(json.dumps(j,indent=2))'
+          curl -fsSL --retry 3 '$FINALIZER_URL' -o finalize_sdk_report.py
+          python3 finalize_sdk_report.py SHAREit_NoAds_v2_ARM64.apk sdk-report.json
           curl -fsSL --retry 3 -X PUT -H 'x-ms-blob-type: BlockBlob' --data-binary @SHAREit_NoAds_v2_ARM64.apk '$OUT_URL' >/dev/null
           curl -fsSL --retry 3 -X PUT -H 'x-ms-blob-type: BlockBlob' --data-binary @sdk-report.json '$REPORT_URL' >/dev/null
           echo 'SHAREIT_NOADS_V2_SIGNED_IN_AZURE=PASS'"
