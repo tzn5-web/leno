@@ -75,7 +75,7 @@ fatal_matches=[]
 for m in re.finditer('FATAL EXCEPTION',log):
     segment=log[m.start():m.start()+1600]
     if re.search(r'Process: com\.lenovo\.anyshare\.gps(?:[:,\s]|$)',segment):
-        fatal_matches.append(segment[:650])
+        fatal_matches.append(segment[:4500])
 baseline_ok = os.environ.get('SHAREIT_BASELINE_RC')=='0'
 single_ok = os.environ.get('SHAREIT_SINGLE_RC')=='0'
 alive = bool(os.environ.get('SHAREIT_SINGLE_PID','').strip())
@@ -89,6 +89,7 @@ obj={
  'single_apk_alias_enabled_for_test':os.environ.get('SHAREIT_ALIAS_LAUNCH')=='1',
  'fatal_crash_during_single_test':bool(fatal_matches),
  'fatal_excerpt':fatal_matches[:2],
+ 'classloader_related_log_lines':[l[:500] for l in log.splitlines() if re.search(r'DexFile|DexPathList|ClassNotFound|Could not open dex|Failed to open dex|dex2oat|ZIP archive|base\\.apk',l,re.I)][-35:],
  'baseline_install_log_tail':bl[-400:],
  'single_install_log_tail':si[-400:],
  'limitation':'Emulator is Android 11 with translated ARM64; not an Android 16 physical device, feature-level tests not performed'
