@@ -89,6 +89,12 @@ jobs:
           grep -Fq 'ObdPollPlan.next(' "$BASE/DirectElm327.java"
           grep -Fq 'class ElmBleSerial' "$BASE/ElmBleSerial.java"
           grep -Fq 'getBluetoothLeScanner()' "$BASE/MainActivity.java"
+          grep -Fq 'new ClassicObdDiscovery(this' "$BASE/MainActivity.java"
+          grep -Fq 'BluetoothAdapter.ACTION_DISCOVERY_FINISHED' "$BASE/ClassicObdDiscovery.java" || true
+          grep -Fq 'adapter.startDiscovery()' "$BASE/ClassicObdDiscovery.java"
+          grep -Fq 'BluetoothDevice.ACTION_BOND_STATE_CHANGED' "$BASE/ClassicObdDiscovery.java"
+          grep -Fq 'scanClassicAdapters()' "$BASE/MainActivity.java"
+          grep -Fq 'showBluetoothDiagnosis()' "$BASE/MainActivity.java"
           grep -Fq 'elm327_last_mode' "$BASE/DirectElm327.java"
           grep -Fq 'getBondedDevices()' "$BASE/MainActivity.java"
           grep -Fq 'Nominatim' "$BASE/LiveMapPanel.java"
