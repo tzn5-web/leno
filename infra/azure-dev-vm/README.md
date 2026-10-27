@@ -11,11 +11,13 @@ The project prepares a dedicated Ubuntu 24.04 Linux VM with the official Android
 
 The action is now **manual-only** and will NOT create VMs automatically on GitHub pushes.
 
-## Owner prerequisite
+## Subscription offer blocker and owner prerequisite
 
-Open Azure portal **Subscriptions > Azure subscription 1 > Usage + quotas > Compute**, select **Sweden Central**, and request total regional cores raised from 4 to **8**. This is a quota approval request, not a VM purchase. A larger quota does not guarantee capacity, so the provisioning workflow tries multiple sizes/regions.
+Automated registration of Microsoft.Quota **succeeded** on 2026-10-27. The 8-vCPU request then returned `ResourceNotAvailableForOffer`. According to Microsoft's Azure service-limits documentation, **Free Trial subscriptions cannot request quota increases**. The deployment of all D/E/B 8-16 GiB VM sizes attempted in 5+ regions was also denied with `SkuNotAvailable`.
 
-## After the quota request is approved
+**Do not expect repeated provisioning or quota requests on Free Trial to succeed.** If the owner chooses to upgrade to Pay-as-you-go (a billing-impacting decision), Microsoft states remaining free-trial credit stays usable for the remainder of the first 30 days. Subsequent use can incur charges. Do not upgrade automatically. After upgrade, request Sweden Central total regional VM cores raised from 4 to 8 using portal **Subscriptions > Usage + quotas > Compute** or the separate manual quota-request GitHub Actions workflow.
+
+## After the offer is upgraded and the 8-core quota request is approved
 
 Go to GitHub Actions > `Azure Android Linux development VM (one-time provision, budget guarded)` > Run workflow > operation `provision`. The workflow will use the already configured GitHub OIDC identity, select the first eligible VM in its list (including Sweden Central Standard_D4s_v5), install all tools with cloud-init, validate binaries and **deallocate** after provisioning whether successful or failed. To use it later, Run workflow with `start`; to release hourly compute, select `deallocate`. The Azure native auto-shutdown is set to 22:00 UTC.
 
