@@ -11,8 +11,7 @@ on:
     inputs:
       run_id:
         description: 'GitHub Actions run to diagnose'
-        required: false
-        default: '40382269545'
+        required: true
   push:
     branches: [main]
     paths:
@@ -49,7 +48,7 @@ jobs:
 
   run-when-authorized:
     needs: preflight
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.head_branch == 'main') || (github.event_name == 'push' && contains(github.event.head_commit.message, '[k2401-ai-run]'))
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:
@@ -61,7 +60,7 @@ jobs:
           subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
       - name: Start exactly one time-limited AI job without starting VM
         env:
-          RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id || '40382269545' }}
+          RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
         shell: bash
         run: |
           set -euo pipefail
