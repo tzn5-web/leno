@@ -1,0 +1,37 @@
+name: Find signed SHAREit 6.27.58 source for Azure VM
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/shareit-source-check.yml']
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Probe public Aptoide 6.27.58 without changing any Azure resources
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import urllib.request,json,urllib.parse
+          urls=[
+            'https://ws2.aptoide.com/api/7/app/get/package_name=com.lenovo.anyshare.gps',
+            'https://ws75.aptoide.com/api/7/app/get/package_name=com.lenovo.anyshare.gps',
+            'https://ws2.aptoide.com/api/7/app/get/package_name/com.lenovo.anyshare.gps'
+          ]
+          for u in urls:
+              print('API',u,flush=True)
+              try:
+                  req=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0'})
+                  d=json.load(urllib.request.urlopen(req, timeout=22))
+                  info=d.get('nodes',{}).get('meta',{}).get('data',{}) if 'nodes' in d else d
+                  app=info if 'file' in info else info.get('app',{})
+                  print('VERSION',app.get('file',{}).get('vername'),app.get('file',{}).get('vercode'))
+                  p=app.get('file',{}).get('path') or app.get('file',{}).get('path_alt')
+                  if p:
+                      q=urllib.parse.urlsplit(p)
+                      print('APK_URL',urllib.parse.urlunsplit((q.scheme,q.netloc,q.path,'','')))
+                  print('RESPONSE',str(d)[:350] if not p else 'OK')
+              except Exception as e:
+                  print('SOURCE_ERROR',str(e)[:240])
+          PY
