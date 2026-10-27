@@ -1,9 +1,5 @@
 name: Azure Android VM - request Sweden Central regional core quota
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/azure-android-dev-quota-request.yml'
   workflow_dispatch:
 
 permissions:
