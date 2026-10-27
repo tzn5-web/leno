@@ -3,6 +3,13 @@ package ro.evolauncher.k2401;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
+import android.widget.Toast;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -41,6 +48,7 @@ import java.util.Locale;
  */
 final class SkinEngine {
   static final String PREFS="evo_launcher_prefs",KEY="selected_skin_v2";
+  static final int PICK_SKIN_PACK=2419;
   static final String[] NAMES={
     "EVO DIGITAL DASH",
     "EVO CLASSIC","EVO FUTURE","EVO GAUGE PRO",
@@ -66,6 +74,8 @@ final class SkinEngine {
   private final SharedPreferences prefs;
   private final Paint p=new Paint(3);
   private Bitmap atlas;
+  private Bitmap fullArt;
+  private int fullArtId=-1;
   private int selected;
   private final Rect mediaRect=new Rect(640,86,1260,364);
   private final Rect statsRect=new Rect(640,387,1260,699);
@@ -77,25 +87,59 @@ final class SkinEngine {
     host=activity;
     prefs=host.getSharedPreferences(PREFS,Context.MODE_PRIVATE);
     selected=clamp(prefs.getInt(KEY,0));
-    try(InputStream stream=host.getAssets().open("skins/atlas.webp")){
-      BitmapFactory.Options opts=new BitmapFactory.Options();
-      opts.inPreferredConfig=Bitmap.Config.RGB_565;
-      atlas=BitmapFactory.decodeStream(stream,null,opts);
-    }catch(IOException|RuntimeException absent){
-      // Preserve bootability: missing art never stops ECU/media/launcher.
-      atlas=null;
-    }
+    loadAtlas();
   }
   static int clamp(int id){return Math.max(0,Math.min(COUNT-1,id));}
+  private File packDir(){
+    String name=prefs.getString("skin_pack_dir","");
+    return name.isEmpty()?null:new File(host.getFilesDir(),name);
+  }
+  private void loadAtlas(){
+    if(atlas!=null&&!atlas.isRecycled())atlas.recycle();
+    atlas=null;
+    BitmapFactory.Options options=new BitmapFactory.Options();
+    options.inPreferredConfig=Bitmap.Config.RGB_565;
+    File root=packDir();
+    File local=root==null?null:new File(root,"atlas.webp");
+    if(local!=null&&local.isFile())atlas=BitmapFactory.decodeFile(local.getPath(),options);
+    if(atlas==null){
+      try(InputStream stream=host.getAssets().open("skins/atlas.webp")){
+        atlas=BitmapFactory.decodeStream(stream,null,options);
+      }catch(IOException|RuntimeException ignored){}
+    }
+  }
+  private Bitmap fullArt(int id){
+    if(fullArt!=null&&!fullArt.isRecycled()&&fullArtId==id)return fullArt;
+    if(fullArt!=null&&!fullArt.isRecycled())fullArt.recycle();
+    fullArt=null;fullArtId=id;
+    File root=packDir();
+    File image=root==null?null:new File(root,String.format(Locale.US,"skin_%02d.webp",id));
+    if(image!=null&&image.isFile()){
+      BitmapFactory.Options opts=new BitmapFactory.Options();
+      opts.inPreferredConfig=Bitmap.Config.RGB_565;
+      fullArt=BitmapFactory.decodeFile(image.getAbsolutePath(),opts);
+    }
+    if(fullArt==null){
+      try(InputStream stream=host.getAssets().open(
+        String.format(Locale.US,"skins/skin_%02d.webp",id))){
+        BitmapFactory.Options opts=new BitmapFactory.Options();
+        opts.inPreferredConfig=Bitmap.Config.RGB_565;
+        fullArt=BitmapFactory.decodeStream(stream,null,opts);
+      }catch(IOException|RuntimeException ignored){}
+    }
+    return fullArt;
+  }
   int selection(){return selected;}
   void select(int id){
     selected=clamp(id);
+    if(fullArt!=null&&!fullArt.isRecycled())fullArt.recycle();fullArt=null;fullArtId=-1;
     prefs.edit().putInt(KEY,selected).commit();
     if(host.view!=null)host.view.invalidate();
     host.placeMap();
   }
   void release(){
     if(atlas!=null&&!atlas.isRecycled()){atlas.recycle();atlas=null;}
+    if(fullArt!=null&&!fullArt.isRecycled()){fullArt.recycle();fullArt=null;}
   }
   private void colour(int c){p.setColor(c);p.setStyle(Paint.Style.FILL);p.setStrokeWidth(1);p.setShader(null);}
   private void panel(Canvas c,float x,float y,float w,float h,int fill,float radius){
@@ -136,6 +180,12 @@ final class SkinEngine {
   }
   private void drawArt(Canvas c,int id){
     colour(0xff090f18);c.drawColor(0xff090f18);
+    Bitmap original=fullArt(id);
+    if(original!=null&&!original.isRecycled()){
+      p.setFilterBitmap(true);
+      c.drawBitmap(original,null,new Rect(0,0,1280,720),p);
+      return;
+    }
     if(atlas!=null&&!atlas.isRecycled()){
       int w=atlas.getWidth()/3,h=atlas.getHeight()/7;
       Rect src=new Rect((id%3)*w,(id/3)*h,(id%3+1)*w,(id/3+1)*h);
@@ -315,6 +365,98 @@ final class SkinEngine {
     int previous=selected;selected=id;
     try{draw(canvas);}finally{selected=previous;}
     return fallback;
+  }
+  void choosePack(){
+    Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);
+    intent.setType("application/zip");
+    intent.addCategory(Intent.CATEGORY_OPENABLE);
+    try{host.startActivityForResult(intent,PICK_SKIN_PACK);}
+    catch(RuntimeException problem){
+      new AlertDialog.Builder(host).setTitle("Importă skinuri")
+        .setMessage("Selectorul de fișiere ZIP nu este disponibil pe firmware-ul Android.")
+        .setPositiveButton("OK",null).show();
+    }
+  }
+  private static void removeTree(File root){
+    if(root==null||!root.exists())return;
+    File[] children=root.listFiles();
+    if(children!=null)for(File child:children)removeTree(child);
+    root.delete();
+  }
+  void importPack(Uri uri){
+    if(uri==null)return;
+    new Thread(()->{
+      String folder="skins_pack_"+System.currentTimeMillis();
+      File temp=new File(host.getFilesDir(),folder);
+      boolean[] seen=new boolean[COUNT];
+      boolean atlasSeen=false;
+      long total=0L;int entries=0;
+      String error=null;
+      try{
+        if(!temp.mkdirs())throw new IOException("Nu pot crea directorul skinurilor");
+        try(InputStream incoming=host.getContentResolver().openInputStream(uri)){
+          if(incoming==null)throw new IOException("Nu pot citi arhiva ZIP");
+          try(ZipInputStream zip=new ZipInputStream(incoming)){
+            ZipEntry entry;
+            while((entry=zip.getNextEntry())!=null){
+              if(++entries>32)throw new IOException("Prea multe fișiere în pachet");
+              if(entry.isDirectory())continue;
+              String file=entry.getName();
+              if(file.startsWith("skins/"))file=file.substring(6);
+              boolean isAtlas="atlas.webp".equals(file);
+              int index=-1;
+              if(!isAtlas){
+                for(int i=0;i<COUNT;i++){
+                  if(file.equals(String.format(Locale.US,"skin_%02d.webp",i))){index=i;break;}
+                }
+              }
+              if(!isAtlas&&index<0)throw new IOException("Fișier nepermis: "+file);
+              if(file.contains("/")||file.contains("\\")||file.contains(".."))
+                throw new IOException("Cale periculoasă în arhivă");
+              File destination=new File(temp,file);
+              long bytes=0;byte[] buffer=new byte[8192];
+              try(FileOutputStream out=new FileOutputStream(destination)){
+                int length;
+                while((length=zip.read(buffer))!=-1){
+                  total+=length;bytes+=length;
+                  if(total>28000000L||bytes>3500000L)
+                    throw new IOException("Pachetul depășește limita de memorie");
+                  out.write(buffer,0,length);
+                }
+              }
+              BitmapFactory.Options header=new BitmapFactory.Options();
+              header.inJustDecodeBounds=true;
+              BitmapFactory.decodeFile(destination.getAbsolutePath(),header);
+              if(header.outWidth<80||header.outHeight<45||
+                 header.outWidth>2400||header.outHeight>1600)
+                throw new IOException("Imagine invalidă: "+file);
+              if(isAtlas)atlasSeen=true;else seen[index]=true;
+              zip.closeEntry();
+            }
+          }
+        }
+        if(!atlasSeen)throw new IOException("Lipsește atlas.webp");
+        for(int i=0;i<COUNT;i++)if(!seen[i])
+          throw new IOException("Lipsește skin_"+String.format(Locale.US,"%02d",i)+".webp");
+        if(!prefs.edit().putString("skin_pack_dir",folder).commit())
+          throw new IOException("Nu pot salva selecția imaginilor");
+      }catch(Exception e){error=e.getMessage();removeTree(temp);}
+      final String failure=error;
+      host.runOnUiThread(()->{
+        if(failure!=null){
+          new AlertDialog.Builder(host).setTitle("Import skinuri nereușit")
+            .setMessage(failure).setPositiveButton("OK",null).show();
+        }else{
+          if(fullArt!=null&&!fullArt.isRecycled())fullArt.recycle();
+          fullArt=null;fullArtId=-1;
+          loadAtlas();
+          if(host.view!=null)host.view.invalidate();
+          Toast.makeText(host,"21 skinuri importate. EVO Digital Dash este primul.",
+            Toast.LENGTH_LONG).show();
+          showPicker();
+        }
+      });
+    },"k2401-skinpack-import").start();
   }
   private int dp(int pixels){return Math.round(pixels*host.getResources().getDisplayMetrics().density);}
   void showPicker(){
