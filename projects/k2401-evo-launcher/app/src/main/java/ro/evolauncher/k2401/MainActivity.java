@@ -2,10 +2,11 @@ package ro.evolauncher.k2401;
 import android.app.*;import android.content.*;import android.graphics.*;import android.media.*;import android.media.session.*;import android.net.*;import android.os.*;import android.provider.*;import android.view.*;import java.lang.ref.*;import java.text.*;import java.util.*;
 public final class MainActivity extends Activity {
   static WeakReference<MainActivity> active=new WeakReference<>(null);
-  Handler handler=new Handler(); MediaController media; Dashboard view; ObdReader obd; LiveMapPanel liveMap; LauncherSettings launcherSettings; ShortcutDock shortcutDock; android.widget.FrameLayout stage; int page=0;
+  Handler handler=new Handler(); MediaController media; Dashboard view; ObdReader obd; LiveMapPanel liveMap; LauncherSettings launcherSettings; ShortcutDock shortcutDock; android.widget.FrameLayout stage; int page=0; String mediaPackage=""; String mediaName="Alege playerul";
   final MediaController.Callback mediaCallback=new MediaController.Callback(){@Override public void onPlaybackStateChanged(PlaybackState s){if(view!=null)view.invalidate();}@Override public void onMetadataChanged(MediaMetadata m){if(view!=null)view.invalidate();}@Override public void onSessionDestroyed(){refresh();if(view!=null)view.invalidate();}};
-  final Runnable update=new Runnable(){public void run(){if(view!=null)view.invalidate();handler.postDelayed(this,1000);}};
-  public void onCreate(Bundle state){super.onCreate(state);getWindow().getDecorView().setSystemUiVisibility(5894|View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);launcherSettings=new LauncherSettings(this,()->{if(view!=null)view.invalidate();});view=new Dashboard();obd=new ObdReader(this,()->runOnUiThread(()->{if(view!=null)view.invalidate();}));stage=new android.widget.FrameLayout(this);stage.addView(view,new android.widget.FrameLayout.LayoutParams(-1,-1));liveMap=new LiveMapPanel(this);stage.addView(liveMap,new android.widget.FrameLayout.LayoutParams(200,200));shortcutDock=new ShortcutDock(this);stage.addView(shortcutDock,new android.widget.FrameLayout.LayoutParams(200,100));stage.addView(launcherSettings,new android.widget.FrameLayout.LayoutParams(200,200));stage.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or2,ob)->placeMap());setContentView(stage);active=new WeakReference<>(this);placeMap();}
+  final Runnable update=new Runnable(){public void run(){if(media==null)refresh();if(view!=null)view.invalidate();handler.postDelayed(this,1000);}};
+  public void onCreate(Bundle state){super.onCreate(state);getWindow().getDecorView().setSystemUiVisibility(5894|View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);mediaPackage=getSharedPreferences("evo_launcher_prefs",MODE_PRIVATE).getString("evo_media_package","");
+   mediaName=labelForMedia(mediaPackage);launcherSettings=new LauncherSettings(this,()->{if(view!=null)view.invalidate();});view=new Dashboard();obd=new ObdReader(this,()->runOnUiThread(()->{if(view!=null)view.invalidate();}));stage=new android.widget.FrameLayout(this);stage.addView(view,new android.widget.FrameLayout.LayoutParams(-1,-1));liveMap=new LiveMapPanel(this);stage.addView(liveMap,new android.widget.FrameLayout.LayoutParams(200,200));shortcutDock=new ShortcutDock(this);stage.addView(shortcutDock,new android.widget.FrameLayout.LayoutParams(200,100));stage.addView(launcherSettings,new android.widget.FrameLayout.LayoutParams(200,200));stage.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or2,ob)->placeMap());setContentView(stage);active=new WeakReference<>(this);placeMap();}
   protected void onStart(){super.onStart();if(liveMap!=null)liveMap.onHostStart();}
   protected void onResume(){super.onResume();if(liveMap!=null)liveMap.onHostResume();refresh();handler.removeCallbacks(update);handler.post(update);startObd();if(checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)!=android.content.pm.PackageManager.PERMISSION_GRANTED&&checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION)!=android.content.pm.PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION,android.Manifest.permission.ACCESS_COARSE_LOCATION},2402);}}
   protected void onPause(){handler.removeCallbacks(update);if(obd!=null)obd.stop();if(liveMap!=null)liveMap.onHostPause();super.onPause();}
@@ -17,10 +18,105 @@ public final class MainActivity extends Activity {
   public void onBackPressed(){page=0;view.invalidate();placeMap();}
   void placeMap(){if(stage==null||liveMap==null||launcherSettings==null||shortcutDock==null)return;boolean shown=page==0||page==2;liveMap.setVisibility(shown?View.VISIBLE:View.GONE);shortcutDock.setVisibility(page==0?View.VISIBLE:View.GONE);launcherSettings.setVisibility(page==5?View.VISIBLE:View.GONE);int w=stage.getWidth(),h=stage.getHeight();if(w<=0||h<=0)return;float sx=w/1280f,sy=h/720f;if(shown){int x=page==0?20:158,y=page==0?78:169,mw=page==0?600:1052,mh=page==0?490:527;android.widget.FrameLayout.LayoutParams p=new android.widget.FrameLayout.LayoutParams(Math.max(1,Math.round(mw*sx)),Math.max(1,Math.round(mh*sy)));p.leftMargin=Math.round(x*sx);p.topMargin=Math.round(y*sy);liveMap.setLayoutParams(p);}android.widget.FrameLayout.LayoutParams dock=new android.widget.FrameLayout.LayoutParams(Math.max(1,Math.round(600*sx)),Math.max(1,Math.round(121*sy)));dock.leftMargin=Math.round(20*sx);dock.topMargin=Math.round(576*sy);shortcutDock.setLayoutParams(dock);android.widget.FrameLayout.LayoutParams prefs=new android.widget.FrameLayout.LayoutParams(Math.max(1,Math.round(1115*sx)),Math.max(1,Math.round(620*sy)));prefs.leftMargin=Math.round(130*sx);prefs.topMargin=Math.round(78*sy);launcherSettings.setLayoutParams(prefs);}
   static void changed(){MainActivity a=active.get();if(a!=null)a.runOnUiThread(()->{a.refresh();a.view.invalidate();});}
-  void refresh(){MediaController next=null;try{MediaSessionManager m=(MediaSessionManager)getSystemService(MEDIA_SESSION_SERVICE);List<MediaController> all=m.getActiveSessions(new ComponentName(this,MediaAccessService.class));for(MediaController c:all)if("com.google.android.apps.youtube.music".equals(c.getPackageName())){next=c;break;}}catch(Exception ignored){}if(media!=null&&next!=null&&media.getSessionToken().equals(next.getSessionToken()))return;if(media!=null){try{media.unregisterCallback(mediaCallback);}catch(Exception ignored){}}media=next;if(media!=null)media.registerCallback(mediaCallback,handler);}
-  void app(String pkg){try{Intent i=getPackageManager().getLaunchIntentForPackage(pkg);if(i!=null){startActivity(i);return;}startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("market://details?id="+pkg)));}catch(Exception ignored){}}
-  void maps(){try{Intent i=getPackageManager().getLaunchIntentForPackage("com.google.android.apps.maps");if(i!=null)startActivity(i);else startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("geo:0,0?q=destinatie")));}catch(Exception ignored){}}
-  void mediaAction(int id){refresh();if(media==null){app("com.google.android.apps.youtube.music");return;}try{MediaController.TransportControls t=media.getTransportControls();if(id==0)t.skipToPrevious();else if(id==2)t.skipToNext();else if(media.getPlaybackState()!=null&&media.getPlaybackState().getState()==PlaybackState.STATE_PLAYING)t.pause();else t.play();}catch(Exception ignored){}view.invalidate();}
+  String labelForMedia(String pkg){
+    if(pkg==null||pkg.isEmpty())return "Alege playerul";
+    try{return getPackageManager().getApplicationLabel(getPackageManager().getApplicationInfo(pkg,0)).toString();}
+    catch(Exception e){return pkg;}
+  }
+  void choosePlayer(){
+    // Android 10 target 28 exposes installed LAUNCHER activities. A Vanced /
+    // ReVanced installation might use a customized package name.
+    Intent query=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+    List<android.content.pm.ResolveInfo> available=getPackageManager().queryIntentActivities(query,0);
+    ArrayList<String> pkgs=new ArrayList<>(); HashSet<String> seen=new HashSet<>();
+    for(android.content.pm.ResolveInfo info:available){
+      if(info.activityInfo==null)continue;
+      String pkg=info.activityInfo.packageName;
+      if(pkg.equals(getPackageName())||!seen.add(pkg)||getPackageManager().getLaunchIntentForPackage(pkg)==null)continue;
+      pkgs.add(pkg);
+    }
+    Collections.sort(pkgs,(a,b)->{
+      String an=labelForMedia(a).toLowerCase(Locale.ROOT);
+      String bn=labelForMedia(b).toLowerCase(Locale.ROOT);
+      int ar=(an.contains("vanced")||an.contains("revanced")||an.contains("youtube")||
+          an.contains("music")||an.contains("poweramp")||an.contains("spotify")||
+          an.contains("player")||an.contains("vlc"))?0:1;
+      int br=(bn.contains("vanced")||bn.contains("revanced")||bn.contains("youtube")||
+          bn.contains("music")||bn.contains("poweramp")||bn.contains("spotify")||
+          bn.contains("player")||bn.contains("vlc"))?0:1;
+      return ar!=br?Integer.compare(ar,br):an.compareToIgnoreCase(bn);
+    });
+    if(pkgs.isEmpty()){
+      new AlertDialog.Builder(this).setTitle("Player media").setMessage("Nu au fost găsite aplicații lansabile.")
+        .setPositiveButton("OK",null).show();return;
+    }
+    String[] labels=new String[pkgs.size()];
+    int selected=-1;
+    for(int n=0;n<pkgs.size();n++){labels[n]=labelForMedia(pkgs.get(n));if(mediaPackage.equals(pkgs.get(n)))selected=n;}
+    new AlertDialog.Builder(this)
+      .setTitle("Alege playerul instalat — Vanced / ReVanced / altele")
+      .setSingleChoiceItems(labels,selected,(dialog,chosen)->{
+         mediaPackage=pkgs.get(chosen);
+         mediaName=labelForMedia(mediaPackage);
+         getSharedPreferences("evo_launcher_prefs",MODE_PRIVATE).edit().putString("evo_media_package",mediaPackage).commit();
+         dialog.dismiss();refresh();if(view!=null)view.invalidate();
+         if(media==null)mediaSetup();
+      }).setNeutralButton("Permisiune MediaSession",(d,w)->permissions())
+      .setNegativeButton("Anulează",null).show();
+  }
+  void mediaSetup(){
+    new AlertDialog.Builder(this).setTitle(mediaName)
+      .setMessage("Playerul este selectat. EVO poate controla redarea în acest panou numai dacă aplicația expune o sesiune MediaSession activă. Acordă accesul la notificări pentru EVO și pornește o melodie în player măcar o dată. Nu deschid automat aplicații sau magazinul.")
+      .setPositiveButton("Acces notificări",(d,w)->permissions())
+      .setNeutralButton("Schimbă playerul",(d,w)->choosePlayer())
+      .setNegativeButton("Închide",null).show();
+  }
+  void refresh(){
+    MediaController next=null;
+    try{
+      MediaSessionManager sessions=(MediaSessionManager)getSystemService(MEDIA_SESSION_SERVICE);
+      List<MediaController> active=sessions.getActiveSessions(new ComponentName(this,MediaAccessService.class));
+      for(MediaController c:active)if(mediaPackage.equals(c.getPackageName())){next=c;break;}
+    }catch(SecurityException|RuntimeException ignored){}
+    if(media!=null&&next!=null&&media.getSessionToken().equals(next.getSessionToken()))return;
+    if(media!=null)try{media.unregisterCallback(mediaCallback);}catch(Exception ignored){}
+    media=next;
+    if(media!=null)media.registerCallback(mediaCallback,handler);
+    if(view!=null)view.invalidate();
+  }
+  void app(String pkg){
+    try{
+      Intent i=getPackageManager().getLaunchIntentForPackage(pkg);
+      if(i!=null){startActivity(i);return;}
+      android.widget.Toast.makeText(this,"Aplicația nu este instalată. Alege o aplicație disponibilă.",android.widget.Toast.LENGTH_LONG).show();
+    }catch(Exception ignored){android.widget.Toast.makeText(this,"Nu pot porni aplicația.",android.widget.Toast.LENGTH_LONG).show();}
+  }
+  // An explicit shortcut in the Apps screen may open Maps, but tapping the embedded map never does.
+  void maps(){app("com.google.android.apps.maps");}
+  void mediaAction(int id){
+    refresh();
+    if(media==null){if(mediaPackage.isEmpty())choosePlayer();else mediaSetup();return;}
+    try{
+      MediaController.TransportControls t=media.getTransportControls();
+      if(id==0)t.skipToPrevious();
+      else if(id==2)t.skipToNext();
+      else if(media.getPlaybackState()!=null&&media.getPlaybackState().getState()==PlaybackState.STATE_PLAYING)t.pause();
+      else t.play();
+    }catch(Exception ignored){mediaSetup();}
+    view.invalidate();
+  }
+  void showObdStatus(){
+    ObdReader.Reading r=obd==null?ObdReader.Reading.empty():obd.current();
+    String info=obd==null?"TORQUE NECONECTAT":obd.status();
+    new AlertDialog.Builder(this).setTitle("Torque Pro — STFT / LTFT / RPM / apă")
+      .setMessage(info+"\nSTFT: "+(Float.isFinite(r.stft)?r.stft+" %":"N/A")+
+        "\nLTFT: "+(Float.isFinite(r.ltft)?r.ltft+" %":"N/A")+
+        "\nRPM: "+(Float.isFinite(r.rpm)?r.rpm:"N/A")+
+        "\nTemperatura: "+(Float.isFinite(r.coolantC)?r.coolantC+" °C":"N/A")+
+        "\n\nTorque trebuie instalat, conectat prin Bluetooth la ELM327 și la ECU. EVO citește PID-urile în fundal fără a prelua adaptorul și fără comenzi de modificare ECU.")
+      .setPositiveButton("Reverifică",(d,w)->{if(obd!=null){obd.stop();obd.start();}})
+      .setNegativeButton("Închide",null).show();
+  }
   void permissions(){try{startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"));}catch(Exception e){startActivity(new Intent(Settings.ACTION_SETTINGS));}}
   class Dashboard extends View{
    Paint p=new Paint(3);int white=0xfff1f4fb,red=0xffec263b,muted=0xff94a3b5,bg=0xff0a1019,card=0xc4161f2c;
@@ -39,13 +135,13 @@ public final class MainActivity extends Activity {
    String musicText(boolean title){if(media==null||media.getMetadata()==null)return "";CharSequence s=media.getMetadata().getText(title?MediaMetadata.METADATA_KEY_TITLE:MediaMetadata.METADATA_KEY_ARTIST);return s==null?"":s.toString();}
    String shorten(String s){return s.length()>28?s.substring(0,27)+"…":s;}
    void music(Canvas c,int x,int y,int w,int h){
-       r(c,x,y,w,h,0xd4171f2b,16);outline(c,x,y,w,h,0xff712638);dot(c,x+29,y+29,15,red);t(c,"▶",x+20,y+36,18,white);t(c,"YouTube Music",x+55,y+36,22,white);t(c,"EVO MEDIA",x+w-153,y+37,18,red);
+       r(c,x,y,w,h,0xd4171f2b,16);outline(c,x,y,w,h,0xff712638);dot(c,x+29,y+29,15,red);t(c,"▶",x+20,y+36,18,white);t(c,shorten(mediaName),x+55,y+36,22,white);t(c,"EVO MEDIA",x+w-153,y+37,18,red);
        r(c,x+18,y+70,167,h-131,0xff7f182d,10);Bitmap art=null;if(media!=null&&media.getMetadata()!=null){art=media.getMetadata().getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);if(art==null)art=media.getMetadata().getBitmap(MediaMetadata.METADATA_KEY_ART);if(art==null)art=media.getMetadata().getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON);}if(art!=null){p.setColor(white);p.setStyle(Paint.Style.FILL);c.drawBitmap(art,null,new Rect(x+20,y+72,x+183,y+h-63),p);}else{t(c,"YT",x+73,y+158,42,white);t(c,"MUSIC",x+51,y+194,22,white);}
        String title=musicText(true),artist=musicText(false);
-       if(title.isEmpty()){title="Fără redare activă";artist="Pornește YouTube Music";}
+       if(title.isEmpty()){title=mediaPackage.isEmpty()?"Selectează playerul":"Fără redare activă";artist=mediaPackage.isEmpty()?"Atinge panoul pentru a alege Vanced":"Permite MediaSession / pornește redarea";}
        t(c,shorten(title),x+205,y+126,27,white);t(c,shorten(artist),x+205,y+160,19,muted);
        r(c,x+205,y+186,w-225,5,0xff455065,3);long duration=media!=null&&media.getMetadata()!=null?media.getMetadata().getLong(MediaMetadata.METADATA_KEY_DURATION):0;long pos=media!=null&&media.getPlaybackState()!=null?media.getPlaybackState().getPosition():0;if(media!=null&&media.getPlaybackState()!=null&&media.getPlaybackState().getState()==PlaybackState.STATE_PLAYING){long updated=media.getPlaybackState().getLastPositionUpdateTime();if(updated>0){long delta=Math.max(0,SystemClock.elapsedRealtime()-updated);pos+=(long)(delta*media.getPlaybackState().getPlaybackSpeed());}}if(duration>0&&pos>=0){float ratio=Math.max(0,Math.min(1,(float)pos/duration));r(c,x+205,y+186,(w-225)*ratio,5,red,3);}
-       t(c,media!=null?"Sesiune media activă":"MediaSession • conectează aplicația",x+205,y+214,15,muted);
+       t(c,media!=null?"MediaSession activă • control în panou":"Atinge titlul pentru player / setări media",x+205,y+214,15,muted);
        t(c,"◀◀",x+247,y+h-36,27,white);dot(c,x+390,y+h-46,28,red);boolean musicPlaying=media!=null&&media.getPlaybackState()!=null&&media.getPlaybackState().getState()==PlaybackState.STATE_PLAYING;t(c,musicPlaying?"Ⅱ":"▶",x+376,y+h-34,27,white);t(c,"▶▶",x+493,y+h-36,27,white);
    }
    String formatObd(float value){return Float.isFinite(value)?String.format(Locale.US,"%.1f",value):"N/A";}
@@ -87,18 +183,18 @@ public final class MainActivity extends Activity {
    void row(Canvas c,int y,String name,String desc){r(c,150,y,1088,109,card,14);r(c,150,y,5,109,red,0);t(c,name,177,y+42,25,white);t(c,desc,177,y+80,17,muted);}
    protected void onDraw(Canvas original){original.save();original.scale(getWidth()/1280f,getHeight()/720f);if(launcherSettings!=null){launcherSettings.drawWallpaper(original);red=launcherSettings.accent();}else original.drawColor(bg);if(page!=0)nav(original);header(original);
       if(page==0){map(original,20,78,600,490);music(original,634,78,626,298);gauges(original,634,389,626,310);}
-      if(page==1){title(original,"MUZICĂ","YouTube Music / control prin sesiunea Android");music(original,158,185,1070,435);}
-      if(page==2){title(original,"NAVIGAȚIE","Hartă interactivă • RUTĂ GOOGLE MAPS pentru ghidare");map(original,158,169,1052,527);}
+      if(page==1){title(original,"MUZICĂ","Player configurabil • control MediaSession în panou");music(original,158,185,1070,435);}
+      if(page==2){title(original,"NAVIGAȚIE","Hartă OSM nativă / Google SDK • GPS și căutare în panou");map(original,158,169,1052,527);}
       if(page==3){title(original,"MAȘINĂ","Ceasuri OBD în stil EVO • modul live necesită adaptor ELM327");gauges(original,156,200,1069,335);row(original,560,obd!=null&&obd.current().live?"OBD-II conectat":"ELM327 Bluetooth",obd!=null&&obd.current().live?"Date live din ECU, numai citire, fără comenzi de modificare.":"Deschide Torque Pro și conectează ECU, apoi revino în launcher.");}
-      if(page==4){title(original,"APLICAȚII","Lansează aplicații reale sau adaugă-le în bara de pinuri");String[] labels={"Google Maps","YouTube Music","Torque Pro","Alege aplicație","Setări Android","Bluetooth"};for(int i=0;i<6;i++){int x=158+(i%3)*360,y=210+(i/3)*181;r(original,x,y,324,150,card,14);t(original,labels[i],x+24,y+90,24,white);}}
+      if(page==4){title(original,"APLICAȚII","Lansează aplicații reale sau adaugă-le în bara de pinuri");String[] labels={"Google Maps","Alege player","Diagnoză Torque","Alege aplicație","Setări Android","Bluetooth"};for(int i=0;i<6;i++){int x=158+(i%3)*360,y=210+(i/3)*181;r(original,x,y,324,150,card,14);t(original,labels[i],x+24,y+90,24,white);}}
       if(page==5){title(original,"SETĂRI","EVO Dark Red • fără animații sau servicii permanente");row(original,186,"Acces notificări","Permite controlul YouTube Music prin MediaSession.");row(original,316,"Google Maps","Hartă interactivă live (Maps SDK cu cheie, altfel OpenStreetMap).");row(original,446,"Torque / OBD","Torque Pro gestionează ELM327; launcherul citește datele prin IPC.");row(original,576,"Protecție","Nu modificăm MCU, boot, recovery sau CANBUS.");}
       original.restore();}
    public boolean onTouchEvent(MotionEvent e){if(e.getAction()!=MotionEvent.ACTION_UP)return true;float x=e.getX()*1280/getWidth(),y=e.getY()*720/getHeight();
        if(page!=0&&x<109&&y>=73){int idx=(int)((y-73)/105);if(idx>=0&&idx<6)page=idx;invalidate();placeMap();return true;}
-       if(page==0){if(y<65&&x<65){page=4;invalidate();}else if(y<65&&x>1210){page=5;invalidate();}else if(x>=634&&y>=78&&y<386){if(y>294)mediaAction(x<995?0:x<1125?1:2);else app("com.google.android.apps.youtube.music");}else if(x>=634&&y>=389){page=3;invalidate();}}
-       else if(page==1){if(y>=520&&y<=620&&x>=350&&x<=715){mediaAction(x<477?0:x<608?1:2);}else if(x>=158&&x<=1228&&y>=185&&y<520){app("com.google.android.apps.youtube.music");}}
-       else if(page==2)maps();else if(page==3&&obd!=null&&!obd.current().live){try{startActivity(getPackageManager().getLaunchIntentForPackage("org.prowl.torque"));}catch(Exception ignored){}}
-       else if(page==4){int col=(int)((x-158)/360),r=(int)((y-210)/181),i=r*3+col;if(col>=0&&col<3&&r>=0&&r<2){if(i==0)maps();else if(i==1)app("com.google.android.apps.youtube.music");else if(i==2)app("org.prowl.torque");else if(i==3&&shortcutDock!=null)shortcutDock.openPicker();else if(i==4){try{startActivity(new Intent(Settings.ACTION_SETTINGS));}catch(Exception ignored){}}else if(i==5){try{startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS));}catch(Exception ignored){}}}}
+       if(page==0){if(y<65&&x<65){page=4;invalidate();placeMap();}else if(y<65&&x>1210){page=5;invalidate();placeMap();}else if(x>=634&&y>=78&&y<386){if(y>294)mediaAction(x<995?0:x<1125?1:2);else choosePlayer();}else if(x>=634&&y>=389){showObdStatus();}}
+       else if(page==1){if(y>=520&&y<=620&&x>=350&&x<=715){mediaAction(x<477?0:x<608?1:2);}else if(x>=158&&x<=1228&&y>=185&&y<520){choosePlayer();}}
+       else if(page==2){/* Native map overlay handles touches; never switch Activities. */}else if(page==3){showObdStatus();}
+       else if(page==4){int col=(int)((x-158)/360),r=(int)((y-210)/181),i=r*3+col;if(col>=0&&col<3&&r>=0&&r<2){if(i==0)maps();else if(i==1)choosePlayer();else if(i==2)showObdStatus();else if(i==3&&shortcutDock!=null)shortcutDock.openPicker();else if(i==4){try{startActivity(new Intent(Settings.ACTION_SETTINGS));}catch(Exception ignored){}}else if(i==5){try{startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS));}catch(Exception ignored){}}}}
        else if(page==5&&y>=186&&y<=300)permissions();invalidate();placeMap();return true;}
   }
 }
