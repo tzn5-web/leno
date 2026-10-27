@@ -92,7 +92,7 @@ final class LiveMapPanel extends FrameLayout implements LocationListener {
     label.setTextSize(12);
     label.setBackgroundColor(0xcc101720);
     label.setPadding(9,6,9,6);
-    FrameLayout.LayoutParams tag=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.LEFT);
+    FrameLayout.LayoutParams tag=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.RIGHT);
     tag.setMargins(8,9,8,0);addView(label,tag);
 
     Button google=new Button(activity);
