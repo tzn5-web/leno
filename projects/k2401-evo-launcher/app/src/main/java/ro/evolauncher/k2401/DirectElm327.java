@@ -40,6 +40,13 @@ final class DirectElm327 {
   private volatile String selectedMac="";
   private volatile long epoch;
   private volatile boolean connectionBusy;
+  private volatile String lastStage="NESTARTAT";
+  private volatile String lastFailure="";
+  String details(){return "Etapă: "+lastStage+(lastFailure.isEmpty()?"":"\nDetalii: "+lastFailure);}
+  private void phase(long token,String stage){
+    lastStage=stage;
+    if(alive(token))state(token,"ELM327 • "+stage);
+  }
 
   DirectElm327(Context context,Runnable callback) {
     preferences=context.getApplicationContext().getSharedPreferences(PREFS,Context.MODE_PRIVATE);
@@ -92,6 +99,7 @@ final class DirectElm327 {
       while(alive(token)&&configured()){
         BluetoothSocket link=null;
         try{
+          lastFailure="";
           BluetoothAdapter adapter=BluetoothAdapter.getDefaultAdapter();
           if(adapter==null){state(token,"ELM327 • FĂRĂ BLUETOOTH");return;}
           if(!adapter.isEnabled()){state(token,"ELM327 • ACTIVEAZĂ BLUETOOTH");return;}
@@ -99,7 +107,12 @@ final class DirectElm327 {
           for(BluetoothDevice d:adapter.getBondedDevices())
             if(d.getAddress().equalsIgnoreCase(selectedMac)){device=d;break;}
           if(device==null){state(token,"ELM327 • ASOCIAZĂ ÎN BLUETOOTH");return;}
-          state(token,"ELM327 • CONECTARE Bluetooth SPP");
+          if(device.getType()==BluetoothDevice.DEVICE_TYPE_LE){
+            state(token,"ELM327 • DISPOZITIV BLE (NU SPP)");
+            lastFailure="Adaptorul e Bluetooth Low Energy; acest transport necesită GATT, nu Bluetooth Classic.";
+            return;
+          }
+          phase(token,"CONECTARE Bluetooth SPP");
           try{
             link=device.createRfcommSocketToServiceRecord(SPP);
             socket=link;link.connect();
@@ -110,29 +123,37 @@ final class DirectElm327 {
             socket=link;link.connect();
           }
           if(!alive(token))return;
-          state(token,"ELM327 • INIȚIALIZARE ADAPTOR");
+          phase(token,"INIȚIALIZARE ADAPTOR");
           InputStream input=link.getInputStream();
           OutputStream output=link.getOutputStream();
           // Only ELM adapter setup commands. These do not alter ECU state.
-          command(input,output,"ATZ",5000L,token);
-          command(input,output,"ATE0",3500L,token);
-          command(input,output,"ATL0",3500L,token);
-          command(input,output,"ATS0",3500L,token);
-          command(input,output,"ATH0",3500L,token);
-          command(input,output,"ATSP0",5000L,token);
+          phase(token,"RESET ELM / ATZ");
+          String reset=command(input,output,"ATZ",8000L,token);
+          if(reset.contains("UNABLE TO CONNECT"))throw new IOException("ATZ: adaptor invalid");
+          phase(token,"ATE0");command(input,output,"ATE0",4000L,token);
+          phase(token,"ATL0");command(input,output,"ATL0",4000L,token);
+          phase(token,"ATS0");command(input,output,"ATS0",4000L,token);
+          phase(token,"ATH0");command(input,output,"ATH0",4000L,token);
+          phase(token,"ATSP0");command(input,output,"ATSP0",8000L,token);
           state(token,"ELM327 • INTEROGHEZ ECU");
           int emptyScans=0;
           while(alive(token)){
             // Each value is replaced per scan; old or disconnected values are NOT retained.
             float stft=Float.NaN,ltft=Float.NaN,rpm=Float.NaN,coolant=Float.NaN;
-            String s06=command(input,output,"0106",3500L,token);
-            stft=parse(s06,0x06);
-            String s07=command(input,output,"0107",3500L,token);
-            ltft=parse(s07,0x07);
-            String s0c=command(input,output,"010C",3500L,token);
+            // Read the universally useful sensors first: unsupported trim PID
+            // or a flaky clone must not suppress RPM and coolant.
+            phase(token,"ECU PID 010C • RPM");
+            String s0c=command(input,output,"010C",5500L,token);
             rpm=parse(s0c,0x0C);
-            String s05=command(input,output,"0105",3500L,token);
+            phase(token,"ECU PID 0105 • APĂ");
+            String s05=command(input,output,"0105",5500L,token);
             coolant=parse(s05,0x05);
+            phase(token,"ECU PID 0106 • STFT");
+            String s06=command(input,output,"0106",5500L,token);
+            stft=parse(s06,0x06);
+            phase(token,"ECU PID 0107 • LTFT");
+            String s07=command(input,output,"0107",5500L,token);
+            ltft=parse(s07,0x07);
             if(!alive(token))return;
             boolean live=Float.isFinite(stft)||Float.isFinite(ltft)||
               Float.isFinite(rpm)||Float.isFinite(coolant);
@@ -147,8 +168,16 @@ final class DirectElm327 {
         catch(Exception e){
           if(!alive(token))return;
           sample=ObdReader.Reading.empty();
-          String msg=e instanceof IOException?"ELM327 • CONEXIUNE PIERDUTĂ":"ELM327 • EROARE ADAPTOR";
-          state(token,msg+" (verifică să nu fie ocupat de Torque)");
+          // Do not label an ELM prompt timeout as a Bluetooth disconnect:
+          // both yield IOException in the old implementation.
+          String detail=e.getMessage()==null?e.getClass().getSimpleName():e.getMessage();
+          if(detail.length()>100)detail=detail.substring(0,100);
+          lastFailure=lastStage+" • "+detail;
+          String reason=(e instanceof IOException && detail.startsWith("ELM timeout"))
+            ?"ELM327 • ADAPTORUL NU RĂSPUNDE ("+lastStage+")"
+            :(lastStage.contains("CONECTARE")?"ELM327 • Bluetooth SPP REFUZAT":
+              "ELM327 • RĂSPUNS INVALID / LEGĂTURĂ ÎNTRERUPTĂ");
+          state(token,reason);
           try{Thread.sleep(5000);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();return;}
         }finally{
           if(link!=null)try{link.close();}catch(IOException ignored){}
