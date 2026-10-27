@@ -250,7 +250,10 @@ final class DirectElm327 {
         }catch(IOException ignored){}
         try{command(in,out,canProtocol?"ATST32":"ATST64",3500L,token);}
         catch(IOException ignored){}
-        preferences.edit().putString(KEY_MODE,mode).commit();
+        // The successful ECU handshake, not the Bluetooth name/type,
+        // determines the preferred transport for all future reconnections.
+        preferences.edit().putString(KEY_MODE,mode)
+          .putBoolean("elm327_ble_hint","BLE".equals(mode)).commit();
         lastFailure="";
         step(token,"ECU LIVE • "+mode);
         fastCounter=0;
