@@ -23,8 +23,10 @@ final class ObdReader {
   static final class Reading {
     final float rpm, stft, ltft, coolantC;
     final boolean live;
+    final long capturedAtMs;
     Reading(float r,float s,float l,float c,boolean active){
       rpm=r;stft=s;ltft=l;coolantC=c;live=active;
+      capturedAtMs=SystemClock.elapsedRealtime();
     }
     static Reading empty(){return new Reading(Float.NaN,Float.NaN,Float.NaN,Float.NaN,false);}
   }
@@ -39,12 +41,18 @@ final class ObdReader {
   private volatile ITorqueService remote;
   private volatile boolean busy;
   private volatile boolean running;
+  // Invalidate pending IPC results whenever the service/lifecycle changes.
+  private volatile long generation;
+  private volatile boolean resolvedOnce;
   private boolean bound;
   private final String[] resolved=new String[4];
 
   private final ServiceConnection connection=new ServiceConnection(){
     @Override public void onServiceConnected(ComponentName name,IBinder binder){
+      if(!running)return;
+      generation++;
       remote=ITorqueService.Stub.asInterface(binder);
+      resolvedOnce=false;
       Arrays.fill(resolved,null);
       state="TORQUE • VERIFIC ECU";
       main.post(onUpdate);
@@ -54,52 +62,72 @@ final class ObdReader {
     @Override public void onNullBinding(ComponentName name){disconnect("TORQUE • SERVICIU INDISPONIBIL");}
   };
   private void disconnect(String reason){
-    remote=null; current=Reading.empty(); state=reason; main.post(onUpdate);
+    generation++;
+    remote=null; resolvedOnce=false; current=Reading.empty(); state=reason; main.post(onUpdate);
   }
   private final Runnable ticker=new Runnable(){
     @Override public void run(){
       if(!running)return;
-      ITorqueService svc=remote;
+      final ITorqueService svc=remote;
       if(svc!=null && !busy){
         busy=true;
+        final long epoch=generation;
         worker.execute(()->{
+          Reading next=Reading.empty();
+          String nextState="TORQUE • DATE LIPSA/EXPIRATE";
+          boolean clearResolved=false;
           try{
-            if(!running)return;
+            if(!running||epoch!=generation||svc!=remote)return;
             if(!svc.isConnectedToECU()){
-              current=Reading.empty();
-              state="TORQUE • ECU NECONECTAT";
-              return;
-            }
-            if(resolved[0]==null)resolvePids(svc);
-            String[] ids=resolved.clone();
-            // Query only supported, resolved PIDs. Never request custom ECU commands.
-            int count=0;
-            for(String id:ids)if(id!=null)count++;
-            if(count==0){current=Reading.empty();state="TORQUE • PID-URI LIPSA";return;}
-            String[] query=new String[count]; int[] slots=new int[count];int p=0;
-            for(int i=0;i<4;i++)if(ids[i]!=null){query[p]=ids[i];slots[p++]=i;}
-            float[] values=svc.getPIDValues(query);
-            long[] times=svc.getPIDUpdateTime(query);
-            float[] fresh={Float.NaN,Float.NaN,Float.NaN,Float.NaN};
-            if(values!=null&&times!=null&&values.length==count&&times.length==count){
-              for(int i=0;i<count;i++){
-                if(isFresh(times[i])&&Float.isFinite(values[i]))fresh[slots[i]]=values[i];
+              nextState="TORQUE • ECU NECONECTAT";
+            }else{
+              // Discover once per binder connection, even if RPM is unsupported.
+              if(!resolvedOnce){
+                resolvePids(svc);
+                resolvedOnce=true;
+              }
+              String[] ids=resolved.clone();
+              int count=0;
+              for(String id:ids)if(id!=null)count++;
+              if(count==0){
+                nextState="TORQUE • PID-URI LIPSA";
+              }else{
+                String[] query=new String[count];
+                int[] slots=new int[count];
+                int p=0;
+                for(int i=0;i<4;i++)if(ids[i]!=null){query[p]=ids[i];slots[p++]=i;}
+                float[] values=svc.getPIDValues(query);
+                long[] times=svc.getPIDUpdateTime(query);
+                float[] fresh={Float.NaN,Float.NaN,Float.NaN,Float.NaN};
+                if(values!=null&&times!=null&&values.length==count&&times.length==count){
+                  for(int i=0;i<count;i++){
+                    if(isFresh(times[i])&&Float.isFinite(values[i]))fresh[slots[i]]=values[i];
+                  }
+                }
+                // Only filter impossible data; never fabricate an ECU reading.
+                fresh[0]=bounded(fresh[0],0,12000);
+                fresh[1]=bounded(fresh[1],-100,100);
+                fresh[2]=bounded(fresh[2],-100,100);
+                fresh[3]=bounded(fresh[3],-50,170);
+                boolean live=Float.isFinite(fresh[0])||Float.isFinite(fresh[1])||
+                             Float.isFinite(fresh[2])||Float.isFinite(fresh[3]);
+                next=new Reading(fresh[0],fresh[1],fresh[2],fresh[3],live);
+                nextState=live?"TORQUE • ECU LIVE":"TORQUE • DATE LIPSA/EXPIRATE";
               }
             }
-            // Check conservative, physically plausible bounds, not invented measurements.
-            fresh[0]=bounded(fresh[0],0,12000);
-            fresh[1]=bounded(fresh[1],-100,100);
-            fresh[2]=bounded(fresh[2],-100,100);
-            fresh[3]=bounded(fresh[3],-50,170);
-            boolean live=Float.isFinite(fresh[0])||Float.isFinite(fresh[1])||
-                         Float.isFinite(fresh[2])||Float.isFinite(fresh[3]);
-            current=new Reading(fresh[0],fresh[1],fresh[2],fresh[3],live);
-            state=live?"TORQUE • ECU LIVE":"TORQUE • DATE LIPSA/EXPIRATE";
           }catch(RemoteException|RuntimeException ex){
-            current=Reading.empty();state="TORQUE • API INDISPONIBIL";
-            Arrays.fill(resolved,null);
+            next=Reading.empty();
+            nextState="TORQUE • API INDISPONIBIL";
+            clearResolved=true;
           }finally{
-            busy=false;main.post(onUpdate);
+            // An old Binder call must never resurrect readings after pause/rebind.
+            if(running && epoch==generation && svc==remote){
+              current=next;
+              state=nextState;
+              if(clearResolved){Arrays.fill(resolved,null);resolvedOnce=false;}
+              main.post(onUpdate);
+            }
+            busy=false;
           }
         });
       }
@@ -109,7 +137,12 @@ final class ObdReader {
   ObdReader(Context context,Runnable onUpdate){
     this.context=context.getApplicationContext();this.onUpdate=onUpdate;
   }
-  Reading current(){return current;}
+  Reading current(){
+    Reading snapshot=current;
+    // Also expire readings if the IPC worker hangs and no new poll completes.
+    return snapshot.live && SystemClock.elapsedRealtime()-snapshot.capturedAtMs>MAX_STALE_MS
+        ? Reading.empty() : snapshot;
+  }
   String status(){return state;}
   synchronized void start(){
     if(running)return;
@@ -123,9 +156,9 @@ final class ObdReader {
     main.post(ticker);
   }
   synchronized void stop(){
-    running=false;main.removeCallbacks(ticker);
+    running=false;generation++;main.removeCallbacks(ticker);
     if(bound){try{context.unbindService(connection);}catch(IllegalArgumentException ignored){}bound=false;}
-    remote=null;Arrays.fill(resolved,null);current=Reading.empty();state="TORQUE NECONECTAT";
+    remote=null;resolvedOnce=false;Arrays.fill(resolved,null);current=Reading.empty();state="TORQUE NECONECTAT";
   }
   void close(){stop();worker.shutdownNow();}
 
