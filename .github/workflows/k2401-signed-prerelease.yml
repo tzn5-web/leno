@@ -76,7 +76,20 @@ jobs:
             echo "::error::Demo content in production code"
             exit 2
           fi
+          grep -Fq 'createRfcommSocketToServiceRecord(SPP)' "$BASE/DirectElm327.java"
+          grep -Fq 'getBondedDevices()' "$BASE/MainActivity.java"
+          grep -Fq 'Nominatim' "$BASE/LiveMapPanel.java"
           echo 'K2401_RELEASE_SOURCE_GATE=PASS'
+      - name: Verify real ECU PID decoding, no fake readings
+        shell: bash
+        run: |
+          set -euo pipefail
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"' EXIT
+          javac -encoding UTF-8 -d "$TMP" \
+            projects/k2401-evo-launcher/app/src/main/java/ro/evolauncher/k2401/ObdPidCodec.java \
+            projects/k2401-evo-launcher/scripts/ObdPidCodecCheck.java
+          java -cp "$TMP" ro.evolauncher.k2401.ObdPidCodecCheck
       - name: Authenticate to Azure Key Vault using GitHub OIDC
         uses: azure/login@v3
         with:
@@ -146,7 +159,7 @@ jobs:
             echo "ANDROID_10_MANIFEST_COMPATIBILITY=PASS"
             echo "AZURE_VM_EMULATOR=SKIPPED_BY_USER_DECISION"
             echo "GOOGLE_MAPS_SDK_KEY=$MAPS_STATUS"
-            echo "PHYSICAL_TORQUE_AND_OEM_INTEGRATION=NOT_YET_VERIFIED"
+            echo "PHYSICAL_ELM327_AND_OEM_INTEGRATION=NOT_YET_VERIFIED"
             echo "RELEASE_STATUS=SIGNED_PRERELEASE_FOR_MANUAL_HEADUNIT_TEST"
           } > k2401-signed-prerelease-report.txt
           echo 'K2401_SIGNED_PRERELEASE_GATE=PASS'
