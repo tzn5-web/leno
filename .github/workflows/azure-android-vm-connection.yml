@@ -1,0 +1,33 @@
+name: Azure Linux development VM connection info
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/azure-android-vm-connection.yml']
+permissions: {contents: read, id-token: write}
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Output public IP and SSH connectivity test
+        shell: bash
+        run: |
+          set -euo pipefail
+          IP="$(az network public-ip show -g rg-chatgpt-azure -n android-dev-ip --query ipAddress -o tsv)"
+          test -n "$IP"
+          echo "AZURE_ANDROID_VM_PUBLIC_IP=$IP"
+          echo "SSH_COMMAND=ssh -i id_ed25519_azure_android_dev dev@$IP"
+          if timeout 8 bash -c "echo > /dev/tcp/$IP/22" 2>/dev/null; then
+            echo "TCP_SSH_PORT_22=OPEN"
+          else
+            echo "TCP_SSH_PORT_22=UNREACHABLE_OR_VM_BOOTING"
+          fi
+          az vm show -g rg-chatgpt-azure -n android-dev-linux --show-details \
+            --query '{name:name,location:location,powerState:powerState,size:hardwareProfile.vmSize}' -o json
+      - if: always()
+        run: az logout || true
