@@ -414,6 +414,12 @@ final class SkinEngine {
   void draw(Canvas c){
     int id=selected,accent=COLORS[id],style=STYLES[id];
     drawArt(c,id);
+    // Source mockups had baked numbers ("4. EVO DIGITAL DASH", "22:36").
+    // Draw the real selected skin index and live time on top of those examples.
+    panel(c,18,9,604,58,0xee07101c,11);
+    stroke(c,18,9,604,58,accent,11);
+    text(c,String.format(Locale.US,"%02d / 21",id+1),35,48,23,accent,true);
+    text(c,shorten(NAMES[id],30),156,48,27,Color.WHITE,true);
     // Scrims replace baked/fake numbers and transport labels in source image.
     renderTime(c,accent,style);
     if(id==0)drawDigitalDashFastGauges(c,accent);
