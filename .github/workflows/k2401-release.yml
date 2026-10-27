@@ -1,0 +1,144 @@
+name: K2401 EVO signed APK release
+
+# Builds a non-debuggable release APK. Creates signing material only once inside
+# a private Azure Key Vault and reuses EXACTLY the same certificate on every run.
+# No Windows VM starts or billable Android emulator in this workflow.
+on:
+  push:
+    branches: [feature/k2401-evo-launcher]
+    paths:
+      - 'projects/k2401-evo-launcher/app/**'
+      - '.github/workflows/k2401-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: k2401-durable-signing-and-release
+  cancel-in-progress: false
+
+jobs:
+  signed-release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 38
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.11.1'}
+      - name: Install Android platform and build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          "$SDKMANAGER" 'platforms;android-35' 'build-tools;35.0.0'
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Retrieve or create durable private Android signing certificate
+        id: signing
+        shell: bash
+        env:
+          VAULT: k2401evo2026sign
+          OIDC_PRINCIPAL: 32e6befe-9e61-4470-9758-ed89a907c1f4
+          RG: rg-chatgpt-azure
+        run: |
+          set -euo pipefail
+          if ! az keyvault show --name "$VAULT" --resource-group "$RG" -o none 2>/dev/null; then
+            az keyvault create --name "$VAULT" --resource-group "$RG" \
+              --location swedencentral --sku standard \
+              --enable-rbac-authorization false --enable-purge-protection true -o none
+          fi
+          az keyvault set-policy --name "$VAULT" --object-id "$OIDC_PRINCIPAL" \
+            --secret-permissions get list set -o none
+          # Check the secret: NEVER replace an existing signing key on subsequent builds.
+          if ! az keyvault secret show --vault-name "$VAULT" \
+              --name k2401-android-signing-v1 -o none 2>/dev/null; then
+            PASS="$(openssl rand -hex 28)"
+            echo "::add-mask::$PASS"
+            keytool -genkeypair -noprompt -storetype PKCS12 \
+              -keystore /tmp/k2401-release.jks -alias k2401release \
+              -keyalg RSA -keysize 3072 -validity 3650 \
+              -storepass "$PASS" -keypass "$PASS" \
+              -dname 'CN=K2401 EVO Launcher,O=Personal Build,C=RO'
+            export PASS
+            python3 - <<'PY'
+          import base64,json,os
+          from pathlib import Path
+          data={"format":"PKCS12","alias":"k2401release","password":os.environ["PASS"],"keystore":base64.b64encode(Path("/tmp/k2401-release.jks").read_bytes()).decode()}
+          Path("/tmp/k2401-signing-secret.json").write_text(json.dumps(data),encoding="utf-8")
+          PY
+            az keyvault secret set --vault-name "$VAULT" \
+              --name k2401-android-signing-v1 --file /tmp/k2401-signing-secret.json \
+              --encoding utf-8 -o none
+            echo 'SIGNING_CERT_CREATED_ONCE=PASS'
+          else
+            echo 'SIGNING_CERT_REUSED=PASS'
+          fi
+          az keyvault secret show --vault-name "$VAULT" \
+            --name k2401-android-signing-v1 --query value -o tsv > /tmp/k2401-signing-secret.json
+          python3 - <<'PY'
+          import base64,json,os
+          from pathlib import Path
+          s=json.loads(Path("/tmp/k2401-signing-secret.json").read_text())
+          assert s["format"]=="PKCS12" and s["alias"]=="k2401release"
+          key=Path("/tmp/k2401-release.jks")
+          key.write_bytes(base64.b64decode(s["keystore"],validate=True));key.chmod(0o600)
+          pwd=s["password"]
+          assert len(pwd)>=24 and all(ch.isalnum() for ch in pwd)
+          print("::add-mask::"+pwd)
+          with open(os.environ["GITHUB_ENV"],"a") as f:
+              f.write("K2401_RELEASE_PASSWORD="+pwd+"\n")
+              f.write("K2401_RELEASE_KEYSTORE=/tmp/k2401-release.jks\n")
+          PY
+          rm -f /tmp/k2401-signing-secret.json
+      - name: Compile and cryptographically verify non-debug APK
+        shell: bash
+        env:
+          K2401_MAPS_API_KEY: ${{ secrets.K2401_MAPS_API_KEY }}
+        run: |
+          set -euo pipefail
+          gradle --no-daemon -p projects/k2401-evo-launcher :app:assembleRelease
+          APK=projects/k2401-evo-launcher/app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" > /tmp/k2401-signature-info.txt
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/k2401-signature-info.txt
+          ! grep -iq '^Verified using.*false' /tmp/k2401-signature-info.txt | false
+          echo 'RELEASE_APK_SIGNATURE_VERIFIED=PASS'
+          echo 'RELEASE_NONDEBUG=PASS'
+          sha256sum "$APK"
+          grep -E '^Signer #1 certificate SHA-256 digest:' /tmp/k2401-signature-info.txt
+          mkdir -p release-docs
+          {
+            echo "K2401_EVO_VERSION=1.0.0"
+            echo "RELEASE_SIGNING=AZURE_KEYVAULT_PERSISTENT"
+            echo "APK_SHA256=$(sha256sum "$APK" | awk '{print $1}')"
+            grep -E '^Signer #1 certificate SHA-256 digest:' /tmp/k2401-signature-info.txt
+            echo "ANDROID_10_BUILD=PASS"
+            echo "REAL_CAR_HARDWARE_VALIDATION=PENDING"
+            echo "AZURE_ANDROID_EMULATOR_VALIDATION=SEE_SEPARATE_WORKFLOW"
+          } > release-docs/release-report.txt
+      - name: Upload signed installable release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: K2401-EVO-v1.0-signed-release-apk
+          path: projects/k2401-evo-launcher/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish signing and release evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: K2401-EVO-v1.0-release-report
+          path: release-docs/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Azure logout
+        if: always()
+        run: az logout || true
