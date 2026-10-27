@@ -24,7 +24,12 @@ adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS 2>/dev/null || t
 sleep 10
 # Dismiss optional secondary permission sheet if it appears.
 adb shell input tap 840 1595 || true
-sleep 10
+sleep 5
+# Return from Android's All Files Access settings to SHAREit's own screen.
+adb shell input keyevent KEYCODE_BACK || true
+sleep 6
+adb shell am start -n "$PKG/com.lenovo.anyshare.main.MainActivity" >/dev/null 2>&1 || true
+sleep 18
 adb shell dumpsys activity activities | grep -E 'topResumedActivity|mResumedActivity' >"$D/foreground-activity.txt" || true
 echo "APP_FOREGROUND_INFO=$(cat "$D/foreground-activity.txt")"
 adb shell screencap -p /sdcard/shareit-screen.png
