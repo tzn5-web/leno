@@ -1,0 +1,42 @@
+name: SHAREit - compare original launcher to APKEditor merged launcher
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/shareit-merge-manifest-audit.yml']
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Download privately, inspect launch entry and compare APKEditor merge result on free runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          export AZURE_STORAGE_KEY="$(az storage account keys list -g rg-chatgpt-azure -n tzn5androidartifacts26 --query '[0].value' -o tsv)"
+          az storage blob download --account-name tzn5androidartifacts26 --container-name apks-private \
+            --name output/SHAREit_6.27.58_NoAds_SPLITS.apks --file /tmp/shareit.apks --overwrite --only-show-errors
+          cd /tmp
+          unzip -p shareit.apks base.apk > base.apk
+          AAPT="$(find "$ANDROID_HOME/build-tools" -name aapt | sort -V | tail -1)"
+          echo "AAPT=$AAPT"
+          echo "====BASE_BADGING===="
+          "$AAPT" dump badging base.apk | grep -E '^package:|^launchable-activity|^sdkVersion:|^targetSdkVersion:|^application-label:' | head -35 || true
+          echo "====BASE_MAIN_LAUNCHER_MANIFEST===="
+          "$AAPT" dump xmltree base.apk AndroidManifest.xml | grep -C 7 -E 'android.intent.action.MAIN|android.intent.category.LAUNCHER' | head -65 || true
+          curl -fsSL --retry 2 https://github.com/REAndroid/APKEditor/releases/download/V1.4.9/APKEditor-1.4.9.jar -o /tmp/apkeditor.jar
+          echo 'a9cd40df818845456be6d696de6110c89edf4b0a0580cb83438ed6b25a366e67  /tmp/apkeditor.jar' | sha256sum -c -
+          java -Xmx6g -jar /tmp/apkeditor.jar m -i /tmp/shareit.apks -o /tmp/merged.apk -clean-meta >/tmp/mergelog 2>&1
+          echo "====MERGED_BADGING===="
+          "$AAPT" dump badging /tmp/merged.apk | grep -E '^package:|^launchable-activity|^sdkVersion:|^targetSdkVersion:|^application-label:' | head -35 || true
+          echo "====MERGED_MAIN_LAUNCHER_MANIFEST===="
+          "$AAPT" dump xmltree /tmp/merged.apk AndroidManifest.xml | grep -C 7 -E 'android.intent.action.MAIN|android.intent.category.LAUNCHER' | head -65 || true
+          echo "====MERGE_LOG_END===="
+          tail -n 15 /tmp/mergelog
