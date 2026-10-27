@@ -21,6 +21,9 @@ android {
      keyPassword System.getenv('K2401_RELEASE_PASSWORD') ?: ''
    }
  }
+ // This APK is sideloaded privately on Android 10, not published to Google Play.
+ // The legacy head unit needs its existing Android 10 compatibility contract.
+ lint { disable 'ExpiredTargetSdkVersion' }
  buildFeatures { aidl true; buildConfig true }
  buildTypes {
    debug { minifyEnabled false }
