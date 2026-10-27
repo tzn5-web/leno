@@ -11,6 +11,22 @@ adb install -r projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug
 adb shell pm grant "$APP" android.permission.ACCESS_FINE_LOCATION
 adb shell pm grant "$APP" android.permission.ACCESS_COARSE_LOCATION
 adb logcat -c
+# The emergency Activity must boot independently of map, Torque or ELM327.
+adb shell am start -W -n "$APP/.SafeModeActivity" > "$OUT/recovery-launch.txt"
+sleep 1
+adb shell pidof "$APP" >/dev/null
+adb shell uiautomator dump /sdcard/k2401-recovery.xml >/dev/null
+adb pull /sdcard/k2401-recovery.xml "$OUT/recovery-ui.xml" >/dev/null
+python3 - <<'PY'
+import xml.etree.ElementTree as ET
+nodes=ET.parse("projects/k2401-evo-launcher/screenshots/recovery-ui.xml").findall(".//node")
+texts=[n.attrib.get("text","") for n in nodes]
+assert any("EVO — RECUPERARE" in t for t in texts), "K2401_EMERGENCY_SCREEN_MISSING"
+assert any("fără conexiuni OBD" in t for t in texts), "K2401_SAFE_BOOT_BUTTON_MISSING"
+assert any("Copiază diagnosticul" in t for t in texts), "K2401_CRASH_REPORT_ACTION_MISSING"
+print("K2401_OEM_SAFE_RECOVERY_ACTIVITY=PASS")
+PY
+adb shell am force-stop "$APP"
 adb shell am start -W -n "$APP/.MainActivity" | tee "$OUT/launch.txt"
 sleep 3
 adb shell wm size > "$OUT/device-info.txt"
