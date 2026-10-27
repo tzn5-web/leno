@@ -72,7 +72,7 @@ final class DirectElm327 {
       throw new IllegalArgumentException("MAC invalid");
     if(!mac.equalsIgnoreCase(selectedMac)){
       mode="AUTO";
-      preferences.edit().putString(KEY_MODE,mode).commit();
+      preferences.edit().putString(KEY_MODE,mode).putBoolean("elm327_ble_hint",false).commit();
     }
     selectedMac=mac;
     preferences.edit().putString(KEY,mac).commit();
@@ -165,14 +165,19 @@ final class DirectElm327 {
   private void runConnection(long token)throws Exception{
     BluetoothAdapter adapter=BluetoothAdapter.getDefaultAdapter();
     if(adapter==null)throw new IOException("Android Bluetooth adapter missing");
-    if(!adapter.isEnabled()){step(token,"ACTIVEAZĂ BLUETOOTH");return;}
+    if(!adapter.isEnabled()){step(token,"ACTIVEAZĂ BLUETOOTH");running=false;return;}
     BluetoothDevice device=null;
     for(BluetoothDevice paired:adapter.getBondedDevices())
       if(paired.getAddress().equalsIgnoreCase(selectedMac)){device=paired;break;}
-    if(device==null){step(token,"ASOCIAZĂ ADAPTORUL ÎN ANDROID");return;}
+    boolean bleHint=preferences.getBoolean("elm327_ble_hint",false);
+    if(device==null && bleHint){
+      // BLE GATT usually needs discovery, but NOT Android Classic pairing.
+      device=adapter.getRemoteDevice(selectedMac);
+    }
+    if(device==null){step(token,"ASOCIAZĂ ADAPTORUL / CAUTĂ BLE");running=false;return;}
     try{adapter.cancelDiscovery();}catch(RuntimeException ignored){}
     String pref=preferences.getString(KEY_MODE,"AUTO");
-    boolean bleFirst="BLE".equals(pref)||device.getType()==BluetoothDevice.DEVICE_TYPE_LE;
+    boolean bleFirst="BLE".equals(pref)||bleHint||device.getType()==BluetoothDevice.DEVICE_TYPE_LE;
     IOException combined=null;
     for(int attempt=0;attempt<2&&alive(token);attempt++){
       boolean useBle=attempt==0?bleFirst:!bleFirst;
