@@ -70,7 +70,7 @@ final class LiveMapPanel extends FrameLayout implements LocationListener {
         Location l=lastLocation();if(l!=null)moveTo(l);
       });
     }else{
-      // Native tile renderer: no unpkg.com, no Leaflet JS, no WebView compatibility problems.
+      // Native tile renderer: no remote scripts or browser dependencies.
       Configuration.getInstance().setUserAgentValue(host.getPackageName()+"/1.0 (in-car interactive map)");
       Configuration.getInstance().setOsmdroidBasePath(host.getCacheDir());
       Configuration.getInstance().setOsmdroidTileCache(new java.io.File(host.getCacheDir(),"osm-tiles"));
