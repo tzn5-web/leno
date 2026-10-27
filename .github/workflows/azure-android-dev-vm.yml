@@ -30,7 +30,7 @@ jobs:
       AZURE_SUBSCRIPTION_ID: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
       RESOURCE_GROUP: rg-chatgpt-azure
       VM_NAME: android-dev-linux
-      VM_REGION: westeurope
+      VM_REGION: swedencentral
       VM_SIZE: Standard_D4as_v5
       ACTION: ${{ github.event.inputs.operation || 'provision' }}
     steps:
