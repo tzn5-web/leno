@@ -1,0 +1,35 @@
+name: Test Aptoide official SHAREit 6.27.58 mirror API (read only)
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/shareit-aptoide-source.yml']
+permissions: {contents: read}
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Query mirror API without downloading user binaries
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import urllib.request,json
+          links=[
+            "https://ws75.aptoide.com/api/7/apps/search?query=SHAREit&limit=12",
+            "https://ws75.aptoide.com/api/7/apps/get/package_name=com.lenovo.anyshare.gps",
+          ]
+          for url in links:
+              try:
+                  req=urllib.request.Request(url,headers={"User-Agent":"Mozilla/5.0"})
+                  with urllib.request.urlopen(req,timeout=18) as r:
+                      j=json.load(r)
+                  print('STATUS',j.get('info',{}).get('status'),'URL',url)
+                  data=j.get('datalist',{}).get('list',[]) if 'search?' in url else [j.get('nodes',{}).get('meta',{}).get('data',j)]
+                  for entry in data[:10]:
+                      if 'shareit' in str(entry.get('name','')).lower() or entry.get('package')=='com.lenovo.anyshare.gps':
+                          file=entry.get('file') or {}
+                          print('MATCH',json.dumps({k:entry.get(k) for k in ('id','name','package','vername','vercode')}))
+                          print('FILE',json.dumps({k:file.get(k) for k in ('path','md5sum','filesize')},ensure_ascii=False))
+              except Exception as e:
+                  print('API_ERROR',type(e).__name__,str(e)[:250])
+          PY
