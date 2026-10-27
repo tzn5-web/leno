@@ -33,7 +33,7 @@ final class ObdReader {
   private static final String[] PIDS={"010C","0106","0107","0105"};
   private static final long MAX_STALE_MS=7000L;
   private final Context context;
-  private final DirectElm327 direct;
+  private volatile DirectElm327 direct;
   private volatile boolean useDirect;
   private final Runnable onUpdate;
   private final Handler main=new Handler(Looper.getMainLooper());
@@ -144,24 +144,26 @@ final class ObdReader {
   };
   ObdReader(Context context,Runnable onUpdate){
     this.context=context.getApplicationContext();this.onUpdate=onUpdate;
-    this.direct=new DirectElm327(context,onUpdate);
+    // Lazy creation: OEM K2401 Bluetooth stacks can crash during class/service init.
+    // Never initialize the ELM327 backend while the launcher first opens.
     // Official Torque API can be selected explicitly; modified/unofficial
     // Torque apps are NOT assumed to implement org.prowl.torque's AIDL.
     this.useDirect=!"torque".equals(this.context.getSharedPreferences("evo_launcher_prefs",Context.MODE_PRIVATE)
       .getString("obd_source","direct"));
   }
   Reading current(){
-    if(useDirect)return direct.current();
+    if(useDirect)return direct==null?Reading.empty():direct.current();
     Reading snapshot=current;
     // Also expire readings if the IPC worker hangs and no new poll completes.
     return snapshot.live && SystemClock.elapsedRealtime()-snapshot.capturedAtMs>MAX_STALE_MS
         ? Reading.empty() : snapshot;
   }
-  String status(){return useDirect?direct.status():state;}
+  String status(){return useDirect?(direct==null?"ELM327 • ALEGE ADAPTORUL":direct.status()):state;}
   boolean isDirect(){return useDirect;}
-  String adapterAddress(){return direct.adapterAddress();}
+  String adapterAddress(){return direct==null?context.getSharedPreferences("evo_launcher_prefs",Context.MODE_PRIVATE).getString("elm327_mac",""):direct.adapterAddress();}
   void chooseDirectAdapter(String mac){
     stop();
+    if(direct==null)direct=new DirectElm327(context,onUpdate);
     direct.selectAdapter(mac);
     setMode(true);
   }
@@ -174,7 +176,12 @@ final class ObdReader {
     start();
   }
   synchronized void start(){
-    if(useDirect){direct.start();return;}
+    if(useDirect){
+      // Do not touch the head-unit Bluetooth driver until user chooses ELM327.
+      if(adapterAddress().isEmpty()){state="ELM327 • ALEGE ADAPTORUL";return;}
+      if(direct==null)direct=new DirectElm327(context,onUpdate);
+      direct.start();return;
+    }
     if(running)return;
     running=true;
     try{
@@ -186,12 +193,12 @@ final class ObdReader {
     main.post(ticker);
   }
   synchronized void stop(){
-    direct.stop();
+    if(direct!=null)direct.stop();
     running=false;generation++;main.removeCallbacks(ticker);
     if(bound){try{context.unbindService(connection);}catch(IllegalArgumentException ignored){}bound=false;}
     remote=null;resolvedOnce=false;Arrays.fill(resolved,null);current=Reading.empty();state="TORQUE NECONECTAT";
   }
-  void close(){stop();direct.close();worker.shutdownNow();}
+  void close(){stop();if(direct!=null)direct.close();worker.shutdownNow();}
 
   private void resolvePids(ITorqueService svc)throws RemoteException{
     String[] known=null,supported=null;
