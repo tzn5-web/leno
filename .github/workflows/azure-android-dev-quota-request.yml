@@ -1,0 +1,47 @@
+name: Azure Android VM - request Sweden Central regional core quota
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/azure-android-dev-quota-request.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  request:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Request only 8 total cores, no other resource changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          az account set --subscription 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+          echo "CURRENT_SWEDEN_TOTAL_CORES:"
+          az vm list-usage -l swedencentral --query "[?name.value=='cores'].{Name:name.value,Current:currentValue,Limit:limit}" -o json
+          az config set extension.use_dynamic_install=yes_without_prompt
+          az extension add --name quota --yes
+          SCOPE="/subscriptions/0ac7a514-32b3-47bf-bf89-e17906b1cc86/providers/Microsoft.Compute/locations/swedencentral"
+          CURRENT="$(az quota show --resource-name cores --scope "$SCOPE" --query properties.limit.value -o tsv)"
+          if [[ "$CURRENT" =~ ^[0-9]+$ ]] && (( CURRENT >= 8 )); then
+            echo "QUOTA_ALREADY_SUFFICIENT=$CURRENT"
+            exit 0
+          fi
+          if [[ ! "$CURRENT" =~ ^[0-9]+$ ]]; then
+            echo "QUOTA_VALUE_UNKNOWN=$CURRENT"
+            exit 3
+          fi
+          echo "REQUEST_QUOTA from=$CURRENT to=8"
+          az quota update --resource-name cores --scope "$SCOPE" --limit-object value=8 --resource-type dedicated -o json
+          echo 'AZURE_QUOTA_REQUEST_SUBMITTED=YES'
+      - name: Sign out
+        if: always()
+        run: az logout || true
