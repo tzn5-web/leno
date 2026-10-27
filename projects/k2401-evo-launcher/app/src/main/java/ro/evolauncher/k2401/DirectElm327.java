@@ -211,7 +211,17 @@ final class DirectElm327 {
         }
         if(!alive(token))return;
         step(token,"ATI • VERIFICĂ ELM");
-        String identity=command(in,out,"ATI",5000L,token);
+        String identity;
+        try{
+          identity=command(in,out,"ATI",5000L,token);
+        }catch(IOException initial){
+          // One recovery reset only if the initial ATI failed. Do not hard
+          // reset on every reconnect as the previous build did.
+          step(token,"ATZ • RECUPERARE ELM");
+          command(in,out,"ATZ",9000L,token);
+          step(token,"ATI • DUPĂ RECUPERARE");
+          identity=command(in,out,"ATI",5000L,token);
+        }
         if(identity.trim().isEmpty()||identity.contains("?"))
           throw new IOException("ATI rejected: "+safe(identity));
         step(token,"INIȚIALIZARE ELM");
