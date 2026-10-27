@@ -87,6 +87,7 @@ final class ShortcutDock extends HorizontalScrollView {
         persist();render();
       }).setNegativeButton("Anulează",null).show();
   }
+  void openPicker(){choose(-1);}
   private void choose(int replaceIndex){
     Intent launcher=new Intent(Intent.ACTION_MAIN);launcher.addCategory(Intent.CATEGORY_LAUNCHER);
     List<ResolveInfo> found=pm.queryIntentActivities(launcher,0);
