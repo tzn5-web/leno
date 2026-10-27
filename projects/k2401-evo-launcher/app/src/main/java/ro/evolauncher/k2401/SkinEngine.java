@@ -262,32 +262,76 @@ final class SkinEngine {
       text(c,"▶▶",x+490,y+h-25,26,0xffeff5ff,true);
     }
   }
+  private static float clipped(float value,float lo,float hi){
+    return Math.max(0f,Math.min(1f,(value-lo)/Math.max(1f,hi-lo)));
+  }
+  // All 21 skins use their own palette (COLORS[id]), one of seven native
+  // gauge geometries, and one of three placements. Only ECU values influence
+  // arcs, needles and bars; absent PIDs have neither needles nor filled arcs.
   private void gauge(Canvas c,float cx,float cy,int radius,String name,String value,
                      String unit,float reading,float from,float to,int accent,int style){
-    if(style==4 || style==5){
-      panel(c,cx-radius,cy-radius*.66f,2*radius,1.62f*radius,0xf1091320,10);
-      stroke(c,cx-radius,cy-radius*.66f,2*radius,1.62f*radius,accent,10);
-      text(c,name,cx-radius+12,cy-radius*.66f+26,16,0xffc4d4e3,true);
-      text(c,value,cx-radius+12,cy+20,35,Color.WHITE,true);
-      text(c,unit,cx+radius-34,cy+42,13,accent,false);
-      float pct=Float.isFinite(reading)?Math.max(0,Math.min(1,(reading-from)/(to-from))):0f;
-      panel(c,cx-radius+12,cy+radius*.81f,2*radius-24,5,0xff344153,2);
-      if(Float.isFinite(reading))panel(c,cx-radius+12,cy+radius*.81f,(2*radius-24)*pct,5,accent,2);
-      // Small live waterfall trace is a static decoration, not fabricated history.
+    int geometry=style%7,edition=style/7;
+    boolean valid=Float.isFinite(reading);
+    float progress=valid?clipped(reading,from,to):0f;
+    final int neon=edition==1?0xff22d3ef:edition==2?0xffed577b:accent;
+    int applied=geometry==2?neon:accent;
+    if(geometry==4||geometry==5){
+      float left=cx-radius,top=cy-radius*.73f;
+      panel(c,left,top,2f*radius,1.68f*radius,0xf0081523,9);
+      stroke(c,left,top,2f*radius,1.68f*radius,applied,9);
+      text(c,name,left+13,top+26,16,0xffdae5ee,true);
+      text(c,value,left+13,cy+18,geometry==5?33:30,Color.WHITE,true);
+      text(c,unit,left+16,cy+40,12,0xffa9c0d4,false);
+      float width=2f*radius-26f;
+      panel(c,left+13,top+1.43f*radius,width,7,0xff273a4e,3);
+      if(valid)panel(c,left+13,top+1.43f*radius,width*progress,7,applied,3);
+      if(geometry==5&&valid){
+        for(int t=0;t<10;t++){
+          float x=left+15+t*width/10f;
+          if(t<=progress*10f)line(c,x,top+1.12f*radius,x,top+1.31f*radius,applied,3);
+        }
+      }
       return;
     }
-    colour(0xff09101b);c.drawCircle(cx,cy,radius+5,p);
-    colour(0xff344152);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(8);
-    c.drawArc(cx-radius,cy-radius,cx+radius,cy+radius,135,270,false,p);
-    if(Float.isFinite(reading)){
-      float fraction=Math.max(0,Math.min(1,(reading-from)/(to-from)));
-      colour(accent);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(style==2?11:8);
-      c.drawArc(cx-radius,cy-radius,cx+radius,cy+radius,135,270*fraction,false,p);
+    colour(0xed06101c);
+    c.drawCircle(cx,cy,radius+5,p);
+    if(geometry==3)stroke(c,cx-radius-3,cy-radius-3,radius*2+6,radius*2+6,applied,9);
+    colour(0xff37495f);p.setStrokeWidth(geometry==2?12f:geometry==6?5f:8f);
+    p.setStyle(Paint.Style.STROKE);
+    int startAngle=(geometry==6)?155:135;
+    int span=(geometry==6)?230:270;
+    c.drawArc(cx-radius,cy-radius,cx+radius,cy+radius,startAngle,span,false,p);
+    if(valid){
+      colour(applied);p.setStyle(Paint.Style.STROKE);
+      p.setStrokeCap(Paint.Cap.ROUND);
+      p.setStrokeWidth(geometry==2?12f:geometry==6?5f:8f);
+      c.drawArc(cx-radius,cy-radius,cx+radius,cy+radius,startAngle,span*progress,false,p);
+      if(geometry==2){
+        p.setStrokeWidth(2.5f);
+        c.drawArc(cx-radius+11,cy-radius+11,cx+radius-11,cy+radius-11,
+          startAngle,span*progress,false,p);
+      }
     }
     p.setStyle(Paint.Style.FILL);
+    if(geometry==1||geometry==6){
+      for(int i=0;i<=12;i++){
+        float a=(float)Math.toRadians(startAngle+span*i/12f);
+        float x1=cx+(radius-14)*(float)Math.cos(a);
+        float y1=cy+(radius-14)*(float)Math.sin(a);
+        float x2=cx+(radius-5)*(float)Math.cos(a);
+        float y2=cy+(radius-5)*(float)Math.sin(a);
+        line(c,x1,y1,x2,y2,(valid&&i/12f<=progress)?applied:0xff51647c,2.5f);
+      }
+      if(geometry==1&&valid){
+        float a=(float)Math.toRadians(startAngle+span*progress);
+        line(c,cx,cy,cx+(radius-23)*(float)Math.cos(a),
+          cy+(radius-23)*(float)Math.sin(a),applied,2.7f);
+      }
+    }
     centered(c,value,cx,cy+13,radius>65?39:28,Color.WHITE,true);
     centered(c,name,cx,cy+radius+25,17,0xffe6edf4,true);
-    centered(c,unit,cx,cy+radius+43,13,accent,false);
+    centered(c,unit,cx,cy+radius+43,13,applied,false);
+    if(!valid)centered(c,"ECU N/A",cx,cy+radius*.50f,12,0xff9baac2,false);
   }
   private void stats(Canvas c,int accent,int style){
     ObdReader.Reading rd=host.obd==null?ObdReader.Reading.empty():host.obd.current();
@@ -303,16 +347,16 @@ final class SkinEngine {
     String status=host.obd==null?"N/A":host.obd.status();
     text(c,shorten(status,35),x+210,y+29,15,rd.live?0xff64eac4:0xffa0aabc,false);
     line(c,x+14,y+43,x+w-14,y+43,0xff415164,1);
-    if(style==0){ // Digital Dash: two primary rings + two trims.
+    if(style==0||style==2||style==7||style==13||style==15||style==20){ // RPM/STFT: two prominent live instruments.
       int rad=75;
       gauge(c,x+115,y+149,rad,names[0],val(vs[0],0),units[0],vs[0],lower[0],upper[0],accent,0);
       gauge(c,x+315,y+149,rad,names[1],val(vs[1],1),units[1],vs[1],lower[1],upper[1],0xff18c6ff,0);
       gauge(c,x+486,y+122,47,names[2],val(vs[2],1),units[2],vs[2],lower[2],upper[2],0xffed9545,0);
       gauge(c,x+486,y+240,47,names[3],val(vs[3],0),units[3],vs[3],lower[3],upper[3],0xffed5960,0);
     }else{
-      int rad=style==4||style==5?67:57;
+      int rad=(style%7==4||style%7==5)?64:(style/7==2?54:57);
       for(int i=0;i<4;i++){
-        float cx=x+84+i*(w-168)/3f,cy=y+(style==4||style==5?142:137);
+        float cx=x+84+i*(w-168)/3f,cy=y+((style%7==4||style%7==5)?140:137);
         int color=i==0?accent:i==1?0xff20c8fa:i==2?0xffec9b35:0xffef4552;
         gauge(c,cx,cy,rad,names[i],val(vs[i],i==0||i==3?0:1),units[i],
           vs[i],lower[i],upper[i],color,style);
@@ -355,6 +399,11 @@ final class SkinEngine {
     text(c,shorten(NAMES[id],30),410,700,18,Color.WHITE,true);
   }
   boolean touch(float x,float y){
+    // The App Center and App Launcher backgrounds include decorative example
+    // icons. Touching that area opens the REAL installed-app search drawer.
+    if((selected==5||selected==19)&&x>95&&x<620&&y>225&&y<620){
+      host.showInstalledApps();return true;
+    }
     if(x<108&&y<66){host.showInstalledApps();return true;}
     if(x<90&&y>=228&&y<=615){
       int slot=Math.min(5,Math.max(0,(int)((y-233)/61)));
