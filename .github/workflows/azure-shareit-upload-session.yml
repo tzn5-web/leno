@@ -35,17 +35,8 @@ jobs:
             --container-name apks-private --name input/shareit-6.27.58-user.apks \
             --permissions cw --expiry "$EXP" --https-only -o tsv)"
           echo "::add-mask::$SAS"
-          cat >/tmp/requester-pubkey.pem <<'EOF'
-          -----BEGIN PUBLIC KEY-----
-          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQEA0AkXDCj+tnhKGDDNKsbc
-          9+iW9O9vTK8oj96yWZuUqJOxnta7TugZVnsmdHsqXlhICdqa3VuzZbaxePDFRxgz
-          bvn9kTgAV+23XZd+wq+8s+cqXFWukI3/jlOnr3kMz3/ff8bhDa1wbAQvr9KBTow3
-          j/OTJfj+cb06c6FmgSxoV4HHeuMCNVT70/n1B5VWWXyJLPZQDgd44SZiLz3+aPpB
-          calTFWhy5YtxGbmY5GW59ti3F3LROyduCvWezw30Jn1lqzBzuaq0xi8y2JMP1705
-          1YD4KJHZ31VtdF4lmxbK0DnZvozDyHuho02su1/1nzzBU/kU50l4y2jt+NYR/O9V
-          KQIDAQAB
-          -----END PUBLIC KEY-----
-          EOF
+          printf '%s' 'LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQklqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FROEFNSUlCQ2dLQ0FRRUEwQWtYRENqK3RuaEtHREROS3NiYwo5K2lXOU85dlRLOG9qOTZ5V1p1VXFKT3hudGE3VHVnWlZuc21kSHNxWGxoSUNkcWEzVnV6WmJheGVQREZSeGd6CmJ2bjlrVGdBVisyM1haZCt3cSs4cytjcVhGV3VrSTMvamxPbnIza016My9mZjhiaERhMXdiQVF2cjlLQlRvdzMKai9PVEpmaitjYjA2YzZGbWdTeG9WNEhIZXVNQ05WVDcwL24xQjVWV1dYeUpMUFpRRGdkNDRTWmlMejMrYVBwQgpjYWxURldoeTVZdHhHYm1ZNUdXNTl0aTNGM0xST3lkdUN2V2V6dzMwSm4xbHF6Qnp1YXEweGk4eTJKTVAxNzA1CjFZRDRLSkhaMzFWdGRGNGxteGJLMERuWnZvekR5SHVobzAyc3UxLzFuenpCVS9rVTUwbDR5Mmp0K05ZUi9POVYKS1FJREFRQUIKLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg==' | base64 -d >/tmp/requester-pubkey.pem
+          openssl pkey -pubin -in /tmp/requester-pubkey.pem -noout >/dev/null
           printf '%s' "$SAS" >/tmp/upload.sas
           openssl pkeyutl -encrypt -pubin -inkey /tmp/requester-pubkey.pem \
             -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 \
