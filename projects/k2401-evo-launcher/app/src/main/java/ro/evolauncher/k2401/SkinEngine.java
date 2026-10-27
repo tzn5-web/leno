@@ -218,11 +218,14 @@ final class SkinEngine {
     p.setStyle(Paint.Style.FILL);
   }
   private void renderTime(Canvas c,int accent,int style){
-    panel(c,20,78,300,132,0xee09111d,15);
-    stroke(c,20,78,300,132,accent,15);
-    text(c,time(),37,144,59,Color.WHITE,true);
-    text(c,shorten(date(),28),39,180,19,0xffd2ddeb,false);
-    text(c,"MITSUBISHI • EVO",40,201,13,accent,true);
+    // Original concept artwork contains a static clock (22:36 etc.). On the
+    // actual screen its sample digits MUST be covered by the running time.
+    panel(c,20,78,602,132,0xee09111d,15);
+    stroke(c,20,78,602,132,accent,15);
+    text(c,time(),37,153,66,Color.WHITE,true);
+    text(c,shorten(date(),34),246,155,23,0xffd2ddeb,true);
+    text(c,shorten(NAMES[selected],34),246,189,17,accent,true);
+    text(c,"K2401 • LIVE",42,193,15,accent,true);
   }
   private void renderMusic(Canvas c,int accent,int style){
     // Dynamic media covers *baked* fake track/controls from original previews.
@@ -347,12 +350,20 @@ final class SkinEngine {
     String status=host.obd==null?"N/A":host.obd.status();
     text(c,shorten(status,35),x+210,y+29,15,rd.live?0xff64eac4:0xffa0aabc,false);
     line(c,x+14,y+43,x+w-14,y+43,0xff415164,1);
-    if(style==0||style==2||style==7||style==13||style==15||style==20){ // RPM/STFT: two prominent live instruments.
+    if(style==0){
+      // EVO Digital Dash has the two FAST rings on the left. On the right,
+      // keep the remaining two actual (slow) ECU gauges, not two duplicate
+      // fast RPM/STFT readings.
+      gauge(c,x+174,y+149,84,names[2],val(vs[2],1),units[2],vs[2],
+        lower[2],upper[2],0xffeda551,2);
+      gauge(c,x+445,y+149,84,names[3],val(vs[3],0),units[3],vs[3],
+        lower[3],upper[3],0xff54d6ba,2);
+    }else if(style==2||style==7||style==13||style==15||style==20){
       int rad=75;
-      gauge(c,x+115,y+149,rad,names[0],val(vs[0],0),units[0],vs[0],lower[0],upper[0],accent,0);
-      gauge(c,x+315,y+149,rad,names[1],val(vs[1],1),units[1],vs[1],lower[1],upper[1],0xff18c6ff,0);
-      gauge(c,x+486,y+122,47,names[2],val(vs[2],1),units[2],vs[2],lower[2],upper[2],0xffed9545,0);
-      gauge(c,x+486,y+240,47,names[3],val(vs[3],0),units[3],vs[3],lower[3],upper[3],0xffed5960,0);
+      gauge(c,x+115,y+149,rad,names[0],val(vs[0],0),units[0],vs[0],lower[0],upper[0],accent,style);
+      gauge(c,x+315,y+149,rad,names[1],val(vs[1],1),units[1],vs[1],lower[1],upper[1],0xff18c6ff,style);
+      gauge(c,x+486,y+122,47,names[2],val(vs[2],1),units[2],vs[2],lower[2],upper[2],0xffed9545,style);
+      gauge(c,x+486,y+240,47,names[3],val(vs[3],0),units[3],vs[3],lower[3],upper[3],0xffed5960,style);
     }else{
       int rad=(style%7==4||style%7==5)?64:(style/7==2?54:57);
       for(int i=0;i<4;i++){
@@ -387,11 +398,25 @@ final class SkinEngine {
       centered(c,names[i],43,top+48,10,0xffc3ccdc,true);
     }
   }
+  private void drawDigitalDashFastGauges(Canvas c,int accent){
+    // EVO DIGITAL DASH replaces the two prominent photographed sample gauges
+    // with the actual instantaneous ECU RPM and STFT B1. No speed or simulated
+    // sensor values are shown, and these controls are interactive via touch.
+    ObdReader.Reading data=host.obd==null?ObdReader.Reading.empty():host.obd.current();
+    panel(c,101,220,527,353,0xee07111e,24);
+    stroke(c,101,220,527,353,accent,24);
+    text(c,"RPM + STFT • ECU LIVE",123,255,19,0xffd5e5f7,true);
+    gauge(c,240,384,91,"RPM",val(data.rpm,0),"rpm",data.rpm,0,8000,accent,2);
+    gauge(c,481,384,91,"STFT B1",val(data.stft,1),"%",data.stft,-25,25,
+      0xff2dd4ff,2);
+    text(c,"ACTUALIZARE PRIORITARĂ",210,541,17,0xff8dd6ea,true);
+  }
   void draw(Canvas c){
     int id=selected,accent=COLORS[id],style=STYLES[id];
     drawArt(c,id);
     // Scrims replace baked/fake numbers and transport labels in source image.
     renderTime(c,accent,style);
+    if(id==0)drawDigitalDashFastGauges(c,accent);
     renderMusic(c,accent,style);
     stats(c,accent,style);
     strip(c,accent);
@@ -401,6 +426,9 @@ final class SkinEngine {
   boolean touch(float x,float y){
     // The App Center and App Launcher backgrounds include decorative example
     // icons. Touching that area opens the REAL installed-app search drawer.
+    if(selected==0&&x>100&&x<629&&y>220&&y<573){
+      host.showObdStatus();return true;
+    }
     if((selected==5||selected==19)&&x>95&&x<620&&y>225&&y<620){
       host.showInstalledApps();return true;
     }
