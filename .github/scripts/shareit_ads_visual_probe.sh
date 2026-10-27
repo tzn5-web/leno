@@ -25,13 +25,31 @@ sleep 10
 # Dismiss optional secondary permission sheet if it appears.
 adb shell input tap 840 1595 || true
 sleep 5
-# Return from Android's All Files Access settings to SHAREit's own screen.
+# Android 16 returns to Settings after granting storage; force the activity stack
+# back to SHAREit, checking the *actual* foreground package rather than just the PID.
+adb shell appops get "$PKG" MANAGE_EXTERNAL_STORAGE >"$D/storage-appops.txt" 2>&1 || true
 adb shell input keyevent KEYCODE_BACK || true
-sleep 6
-adb shell am start -n "$PKG/com.lenovo.anyshare.main.MainActivity" >/dev/null 2>&1 || true
-sleep 18
+sleep 3
+for step in 1 2 3 4; do
+  adb shell am force-stop com.android.settings || true
+  adb shell am start -W -n "$PKG/com.lenovo.anyshare.main.MainActivity" >>"$D/activity-start.txt" 2>&1 || true
+  sleep 7
+  F="$(adb shell dumpsys activity activities | grep -E 'topResumedActivity|mResumedActivity' | head -1 || true)"
+  echo "ATTEMPT_$step $F" >>"$D/foreground-attempts.txt"
+  if [[ "$F" == *"$PKG/"* ]]; then break; fi
+  adb shell am start -W -n "$PKG/com.lenovo.anyshare.ChangeLogoActivity2" >>"$D/activity-start.txt" 2>&1 || true
+  sleep 7
+  F="$(adb shell dumpsys activity activities | grep -E 'topResumedActivity|mResumedActivity' | head -1 || true)"
+  echo "ALIAS_$step $F" >>"$D/foreground-attempts.txt"
+  if [[ "$F" == *"$PKG/"* ]]; then break; fi
+  adb shell input keyevent KEYCODE_BACK || true
+done
 adb shell dumpsys activity activities | grep -E 'topResumedActivity|mResumedActivity' >"$D/foreground-activity.txt" || true
 echo "APP_FOREGROUND_INFO=$(cat "$D/foreground-activity.txt")"
+if ! grep -q "$PKG/" "$D/foreground-activity.txt"; then
+  echo "SHAREIT_REAL_HOME_NOT_REACHED; visual result must not be called ad-free"
+  exit 19
+fi
 adb shell screencap -p /sdcard/shareit-screen.png
 adb pull /sdcard/shareit-screen.png "$D/home.png" >/dev/null 2>&1 || true
 adb shell uiautomator dump /sdcard/shareit-ui.xml >"$D/uiautomator-result.txt" 2>&1 || true
@@ -41,5 +59,5 @@ sleep 4
 adb shell screencap -p /sdcard/shareit-screen2.png
 adb pull /sdcard/shareit-screen2.png "$D/home-scrolled.png" >/dev/null 2>&1 || true
 adb logcat -d -v brief | grep -Ei 'adsdk|midas|sharead|AdLoader|AdxAdSdk|applovin|ironsource|interstitial|nativead|topon|splash' | tail -n 300 >"$D/ad-logcat.txt" || true
-echo "ADS_VISUAL_PROBE_PASS"
+echo "ADS_VISUAL_PROBE_HOME_FOREGROUND_PASS"
 ls -l "$D"
