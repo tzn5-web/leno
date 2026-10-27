@@ -1,0 +1,56 @@
+name: Azure SHAREit secure upload handoff
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/azure-shareit-handoff.yml']
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  handoff:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Inspect existing input and issue encrypted single-blob upload capability
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACC=tzn5androidartifacts26
+          CONT=apks-private
+          BLOB=input/shareit-6.27.58-user.apks
+          KEY="$(az storage account keys list -g rg-chatgpt-azure -n "$ACC" --query '[0].value' -o tsv)"
+          echo "::add-mask::$KEY"
+          if az storage blob exists --account-name "$ACC" --account-key "$KEY" --container-name "$CONT" --name "$BLOB" --query exists -o tsv | grep -iq '^true$'; then
+             sz="$(az storage blob show --account-name "$ACC" --account-key "$KEY" --container-name "$CONT" --name "$BLOB" --query 'properties.contentLength' -o tsv)"
+             echo "ORIGINAL_INPUT_EXISTS=YES SIZE=$sz"
+          else
+             echo "ORIGINAL_INPUT_EXISTS=NO"
+          fi
+          EXP="$(date -u -d '+24 hours' +%Y-%m-%dT%H:%MZ)"
+          SAS="$(az storage blob generate-sas --account-name "$ACC" --account-key "$KEY" --container-name "$CONT" --name "$BLOB" --permissions cw --expiry "$EXP" --https-only -o tsv)"
+          echo "::add-mask::$SAS"
+          cat >/tmp/public.pem <<'EOF'
+          -----BEGIN PUBLIC KEY-----
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqMIwPvXylvI58Rnhcp8D
+          e7sfo7WtVCFMwSFSCtDr71jzzFw6Qlum7jtEKMsYRkVEwdoHc9ojK5Te1DUWSpKp
+          c1+i5SvYZPq/PWdzyxzD2ehKmNo02kDDppNiTEvySEqut7Cm6pbVfnxz+4bC0oM1
+          gRWJBAYpavGj/SYLBV5aFuoUHlJLVz9D9rBtEulVMBTQzgqRSZ6vR3XZD5UTnnmm
+          gum+U5vQx9eGrayTuJ/cPrbSMZ2/PKEMhXqP8+hy0kNn/4kL/WoNDCVrlwCVmtHo
+          ti4WNbakbhVtR9g2hk2wVENE6Ds865KNj1Df5KCYKX4w3dG3SO1SCmAOqazOSdRz
+          nwIDAQAB
+          -----END PUBLIC KEY-----
+          EOF
+          printf '%s' "$SAS" >/tmp/sas-secret.txt
+          openssl pkeyutl -encrypt -pubin -inkey /tmp/public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in /tmp/sas-secret.txt -out /tmp/sas-encrypted.bin
+          echo "ENCRYPTED_SINGLE_FILE_UPLOAD_TOKEN=$(base64 -w0 /tmp/sas-encrypted.bin)"
+          echo "UPLOAD_EXPIRES_UTC=$EXP"
+          echo 'ENCRYPTION=RSA_OAEP_SHA256'
+          echo 'PRIVATE_UPLOAD_HANDOFF=PASS'
+          rm -f /tmp/sas-secret.txt /tmp/sas-encrypted.bin
+      - if: always()
+        run: az logout || true
