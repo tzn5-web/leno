@@ -82,10 +82,10 @@ final class LiveMapPanel extends FrameLayout implements LocationListener {
       // No scraping, no offline bulk prefetch and no fabricated turn-by-turn route.
       String html="<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1'>" +
         "<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'/>" +
-        "<style>html,body,#m{height:100%;width:100%;margin:0;background:#172331}</style></head><body><div id='m'></div>" +
+        "<style>html,body,#m{height:100%;width:100%;margin:0;background:#172331}.leaflet-tile-pane img{filter:brightness(.72) invert(1) hue-rotate(180deg) saturate(.55)}</style></head><body><div id='m'></div>" +
         "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script><script>" +
         "var evoMap=L.map('m',{zoomControl:true}).setView([0,0],2);" +
-        "L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:19,attribution:'&copy; OpenStreetMap contributors &copy; CARTO'}).addTo(evoMap);" +
+        "L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(evoMap);" +
         "var pin=null;function setEvoLocation(a,b){evoMap.setView([a,b],16);if(pin){pin.setLatLng([a,b]);}else{pin=L.circleMarker([a,b],{radius:7,color:'#ef2840',fillOpacity:0.9}).addTo(evoMap);}}" +
         "</script></body></html>";
       openMap.loadDataWithBaseURL("https://www.openstreetmap.org/",html,"text/html","UTF-8",null);
