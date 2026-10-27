@@ -45,7 +45,7 @@ public final class MainActivity extends Activity {
        t(c,shorten(title),x+205,y+126,27,white);t(c,shorten(artist),x+205,y+160,19,muted);
        r(c,x+205,y+186,w-225,5,0xff455065,3);long duration=media!=null&&media.getMetadata()!=null?media.getMetadata().getLong(MediaMetadata.METADATA_KEY_DURATION):0;long pos=media!=null&&media.getPlaybackState()!=null?media.getPlaybackState().getPosition():0;if(media!=null&&media.getPlaybackState()!=null&&media.getPlaybackState().getState()==PlaybackState.STATE_PLAYING){long updated=media.getPlaybackState().getLastPositionUpdateTime();if(updated>0){long delta=Math.max(0,SystemClock.elapsedRealtime()-updated);pos+=(long)(delta*media.getPlaybackState().getPlaybackSpeed());}}if(duration>0&&pos>=0){float ratio=Math.max(0,Math.min(1,(float)pos/duration));r(c,x+205,y+186,(w-225)*ratio,5,red,3);}
        t(c,media!=null?"Sesiune media activă":"MediaSession • conectează aplicația",x+205,y+214,15,muted);
-       t(c,"◀◀",x+247,y+h-36,27,white);dot(c,x+390,y+h-46,28,red);t(c,"Ⅱ",x+376,y+h-34,27,white);t(c,"▶▶",x+493,y+h-36,27,white);
+       t(c,"◀◀",x+247,y+h-36,27,white);dot(c,x+390,y+h-46,28,red);boolean musicPlaying=media!=null&&media.getPlaybackState()!=null&&media.getPlaybackState().getState()==PlaybackState.STATE_PLAYING;t(c,musicPlaying?"Ⅱ":"▶",x+376,y+h-34,27,white);t(c,"▶▶",x+493,y+h-36,27,white);
    }
    String formatObd(float value){return Float.isFinite(value)?String.format(Locale.US,"%.1f",value):"N/A";}
    void gauges(Canvas c,int x,int y,int w,int h){
