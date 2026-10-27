@@ -1,0 +1,41 @@
+name: Azure APK private storage bootstrap
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/azure-shareit-storage.yml']
+  workflow_dispatch:
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  storage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    steps:
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Create private low-cost artifacts storage with HTTPS
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACC=tzn5androidartifacts26
+          RG=rg-chatgpt-azure
+          echo 'STORAGE_ACCOUNT_START'
+          if ! az storage account show -g "$RG" -n "$ACC" -o none >/dev/null 2>&1; then
+            az storage account create -g "$RG" -n "$ACC" -l eastus2 \
+              --sku Standard_LRS --kind StorageV2 --access-tier Hot \
+              --allow-blob-public-access false --https-only true --min-tls-version TLS1_2 \
+              --allow-shared-key-access true -o none
+          fi
+          az storage account update -g "$RG" -n "$ACC" --allow-blob-public-access false --https-only true -o none
+          ACCOUNT_KEY="$(az storage account keys list -g "$RG" -n "$ACC" --query '[0].value' -o tsv)"
+          echo "::add-mask::$ACCOUNT_KEY"
+          az storage container create --account-name "$ACC" --account-key "$ACCOUNT_KEY" \
+            --name apks-private --public-access off -o none
+          az storage account show -g "$RG" -n "$ACC" --query '{name:name,location:location,httpsOnly:enableHttpsTrafficOnly,allowBlobPublicAccess:allowBlobPublicAccess,sku:sku.name}' -o json
+          echo 'PRIVATE_STORAGE_READY=PASS'
+      - if: always()
+        run: az logout || true
