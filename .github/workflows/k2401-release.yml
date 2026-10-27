@@ -53,6 +53,11 @@ jobs:
           RG: rg-chatgpt-azure
         run: |
           set -euo pipefail
+          PROVIDER="$(az provider show --namespace Microsoft.KeyVault --query registrationState -o tsv)"
+          if [[ "$PROVIDER" != "Registered" ]]; then
+            echo 'Registering Microsoft.KeyVault provider once, before creating the signing vault.'
+            az provider register --namespace Microsoft.KeyVault --wait -o none
+          fi
           if ! az keyvault show --name "$VAULT" --resource-group "$RG" -o none 2>/dev/null; then
             az keyvault create --name "$VAULT" --resource-group "$RG" \
               --location swedencentral --sku standard \
