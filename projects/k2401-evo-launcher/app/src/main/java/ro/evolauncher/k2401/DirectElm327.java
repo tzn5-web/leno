@@ -210,26 +210,27 @@ final class DirectElm327 {
           in=socket.getInputStream();out=socket.getOutputStream();mode="SPP";
         }
         if(!alive(token))return;
+        try(ObdInputPump pump=new ObdInputPump(in)){
         step(token,"ATI • VERIFICĂ ELM");
         String identity;
         try{
-          identity=command(in,out,"ATI",5000L,token);
+          identity=command(pump,out,"ATI",5000L,token);
         }catch(IOException initial){
           // One recovery reset only if the initial ATI failed. Do not hard
           // reset on every reconnect as the previous build did.
           step(token,"ATZ • RECUPERARE ELM");
-          command(in,out,"ATZ",9000L,token);
+          command(pump,out,"ATZ",9000L,token);
           step(token,"ATI • DUPĂ RECUPERARE");
-          identity=command(in,out,"ATI",5000L,token);
+          identity=command(pump,out,"ATI",5000L,token);
         }
         if(identity.trim().isEmpty()||identity.contains("?"))
           throw new IOException("ATI rejected: "+safe(identity));
         step(token,"INIȚIALIZARE ELM");
-        command(in,out,"ATE0",3500L,token);
-        command(in,out,"ATL0",3500L,token);
-        command(in,out,"ATH0",3500L,token);
-        try{command(in,out,"ATS0",3500L,token);}catch(IOException ignored){}
-        command(in,out,"ATSP0",5500L,token);
+        command(pump,out,"ATE0",3500L,token);
+        command(pump,out,"ATL0",3500L,token);
+        command(pump,out,"ATH0",3500L,token);
+        try{command(pump,out,"ATS0",3500L,token);}catch(IOException ignored){}
+        command(pump,out,"ATSP0",5500L,token);
         // A successful ATI + AT command dialogue proves the Bluetooth/GATT
         // transport. Remember it NOW, even when ignition is off and ECU
         // reports NO DATA; do not disconnect/reconnect endlessly.
@@ -237,36 +238,37 @@ final class DirectElm327 {
           .putBoolean("elm327_ble_hint","BLE".equals(mode)).commit();
         lastFailure="";
         step(token,"ADAPTOR CONECTAT • "+mode);
-        String response=command(in,out,"0100",22000L,token);
+        String response=command(pump,out,"0100",22000L,token);
         while(alive(token)&&
-          !response.replaceAll("[^0-9A-F]","").toUpperCase(Locale.US).contains("4100")){
+          !response.toUpperCase(Locale.US).replaceAll("[^0-9A-F]","").contains("4100")){
           lastFailure="Bluetooth "+mode+" funcțional; ECU răspunde: "+safe(response)+
             ". Verifică contactul/ELM.";
           step(token,"ELM CONECTAT • ECU NU RĂSPUNDE");
           Thread.sleep(2500L);
           if(!alive(token))return;
-          response=command(in,out,"0100",8000L,token);
+          response=command(pump,out,"0100",8000L,token);
         }
         if(!alive(token))return;
         lastFailure="";
-        try{command(in,out,"ATAT1",3500L,token);}catch(IOException ignored){}
+        try{command(pump,out,"ATAT1",3500L,token);}catch(IOException ignored){}
         // ATAT1 learns ECU response time. Avoid forcing 100ms timeouts for
         // ISO/KWP vehicles: a 2008 Mitsubishi may not be CAN-only.
         // CAN can have a 200ms ceiling; non-CAN uses 400ms and adapts down.
         boolean canProtocol=false;
         try{
-          String dpn=command(in,out,"ATDPN",3500L,token).toUpperCase(Locale.US)
+          String dpn=command(pump,out,"ATDPN",3500L,token).toUpperCase(Locale.US)
             .replaceAll("[^0-9A-F]","");
           canProtocol=dpn.endsWith("6")||dpn.endsWith("7")||
             dpn.endsWith("8")||dpn.endsWith("9");
         }catch(IOException ignored){}
-        try{command(in,out,canProtocol?"ATST32":"ATST64",3500L,token);}
+        try{command(pump,out,canProtocol?"ATST32":"ATST64",3500L,token);}
         catch(IOException ignored){}
         // The link is already retained; now the ECU is confirmed available.
         lastFailure="";
         step(token,"ECU LIVE • "+mode);
         fastCounter=0;
-        pollLoop(in,out,token);
+        pollLoop(pump,out,token);
+        }
         return;
       }catch(IOException failure){
         lastFailure=(useBle?"BLE":"SPP")+": "+safe(failure.getMessage());
@@ -279,7 +281,7 @@ final class DirectElm327 {
     }
     if(combined!=null)throw combined;
   }
-  private void pollLoop(InputStream in,OutputStream out,long token)throws Exception{
+  private void pollLoop(ObdInputPump pump,OutputStream out,long token)throws Exception{
     long lastCoolant=0,lastLtft=0,lastNotify=0,rateStart=SystemClock.elapsedRealtime();
     int completed=0;
     long nextAllowed=0;
@@ -292,7 +294,7 @@ final class DirectElm327 {
         long pause=Math.max(0,nextAllowed-SystemClock.elapsedRealtime());
         if(pause>0)Thread.sleep(pause);
         long t0=SystemClock.elapsedRealtime();
-        String data=command(in,out,String.format(Locale.US,"01%02X",pids[i]),
+        String data=command(pump,out,String.format(Locale.US,"01%02X",pids[i]),
           3300L,token);
         long t1=SystemClock.elapsedRealtime();
         roundTripMs=t1-t0;completed++;
@@ -322,29 +324,18 @@ final class DirectElm327 {
     String flat=raw.replace('\r',' ').replace('\n',' ');
     return flat.length()>85?flat.substring(0,85):flat;
   }
-  private String command(InputStream in,OutputStream out,String code,long timeout,long token)
-      throws IOException,InterruptedException{
+  private String command(ObdInputPump pump,OutputStream out,String code,
+                         long timeout,long token)throws IOException,InterruptedException{
     if(!alive(token))throw new IOException("OBD stopped");
-    // Only clear bytes from a previously completed command; do not read while
-    // another request is outstanding. Prompt '>' terminates one response.
-    int leftover=0;
-    while(in.available()>0&&leftover++<1024)in.read();
-    out.write((code+"\r").getBytes(StandardCharsets.US_ASCII));out.flush();
-    ByteArrayOutputStream reply=new ByteArrayOutputStream(128);
-    long deadline=SystemClock.elapsedRealtime()+timeout;
-    while(alive(token)&&SystemClock.elapsedRealtime()<deadline){
-      int size=in.available();
-      if(size>0){
-        for(int n=0;n<Math.min(size,512);n++){
-          int ch=in.read();
-          if(ch<0)throw new IOException("Transport closed");
-          if(ch=='>')return reply.toString("US-ASCII");
-          if(reply.size()>=8192)throw new IOException("ELM response too long");
-          reply.write(ch);
-        }
-      }else Thread.sleep(8L);
-    }
+    // Never infer a zero-byte response from InputStream.available():
+    // BluetoothSocket and BLE notify streams may report 0 before blocking
+    // read succeeds. ObdInputPump continuously receives in its own thread.
+    pump.discardPriorResponse();
+    out.write((code+"\r").getBytes(StandardCharsets.US_ASCII));
+    out.flush();
+    String result=pump.untilPrompt(timeout);
     if(!alive(token))throw new IOException("OBD stopped");
-    throw new IOException("Timeout "+code+" waiting for ELM prompt");
+    return result;
   }
+
 }
