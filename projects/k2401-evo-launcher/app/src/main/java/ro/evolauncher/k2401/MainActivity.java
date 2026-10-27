@@ -23,7 +23,7 @@ public final class MainActivity extends Activity {
   void mediaAction(int id){refresh();if(media==null){app("com.google.android.apps.youtube.music");return;}try{MediaController.TransportControls t=media.getTransportControls();if(id==0)t.skipToPrevious();else if(id==2)t.skipToNext();else if(media.getPlaybackState()!=null&&media.getPlaybackState().getState()==PlaybackState.STATE_PLAYING)t.pause();else t.play();}catch(Exception ignored){}view.invalidate();}
   void permissions(){try{startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"));}catch(Exception e){startActivity(new Intent(Settings.ACTION_SETTINGS));}}
   class Dashboard extends View{
-   Paint p=new Paint(3);int white=0xfff1f4fb,red=0xffec263b,muted=0xff94a3b5,bg=0xff0a1019,card=0xff161f2c;
+   Paint p=new Paint(3);int white=0xfff1f4fb,red=0xffec263b,muted=0xff94a3b5,bg=0xff0a1019,card=0xc4161f2c;
    Dashboard(){super(MainActivity.this);}
    void r(Canvas c,float x,float y,float w,float h,int col,float rad){p.setStyle(Paint.Style.FILL);p.setColor(col);c.drawRoundRect(x,y,x+w,y+h,rad,rad,p);}
    void outline(Canvas c,float x,float y,float w,float h,int col){p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2);p.setColor(col);c.drawRoundRect(x,y,x+w,y+h,14,14,p);p.setStyle(Paint.Style.FILL);}
@@ -39,7 +39,7 @@ public final class MainActivity extends Activity {
    String musicText(boolean title){if(media==null||media.getMetadata()==null)return "";CharSequence s=media.getMetadata().getText(title?MediaMetadata.METADATA_KEY_TITLE:MediaMetadata.METADATA_KEY_ARTIST);return s==null?"":s.toString();}
    String shorten(String s){return s.length()>28?s.substring(0,27)+"…":s;}
    void music(Canvas c,int x,int y,int w,int h){
-       r(c,x,y,w,h,0xff171f2b,16);outline(c,x,y,w,h,0xff712638);dot(c,x+29,y+29,15,red);t(c,"▶",x+20,y+36,18,white);t(c,"YouTube Music",x+55,y+36,22,white);t(c,"EVO MEDIA",x+w-153,y+37,18,red);
+       r(c,x,y,w,h,0xd4171f2b,16);outline(c,x,y,w,h,0xff712638);dot(c,x+29,y+29,15,red);t(c,"▶",x+20,y+36,18,white);t(c,"YouTube Music",x+55,y+36,22,white);t(c,"EVO MEDIA",x+w-153,y+37,18,red);
        r(c,x+18,y+70,167,h-131,0xff7f182d,10);Bitmap art=null;if(media!=null&&media.getMetadata()!=null){art=media.getMetadata().getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);if(art==null)art=media.getMetadata().getBitmap(MediaMetadata.METADATA_KEY_ART);if(art==null)art=media.getMetadata().getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON);}if(art!=null){p.setColor(white);p.setStyle(Paint.Style.FILL);c.drawBitmap(art,null,new Rect(x+20,y+72,x+183,y+h-63),p);}else{t(c,"YT",x+73,y+158,42,white);t(c,"MUSIC",x+51,y+194,22,white);}
        String title=musicText(true),artist=musicText(false);
        if(title.isEmpty()){title="Fără redare activă";artist="Pornește YouTube Music";}
