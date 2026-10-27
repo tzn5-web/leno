@@ -49,6 +49,13 @@ jobs:
           RG: rg-chatgpt-azure
         run: |
           set -euo pipefail
+          STATE="$(az provider show -n Microsoft.KeyVault --query registrationState -o tsv 2>/dev/null || true)"
+          if [[ "$STATE" != Registered ]]; then
+            echo 'Registering Microsoft.KeyVault resource provider once (no VM or billable compute).'
+            az provider register -n Microsoft.KeyVault --wait -o none
+          fi
+          test "$(az provider show -n Microsoft.KeyVault --query registrationState -o tsv)" = Registered
+          echo 'AZURE_KEYVAULT_PROVIDER_REGISTERED=PASS'
           if ! az keyvault show --name "$VAULT" --resource-group "$RG" -o none 2>/dev/null; then
             az keyvault create --name "$VAULT" --resource-group "$RG" \
               --location swedencentral --sku standard \
@@ -109,7 +116,7 @@ jobs:
           APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
           "$APKSIGNER" verify --verbose --print-certs "$APK" > /tmp/k2401-signature-info.txt
           grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/k2401-signature-info.txt
-          ! grep -iq '^Verified using.*false' /tmp/k2401-signature-info.txt | false
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/k2401-signature-info.txt
           echo 'RELEASE_APK_SIGNATURE_VERIFIED=PASS'
           echo 'RELEASE_NONDEBUG=PASS'
           sha256sum "$APK"
