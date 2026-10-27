@@ -9,7 +9,7 @@ on:
       - '.github/workflows/k2401-signed-prerelease.yml'
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write  # Required only for publishing the public direct-download prerelease asset.
   id-token: write
 concurrency:
   group: k2401-signed-prerelease
@@ -51,6 +51,12 @@ jobs:
           grep -Fq 'getPIDUpdateTime' "$BASE/ObdReader.java"
           grep -Fq 'GoogleApiAvailability' "$BASE/LiveMapPanel.java"
           grep -Fq 'wallpaper_preset' "$BASE/LauncherSettings.java"
+          grep -Fq 'capturedAtMs' "$BASE/ObdReader.java"
+          grep -Fq 'generation' "$BASE/ObdReader.java"
+          if grep -Eq 'Build.FINGERPRINT.contains\\("generic"\\)|emu\\?Float.NaN|if\\(!emu\\)obd.start' "$BASE/MainActivity.java"; then
+            echo "::error::Real K2401 device may be falsely classified as emulator; OBD/GPS blocked"
+            exit 2
+          fi
           if grep -Eq 'HARTĂ DEMO|Str\\. Mihai Viteazul|Blinding Lights' "$BASE/MainActivity.java"; then
             echo "::error::Demo content in production code"
             exit 2
@@ -99,6 +105,8 @@ jobs:
           test -s "$APK"
       - name: Verify Android 10 APK signature and persistent certificate
         shell: bash
+        env:
+          K2401_MAPS_API_KEY: ${{ secrets.K2401_MAPS_API_KEY }}
         run: |
           set -euo pipefail
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --min-sdk-version 29 --verbose --print-certs "$APK" | tee /tmp/k2401-apksigner.txt
@@ -113,6 +121,8 @@ jobs:
           grep -Fq "package: name='ro.evolauncher.k2401'" /tmp/k2401-badging.txt
           grep -Fq "sdkVersion:'26'" /tmp/k2401-badging.txt
           grep -Fq "targetSdkVersion:'28'" /tmp/k2401-badging.txt
+          MAPS_STATUS=ABSENT_OSM_FALLBACK
+          if [[ -n "${K2401_MAPS_API_KEY:-}" ]]; then MAPS_STATUS=CONFIGURED; fi
           {
             echo "SOURCE_COMMIT=$GITHUB_SHA"
             echo "ANDROID_10_API_29_SIGNATURE_VERIFY=PASS"
@@ -120,7 +130,7 @@ jobs:
             echo "APK_SHA256=$(sha256sum "$APK" | cut -d' ' -f1)"
             echo "ANDROID_10_MANIFEST_COMPATIBILITY=PASS"
             echo "AZURE_VM_EMULATOR=SKIPPED_BY_USER_DECISION"
-            echo "GOOGLE_MAPS_SDK_KEY=${K2401_MAPS_API_KEY:+CONFIGURED}"
+            echo "GOOGLE_MAPS_SDK_KEY=$MAPS_STATUS"
             echo "PHYSICAL_TORQUE_AND_OEM_INTEGRATION=NOT_YET_VERIFIED"
             echo "RELEASE_STATUS=SIGNED_PRERELEASE_FOR_MANUAL_HEADUNIT_TEST"
           } > k2401-signed-prerelease-report.txt
@@ -134,6 +144,22 @@ jobs:
             k2401-signed-prerelease-report.txt
           if-no-files-found: error
           retention-days: 30
+      - name: Publish direct-download GitHub prerelease APK
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="k2401-evo-${GITHUB_SHA:0:12}"
+          ASSET=K2401-EVO-Android10-SIGNED.apk
+          cp "$APK" "$ASSET"
+          test -s "$ASSET"
+          gh release create "$TAG" "$ASSET" k2401-signed-prerelease-report.txt \
+            --target "$GITHUB_SHA" --prerelease --latest=false \
+            --title "K2401 EVO Android 10 signed prerelease ($TAG)" \
+            --notes "Signed and checked for Android 10. No Azure VM used. This is a PRE-RELEASE for installation and manual hardware testing, not a verified car integration. Torque Pro/ELM327, GPS, Google Maps key, OEM radio, reverse camera and sleep/wake require verification on the physical head unit."
+          echo "DIRECT_APK_URL=https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$ASSET" >> "$GITHUB_STEP_SUMMARY"
+          echo 'K2401_DIRECT_APK_GITHUB_RELEASE=PASS'
       - name: Always remove temporary signing key and credentials
         if: always()
         shell: bash
