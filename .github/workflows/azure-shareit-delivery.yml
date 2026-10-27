@@ -1,5 +1,8 @@
 name: Azure SHAREit - encrypted private delivery
 on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/azure-shareit-delivery.yml']
   workflow_dispatch:
 permissions:
   id-token: write
