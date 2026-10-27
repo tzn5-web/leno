@@ -120,6 +120,7 @@ y=(points[1]+points[3])//2
 subprocess.check_call(["adb","shell","input","tap",str(x),str(y)])
 print("K2401_SETTINGS_NATIVE_CONTROLS=PASS; GRAPHITE_BUTTON_TAP=PASS")
 PY
+sleep 1  # Wait for Android filesystem visibility after settings UI update.
 adb shell run-as "$APP" cat shared_prefs/evo_launcher_prefs.xml > "$OUT/preferences-after-change.xml"
 grep -Fq 'name="wallpaper_preset">graphite</string>' "$OUT/preferences-after-change.xml"
 adb shell screencap -p /sdcard/settings-customized.png
