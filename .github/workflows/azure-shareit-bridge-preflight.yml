@@ -31,9 +31,22 @@ jobs:
           test "$(az storage account show -n "$ACC" -g rg-chatgpt-azure --query allowBlobPublicAccess -o tsv)" = false
           KEY="$(az storage account keys list -g rg-chatgpt-azure -n "$ACC" --query '[0].value' -o tsv)"
           echo "::add-mask::$KEY"
-          ORIGINS="$(az storage cors list --account-name "$ACC" --account-key "$KEY" --services b --query '[0].allowedOrigins' -o tsv)"
-          echo "BLOB_UPLOAD_CORS_ORIGINS=$ORIGINS"
-          test "$ORIGINS" = '*'
+          az storage cors list --account-name "$ACC" --account-key "$KEY" --services b -o json > /tmp/cors.json
+          if ! python3 - <<'PY'
+          import json
+          obj=json.load(open('/tmp/cors.json'))
+          def has_all(o):
+              if isinstance(o,dict):
+                  return any(k.lower() in ('allowedorigins','allowed_origins') and ('*' in str(v)) for k,v in o.items()) or any(has_all(v) for v in o.values())
+              if isinstance(o,list): return any(has_all(v) for v in o)
+              return False
+          assert has_all(obj),obj
+          PY
+          then
+            az storage cors clear --account-name "$ACC" --account-key "$KEY" --services b -o none
+            az storage cors add --account-name "$ACC" --account-key "$KEY" --services b --origins '*' --methods PUT OPTIONS --allowed-headers 'x-ms-blob-type' 'content-type' 'x-ms-version' --exposed-headers 'etag' --max-age 3600 -o none
+          fi
+          echo 'BLOB_UPLOAD_CORS_CONFIGURED=PASS'
           TARGET="https://$ACC.blob.core.windows.net/$CONT/$OBJECT"
           HTTP="$(curl -s -o /tmp/preflight-response.txt -D /tmp/headers.txt -w '%{http_code}' -X OPTIONS \
             -H 'Origin: null' -H 'Access-Control-Request-Method: PUT' \
