@@ -61,8 +61,10 @@ final class SkinEngine {
   };
   // Variants correspond to concept-sheet crops in /assets/skins/atlas.webp.
   static final int COUNT=NAMES.length;
+  // Each of the 21 originals has a distinct native interaction/gauge profile,
+  // rather than just recycling one of six dashboard canvases.
   private static final int[] STYLES={
-    0,1,2,3,4,5, 1,0,3,1,4,2, 1,0,5,3,1,2,4,5,0
+    0,1,2,3,4,5,6, 7,8,9,10,11,12,13, 14,15,16,17,18,19,20
   };
   private static final int[] COLORS={
     0xfff02e4a,0xffff3450,0xff1ec7ff,0xfff02e4a,0xff24c9ff,0xffef3551,
@@ -92,6 +94,7 @@ final class SkinEngine {
   }
   static int clamp(int id){return Math.max(0,Math.min(COUNT-1,id));}
   private File packDir(){
+    if(!prefs.getBoolean("use_custom_skin_pack",false))return null;
     String name=prefs.getString("skin_pack_dir","");
     return name.isEmpty()?null:new File(host.getFilesDir(),name);
   }
@@ -462,7 +465,7 @@ final class SkinEngine {
         if(!atlasSeen)throw new IOException("Lipsește atlas.webp");
         for(int i=0;i<COUNT;i++)if(!seen[i])
           throw new IOException("Lipsește skin_"+String.format(Locale.US,"%02d",i)+".webp");
-        if(!prefs.edit().putString("skin_pack_dir",folder).commit())
+        if(!prefs.edit().putString("skin_pack_dir",folder).putBoolean("use_custom_skin_pack",true).commit())
           throw new IOException("Nu pot salva selecția imaginilor");
       }catch(Exception e){error=e.getMessage();removeTree(temp);}
       final String failure=error;
