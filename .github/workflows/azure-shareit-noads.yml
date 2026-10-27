@@ -78,7 +78,7 @@ jobs:
           echo 'STARTING_DEDICATED_AZURE_VM=YES'
           az vm start -g "$GROUP" -n "$VM" -o none
           SOURCE_URL="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/infra/azure-dev-vm/shareit-noads/patch_and_sign.py"
-          REMOTE="set -euo pipefail
+          REMOTE="set -eu
           install -d -m 0700 /var/lib/shareit-noads
           cd /var/lib/shareit-noads
           curl --fail --silent --show-error --location --retry 3 '$SOURCE_URL' -o processor.py
