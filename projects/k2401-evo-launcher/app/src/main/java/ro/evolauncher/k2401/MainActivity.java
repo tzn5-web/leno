@@ -44,7 +44,7 @@ public final class MainActivity extends Activity {
    }
    if(liveMap==null){
      mapRecoveryPlaceholder=new android.widget.TextView(this);
-     mapRecoveryPlaceholder.setText("HARTĂ TEMPORAR DEZACTIVATĂ\\nPORNIRE RECUPERATĂ\\nSetări EVO → Reîncearcă harta");
+     mapRecoveryPlaceholder.setText("HARTĂ TEMPORAR DEZACTIVATĂ\nPORNIRE RECUPERATĂ\nSetări EVO → Reîncearcă harta");
      mapRecoveryPlaceholder.setTextColor(0xfff1f4fb);
      mapRecoveryPlaceholder.setTextSize(20);
      mapRecoveryPlaceholder.setGravity(android.view.Gravity.CENTER);
@@ -53,7 +53,7 @@ public final class MainActivity extends Activity {
    }
    shortcutDock=new ShortcutDock(this);stage.addView(shortcutDock,new android.widget.FrameLayout.LayoutParams(200,100));stage.addView(launcherSettings,new android.widget.FrameLayout.LayoutParams(200,200));stage.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or2,ob)->placeMap());setContentView(stage);active=new WeakReference<>(this);placeMap();}
   protected void onStart(){super.onStart();if(liveMap!=null)liveMap.onHostStart();}
-  protected void onResume(){super.onResume();if(isFinishing()||stage==null)return;if(liveMap!=null)liveMap.onHostResume();handler.removeCallbacks(mapBootConfirmed);if(liveMap!=null)handler.postDelayed(mapBootConfirmed,12000);refresh();handler.removeCallbacks(update);handler.post(update);startObd();if(checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)!=android.content.pm.PackageManager.PERMISSION_GRANTED&&checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION)!=android.content.pm.PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION,android.Manifest.permission.ACCESS_COARSE_LOCATION},2402);}}
+  protected void onResume(){super.onResume();if(isFinishing()||stage==null)return;if(liveMap!=null)liveMap.onHostResume();handler.removeCallbacks(mapBootConfirmed);if(liveMap!=null)handler.postDelayed(mapBootConfirmed,1000);refresh();handler.removeCallbacks(update);handler.post(update);startObd();if(checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)!=android.content.pm.PackageManager.PERMISSION_GRANTED&&checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION)!=android.content.pm.PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION,android.Manifest.permission.ACCESS_COARSE_LOCATION},2402);}}
   protected void onPause(){handler.removeCallbacks(update);handler.removeCallbacks(mapBootConfirmed);if(liveMap!=null){getSharedPreferences("evo_startup_recovery",MODE_PRIVATE).edit().putBoolean("map_boot_pending",false).apply();}if(obd!=null)obd.stop();if(liveMap!=null)liveMap.onHostPause();super.onPause();}
   protected void onStop(){if(liveMap!=null)liveMap.onHostStop();super.onStop();}
   protected void onDestroy(){if(media!=null){try{media.unregisterCallback(mediaCallback);}catch(Exception ignored){}}if(obd!=null)obd.close();if(liveMap!=null)liveMap.onHostDestroy();if(launcherSettings!=null)launcherSettings.dispose();active.clear();super.onDestroy();}
