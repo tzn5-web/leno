@@ -15,12 +15,30 @@ JAR_SHA256=a9cd40df818845456be6d696de6110c89edf4b0a0580cb83438ed6b25a366e67
 curl -fL --retry 3 --silent --show-error "$JAR_URL" -o "$EDITOR"
 echo "$JAR_SHA256  $EDITOR" | sha256sum -c -
 test -s source.apks
-rm -f merged-unsigned.apk merged-aligned.apk SHAREit_6.27.58_NoAds_SINGLE_ARM64.apk single-apk-report.json
+rm -f merged-unsigned.apk merged-dex-stored.apk merged-aligned.apk SHAREit_6.27.58_NoAds_SINGLE_ARM64.apk single-apk-report.json
 java -Xmx8g -jar "$EDITOR" m -i source.apks -o merged-unsigned.apk -clean-meta -f >merge.log 2>&1 || {
   tail -n 85 merge.log; exit 20;
 }
 test -s merged-unsigned.apk
-"$TOOLS/zipalign" -f -P 16 4 merged-unsigned.apk merged-aligned.apk
+# APKEditor deflates classes*.dex although SHAREit original stores them uncompressed.
+# On useEmbeddedDex systems this makes the class loader unable to find the app class.
+python3 - <<'PYDEX'
+import zipfile,re
+src='merged-unsigned.apk'
+dst='merged-dex-stored.apk'
+with zipfile.ZipFile(src) as zi, zipfile.ZipFile(dst,'w') as zo:
+    for item in zi.infolist():
+        contents=zi.read(item.filename)
+        if re.fullmatch(r'classes\\d*\\.dex',item.filename):
+            item.compress_type=zipfile.ZIP_STORED
+        zo.writestr(item,contents)
+with zipfile.ZipFile(dst) as check:
+    files=[i for i in check.infolist() if re.fullmatch(r'classes\\d*\\.dex',i.filename)]
+    assert len(files)>=8
+    assert all(i.compress_type==zipfile.ZIP_STORED for i in files)
+print('DEX_UNCOMPRESSED_FOR_ANDROID_CLASSLOADER=PASS',len(files))
+PYDEX
+"$TOOLS/zipalign" -f -P 16 4 merged-dex-stored.apk merged-aligned.apk
 KS=/var/lib/shareit-noads/signing.jks
 PW=/var/lib/shareit-noads/keystore_password
 test -s "$KS"
