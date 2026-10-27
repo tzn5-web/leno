@@ -1,0 +1,29 @@
+name: Azure VM eligibility - fast targeted
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/azure-vm-fast-audit.yml']
+permissions: {contents: read, id-token: write}
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: One region selected VM size restrictions
+        shell: bash
+        run: |
+          set -euo pipefail
+          for REGION in northeurope eastus2 swedencentral; do
+            for SIZE in Standard_D2s_v5 Standard_E2as_v5 Standard_B2as_v2 Standard_B2s_v2; do
+              echo "TARGET=$REGION/$SIZE"
+              az vm list-skus -l "$REGION" --size "$SIZE" -r virtualMachines --all \
+                 --query '[].{name:name,restrictions:restrictions,locations:locations}' -o json
+            done
+          done
+      - if: always()
+        run: az logout || true
