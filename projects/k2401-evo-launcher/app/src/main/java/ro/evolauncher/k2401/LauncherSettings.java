@@ -97,6 +97,14 @@ final class LauncherSettings extends ScrollView {
   private void renderControls(){
     body.removeAllViews();
     heading("PERSONALIZARE • EVO LAUNCHER");
+    heading("SKINURI • 21 DESIGNURI");
+    sub("Skinul implicit este EVO DIGITAL DASH. Schimbă-l oricând; toate păstrează telemetria ECU și playerul real.");
+    LinearLayout skinButtons=row();
+    button(skinButtons,"VEZI ȘI ALEGE SKIN",()->((MainActivity)host).showSkinPicker());
+    button(skinButtons,"IMPORTĂ POZELE ORIGINALE",()->((MainActivity)host).chooseSkinPack());
+    sub("Importă pachetul grafic original o singură dată. Imaginile sunt păstrate local în aplicație și folosite ca fundal al celor 21 de designuri.");
+    LinearLayout appsButtons=row();
+    button(appsButtons,"APLICAȚII INSTALATE",()->((MainActivity)host).showInstalledApps());
     sub("Fundalul, culorile, ceasul si luminozitatea se salveaza automat, inclusiv dupa repornire.");
     heading("WALLPAPER");
     LinearLayout first=row();
