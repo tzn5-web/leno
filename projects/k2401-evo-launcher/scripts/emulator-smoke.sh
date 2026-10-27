@@ -15,13 +15,19 @@ adb shell getprop ro.build.version.release >> "$OUT/device-info.txt"
 adb shell dumpsys display | grep -m 1 'DisplayInfo' >> "$OUT/device-info.txt" || true
 capture() {
   local name="$1" y="$2"
-  # Home does not display the side navigation bar.
+  # Re-enter the real launcher before every screen; external Android apps can
+  # steal focus after app-picker interactions on the emulator.
+  adb shell am force-stop "$APP"
+  adb shell am start -W -n "$APP/.MainActivity" >/dev/null
+  sleep 2
   if [[ "$name" != home ]]; then
-    adb shell input tap 45 35  # Home header opens app menu; on other pages no-op
+    adb shell input tap 45 35
+    sleep 1
     adb shell input tap 45 "$y"
   fi
   sleep 1
   adb shell pidof "$APP" >/dev/null
+  adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' >> "$OUT/foreground-checks.txt" || true
   adb shell screencap -p "/sdcard/$name.png"
   adb pull "/sdcard/$name.png" "$OUT/$name.png"
 }

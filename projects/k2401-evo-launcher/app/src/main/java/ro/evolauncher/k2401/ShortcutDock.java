@@ -48,7 +48,7 @@ final class ShortcutDock extends HorizontalScrollView {
       persist();
     }
   }
-  private void persist(){prefs.edit().putString(KEY,TextUtils.join(",",pins)).apply();}
+  private void persist(){if(!prefs.edit().putString(KEY,TextUtils.join(",",pins)).commit())throw new IllegalStateException("Pin configuration could not be saved");}
   private String label(String pkg){try{return pm.getApplicationLabel(pm.getApplicationInfo(pkg,0)).toString();}catch(Exception ex){return pkg;}}
   private LinearLayout tile(String caption){
     LinearLayout cell=new LinearLayout(host);cell.setOrientation(LinearLayout.VERTICAL);cell.setGravity(Gravity.CENTER);
