@@ -38,6 +38,31 @@ for name in ("home","music","navigation","car","apps","settings"):
     print(f"SCREEN {name}: {w}x{h}")
     assert (w,h) == (1280,720), f"{name}: incorrect landscape resolution {w}x{h}"
 PY
+# Assert that settings contain actual native controls, then change the wallpaper
+# preset through UI (not by changing XML behind the app's back).
+adb shell input tap 45 645
+adb shell uiautomator dump /sdcard/k2401-ui.xml >/dev/null
+adb pull /sdcard/k2401-ui.xml "$OUT/settings-ui.xml" >/dev/null
+python3 - <<'PY'
+import re, subprocess, xml.etree.ElementTree as ET
+from pathlib import Path
+xml=ET.parse(Path("projects/k2401-evo-launcher/screenshots/settings-ui.xml"))
+nodes=xml.findall(".//node")
+texts=[n.attrib.get("text","") for n in nodes]
+for name in ("WALLPAPER","EVO Carbon","Graphite","Midnight","Alege fotografie","Setari Android","Bluetooth / Torque"):
+    assert any(name in t for t in texts), f"MISSING_NATIVE_SETTING={name}"
+target=next(n for n in nodes if n.attrib.get("text")=="Graphite")
+points=list(map(int,re.findall(r"\d+",target.attrib["bounds"])))
+x=(points[0]+points[2])//2
+y=(points[1]+points[3])//2
+subprocess.check_call(["adb","shell","input","tap",str(x),str(y)])
+print("K2401_SETTINGS_NATIVE_CONTROLS=PASS; GRAPHITE_BUTTON_TAP=PASS")
+PY
+adb shell run-as "$APP" cat shared_prefs/evo_launcher_prefs.xml > "$OUT/preferences-after-change.xml"
+grep -Fq 'name="wallpaper_preset">graphite</string>' "$OUT/preferences-after-change.xml"
+adb shell screencap -p /sdcard/settings-customized.png
+adb pull /sdcard/settings-customized.png "$OUT/settings-customized.png" >/dev/null
+echo "K2401_SETTINGS_WALLPAPER_CHANGE=PASS"
 for i in $(seq 1 6); do
   adb shell input tap 45 225
   adb shell input tap 45 645
@@ -47,6 +72,9 @@ adb shell am force-stop "$APP"
 adb shell am start -W -n "$APP/.MainActivity" >> "$OUT/launch.txt"
 sleep 2
 adb shell pidof "$APP" >/dev/null
+adb shell run-as "$APP" cat shared_prefs/evo_launcher_prefs.xml > "$OUT/preferences-after-relaunch.xml"
+grep -Fq 'name="wallpaper_preset">graphite</string>' "$OUT/preferences-after-relaunch.xml"
+echo "K2401_SETTINGS_PERSISTENCE_AFTER_RELAUNCH=PASS"
 adb shell dumpsys meminfo "$APP" > "$OUT/memory.txt"
 adb shell dumpsys gfxinfo "$APP" > "$OUT/gfxinfo.txt"
 adb logcat -d > "$OUT/logcat.txt"
