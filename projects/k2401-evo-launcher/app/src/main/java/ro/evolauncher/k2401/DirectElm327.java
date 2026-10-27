@@ -228,8 +228,18 @@ final class DirectElm327 {
           throw new IOException("ECU did not answer 0100: "+safe(response));
         }
         try{command(in,out,"ATAT1",3500L,token);}catch(IOException ignored){}
-        // ~100ms maximum response wait; ATAT1 adapts to ECU speed.
-        try{command(in,out,"ATST19",3500L,token);}catch(IOException ignored){}
+        // ATAT1 learns ECU response time. Avoid forcing 100ms timeouts for
+        // ISO/KWP vehicles: a 2008 Mitsubishi may not be CAN-only.
+        // CAN can have a 200ms ceiling; non-CAN uses 400ms and adapts down.
+        boolean canProtocol=false;
+        try{
+          String dpn=command(in,out,"ATDPN",3500L,token).toUpperCase(Locale.US)
+            .replaceAll("[^0-9A-F]","");
+          canProtocol=dpn.endsWith("6")||dpn.endsWith("7")||
+            dpn.endsWith("8")||dpn.endsWith("9");
+        }catch(IOException ignored){}
+        try{command(in,out,canProtocol?"ATST32":"ATST64",3500L,token);}
+        catch(IOException ignored){}
         preferences.edit().putString(KEY_MODE,mode).commit();
         lastFailure="";
         step(token,"ECU LIVE • "+mode);
