@@ -35,7 +35,7 @@ jobs:
           EXPIRY='2026-10-28T17:49:00Z'
           if [ "$(date -u +%s)" -gt "$(date -u -d "$EXPIRY" +%s)" ]; then
             echo 'UPLOAD_SESSION_EXPIRED; stopping further checks'
-            gh api --method PUT "repos/$REPO/actions/workflows/$SELF/disable" -o /dev/null || true
+            gh api --method PUT "repos/$REPO/actions/workflows/$SELF/disable" >/dev/null || true
             exit 0
           fi
           KEY="$(az storage account keys list -g rg-chatgpt-azure -n "$ACC" --query '[0].value' -o tsv)"
@@ -43,7 +43,7 @@ jobs:
           OUTPUT_EXISTS="$(az storage blob exists --account-name "$ACC" --account-key "$KEY" --container-name "$CONT" --name "$OUTPUT" --query exists -o tsv)"
           if [ "$OUTPUT_EXISTS" = True ] || [ "$OUTPUT_EXISTS" = true ]; then
             echo 'AZURE_OUTPUT_ALREADY_PRESENT; no VM needed'
-            gh api --method PUT "repos/$REPO/actions/workflows/$SELF/disable" -o /dev/null || true
+            gh api --method PUT "repos/$REPO/actions/workflows/$SELF/disable" >/dev/null || true
             exit 0
           fi
           INPUT_EXISTS="$(az storage blob exists --account-name "$ACC" --account-key "$KEY" --container-name "$CONT" --name "$INPUT" --query exists -o tsv)"
@@ -59,6 +59,6 @@ jobs:
           echo 'PRIVATE_ORIGINAL_PRESENT=PASS'
           gh api --method POST "repos/$REPO/actions/workflows/azure-shareit-user-splits-build.yml/dispatches" -f ref=main >/dev/null
           echo 'AZURE_USER_SHAREIT_VM_BUILD_DISPATCHED=PASS'
-          gh api --method PUT "repos/$REPO/actions/workflows/$SELF/disable" -o /dev/null || echo 'WARNING: auto-check could not disable itself'
+          gh api --method PUT "repos/$REPO/actions/workflows/$SELF/disable" >/dev/null || echo 'WARNING: auto-check could not disable itself'
       - if: always()
         run: az logout || true
