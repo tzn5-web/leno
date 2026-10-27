@@ -25,8 +25,28 @@ jobs:
         with: { gradle-version: '8.11.1' }
       - name: Install Android SDK
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Validate release claims and optional Maps credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'isConnectedToECU()' projects/k2401-evo-launcher/app/src/main/aidl/org/prowl/torque/remote/ITorqueService.aidl
+          grep -Fq 'getPIDUpdateTime' projects/k2401-evo-launcher/app/src/main/java/ro/evolauncher/k2401/ObdReader.java
+          grep -Fq 'com.google.android.geo.API_KEY' projects/k2401-evo-launcher/app/src/main/AndroidManifest.xml
+          if grep -Eq 'HARTĂ DEMO|Str\\. Mihai Viteazul|Blinding Lights' projects/k2401-evo-launcher/app/src/main/java/ro/evolauncher/k2401/MainActivity.java; then
+            echo '::error::Demo navigation or fake track still present in production MainActivity'
+            exit 2
+          fi
+          echo 'K2401_STATIC_PRODUCTION_DATA_GATE=PASS'
       - name: Build debug APK
-        run: gradle --no-daemon -p projects/k2401-evo-launcher :app:assembleDebug
+        env:
+          K2401_MAPS_API_KEY: ${{ secrets.K2401_MAPS_API_KEY }}
+        run: |
+          if [[ -n "${K2401_MAPS_API_KEY:-}" ]]; then
+            echo 'GOOGLE_MAPS_API_KEY_CONFIGURED=YES'
+          else
+            echo 'GOOGLE_MAPS_API_KEY_CONFIGURED=NO; REAL_OSM_FALLBACK=YES'
+          fi
+          gradle --no-daemon -p projects/k2401-evo-launcher :app:assembleDebug
       - name: Verify APK
         run: |
           test -s projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.apk
