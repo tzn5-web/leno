@@ -134,6 +134,13 @@ final class LauncherSettings extends ScrollView {
     LinearLayout mediaRow=row();
     button(mediaRow,"Alege playerul",()->((MainActivity)host).choosePlayer());
     button(mediaRow,"Stare player",()->((MainActivity)host).mediaSetup());
+    heading("OBD-II / ELM327 DIRECT");
+    sub("Torque neoficial nu are API-ul Torque Pro. EVO poate citi singur adaptorul Bluetooth Classic deja asociat, fara date simulate.");
+    LinearLayout obdRow=row();
+    button(obdRow,"Alege ELM327 Bluetooth",()->((MainActivity)host).selectElmAdapter());
+    button(obdRow,"Sursa ceasurilor",()->((MainActivity)host).chooseObdSource());
+    LinearLayout obdState=row();
+    button(obdState,"Stare ECU / PID",()->((MainActivity)host).showObdStatus());
     heading("CONEXIUNI SI APLICATII");
     LinearLayout connections=row();
     button(connections,"Acces MediaSession",()->((MainActivity)host).permissions());
@@ -143,7 +150,7 @@ final class LauncherSettings extends ScrollView {
     button(actions,"Setari Android",()->launchSettings(Settings.ACTION_SETTINGS));
     button(actions,"Stare OBD / ECU",()->((MainActivity)host).showObdStatus());
     button(actions,"Alege player",()->((MainActivity)host).choosePlayer());
-    sub("OBD: citire read-only Torque prin API string si numeric PID. Playerul ales necesita o sesiune media activa; harta ruleaza nativ in Home, fara aplicatii separate.");
+    sub("OBD: ELM327 direct citeste PID 0106/0107/010C/0105 fara Torque oficial; inchide conexiunea Torque neoficial cand folosesti EVO. Playerul necesita MediaSession activa. Hartile sunt in Home.");
     sub("NU modifica MCU, CANBUS, ROM, recovery sau launcherul implicit fara acordul utilizatorului.");
   }
   private void launchSettings(String action){
