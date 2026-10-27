@@ -61,12 +61,20 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_ID: '40382269545'
+          RUN_ID: 'latest'
         run: |
           set -euo pipefail
+          # Select latest ACTUAL Azure Windows test, not a stale hardcoded run.
+          AZURE_RUNS="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/k2401-azure-emulator.yml/runs?per_page=40")"
+          RUN_ID="$(jq -r '[.workflow_runs[] | select(.conclusion != "skipped")] | first | .id // empty' <<< "$AZURE_RUNS")"
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]] || { echo '::error::No real Azure test workflow found'; exit 2; }
           RUN_JSON="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID")"
           RUN_STATUS="$(jq -r '.status' <<< "$RUN_JSON")"
           RUN_CONCLUSION="$(jq -r '.conclusion // "pending"' <<< "$RUN_JSON")"
+          APP_RUNS="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/k2401-evo-launcher.yml/runs?branch=feature/k2401-evo-launcher&per_page=1")"
+          APP_ID="$(jq -r '.workflow_runs[0].id // "none"' <<< "$APP_RUNS")"
+          APP_STATE="$(jq -r '.workflow_runs[0].status // "missing"' <<< "$APP_RUNS")"
+          APP_RESULT="$(jq -r '.workflow_runs[0].conclusion // "pending"' <<< "$APP_RUNS")"
           CREATED_AT="$(jq -r '.created_at' <<< "$RUN_JSON")"
           AGE_MINUTES="$(( ($(date -u +%s) - $(date -u -d "$CREATED_AT" +%s)) / 60 ))"
           POWER="$(az vm show -g rg-phaser360-driverlab -n int34d2-lab --show-details --query powerState -o tsv)"
@@ -78,9 +86,10 @@ jobs:
             echo "- Run status: $RUN_STATUS"
             echo "- Run conclusion: $RUN_CONCLUSION"
             echo "- Run age (minutes): $AGE_MINUTES"
+            echo "- Android app CI: run $APP_ID, $APP_STATE, $APP_RESULT"
             echo "- VM power: $POWER"
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "K2401_MONITOR run=$RUN_ID status=$RUN_STATUS conclusion=$RUN_CONCLUSION age_minutes=$AGE_MINUTES vm_power=$POWER"
+          echo "K2401_MONITOR run=$RUN_ID status=$RUN_STATUS conclusion=$RUN_CONCLUSION app_run=$APP_ID app_result=$APP_RESULT age_minutes=$AGE_MINUTES vm_power=$POWER"
           if [[ "$RUN_STATUS" == 'completed' && "$POWER" == 'VM running' ]]; then
             echo '::error::K2401 run completed but VM is still running and consuming Azure compute credit.'
             exit 4
@@ -88,6 +97,9 @@ jobs:
           if [[ "$RUN_STATUS" != 'completed' && "$POWER" == 'VM running' && "$AGE_MINUTES" -ge 80 ]]; then
             echo '::error::K2401 Azure VM has remained running for over 80 minutes while test has not completed.'
             exit 5
+          fi
+          if [[ "$APP_STATE" == 'completed' && "$APP_RESULT" != 'success' ]]; then
+            echo "::warning::Latest K2401 Android app build/emulator failed: $APP_ID"
           fi
           if [[ "$RUN_STATUS" == 'completed' && "$RUN_CONCLUSION" != 'success' ]]; then
             echo "::warning::K2401 emulator result was $RUN_CONCLUSION; inspect diagnostic artifacts."
