@@ -55,7 +55,7 @@ def sha256(data):
     return hashlib.sha256(data).hexdigest()
 
 def patched_dex(data, counts):
-    if not data.startswith(b"dex\\n"):
+    if not data.startswith(b"dex\n"):
         return data
     result = data
     # Longer hosts first to avoid consuming substrings of another host.
