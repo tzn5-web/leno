@@ -53,7 +53,7 @@ final class LauncherSettings extends ScrollView {
     dim=store.getInt("wallpaper_dim",40);
     clock24=store.getBoolean("clock_24h",true);
     setFillViewport(true);
-    setBackgroundColor(0xc8101722);
+    setBackgroundColor(0xff101722);
     setVerticalScrollBarEnabled(true);
     body=new LinearLayout(activity);
     body.setOrientation(LinearLayout.VERTICAL);
