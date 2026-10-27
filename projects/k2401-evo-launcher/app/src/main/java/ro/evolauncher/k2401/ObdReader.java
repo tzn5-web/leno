@@ -159,6 +159,7 @@ final class ObdReader {
         ? Reading.empty() : snapshot;
   }
   String status(){return useDirect?(direct==null?"ELM327 • ALEGE ADAPTORUL":direct.status()):state;}
+  String diagnostic(){return useDirect?(direct==null?"Bluetooth ELM neconfigurat":direct.details()):"Torque AIDL "+state;}
   boolean isDirect(){return useDirect;}
   String adapterAddress(){return direct==null?context.getSharedPreferences("evo_launcher_prefs",Context.MODE_PRIVATE).getString("elm327_mac",""):direct.adapterAddress();}
   void chooseDirectAdapter(String mac){
