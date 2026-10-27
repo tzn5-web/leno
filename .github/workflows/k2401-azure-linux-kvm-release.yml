@@ -110,6 +110,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          STATE="$(az provider show -n Microsoft.Storage --query registrationState -o tsv 2>/dev/null || true)"
+          if [[ "$STATE" != Registered ]]; then
+            az provider register -n Microsoft.Storage --wait -o none
+          fi
+          test "$(az provider show -n Microsoft.Storage --query registrationState -o tsv)" = Registered
+          echo 'AZURE_STORAGE_PROVIDER_REGISTERED=PASS'
           az storage account create -g "$AZURE_RG" -n "$STORAGE" -l "$AZURE_REGION" \
             --sku Standard_LRS --kind StorageV2 --https-only true \
             --allow-blob-public-access false --min-tls-version TLS1_2 -o none
