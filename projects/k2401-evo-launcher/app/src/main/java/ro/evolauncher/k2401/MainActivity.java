@@ -295,8 +295,7 @@ public final class MainActivity extends Activity {
     items[paired.size()]="Caută ELM327 Bluetooth Classic (OBDII, ELM327, V-LINK)";
     items[paired.size()+1]="Caută ELM327 Bluetooth BLE (GATT)";
     items[paired.size()+2]="Diagnostic modul Bluetooth al navigației";
-    new AlertDialog.Builder(this).setTitle("Alege ELM327 • Classic / BLE")
-      .setMessage("BLE și Bluetooth Classic sunt diferite. Majoritatea adaptoarelor ELM327 clasice trebuie asociate prin PIN 1234/0000. Dispozitive Android asociate: "+paired.size())
+    new AlertDialog.Builder(this).setTitle("ELM327 • "+paired.size()+" asociate • Classic / BLE")
       .setItems(items,(dialog,which)->{
         if(which==paired.size())scanClassicAdapters();
         else if(which==paired.size()+1)scanBleAdapters();
@@ -312,16 +311,16 @@ public final class MainActivity extends Activity {
   void showBluetoothDiagnosis(){
     android.bluetooth.BluetoothAdapter bt=android.bluetooth.BluetoothAdapter.getDefaultAdapter();
     StringBuilder msg=new StringBuilder();
-    if(bt==null){msg.append("Android BluetoothAdapter: ABSENT\\n");}
+    if(bt==null){msg.append("Android BluetoothAdapter: ABSENT\n");}
     else{
-      msg.append("Adapter Android: ").append(bt.isEnabled()?"ON":"OFF").append("\\n");
+      msg.append("Adapter Android: ").append(bt.isEnabled()?"ON":"OFF").append("\n");
       msg.append("LE advertising/scanning: ")
         .append(getPackageManager().hasSystemFeature("android.hardware.bluetooth_le")?"DECLARED":"NOT DECLARED")
-        .append("\\n");
+        .append("\n");
       int bondedCount=-1;
       try{bondedCount=bt.getBondedDevices().size();}
-      catch(RuntimeException e){msg.append("getBondedDevices: ").append(e.getClass().getSimpleName()).append("\\n");}
-      msg.append("Dispozitive asociate Android: ").append(bondedCount).append("\\n");
+      catch(RuntimeException e){msg.append("getBondedDevices: ").append(e.getClass().getSimpleName()).append("\n");}
+      msg.append("Dispozitive asociate Android: ").append(bondedCount).append("\n");
       if(bondedCount>0)try{
         for(android.bluetooth.BluetoothDevice device:bt.getBondedDevices()){
           String name=device.getName()==null?"necunoscut":device.getName();
@@ -329,14 +328,14 @@ public final class MainActivity extends Activity {
             .append(device.getType()==android.bluetooth.BluetoothDevice.DEVICE_TYPE_LE?"BLE":
                     device.getType()==android.bluetooth.BluetoothDevice.DEVICE_TYPE_DUAL?"DUAL":
                     device.getType()==android.bluetooth.BluetoothDevice.DEVICE_TYPE_CLASSIC?"CLASSIC":"UNKNOWN")
-            .append("\\n");
+            .append("\n");
         }
       }catch(RuntimeException ignored){}
     }
-    if(obd!=null)msg.append("\\nSursă OBD: ")
+    if(obd!=null)msg.append("\nSursă OBD: ")
       .append(obd.isDirect()?"ELM327 direct":"Torque AIDL")
-      .append("\\n").append(obd.status()).append("\\n").append(obd.diagnostic());
-    msg.append("\\n\\nDacă Torque/ELM funcționează pe telefon, dar Android din navigație nu vede dispozitivul Classic sau BLE, Bluetooth-ul head-unit poate fi limitat la apeluri (MCU). Nu se poate corecta din polling OBD.");
+      .append("\n").append(obd.status()).append("\n").append(obd.diagnostic());
+    msg.append("\n\nDacă Torque/ELM funcționează pe telefon, dar Android din navigație nu vede dispozitivul Classic sau BLE, Bluetooth-ul head-unit poate fi limitat la apeluri (MCU). Nu se poate corecta din polling OBD.");
     new AlertDialog.Builder(this).setTitle("Audit Bluetooth navigație")
       .setMessage(msg.toString())
       .setPositiveButton("Caută Classic",(d,w)->scanClassicAdapters())
