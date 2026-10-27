@@ -1,30 +1,40 @@
-# Azure Android development VM
+# Azure Linux Android development VM – DEPLOYED
 
-The project prepares a dedicated Ubuntu 24.04 Linux VM with the official Android SDK, Android Studio snap, Git, GitHub CLI, PowerShell, Bash, JDK 17/21, Python, Node.js, CMake, and build dependencies.
+## Verified state, 2026-10-27
 
-## Deployment state (2026-10-27)
+The VM `android-dev-linux` was successfully created in subscription `0ac7a514-32b3-47bf-bf89-e17906b1cc86` and resource group `rg-chatgpt-azure`. Ubuntu Linux, location `eastus2`, Standard_E4as_v7 (4 vCPU, 32 GiB RAM), 128-GB StandardSSD OS disk, public IP `20.230.55.71`.
 
-**Not provisioned yet.** Azure OIDC authentication passed in GitHub Actions. Azure rejected all VM creations with:
-- `RequestDisallowedByAzure` in West Europe (subscription ineligible for this region).
-- `QuotaExceeded` in Sweden Central: region-wide limit **4 cores**, **4 used** by the existing deallocated Windows VM `int34d2-lab`, +4 needed for proposed Linux VM; request limit **8**. The existing VM is untouched.
-- `SkuNotAvailable` capacity errors for D4, E2, B2as and D2 VM SKUs across UK South, North Europe, France Central, Germany West Central, and East US.
+**Deployment result: PASS.** GitHub Actions run [40507749776](https://github.com/tzn5-web/leno/actions/runs/40507749776) completed successfully with `AZURE_ANDROID_DEV_SETUP=PASS`, and the VM was then deliberately `deallocated` to avoid compute charges. Linux is installed and persistent. The earlier Windows VM `int34d2-lab` was not altered.
 
-The action is now **manual-only** and will NOT create VMs automatically on GitHub pushes.
+Installed and validated in guest:
+- Ubuntu 24.04 LTS, Git 2.43.0, GitHub CLI 2.45.0, Bash
+- PowerShell `pwsh` 7.6.9
+- Java JDK 17 and 21 (default Java reports 21.0.12.1)
+- Android SDK command-line tools 22.0; Android platforms 35 and 36; ADB 1.0.41; Build Tools 36.0.0
+- Android Studio 2026.2.1.8 (Snap `android-studio`, classic)
+- Python, Python venv, Node.js/npm, Maven, CMake/Ninja, clang and other build essentials
 
-## Subscription offer blocker and owner prerequisite
+The install was recovered from an interrupted cloud-init using the idempotent Linux systemd unit `android-dev-resume.service`. The SDK manager logged a **non-fatal** duplicate location warning for `cmdline-tools/latest-2` after successful installation; future bootstrap source no longer requests `cmdline-tools;latest`.
 
-Automated registration of Microsoft.Quota **succeeded** on 2026-10-27. The 8-vCPU request then returned `ResourceNotAvailableForOffer`. According to Microsoft's Azure service-limits documentation, **Free Trial subscriptions cannot request quota increases**. The deployment of all D/E/B 8-16 GiB VM sizes attempted in 5+ regions was also denied with `SkuNotAvailable`.
+## Start and stop only when working
 
-**Do not expect repeated provisioning or quota requests on Free Trial to succeed.** If the owner chooses to upgrade to Pay-as-you-go (a billing-impacting decision), Microsoft states remaining free-trial credit stays usable for the remainder of the first 30 days. Subsequent use can incur charges. Do not upgrade automatically. After upgrade, request Sweden Central total regional VM cores raised from 4 to 8 using portal **Subscriptions > Usage + quotas > Compute** or the separate manual quota-request GitHub Actions workflow.
+In [VM control workflow](https://github.com/tzn5-web/leno/actions/workflows/azure-android-dev-vm.yml), press **Run workflow**, choose `start` to allocate VM. Connect from Windows using the separate SSH kit, from its folder:
 
-## After the offer is upgraded and the 8-core quota request is approved
+```powershell
+.\CONNECT_WINDOWS.ps1 -Ip 20.230.55.71
+```
 
-Go to GitHub Actions > `Azure Android Linux development VM (one-time provision, budget guarded)` > Run workflow > operation `provision`. The workflow will use the already configured GitHub OIDC identity, select the first eligible VM in its list (including Sweden Central Standard_D4s_v5), install all tools with cloud-init, validate binaries and **deallocate** after provisioning whether successful or failed. To use it later, Run workflow with `start`; to release hourly compute, select `deallocate`. The Azure native auto-shutdown is set to 22:00 UTC.
+Or directly: `ssh -i id_ed25519_azure_android_dev dev@20.230.55.71`.
 
-This deployment creates a 128-GB Standard SSD disk (storage billing persists while VM is deallocated) and, on success, a public IP + virtual network. VM compute is billed while allocated, even if no one is logged in. Monitor the subscription budget and remaining trial credit.
+When finished choose `deallocate`. A native Azure auto-shutdown schedule is set for 22:00 UTC. Compute cost stops after deallocation; SSD, public IP and other persistent resources still cost money. Azure Linux compute list price for this SKU in East US 2 was 0.238 USD/hour excluding storage/taxes. Never leave it running unnecessarily under the 200 USD Free Trial budget.
 
-## SSH
+The VM has SSH key-only login, with password authentication and root SSH login disabled. The **private SSH key is not in GitHub**; protect it. GitHub holds only the public key. Access to Android Studio's graphical interface requires remote GUI/X11 (not configured); all headless SDK and Gradle builds can run via SSH.
 
-The VM is configured for SSH-key authentication only, user `dev`. The **private** SSH key is NOT committed to the repository; the user needs the local SSH kit produced separately to connect. Never upload that key to GitHub.
+## Repository configuration
 
-Android Studio graphical IDE requires a desktop/X11 session to display; for headless workloads use the installed `sdkmanager`, `gradlew`, and Java tools. Emulators may require nested virtualization that is not guaranteed on the selected VM family.
+- `infra/azure-dev-vm/bootstrap.sh`: idempotent tools installation.
+- `infra/azure-dev-vm/cloud-init.yml`: OS initial bootstrap.
+- `.github/workflows/azure-android-dev-vm.yml`: start/stop/provision/status.
+- `.github/workflows/azure-android-vm-connection.yml`: IP and SSH checks.
+
+The original Free Trial SKU capacity issues for other VM families/regions were diagnosed and worked around using an eligible East US 2 E4as v7 SKU; **no change of subscription offer** was required. Do not run the quota-request workflow for this VM.
