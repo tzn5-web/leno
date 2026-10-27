@@ -16,7 +16,10 @@ adb shell dumpsys display | grep -m 1 'DisplayInfo' >> "$OUT/device-info.txt" ||
 capture() {
   local name="$1" y="$2"
   # Home does not display the side navigation bar.
-  if [[ "$name" != home ]]; then adb shell input tap 45 "$y"; fi
+  if [[ "$name" != home ]]; then
+    adb shell input tap 45 35  # Home header opens app menu; on other pages no-op
+    adb shell input tap 45 "$y"
+  fi
   sleep 1
   adb shell pidof "$APP" >/dev/null
   adb shell screencap -p "/sdcard/$name.png"
