@@ -86,13 +86,13 @@ final class LauncherSettings extends ScrollView {
   }
   private void preset(String next){
     mode=next;
-    store.edit().putString("wallpaper_preset",next).apply();
+    store.edit().putString("wallpaper_preset",next).commit();
     if(!"custom".equals(next)){if(photo!=null){photo.recycle();photo=null;}}
     changed.run();
     renderControls();
   }
   private void setAccent(int c){
-    accent=c;store.edit().putInt("accent",c).apply();changed.run();renderControls();
+    accent=c;store.edit().putInt("accent",c).commit();changed.run();renderControls();
   }
   private void renderControls(){
     body.removeAllViews();
@@ -113,7 +113,7 @@ final class LauncherSettings extends ScrollView {
     body.addView(seek,new LinearLayout.LayoutParams(-1,dp(42)));
     seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
       @Override public void onProgressChanged(SeekBar s,int n,boolean fromUser){
-        if(fromUser){dim=n;store.edit().putInt("wallpaper_dim",n).apply();changed.run();}
+        if(fromUser){dim=n;store.edit().putInt("wallpaper_dim",n).commit();changed.run();}
       }
       @Override public void onStartTrackingTouch(SeekBar s){}
       @Override public void onStopTrackingTouch(SeekBar s){}
@@ -128,7 +128,7 @@ final class LauncherSettings extends ScrollView {
     clock.setText("Ceas 24 de ore");clock.setTextColor(WHITE);clock.setTextSize(16);
     clock.setPadding(dp(6),dp(6),dp(6),dp(6));clock.setChecked(clock24);
     body.addView(clock,new LinearLayout.LayoutParams(-1,dp(55)));
-    clock.setOnCheckedChangeListener((b,v)->{clock24=v;store.edit().putBoolean("clock_24h",v).apply();changed.run();});
+    clock.setOnCheckedChangeListener((b,v)->{clock24=v;store.edit().putBoolean("clock_24h",v).commit();changed.run();});
     heading("CONEXIUNI SI APLICATII");
     LinearLayout connections=row();
     button(connections,"Notificari / Music",()->((MainActivity)host).permissions());
@@ -161,7 +161,7 @@ final class LauncherSettings extends ScrollView {
       if(newBitmap==null)throw new IllegalArgumentException("Imagine invalida");
       if(photo!=null)photo.recycle();
       photo=newBitmap;mode="custom";
-      store.edit().putString("wallpaper_uri",uri.toString()).putString("wallpaper_preset","custom").apply();
+      store.edit().putString("wallpaper_uri",uri.toString()).putString("wallpaper_preset","custom").commit();
       changed.run();renderControls();
     }catch(Exception ex){Toast.makeText(host,"Fotografia nu poate fi citita; alege alta imagine.",Toast.LENGTH_LONG).show();}
   }
