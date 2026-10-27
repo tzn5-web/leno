@@ -230,13 +230,25 @@ final class DirectElm327 {
         command(in,out,"ATH0",3500L,token);
         try{command(in,out,"ATS0",3500L,token);}catch(IOException ignored){}
         command(in,out,"ATSP0",5500L,token);
-        // Let the adapter discover ECU protocol just once. Do not reset
-        // during normal reconnects. Keep ELM adaptive timing enabled.
-        step(token,"ECU • NEGOCIAZĂ PROTOCOLUL");
+        // A successful ATI + AT command dialogue proves the Bluetooth/GATT
+        // transport. Remember it NOW, even when ignition is off and ECU
+        // reports NO DATA; do not disconnect/reconnect endlessly.
+        preferences.edit().putString(KEY_MODE,mode)
+          .putBoolean("elm327_ble_hint","BLE".equals(mode)).commit();
+        lastFailure="";
+        step(token,"ADAPTOR CONECTAT • "+mode);
         String response=command(in,out,"0100",22000L,token);
-        if(!response.replace(" ","").toUpperCase(Locale.US).contains("4100")){
-          throw new IOException("ECU did not answer 0100: "+safe(response));
+        while(alive(token)&&
+          !response.replaceAll("[^0-9A-F]","").toUpperCase(Locale.US).contains("4100")){
+          lastFailure="Bluetooth "+mode+" funcțional; ECU răspunde: "+safe(response)+
+            ". Verifică contactul/ELM.";
+          step(token,"ELM CONECTAT • ECU NU RĂSPUNDE");
+          Thread.sleep(2500L);
+          if(!alive(token))return;
+          response=command(in,out,"0100",8000L,token);
         }
+        if(!alive(token))return;
+        lastFailure="";
         try{command(in,out,"ATAT1",3500L,token);}catch(IOException ignored){}
         // ATAT1 learns ECU response time. Avoid forcing 100ms timeouts for
         // ISO/KWP vehicles: a 2008 Mitsubishi may not be CAN-only.
@@ -250,10 +262,7 @@ final class DirectElm327 {
         }catch(IOException ignored){}
         try{command(in,out,canProtocol?"ATST32":"ATST64",3500L,token);}
         catch(IOException ignored){}
-        // The successful ECU handshake, not the Bluetooth name/type,
-        // determines the preferred transport for all future reconnections.
-        preferences.edit().putString(KEY_MODE,mode)
-          .putBoolean("elm327_ble_hint","BLE".equals(mode)).commit();
+        // The link is already retained; now the ECU is confirmed available.
         lastFailure="";
         step(token,"ECU LIVE • "+mode);
         fastCounter=0;
