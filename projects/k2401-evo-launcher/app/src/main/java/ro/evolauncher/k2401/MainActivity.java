@@ -77,7 +77,7 @@ public final class MainActivity extends Activity {
       MediaSessionManager sessions=(MediaSessionManager)getSystemService(MEDIA_SESSION_SERVICE);
       List<MediaController> active=sessions.getActiveSessions(new ComponentName(this,MediaAccessService.class));
       for(MediaController c:active)if(mediaPackage.equals(c.getPackageName())){next=c;break;}
-    }catch(SecurityException|RuntimeException ignored){}
+    }catch(RuntimeException ignored){}
     if(media!=null&&next!=null&&media.getSessionToken().equals(next.getSessionToken()))return;
     if(media!=null)try{media.unregisterCallback(mediaCallback);}catch(Exception ignored){}
     media=next;
