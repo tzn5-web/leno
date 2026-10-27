@@ -69,8 +69,27 @@ jobs:
           # Read-only URL is short-lived; do not publish storage account keys.
           RE="$(date -u -d '+4 hours' +%Y-%m-%dT%H:%MZ)"
           RS="$(az storage blob generate-sas --account-name "$ACC" --account-key "$KEY" --container-name "$CONT" --name "$OUTPUT" --permissions r --expiry "$RE" --https-only -o tsv)"
-          echo "AZURE_SPLITS_DOWNLOAD=https://$ACC.blob.core.windows.net/$CONT/$OUTPUT?$RS"
+          echo "::add-mask::$RS"
+          # The repository is public: never publish an active read SAS in Actions logs.
+          # Encrypt the blob-specific read token to the requester's locally held RSA key.
+          cat >/tmp/shareit-download-public.pem <<'EOF'
+          -----BEGIN PUBLIC KEY-----
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqMIwPvXylvI58Rnhcp8D
+          e7sfo7WtVCFMwSFSCtDr71jzzFw6Qlum7jtEKMsYRkVEwdoHc9ojK5Te1DUWSpKp
+          c1+i5SvYZPq/PWdzyxzD2ehKmNo02kDDppNiTEvySEqut7Cm6pbVfnxz+4bC0oM1
+          gRWJBAYpavGj/SYLBV5aFuoUHlJLVz9D9rBtEulVMBTQzgqRSZ6vR3XZD5UTnnmm
+          gum+U5vQx9eGrayTuJ/cPrbSMZ2/PKEMhXqP8+hy0kNn/4kL/WoNDCVrlwCVmtHo
+          ti4WNbakbhVtR9g2hk2wVENE6Ds865KNj1Df5KCYKX4w3dG3SO1SCmAOqazOSdRz
+          nwIDAQAB
+          -----END PUBLIC KEY-----
+          EOF
+          printf '%s' "$RS" >/tmp/download.sas
+          openssl pkeyutl -encrypt -pubin -inkey /tmp/shareit-download-public.pem \
+            -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 \
+            -in /tmp/download.sas -out /tmp/download-sas.enc
+          echo "ENCRYPTED_AZURE_SPLITS_DOWNLOAD_SAS=$(base64 -w0 /tmp/download-sas.enc)"
           echo "AZURE_SPLITS_DOWNLOAD_EXPIRY_UTC=$RE"
+          rm -f /tmp/download.sas /tmp/download-sas.enc
       - name: Always release Azure VM compute
         if: always()
         shell: bash
