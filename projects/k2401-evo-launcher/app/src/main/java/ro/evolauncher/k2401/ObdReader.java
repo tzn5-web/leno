@@ -30,6 +30,8 @@ final class ObdReader {
   private volatile IBinder remote;
   private boolean bound;
   private boolean running;
+  private final java.util.concurrent.ExecutorService executor=java.util.concurrent.Executors.newSingleThreadExecutor();
+  private volatile boolean busy;
   private final ServiceConnection connection=new ServiceConnection(){
     public void onServiceConnected(ComponentName name,IBinder binder){
       remote=binder;state="TORQUE CONECTAT";onUpdate.run();
@@ -42,14 +44,16 @@ final class ObdReader {
     public void run(){
       if(!running)return;
       IBinder b=remote;
-      if(b!=null){
-        try{
+      if(b!=null&&!busy){
+        busy=true;
+        executor.execute(()->{try{
           float rpm=read(b,0x010c),stft=read(b,0x0106),ltft=read(b,0x0107),coolant=read(b,0x0105);
           // Torque API returns already-scaled PID values; do not apply OBD byte formulas twice.
           boolean live=Float.isFinite(rpm)&&rpm>=0&&rpm<=12000;
           current=live?new Reading(rpm,stft,ltft,coolant,true):Reading.empty();
           state=live?"TORQUE LIVE":"TORQUE • FĂRĂ DATE ECU";
-        }catch(Exception e){remote=null;current=Reading.empty();state="TORQUE • EROARE API";}
+        }catch(Exception e){current=Reading.empty();state="TORQUE • EROARE API";}
+        finally{busy=false;ui.post(onUpdate);}});
       }
       onUpdate.run();
       ui.postDelayed(this,500);
