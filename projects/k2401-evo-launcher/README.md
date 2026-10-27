@@ -35,7 +35,13 @@ Location requires user permission and GPS/network provider availability. The Ope
 3. Launch EVO Launcher and allow location permission. Confirm the actual position, the real current track and each supported PID. Fuel-trim values may be `N/A` when ECU or Torque does not report them.
 4. If Torque reports values but the launcher does not, gather `adb logcat` + Torque version and inspect the binder/PID status. **A passing emulator cannot establish compatibility with the real installed Torque Pro version or the vehicle's ECU.**
 
-## CI and release gates
+## CI, optional emulator, and signed prerelease
+
+**User-approved release policy (27 Oct 2026):** unavailable Azure nested virtualization is **not a blocker** for producing an installable APK. The independent GitHub Actions workflow `.github/workflows/k2401-signed-prerelease.yml` builds Android 10 using the persistent release keystore in Azure Key Vault, checks Android 10 APK signature v2, matches the pinned signing certificate SHA-256, verifies package/manifest and publishes an artifact **K2401-EVO-Android10-SIGNED-PRERELEASE**. This workflow uses Azure only to read the signing secret. It **never provisions VMs**, and does not require emulator PASS.
+
+The APK is **signed prerelease for manual testing** until the real K2401 hardware, Torque Pro/ELM327, radio, reverse camera, steering controls and sleep/wake are checked. Do not call it hardware-verified based only on build and static checks. Without a configured Google Maps SDK API key, the app uses an OpenStreetMap fallback.
+
+The Azure Linux KVM emulator is **optional** and must not be restarted solely to unblock prerelease while subscription capacity restrictions persist. Avoid unneeded VM and storage charges.
 
 GitHub Actions `K2401 EVO Android 10 APK and emulator` compiles the APK and tests six screens, landscape 1280×720, relaunch and AndroidRuntime crashes. The emulator checks dock picker selection and persisted pins as well as wallpaper preferences. The emulator cannot provide real Torque data, real Google Maps billing credentials, GPS driving, Google Maps navigation, CAN/MCU/steering controls, OEM radio or reversing camera. Do not claim a final vehicle release on CI PASS alone.
 
