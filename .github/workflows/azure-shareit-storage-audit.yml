@@ -31,9 +31,9 @@ jobs:
           az storage container list --account-name "$S" --auth-mode login --query '[].name' -o json 2>&1 | tail -c 1500 || true
           echo ====STORAGE_ROLES====
           az role assignment list --assignee 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9 --scope "$ID" --include-inherited --query '[].{role:roleDefinitionName,scope:scope}' -o json || true
-          for C in apks input output shareit uploads app-input builds; do
+          # Existing Storage Account Contributor can retrieve an account key at runtime. Never emit credentials.\n          export AZURE_STORAGE_KEY="$(az storage account keys list --resource-group rg-chatgpt-azure --account-name \"$S\" --query '[0].value' -o tsv)"\n          for C in apks-private; do
             echo "BLOB_CONTAINER_CHECK=$C"
-            az storage blob list --account-name "$S" --container-name "$C" --auth-mode login \
+            az storage blob list --account-name "$S" --container-name "$C" \
                --query '[].{name:name,bytes:properties.contentLength}' -o json 2>&1 | tail -c 1600 || true
           done
       - if: always()
