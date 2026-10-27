@@ -159,7 +159,7 @@ public final class MainActivity extends Activity {
       .setMessage("Sursă media: "+(mediaPackage.isEmpty()?"NESELECTAT":mediaPackage)+
         "\nAcces la notificări: "+(notificationAccess?"ACORDAT":"NEACORDAT")+
         "\nMediaSession detectată: "+(media!=null?"DA":"NU")+
-        "\n\nYT Music Morphe / Vanced trebuie să pornească o redare și să publice o sesiune Android. EVO controlează melodia în card, fără să afișeze fereastra playerului. Dacă aplicația nu publică MediaSession, redarea în card nu poate fi controlată de altă aplicație.")
+        "\n\nDacă Morphe nu publică MediaSession, poți apăsa Play în panou pentru o comandă media Android de încercare. Sistemul nu garantează direcționarea către Morphe. Un control sigur necesită MediaSession publicată de aplicație.")
       .setPositiveButton("Acces notificări",(d,w)->permissions())
       .setNeutralButton("Deschide playerul o dată",(d,w)->{
         if(!mediaPackage.isEmpty())app(mediaPackage);else choosePlayer();
@@ -188,17 +188,48 @@ public final class MainActivity extends Activity {
   }
   // An explicit shortcut in the Apps screen may open Maps, but tapping the embedded map never does.
   void maps(){app("com.google.android.apps.maps");}
+  private void dispatchFallbackMediaKey(int id){
+    // Modified clients may not publish a MediaSession. Android's media-button
+    // dispatch is the ONLY generic best-effort fallback. It is NOT an app-specific
+    // API, and cannot guarantee that Morphe will receive or honor the command.
+    // Never hijack controls when another app has an active media session.
+    if(mediaPackage.isEmpty()){choosePlayer();return;}
+    try{
+      MediaSessionManager manager=(MediaSessionManager)getSystemService(MEDIA_SESSION_SERVICE);
+      List<MediaController> active=manager.getActiveSessions(new ComponentName(this,MediaAccessService.class));
+      for(MediaController controller:active){
+        if(!mediaPackage.equals(controller.getPackageName())){
+          android.widget.Toast.makeText(this,
+            "Un alt player are sesiune activă. Nu redirecționez comenzile către el.",
+            android.widget.Toast.LENGTH_LONG).show();
+          return;
+        }
+      }
+      AudioManager audio=(AudioManager)getSystemService(AUDIO_SERVICE);
+      if(audio==null){mediaSetup();return;}
+      int key=id==0?android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS:
+        id==2?android.view.KeyEvent.KEYCODE_MEDIA_NEXT:
+        android.view.KeyEvent.KEYCODE_MEDIA_PLAY;
+      long when=SystemClock.uptimeMillis();
+      audio.dispatchMediaKeyEvent(new android.view.KeyEvent(when,when,android.view.KeyEvent.ACTION_DOWN,key,0));
+      audio.dispatchMediaKeyEvent(new android.view.KeyEvent(when,when,android.view.KeyEvent.ACTION_UP,key,0));
+      handler.postDelayed(()->{refresh();if(media==null)
+        android.widget.Toast.makeText(this,
+          "Comanda media Android a fost trimisă, dar "+mediaName+" nu oferă încă o sesiune controlabilă.",
+          android.widget.Toast.LENGTH_LONG).show();},1300);
+    }catch(RuntimeException denied){mediaSetup();}
+  }
   void mediaAction(int id){
     refresh();
-    if(media==null){if(mediaPackage.isEmpty())choosePlayer();else mediaSetup();return;}
+    if(media==null){dispatchFallbackMediaKey(id);return;}
     try{
       MediaController.TransportControls t=media.getTransportControls();
       if(id==0)t.skipToPrevious();
       else if(id==2)t.skipToNext();
       else if(media.getPlaybackState()!=null&&media.getPlaybackState().getState()==PlaybackState.STATE_PLAYING)t.pause();
       else t.play();
-    }catch(Exception ignored){mediaSetup();}
-    view.invalidate();
+    }catch(RuntimeException unavailable){mediaSetup();}
+    if(view!=null)view.invalidate();
   }
   void chooseObdSource(){
     final String[] labels={"ELM327 Bluetooth direct — și pentru Torque neoficial",
@@ -267,7 +298,7 @@ public final class MainActivity extends Activity {
     String source=direct?"ELM327 Bluetooth direct":"Torque Pro oficial";
     String adapter=obd==null?"":obd.adapterAddress();
     new AlertDialog.Builder(this).setTitle("OBD-II • STFT / LTFT / RPM / apă")
-      .setMessage("Sursă: "+source+"\nStare: "+info+
+      .setMessage("Sursă: "+source+"\nStare: "+info+"\n"+(obd==null?"":obd.diagnostic())+
         (direct?"\nAdaptor selectat: "+(adapter.isEmpty()?"NU":adapter):"")+
         "\nSTFT: "+(Float.isFinite(r.stft)?r.stft+" %":"N/A")+
         "\nLTFT: "+(Float.isFinite(r.ltft)?r.ltft+" %":"N/A")+
