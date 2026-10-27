@@ -69,8 +69,6 @@ final class ClassicObdDiscovery {
               if(progress!=null)progress.setMessage("Dispozitive Classic: "+found.size()+
                 ". Caut OBDII / ELM327 / V-LINK ...");
             }
-          }else if(BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)&&!waitingBond){
-            finishScan();
           }else if(BluetoothDevice.ACTION_BOND_STATE_CHANGED.equals(action)&&waitingBond){
             BluetoothDevice bonded=intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
             if(bonded!=null&&pending!=null&&
@@ -88,10 +86,11 @@ final class ClassicObdDiscovery {
       };
       IntentFilter filter=new IntentFilter();
       filter.addAction(BluetoothDevice.ACTION_FOUND);
-      filter.addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
       filter.addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
-      activity.registerReceiver(receiver,filter);registered=true;
+      // Stop prior discovery BEFORE registering our receiver to avoid a stale
+      // ACTION_DISCOVERY_FINISHED event ending the new scan immediately.
       try{adapter.cancelDiscovery();}catch(RuntimeException ignored){}
+      activity.registerReceiver(receiver,filter);registered=true;
       progress=new android.app.ProgressDialog(activity);
       progress.setTitle("ELM327 Bluetooth Classic");
       progress.setMessage("Caut dispozitive RFCOMM/SPP timp de 15 secunde...");
