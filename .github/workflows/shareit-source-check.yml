@@ -17,7 +17,10 @@ jobs:
           urls=[
             'https://ws2.aptoide.com/api/7/app/get/package_name=com.lenovo.anyshare.gps',
             'https://ws75.aptoide.com/api/7/app/get/package_name=com.lenovo.anyshare.gps',
-            'https://ws2.aptoide.com/api/7/app/get/package_name/com.lenovo.anyshare.gps'
+            'https://ws2.aptoide.com/api/7/app/get/package_name/com.lenovo.anyshare.gps',
+            'https://ws2.aptoide.com/api/7/app/getMeta/package_name=com.lenovo.anyshare.gps/vercode=4062758',
+            'https://ws75.aptoide.com/api/7/app/getMeta/package_name=com.lenovo.anyshare.gps/vercode=4062758',
+            'https://ws2.aptoide.com/api/7/app/getMeta?package_name=com.lenovo.anyshare.gps&vercode=4062758'
           ]
           for u in urls:
               print('API',u,flush=True)
@@ -26,7 +29,7 @@ jobs:
                   d=json.load(urllib.request.urlopen(req, timeout=22))
                   info=d.get('nodes',{}).get('meta',{}).get('data',{}) if 'nodes' in d else d
                   app=info if 'file' in info else info.get('app',{})
-                  print('VERSION',app.get('file',{}).get('vername'),app.get('file',{}).get('vercode'))
+                  print('VERSION',app.get('file',{}).get('vername'),app.get('file',{}).get('vercode'), 'META', str(info.get('file',{}))[:500])
                   p=app.get('file',{}).get('path') or app.get('file',{}).get('path_alt')
                   if p:
                       q=urllib.parse.urlsplit(p)
