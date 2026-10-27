@@ -129,16 +129,21 @@ final class LauncherSettings extends ScrollView {
     clock.setPadding(dp(6),dp(6),dp(6),dp(6));clock.setChecked(clock24);
     body.addView(clock,new LinearLayout.LayoutParams(-1,dp(55)));
     clock.setOnCheckedChangeListener((b,v)->{clock24=v;store.edit().putBoolean("clock_24h",v).commit();changed.run();});
+    heading("PLAYER VIDEO / MUSIC");
+    sub("Alege orice player instalat, inclusiv YouTube Vanced/ReVanced. EVO nu deschide automat alte ferestre.");
+    LinearLayout mediaRow=row();
+    button(mediaRow,"Alege playerul",()->((MainActivity)host).choosePlayer());
+    button(mediaRow,"Stare player",()->((MainActivity)host).mediaSetup());
     heading("CONEXIUNI SI APLICATII");
     LinearLayout connections=row();
-    button(connections,"Notificari / Music",()->((MainActivity)host).permissions());
+    button(connections,"Acces MediaSession",()->((MainActivity)host).permissions());
     button(connections,"Bluetooth / Torque",()->launchSettings(Settings.ACTION_BLUETOOTH_SETTINGS));
     button(connections,"GPS / Locatie",()->launchSettings(Settings.ACTION_LOCATION_SOURCE_SETTINGS));
     LinearLayout actions=row();
     button(actions,"Setari Android",()->launchSettings(Settings.ACTION_SETTINGS));
-    button(actions,"Google Maps",()->((MainActivity)host).maps());
-    button(actions,"Torque Pro",()->((MainActivity)host).app("org.prowl.torque"));
-    sub("OBD: valori live numai din Torque Pro; navigatia embedded si redarea necesita aplicatiile si permisiunile corespunzatoare.");
+    button(actions,"Stare OBD / ECU",()->((MainActivity)host).showObdStatus());
+    button(actions,"Alege player",()->((MainActivity)host).choosePlayer());
+    sub("OBD: citire read-only Torque prin API string si numeric PID. Playerul ales necesita o sesiune media activa; harta ruleaza nativ in Home, fara aplicatii separate.");
     sub("NU modifica MCU, CANBUS, ROM, recovery sau launcherul implicit fara acordul utilizatorului.");
   }
   private void launchSettings(String action){
