@@ -1,0 +1,224 @@
+name: K2401 Azure Linux KVM Android 10 signed release validation
+# One bounded Azure test. Creates a temporary Ubuntu VM with nested KVM.
+# VM is deallocated and deleted in cleanup. Does not touch the Windows driver VM.
+on:
+  push:
+    branches: [feature/k2401-evo-launcher]
+    paths: [.github/workflows/k2401-azure-linux-kvm-release.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: k2401-azure-linux-kvm-release
+  cancel-in-progress: false
+env:
+  AZURE_RG: rg-chatgpt-azure
+  AZURE_REGION: swedencentral
+  AZURE_SUB: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+  KEY_VAULT: k2401evo2026sign
+  APK: projects/k2401-evo-launcher/app/build/outputs/apk/release/app-release.apk
+jobs:
+  azure-linux-android10:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 95
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.11.1'}
+      - name: Install Android build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          "$SDKMANAGER" 'platforms;android-35' 'build-tools;35.0.0'
+          bash -n projects/k2401-evo-launcher/scripts/azure-linux-emulator.sh
+      - name: Authenticate with existing feature-branch Azure OIDC
+        uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Verify no Windows VM is running and signing key exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          STATE="$(az vm show -g rg-phaser360-driverlab -n int34d2-lab --show-details --query powerState -o tsv)"
+          test "$STATE" = 'VM deallocated' || { echo "::error::Windows driver-lab VM unexpectedly running: $STATE"; exit 2; }
+          echo 'WINDOWS_VM_DEALLOCATED=PASS'
+          for i in $(seq 1 15); do
+            if az keyvault secret show --vault-name "$KEY_VAULT" -n k2401-android-signing-v1 -o none 2>/dev/null; then
+              echo 'PERSISTENT_AZURE_SIGNING_SECRET_FOUND=PASS'
+              exit 0
+            fi
+            sleep 20
+          done
+          echo '::error::Persistent signing secret unavailable; do not start billable VM.'
+          exit 3
+      - name: Restore durable signing key and build release APK
+        shell: bash
+        env:
+          K2401_MAPS_API_KEY: ${{ secrets.K2401_MAPS_API_KEY }}
+        run: |
+          set -euo pipefail
+          az keyvault secret show --vault-name "$KEY_VAULT" -n k2401-android-signing-v1 --query value -o tsv > /tmp/k2401-signing.json
+          python3 - <<'PY'
+          import base64,json,os
+          from pathlib import Path
+          s=json.loads(Path("/tmp/k2401-signing.json").read_text())
+          assert s["alias"]=="k2401release" and s["format"]=="PKCS12"
+          key=Path("/tmp/k2401-release.jks")
+          key.write_bytes(base64.b64decode(s["keystore"],validate=True));key.chmod(0o600)
+          password=s["password"]
+          assert len(password)>=24
+          print("::add-mask::"+password)
+          with open(os.environ["GITHUB_ENV"],"a") as f:
+              f.write("K2401_RELEASE_PASSWORD="+password+"\n")
+              f.write("K2401_RELEASE_KEYSTORE=/tmp/k2401-release.jks\n")
+          PY
+          rm -f /tmp/k2401-signing.json
+      - name: Build signed release and verify certificate
+        shell: bash
+        env:
+          K2401_MAPS_API_KEY: ${{ secrets.K2401_MAPS_API_KEY }}
+        run: |
+          set -euo pipefail
+          gradle --no-daemon -p projects/k2401-evo-launcher :app:assembleRelease
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" > /tmp/k2401-signature.txt
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/k2401-signature.txt
+          if grep -E '^Verified using.*false' /tmp/k2401-signature.txt | grep -v 'v1 scheme' | grep -v 'v3 scheme' | grep -v 'v4 scheme'; then
+            echo '::error::Unexpected failed required signature scheme'
+            exit 4
+          fi
+          sha256sum "$APK" | tee release-apk-sha256.txt
+          grep '^Signer #1 certificate SHA-256 digest:' /tmp/k2401-signature.txt | tee release-certificate.txt
+          echo 'PERSISTENT_SIGNED_RELEASE_APK=PASS'
+      - name: Set unique temporary resource names
+        shell: bash
+        run: |
+          echo "STORAGE=k24${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
+          echo "VM_NAME=k2401ci${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
+          echo "NIC=k2401nic${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
+          echo "PIP=k2401pip${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
+          echo "NSG=k2401nsg${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
+          echo "VNET=k2401vnet${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
+      - name: Create temporary private APK/results transfer
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          set -euo pipefail
+          az storage account create -g "$AZURE_RG" -n "$STORAGE" -l "$AZURE_REGION" \
+            --sku Standard_LRS --kind StorageV2 --https-only true \
+            --allow-blob-public-access false --min-tls-version TLS1_2 -o none
+          KEY="$(az storage account keys list -g "$AZURE_RG" -n "$STORAGE" --query '[0].value' -o tsv)"
+          echo "::add-mask::$KEY"
+          az storage container create -n artifacts --account-name "$STORAGE" --account-key "$KEY" -o none
+          az storage blob upload --account-name "$STORAGE" --account-key "$KEY" \
+            -c artifacts -n launcher.apk -f "$APK" --overwrite true -o none
+          EXPIRY="$(date -u -d '+3 hours' '+%Y-%m-%dT%H:%MZ')"
+          SAS="$(az storage container generate-sas -n artifacts --account-name "$STORAGE" --account-key "$KEY" \
+            --permissions racwl --expiry "$EXPIRY" --https-only -o tsv)"
+          echo "::add-mask::$SAS"
+          URL="https://$STORAGE.blob.core.windows.net/artifacts?$SAS"
+          echo "::add-mask::$URL"
+          echo "SAS_B64=$(printf '%s' "$URL" | base64 -w0)" >> "$GITHUB_ENV"
+          echo 'PRIVATE_TRANSFER_READY=PASS'
+      - name: Create isolated short-lived Azure Ubuntu KVM VM
+        timeout-minutes: 16
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Unique name per run. Public IP permits outbound SDK downloads; NSG
+          # allows NO inbound SSH. Access is exclusively via Azure Run Command.
+          az vm create -g "$AZURE_RG" -n "$VM_NAME" -l "$AZURE_REGION" \
+            --image Ubuntu2204 --size Standard_D4s_v3 \
+            --admin-username k2401ci --generate-ssh-keys \
+            --security-type Standard --storage-sku Standard_LRS \
+            --os-disk-size-gb 64 --public-ip-sku Standard \
+            --public-ip-address "$PIP" --vnet-name "$VNET" --subnet k2401subnet \
+            --nsg "$NSG" --nsg-rule NONE \
+            --tags project=K2401 purpose=Android10KVM ephemeral=yes -o none
+          echo 'AZURE_LINUX_VM_CREATED=PASS'
+      - name: Run Android 10 emulator INSIDE Azure subscription
+        timeout-minutes: 54
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHA="$(sha256sum "$APK" | awk '{print $1}')"
+          az vm run-command invoke -g "$AZURE_RG" -n "$VM_NAME" \
+            --command-id RunShellScript \
+            --scripts @projects/k2401-evo-launcher/scripts/azure-linux-emulator.sh \
+            --parameters "SasUrlB64=$SAS_B64" "ExpectedApkSha=$SHA" \
+            --query 'value[].message' -o tsv | tee azure-k2401-summary.txt
+          grep -Fq 'K2401_AZURE_TEST_STATUS=PASS' azure-k2401-summary.txt
+      - name: Retrieve Azure VM screenshots and verification report
+        if: always() && env.STORAGE != ''
+        timeout-minutes: 6
+        shell: bash
+        run: |
+          set +e
+          mkdir -p azure-k2401-results
+          KEY="$(az storage account keys list -g "$AZURE_RG" -n "$STORAGE" --query '[0].value' -o tsv 2>/dev/null)"
+          if [[ -n "$KEY" ]]; then
+            echo "::add-mask::$KEY"
+            az storage blob download-batch --source artifacts --destination azure-k2401-results \
+              --pattern 'results/*' --account-name "$STORAGE" --account-key "$KEY" -o none
+          fi
+          find azure-k2401-results -type f -printf '%P (%s bytes)\n'
+      - name: Publish signed release APK only after Azure emulator PASS
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: K2401-EVO-v1.0-AZURE-ANDROID10-VERIFIED-APK
+          path: ${{ env.APK }}
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload evidence and reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: K2401-AZURE-LINUX-KVM-TEST-REPORT
+          path: |
+            azure-k2401-results/
+            azure-k2401-summary.txt
+            release-apk-sha256.txt
+            release-certificate.txt
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Deallocate ephemeral VM immediately to stop compute charges
+        if: always() && env.VM_NAME != ''
+        timeout-minutes: 9
+        shell: bash
+        run: |
+          if az vm show -g "$AZURE_RG" -n "$VM_NAME" -o none 2>/dev/null; then
+            az vm deallocate -g "$AZURE_RG" -n "$VM_NAME" -o none
+            echo 'AZURE_EPHEMERAL_VM_DEALLOCATED=PASS'
+          fi
+      - name: Delete temporary VM and associated disks and network
+        if: always() && env.VM_NAME != ''
+        timeout-minutes: 9
+        shell: bash
+        run: |
+          set +e
+          az vm delete -g "$AZURE_RG" -n "$VM_NAME" --yes -o none
+          az disk list -g "$AZURE_RG" --query "[?starts_with(name, '$VM_NAME')].name" -o tsv |
+            while read -r disk; do [[ -n "$disk" ]] && az disk delete -g "$AZURE_RG" -n "$disk" --yes -o none; done
+          az network nic list -g "$AZURE_RG" --query "[?starts_with(name, '$VM_NAME')].name" -o tsv |
+            while read -r nic; do [[ -n "$nic" ]] && az network nic delete -g "$AZURE_RG" -n "$nic" -o none; done
+          [[ -n "${PIP:-}" ]] && az network public-ip delete -g "$AZURE_RG" -n "$PIP" -o none
+          [[ -n "${NSG:-}" ]] && az network nsg delete -g "$AZURE_RG" -n "$NSG" -o none
+          [[ -n "${VNET:-}" ]] && az network vnet delete -g "$AZURE_RG" -n "$VNET" -o none
+          echo 'AZURE_TEMP_RESOURCE_CLEANUP_ATTEMPTED=YES'
+      - name: Delete temporary transfer storage
+        if: always() && env.STORAGE != ''
+        timeout-minutes: 8
+        shell: bash
+        run: az storage account delete -g "$AZURE_RG" -n "$STORAGE" --yes -o none || true
+      - name: Remove local signing key and logout
+        if: always()
+        run: |
+          rm -f /tmp/k2401-release.jks /tmp/k2401-signing.json
+          az logout || true
