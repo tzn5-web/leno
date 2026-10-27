@@ -65,10 +65,19 @@ public final class MainActivity extends Activity {
       .setNegativeButton("Anulează",null).show();
   }
   void mediaSetup(){
+    refresh();
+    boolean notificationAccess=(Settings.Secure.getString(getContentResolver(),"enabled_notification_listeners")!=null && Settings.Secure.getString(getContentResolver(),"enabled_notification_listeners").contains(getPackageName()));
+    // The selected app must actually publish a MediaSession. For modified
+    // YouTube clients this is application-dependent and cannot be fabricated.
     new AlertDialog.Builder(this).setTitle(mediaName)
-      .setMessage("Playerul este selectat. EVO poate controla redarea în acest panou numai dacă aplicația expune o sesiune MediaSession activă. Acordă accesul la notificări pentru EVO și pornește o melodie în player măcar o dată. Nu deschid automat aplicații sau magazinul.")
+      .setMessage("Sursă media: "+(mediaPackage.isEmpty()?"NESELECTAT":mediaPackage)+
+        "\nAcces la notificări: "+(notificationAccess?"ACORDAT":"NEACORDAT")+
+        "\nMediaSession detectată: "+(media!=null?"DA":"NU")+
+        "\n\nYT Music Morphe / Vanced trebuie să pornească o redare și să publice o sesiune Android. EVO controlează melodia în card, fără să afișeze fereastra playerului. Dacă aplicația nu publică MediaSession, redarea în card nu poate fi controlată de altă aplicație.")
       .setPositiveButton("Acces notificări",(d,w)->permissions())
-      .setNeutralButton("Schimbă playerul",(d,w)->choosePlayer())
+      .setNeutralButton("Deschide playerul o dată",(d,w)->{
+        if(!mediaPackage.isEmpty())app(mediaPackage);else choosePlayer();
+      })
       .setNegativeButton("Închide",null).show();
   }
   void refresh(){
@@ -105,16 +114,80 @@ public final class MainActivity extends Activity {
     }catch(Exception ignored){mediaSetup();}
     view.invalidate();
   }
+  void chooseObdSource(){
+    final String[] labels={"ELM327 Bluetooth direct — și pentru Torque neoficial",
+      "Torque Pro oficial — API plugin"};
+    int current=obd!=null&&obd.isDirect()?0:1;
+    new AlertDialog.Builder(this).setTitle("Alege sursa celor patru ceasuri")
+      .setSingleChoiceItems(labels,current,(dialog,which)->{
+        dialog.dismiss();
+        if(obd==null)return;
+        obd.setMode(which==0);
+        if(which==0&&obd.adapterAddress().isEmpty())selectElmAdapter();
+        if(view!=null)view.invalidate();
+      }).setNegativeButton("Anulează",null).show();
+  }
+  void selectElmAdapter(){
+    android.bluetooth.BluetoothAdapter adapter=android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+    if(adapter==null){
+      new AlertDialog.Builder(this).setTitle("ELM327").setMessage("Navigația nu raportează un adaptor Bluetooth disponibil.")
+        .setPositiveButton("OK",null).show();return;
+    }
+    if(!adapter.isEnabled()){
+      new AlertDialog.Builder(this).setTitle("Bluetooth oprit")
+        .setMessage("Activează Bluetooth în Android, asociază ELM327 și revino pentru a-l alege.")
+        .setPositiveButton("Setări Bluetooth",(d,w)->startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS)))
+        .setNegativeButton("Închide",null).show();return;
+    }
+    ArrayList<android.bluetooth.BluetoothDevice> devices=new ArrayList<>();
+    try{devices.addAll(adapter.getBondedDevices());}
+    catch(SecurityException e){
+      new AlertDialog.Builder(this).setMessage("Permisiunea Bluetooth este indisponibilă.")
+        .setPositiveButton("Setări Bluetooth",(d,w)->startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS)))
+        .setNegativeButton("Închide",null).show();return;
+    }
+    if(devices.isEmpty()){
+      new AlertDialog.Builder(this).setTitle("ELM327 neasociat")
+        .setMessage("Asociază mai întâi adaptorul ELM327 în setările Bluetooth Android. După asociere alege-l aici. Nu poate fi utilizat în paralel de o altă aplicație.")
+        .setPositiveButton("Setări Bluetooth",(d,w)->startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS)))
+        .setNegativeButton("Închide",null).show();return;
+    }
+    Collections.sort(devices,(a,b)->{
+      String x=a.getName()==null?"":a.getName(),y=b.getName()==null?"":b.getName();
+      return x.compareToIgnoreCase(y);
+    });
+    String[] titles=new String[devices.size()];
+    for(int n=0;n<titles.length;n++){
+      android.bluetooth.BluetoothDevice device=devices.get(n);
+      titles[n]=(device.getName()==null?"Bluetooth":device.getName())+"  •  "+device.getAddress();
+    }
+    new AlertDialog.Builder(this).setTitle("Alege ELM327 asociat (Bluetooth Classic)")
+      .setItems(titles,(dialog,which)->{
+        try{
+          obd.chooseDirectAdapter(devices.get(which).getAddress());
+          android.widget.Toast.makeText(this,"ELM327 selectat. Citire directă ECU, fără Torque oficial.",android.widget.Toast.LENGTH_LONG).show();
+          if(view!=null)view.invalidate();
+        }catch(RuntimeException e){
+          android.widget.Toast.makeText(this,"Selectarea adaptorului a eșuat",android.widget.Toast.LENGTH_LONG).show();
+        }
+      }).setNegativeButton("Anulează",null).show();
+  }
   void showObdStatus(){
     ObdReader.Reading r=obd==null?ObdReader.Reading.empty():obd.current();
-    String info=obd==null?"TORQUE NECONECTAT":obd.status();
-    new AlertDialog.Builder(this).setTitle("Torque Pro — STFT / LTFT / RPM / apă")
-      .setMessage(info+"\nSTFT: "+(Float.isFinite(r.stft)?r.stft+" %":"N/A")+
+    boolean direct=obd!=null&&obd.isDirect();
+    String info=obd==null?"OBD NECONECTAT":obd.status();
+    String source=direct?"ELM327 Bluetooth direct":"Torque Pro oficial";
+    String adapter=obd==null?"":obd.adapterAddress();
+    new AlertDialog.Builder(this).setTitle("OBD-II • STFT / LTFT / RPM / apă")
+      .setMessage("Sursă: "+source+"\nStare: "+info+
+        (direct?"\nAdaptor selectat: "+(adapter.isEmpty()?"NU":adapter):"")+
+        "\nSTFT: "+(Float.isFinite(r.stft)?r.stft+" %":"N/A")+
         "\nLTFT: "+(Float.isFinite(r.ltft)?r.ltft+" %":"N/A")+
         "\nRPM: "+(Float.isFinite(r.rpm)?r.rpm:"N/A")+
         "\nTemperatura: "+(Float.isFinite(r.coolantC)?r.coolantC+" °C":"N/A")+
-        "\n\nTorque trebuie instalat, conectat prin Bluetooth la ELM327 și la ECU. EVO citește PID-urile în fundal fără a prelua adaptorul și fără comenzi de modificare ECU.")
-      .setPositiveButton("Reverifică",(d,w)->{if(obd!=null){obd.stop();obd.start();}})
+        "\n\nPentru Torque neoficial, selectează ELM327 Bluetooth direct. Adaptorul trebuie asociat cu navigația. Închide conexiunea OBD din Torque înainte de folosirea citirii directe. Nu trimitem comenzi de modificare ECU.")
+      .setPositiveButton("Alege ELM327",(d,w)->selectElmAdapter())
+      .setNeutralButton("Schimbă sursa",(d,w)->chooseObdSource())
       .setNegativeButton("Închide",null).show();
   }
   void permissions(){try{startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"));}catch(Exception e){startActivity(new Intent(Settings.ACTION_SETTINGS));}}
@@ -147,9 +220,9 @@ public final class MainActivity extends Activity {
    String formatObd(float value){return Float.isFinite(value)?String.format(Locale.US,"%.1f",value):"N/A";}
    void gauges(Canvas c,int x,int y,int w,int h){
        r(c,x,y,w,h,card,16);outline(c,x,y,w,h,0xff7e2638);
-       t(c,"TORQUE PRO  •  OBD-II",x+20,y+32,20,white);
+       t(c,"OBD-II • "+(obd!=null&&obd.isDirect()?"ELM327 DIRECT":"TORQUE OFICIAL"),x+20,y+32,20,white);
        ObdReader.Reading rd=obd==null?ObdReader.Reading.empty():obd.current();
-       t(c,obd==null?"TORQUE NECONECTAT":obd.status(),x+w-205,y+30,13,rd.live?0xff36c888:muted);
+       t(c,obd==null?"OBD NECONECTAT":obd.status(),x+w-205,y+30,13,rd.live?0xff36c888:muted);
        l(c,x+16,y+45,x+w-16,y+45,0xff394657,1);
        // Order explicitly approved: STFT B1, LTFT B1, RPM, coolant.
        String[] names={"STFT B1","LTFT B1","RPM","TEMP APĂ"};
@@ -185,9 +258,9 @@ public final class MainActivity extends Activity {
       if(page==0){map(original,20,78,600,490);music(original,634,78,626,298);gauges(original,634,389,626,310);}
       if(page==1){title(original,"MUZICĂ","Player configurabil • control MediaSession în panou");music(original,158,185,1070,435);}
       if(page==2){title(original,"NAVIGAȚIE","Hartă OSM nativă / Google SDK • GPS și căutare în panou");map(original,158,169,1052,527);}
-      if(page==3){title(original,"MAȘINĂ","Ceasuri OBD în stil EVO • modul live necesită adaptor ELM327");gauges(original,156,200,1069,335);row(original,560,obd!=null&&obd.current().live?"OBD-II conectat":"ELM327 Bluetooth",obd!=null&&obd.current().live?"Date live din ECU, numai citire, fără comenzi de modificare.":"Deschide Torque Pro și conectează ECU, apoi revino în launcher.");}
-      if(page==4){title(original,"APLICAȚII","Lansează aplicații reale sau adaugă-le în bara de pinuri");String[] labels={"Google Maps","Alege player","Diagnoză Torque","Alege aplicație","Setări Android","Bluetooth"};for(int i=0;i<6;i++){int x=158+(i%3)*360,y=210+(i/3)*181;r(original,x,y,324,150,card,14);t(original,labels[i],x+24,y+90,24,white);}}
-      if(page==5){title(original,"SETĂRI","EVO Dark Red • fără animații sau servicii permanente");row(original,186,"Acces notificări","Permite controlul YouTube Music prin MediaSession.");row(original,316,"Google Maps","Hartă interactivă live (Maps SDK cu cheie, altfel OpenStreetMap).");row(original,446,"Torque / OBD","Torque Pro gestionează ELM327; launcherul citește datele prin IPC.");row(original,576,"Protecție","Nu modificăm MCU, boot, recovery sau CANBUS.");}
+      if(page==3){title(original,"MAȘINĂ","Ceasuri OBD în stil EVO • modul live necesită adaptor ELM327");gauges(original,156,200,1069,335);row(original,560,obd!=null&&obd.current().live?"OBD-II conectat":"ELM327 Bluetooth",obd!=null&&obd.current().live?"Date live din ECU, numai citire, fără comenzi de modificare.":"Alege adaptorul ELM327 Bluetooth în setări; Torque neoficial nu are nevoie de plugin.");}
+      if(page==4){title(original,"APLICAȚII","Lansează aplicații reale sau adaugă-le în bara de pinuri");String[] labels={"Google Maps","Alege player","OBD / ELM327","Alege aplicație","Setări Android","Bluetooth"};for(int i=0;i<6;i++){int x=158+(i%3)*360,y=210+(i/3)*181;r(original,x,y,324,150,card,14);t(original,labels[i],x+24,y+90,24,white);}}
+      if(page==5){title(original,"SETĂRI","EVO Dark Red • fără animații sau servicii permanente");row(original,186,"Acces notificări","Permite controlul YouTube Music prin MediaSession.");row(original,316,"Google Maps","Hartă interactivă live (Maps SDK cu cheie, altfel OpenStreetMap).");row(original,446,"OBD / ELM327","Citire directă Bluetooth sau API Torque oficial — alege sursa din setări.");row(original,576,"Protecție","Nu modificăm MCU, boot, recovery sau CANBUS.");}
       original.restore();}
    public boolean onTouchEvent(MotionEvent e){if(e.getAction()!=MotionEvent.ACTION_UP)return true;float x=e.getX()*1280/getWidth(),y=e.getY()*720/getHeight();
        if(page!=0&&x<109&&y>=73){int idx=(int)((y-73)/105);if(idx>=0&&idx<6)page=idx;invalidate();placeMap();return true;}
