@@ -20,7 +20,8 @@ jobs:
           set -euo pipefail
           az vm run-command invoke --resource-group rg-chatgpt-azure \
             --name android-dev-linux --command-id RunShellScript \
-            --scripts 'echo ======CLOUD_INIT======; cloud-init status --long || true; echo ======INSTALL_MARKERS======; ls -la /var/lib/android-dev/ 2>&1 || true; echo ======INSTALL_LOG======; tail -n 65 /var/log/android-dev-bootstrap.log 2>&1 || true; echo ======CLOUD_OUTPUT======; tail -n 40 /var/log/cloud-init-output.log 2>&1 || true; echo ======PROCESS======; ps -eo pid,comm,args | grep -E "apt-get|sdkmanager|snap install|install-android-dev" | head -10 || true' \
+            --scripts 'echo ======READY======; test -f /var/lib/android-dev/installed && echo INSTALLED || echo NOT_YET; echo ======SERVICE======; systemctl is-active android-dev-resume.service || true; systemctl show android-dev-resume.service -p SubState -p ExecMainStatus -p Result || true; echo ======FAIL_MARKER======; ls -l /var/lib/android-dev/failed 2>/dev/null || true; echo ======LOGTAIL======; tail -n 17 /var/log/android-dev-bootstrap.log 2>/dev/null || true; echo ======DISK======; df -h / | tail -1' \
+
             --query 'value[0].message' -o tsv
       - if: always()
         run: az logout || true
