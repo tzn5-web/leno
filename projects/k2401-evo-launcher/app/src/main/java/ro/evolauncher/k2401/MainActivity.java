@@ -14,7 +14,7 @@ public final class MainActivity extends Activity {
     recreate();
   }
 
-  public void onCreate(Bundle state){super.onCreate(state);
+  public void onCreate(Bundle state){super.onCreate(state);try{
     // A physical K2401 can crash before emulator-only checks reproduce the OEM
     // driver problem. Recovery is a separate Activity without maps or Bluetooth.
     long last=getSharedPreferences("evo_startup_recovery",MODE_PRIVATE).getLong("last_crash_wallclock",0L);
@@ -51,12 +51,29 @@ public final class MainActivity extends Activity {
      mapRecoveryPlaceholder.setBackgroundColor(0xff15202d);
      stage.addView(mapRecoveryPlaceholder,new android.widget.FrameLayout.LayoutParams(200,200));
    }
-   shortcutDock=new ShortcutDock(this);stage.addView(shortcutDock,new android.widget.FrameLayout.LayoutParams(200,100));stage.addView(launcherSettings,new android.widget.FrameLayout.LayoutParams(200,200));stage.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or2,ob)->placeMap());setContentView(stage);active=new WeakReference<>(this);placeMap();}
-  protected void onStart(){super.onStart();if(liveMap!=null)liveMap.onHostStart();}
-  protected void onResume(){super.onResume();if(isFinishing()||stage==null)return;if(liveMap!=null)liveMap.onHostResume();handler.removeCallbacks(mapBootConfirmed);if(liveMap!=null)handler.postDelayed(mapBootConfirmed,1000);refresh();handler.removeCallbacks(update);handler.post(update);startObd();if(checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)!=android.content.pm.PackageManager.PERMISSION_GRANTED&&checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION)!=android.content.pm.PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION,android.Manifest.permission.ACCESS_COARSE_LOCATION},2402);}}
-  protected void onPause(){handler.removeCallbacks(update);handler.removeCallbacks(mapBootConfirmed);if(liveMap!=null){getSharedPreferences("evo_startup_recovery",MODE_PRIVATE).edit().putBoolean("map_boot_pending",false).apply();}if(obd!=null)obd.stop();if(liveMap!=null)liveMap.onHostPause();super.onPause();}
-  protected void onStop(){if(liveMap!=null)liveMap.onHostStop();super.onStop();}
-  protected void onDestroy(){if(media!=null){try{media.unregisterCallback(mediaCallback);}catch(Exception ignored){}}if(obd!=null)obd.close();if(liveMap!=null)liveMap.onHostDestroy();if(launcherSettings!=null)launcherSettings.dispose();active.clear();super.onDestroy();}
+   shortcutDock=new ShortcutDock(this);stage.addView(shortcutDock,new android.widget.FrameLayout.LayoutParams(200,100));stage.addView(launcherSettings,new android.widget.FrameLayout.LayoutParams(200,200));stage.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or2,ob)->placeMap());setContentView(stage);active=new WeakReference<>(this);placeMap();
+    }catch(RuntimeException|LinkageError failure){
+      // A Java failure during widget / GPU / OEM view setup must not cause
+      // an endless HOME crash loop. The independent recovery UI remains usable.
+      try{
+        java.io.StringWriter trace=new java.io.StringWriter();
+        failure.printStackTrace(new java.io.PrintWriter(trace));
+        getSharedPreferences("evo_startup_recovery",MODE_PRIVATE).edit()
+          .putString("last_exception",trace.toString())
+          .putLong("last_crash_wallclock",System.currentTimeMillis())
+          .putBoolean("map_disabled",true).putBoolean("map_boot_pending",false).commit();
+        startActivity(new Intent(this,SafeModeActivity.class));
+      }catch(RuntimeException ignored){}
+      finish();
+    }
+  }
+  protected void onStart(){super.onStart();if(liveMap!=null){
+    try{liveMap.onHostStart();}catch(RuntimeException|LinkageError e){disableMapRenderer(e);}
+  }}
+  protected void onResume(){super.onResume();if(isFinishing()||stage==null)return;if(liveMap!=null)try{liveMap.onHostResume();}catch(RuntimeException|LinkageError e){disableMapRenderer(e);}handler.removeCallbacks(mapBootConfirmed);if(liveMap!=null)handler.postDelayed(mapBootConfirmed,1000);refresh();handler.removeCallbacks(update);handler.post(update);startObd();if(checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)!=android.content.pm.PackageManager.PERMISSION_GRANTED&&checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION)!=android.content.pm.PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION,android.Manifest.permission.ACCESS_COARSE_LOCATION},2402);}}
+  protected void onPause(){handler.removeCallbacks(update);handler.removeCallbacks(mapBootConfirmed);if(liveMap!=null){getSharedPreferences("evo_startup_recovery",MODE_PRIVATE).edit().putBoolean("map_boot_pending",false).apply();}if(obd!=null)obd.stop();if(liveMap!=null)try{liveMap.onHostPause();}catch(RuntimeException|LinkageError e){disableMapRenderer(e);}super.onPause();}
+  protected void onStop(){if(liveMap!=null)try{liveMap.onHostStop();}catch(RuntimeException|LinkageError e){disableMapRenderer(e);}super.onStop();}
+  protected void onDestroy(){if(media!=null){try{media.unregisterCallback(mediaCallback);}catch(Exception ignored){}}if(obd!=null)obd.close();if(liveMap!=null)try{liveMap.onHostDestroy();}catch(RuntimeException|LinkageError ignored){}if(launcherSettings!=null)launcherSettings.dispose();active.clear();super.onDestroy();}
   void startObd(){
     // OEM-specific Android 10 Bluetooth drivers are NOT touched automatically
     // during initial startup. Enable only after the user chooses a paired ELM.
@@ -66,6 +83,25 @@ public final class MainActivity extends Activity {
   @Override public void onRequestPermissionsResult(int code,String[] permissions,int[] grantResults){super.onRequestPermissionsResult(code,permissions,grantResults);if(code==2402&&liveMap!=null){liveMap.onHostPause();liveMap.onHostStart();}if(code==2401&&obd!=null){for(int result:grantResults)if(result!=android.content.pm.PackageManager.PERMISSION_GRANTED)return;if(grantResults.length>0)obd.start();}}
   @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(launcherSettings!=null)launcherSettings.onPicked(request,result,data);}
   public void onBackPressed(){if(view==null){super.onBackPressed();return;}page=0;view.invalidate();placeMap();}
+  private void disableMapRenderer(Throwable problem){
+    android.content.SharedPreferences recovery=getSharedPreferences("evo_startup_recovery",MODE_PRIVATE);
+    recovery.edit().putBoolean("map_disabled",true).putBoolean("map_boot_pending",false)
+      .putString("map_renderer_error",problem.toString()).commit();
+    if(liveMap!=null&&stage!=null){
+      try{stage.removeView(liveMap);}catch(RuntimeException ignored){}
+    }
+    liveMap=null;
+    if(stage!=null&&mapRecoveryPlaceholder==null){
+      mapRecoveryPlaceholder=new android.widget.TextView(this);
+      mapRecoveryPlaceholder.setText("HARTĂ OPRITĂ PENTRU RECUPERARE\nSetări EVO → Reîncearcă harta");
+      mapRecoveryPlaceholder.setTextColor(0xfff1f4fb);
+      mapRecoveryPlaceholder.setTextSize(20);
+      mapRecoveryPlaceholder.setGravity(android.view.Gravity.CENTER);
+      mapRecoveryPlaceholder.setBackgroundColor(0xff15202d);
+      stage.addView(mapRecoveryPlaceholder,new android.widget.FrameLayout.LayoutParams(200,200));
+      placeMap();
+    }
+  }
   void placeMap(){if(stage==null||launcherSettings==null||shortcutDock==null)return;boolean shown=page==0||page==2;if(liveMap!=null)liveMap.setVisibility(shown?View.VISIBLE:View.GONE);if(mapRecoveryPlaceholder!=null)mapRecoveryPlaceholder.setVisibility(shown?View.VISIBLE:View.GONE);shortcutDock.setVisibility(page==0?View.VISIBLE:View.GONE);launcherSettings.setVisibility(page==5?View.VISIBLE:View.GONE);int w=stage.getWidth(),h=stage.getHeight();if(w<=0||h<=0)return;float sx=w/1280f,sy=h/720f;if(shown){int x=page==0?20:158,y=page==0?78:169,mw=page==0?600:1052,mh=page==0?490:527;android.widget.FrameLayout.LayoutParams p=new android.widget.FrameLayout.LayoutParams(Math.max(1,Math.round(mw*sx)),Math.max(1,Math.round(mh*sy)));p.leftMargin=Math.round(x*sx);p.topMargin=Math.round(y*sy);if(liveMap!=null)liveMap.setLayoutParams(p);if(mapRecoveryPlaceholder!=null)mapRecoveryPlaceholder.setLayoutParams(p);}android.widget.FrameLayout.LayoutParams dock=new android.widget.FrameLayout.LayoutParams(Math.max(1,Math.round(600*sx)),Math.max(1,Math.round(121*sy)));dock.leftMargin=Math.round(20*sx);dock.topMargin=Math.round(576*sy);shortcutDock.setLayoutParams(dock);android.widget.FrameLayout.LayoutParams prefs=new android.widget.FrameLayout.LayoutParams(Math.max(1,Math.round(1115*sx)),Math.max(1,Math.round(620*sy)));prefs.leftMargin=Math.round(130*sx);prefs.topMargin=Math.round(78*sy);launcherSettings.setLayoutParams(prefs);}
   static void changed(){MainActivity a=active.get();if(a!=null)a.runOnUiThread(()->{a.refresh();a.view.invalidate();});}
   String labelForMedia(String pkg){
