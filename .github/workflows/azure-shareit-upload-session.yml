@@ -37,7 +37,7 @@ jobs:
           echo "::add-mask::$SAS"
           cat >/tmp/requester-pubkey.pem <<'EOF'
           -----BEGIN PUBLIC KEY-----
-          MIIBIjANBgkqhG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAgZckcU1v0suQwrYZboZl
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAgZckcU1v0suQwrYZboZl
           z7oGqouqAHreM8YtYxMsGna8jRkSR8w6M7czau99i/mnwcvXbYjDO/EwZWjkUvmg
           qAg2xbm/PtRxRqnQX4vZm/DFPLUmTf5c32nZ3kzhjpKXAbfrI0IV0bbGCjA7+dPr
           qXIJfV/pTNkB5J67qwiRM3Yz2eugKePY4Mjdr4V5wlOUsjI1PWG5Fyiov2WHz0Cb
