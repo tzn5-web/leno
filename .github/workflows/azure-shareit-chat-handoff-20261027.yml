@@ -1,0 +1,54 @@
+name: SHAREit Azure securely encrypted handoff – chat 20261027
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/azure-shareit-chat-handoff-20261027.yml']
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  issue-private-blob-upload:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Issue short-lived single-object write-only HTTPS SAS and encrypt for requester
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACC=tzn5androidartifacts26
+          RG=rg-chatgpt-azure
+          CONT=apks-private
+          BLOB=input/shareit-6.27.58-user.apks
+          KEY="$(az storage account keys list -g "$RG" -n "$ACC" --query '[0].value' -o tsv)"
+          echo "::add-mask::$KEY"
+          az storage container show --account-name "$ACC" --account-key "$KEY" --name "$CONT" >/dev/null
+          if [ "$(az storage blob exists --account-name "$ACC" --account-key "$KEY" --container-name "$CONT" --name "$BLOB" --query exists -o tsv)" = true ]; then
+            echo 'SHAREIT_INPUT_ALREADY_PRESENT=YES'; exit 0
+          fi
+          EXP="$(date -u -d '+22 hours' +%Y-%m-%dT%H:%MZ)"
+          SAS="$(az storage blob generate-sas --account-name "$ACC" --account-key "$KEY" --container-name "$CONT" --name "$BLOB" --permissions cw --expiry "$EXP" --https-only -o tsv)"
+          echo "::add-mask::$SAS"
+          cat >/tmp/shareit-requester-pub.pem <<'PUB'
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0+PVGhuEN/yUxyKHuspF
+HiTKhsLi0P8fiMBQ2bBP3uxJ9a0tgLmyf47ZVZuZBkzYKmA4tsGs2Nve1z1c8NIv
+lRDhyW6r6BPtZ+XY4S5+QGyPTbS6W3VlZIu4AXWAvBG/ZOc+0Us+biXPMvTlfiUr
+WbTT731rvG2L0CW86I/H3yDbZq0Euy0/fgYK187qkw4aXMcMlLFi1M8UW3w4XJHi
+KnxYqyF/Z6rMh3yv5N82RuEFleeISwUmHDM3cSgY1SZq5o0J5WdqWX1CNP9UQJvt
+6zgRjum8el/dINxncjHlYepku4uvc1oG5zpzhiKvmnXWCMexA7Q4BlsrujumJjgs
+nwIDAQAB
+-----END PUBLIC KEY-----
+PUB
+          printf '%s' "$SAS" >/tmp/input.sas
+          openssl pkeyutl -encrypt -pubin -inkey /tmp/shareit-requester-pub.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in /tmp/input.sas -out /tmp/input.enc
+          echo "SHAREIT_BLOB_UPLOAD_ENCRYPTED=$(base64 -w0 /tmp/input.enc)"
+          echo "SHAREIT_UPLOAD_EXPIRY_UTC=$EXP"
+          echo "SHAREIT_PRIVATE_UPLOAD_SESSION=PASS"
+          rm -f /tmp/input.enc /tmp/input.sas
+      - if: always()
+        run: az logout || true
