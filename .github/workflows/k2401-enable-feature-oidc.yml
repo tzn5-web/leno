@@ -1,0 +1,48 @@
+name: K2401 enable persistent feature-branch Azure OIDC
+# One-time, no VM start and no chargeable Azure resource creation.
+# Existing main-branch OIDC identity authorizes exactly one additional
+# GitHub branch subject for the same managed identity.
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/k2401-enable-feature-oidc.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: k2401-enable-feature-oidc
+  cancel-in-progress: false
+jobs:
+  feature-oidc:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Authorize only K2401 feature branch for existing managed identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          RG=rg-chatgpt-azure
+          IDENTITY=k2401-github-oidc
+          NAME=github-feature-k2401-evo
+          SUBJECT='repo:tzn5-web@331569227/leno@1404038746:ref:refs/heads/feature/k2401-evo-launcher'
+          CLIENT="$(az identity show -g "$RG" -n "$IDENTITY" --query clientId -o tsv)"
+          test "$CLIENT" = '50a5c260-15a0-4aa0-9e02-5f0ad5c23df9'
+          ACTUAL="$(az identity federated-credential show -g "$RG" --identity-name "$IDENTITY" -n "$NAME" --query subject -o tsv 2>/dev/null || true)"
+          if [[ -z "$ACTUAL" ]]; then
+            az identity federated-credential create -g "$RG" --identity-name "$IDENTITY"               -n "$NAME" --issuer 'https://token.actions.githubusercontent.com'               --subject "$SUBJECT" --audiences 'api://AzureADTokenExchange' -o none
+          elif [[ "$ACTUAL" != "$SUBJECT" ]]; then
+            echo '::error::Federated credential already exists with a different subject; refusing to overwrite.'
+            exit 3
+          fi
+          ACTUAL="$(az identity federated-credential show -g "$RG" --identity-name "$IDENTITY" -n "$NAME" --query subject -o tsv)"
+          test "$ACTUAL" = "$SUBJECT"
+          echo 'K2401_FEATURE_BRANCH_AZURE_OIDC=PASS'
+      - name: Logout
+        if: always()
+        run: az logout || true
