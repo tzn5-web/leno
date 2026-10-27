@@ -2,7 +2,7 @@ package ro.evolauncher.k2401;
 import android.app.*;import android.content.*;import android.graphics.*;import android.media.*;import android.media.session.*;import android.net.*;import android.os.*;import android.provider.*;import android.view.*;import java.lang.ref.*;import java.text.*;import java.util.*;
 public final class MainActivity extends Activity {
   static WeakReference<MainActivity> active=new WeakReference<>(null);
-  Handler handler=new Handler(); MediaController media; Dashboard view; ObdReader obd; LiveMapPanel liveMap; LauncherSettings launcherSettings; ShortcutDock shortcutDock; android.widget.FrameLayout stage; android.widget.TextView mapRecoveryPlaceholder; int page=0; String mediaPackage=""; String mediaName="Alege playerul";
+  Handler handler=new Handler(); MediaController media; Dashboard view; ObdReader obd; LiveMapPanel liveMap; LauncherSettings launcherSettings; ShortcutDock shortcutDock; SkinEngine skins; AppsDrawer installedApps; android.widget.FrameLayout stage; android.widget.TextView mapRecoveryPlaceholder; int page=0; String mediaPackage=""; String mediaName="Alege playerul";
   final MediaController.Callback mediaCallback=new MediaController.Callback(){@Override public void onPlaybackStateChanged(PlaybackState s){if(view!=null)view.invalidate();}@Override public void onMetadataChanged(MediaMetadata m){if(view!=null)view.invalidate();}@Override public void onSessionDestroyed(){refresh();if(view!=null)view.invalidate();}};
   final Runnable update=new Runnable(){public void run(){if(media==null)refresh();if(view!=null)view.invalidate();handler.postDelayed(this,1000);}};
   private final Runnable mapBootConfirmed=()->getSharedPreferences("evo_startup_recovery",MODE_PRIVATE)
@@ -22,7 +22,7 @@ public final class MainActivity extends Activity {
       startActivity(new Intent(this,SafeModeActivity.class));finish();return;
     }
     getWindow().getDecorView().setSystemUiVisibility(5894|View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);mediaPackage=getSharedPreferences("evo_launcher_prefs",MODE_PRIVATE).getString("evo_media_package","");
-   mediaName=labelForMedia(mediaPackage);launcherSettings=new LauncherSettings(this,()->{if(view!=null)view.invalidate();});view=new Dashboard();obd=new ObdReader(this,()->runOnUiThread(()->{if(view!=null)view.invalidate();}));stage=new android.widget.FrameLayout(this);stage.addView(view,new android.widget.FrameLayout.LayoutParams(-1,-1));
+   mediaName=labelForMedia(mediaPackage);launcherSettings=new LauncherSettings(this,()->{if(view!=null)view.invalidate();});view=new Dashboard();obd=new ObdReader(this,()->runOnUiThread(()->{if(view!=null)view.invalidate();}));skins=new SkinEngine(this);installedApps=new AppsDrawer(this);stage=new android.widget.FrameLayout(this);stage.addView(view,new android.widget.FrameLayout.LayoutParams(-1,-1));
    // Do not allow an OEM-only map renderer failure to prevent all launcher UI.
    // A pending map boot after a process crash automatically disables only map.
    SharedPreferences mapRecovery=getSharedPreferences("evo_startup_recovery",MODE_PRIVATE);
@@ -51,7 +51,7 @@ public final class MainActivity extends Activity {
      mapRecoveryPlaceholder.setBackgroundColor(0xff15202d);
      stage.addView(mapRecoveryPlaceholder,new android.widget.FrameLayout.LayoutParams(200,200));
    }
-   shortcutDock=new ShortcutDock(this);stage.addView(shortcutDock,new android.widget.FrameLayout.LayoutParams(200,100));stage.addView(launcherSettings,new android.widget.FrameLayout.LayoutParams(200,200));stage.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or2,ob)->placeMap());setContentView(stage);active=new WeakReference<>(this);placeMap();
+   shortcutDock=new ShortcutDock(this);stage.addView(shortcutDock,new android.widget.FrameLayout.LayoutParams(200,100));stage.addView(installedApps,new android.widget.FrameLayout.LayoutParams(200,200));stage.addView(launcherSettings,new android.widget.FrameLayout.LayoutParams(200,200));stage.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or2,ob)->placeMap());setContentView(stage);active=new WeakReference<>(this);placeMap();
     }catch(RuntimeException|LinkageError failure){
       // A Java failure during widget / GPU / OEM view setup must not cause
       // an endless HOME crash loop. The independent recovery UI remains usable.
@@ -73,7 +73,7 @@ public final class MainActivity extends Activity {
   protected void onResume(){super.onResume();if(isFinishing()||stage==null)return;if(liveMap!=null)try{liveMap.onHostResume();}catch(RuntimeException|LinkageError e){disableMapRenderer(e);}handler.removeCallbacks(mapBootConfirmed);if(liveMap!=null)handler.postDelayed(mapBootConfirmed,1000);refresh();handler.removeCallbacks(update);handler.post(update);startObd();if(checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)!=android.content.pm.PackageManager.PERMISSION_GRANTED&&checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION)!=android.content.pm.PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION,android.Manifest.permission.ACCESS_COARSE_LOCATION},2402);}}
   protected void onPause(){handler.removeCallbacks(update);handler.removeCallbacks(mapBootConfirmed);if(liveMap!=null){getSharedPreferences("evo_startup_recovery",MODE_PRIVATE).edit().putBoolean("map_boot_pending",false).apply();}if(obd!=null)obd.stop();if(liveMap!=null)try{liveMap.onHostPause();}catch(RuntimeException|LinkageError e){disableMapRenderer(e);}super.onPause();}
   protected void onStop(){if(liveMap!=null)try{liveMap.onHostStop();}catch(RuntimeException|LinkageError e){disableMapRenderer(e);}super.onStop();}
-  protected void onDestroy(){if(media!=null){try{media.unregisterCallback(mediaCallback);}catch(Exception ignored){}}if(obd!=null)obd.close();if(liveMap!=null)try{liveMap.onHostDestroy();}catch(RuntimeException|LinkageError ignored){}if(launcherSettings!=null)launcherSettings.dispose();active.clear();super.onDestroy();}
+  protected void onDestroy(){if(media!=null){try{media.unregisterCallback(mediaCallback);}catch(Exception ignored){}}if(obd!=null)obd.close();if(liveMap!=null)try{liveMap.onHostDestroy();}catch(RuntimeException|LinkageError ignored){}if(launcherSettings!=null)launcherSettings.dispose();if(skins!=null)skins.release();active.clear();super.onDestroy();}
   void startObd(){
     // OEM-specific Android 10 Bluetooth drivers are NOT touched automatically
     // during initial startup. Enable only after the user chooses a paired ELM.
@@ -81,7 +81,15 @@ public final class MainActivity extends Activity {
        .getBoolean("evo_skip_obd_at_start",true))obd.start();
   }
   @Override public void onRequestPermissionsResult(int code,String[] permissions,int[] grantResults){super.onRequestPermissionsResult(code,permissions,grantResults);if(code==2402&&liveMap!=null){liveMap.onHostPause();liveMap.onHostStart();}if(code==2401&&obd!=null){for(int result:grantResults)if(result!=android.content.pm.PackageManager.PERMISSION_GRANTED)return;if(grantResults.length>0)obd.start();}}
-  @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(launcherSettings!=null)launcherSettings.onPicked(request,result,data);}
+  @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(launcherSettings!=null)launcherSettings.onPicked(request,result,data);if(request==SkinEngine.PICK_SKIN_PACK&&result==RESULT_OK&&data!=null&&skins!=null)skins.importPack(data.getData());}
+  void showInstalledApps(){
+    if(installedApps!=null)installedApps.refresh();
+    page=4;
+    if(view!=null)view.invalidate();
+    placeMap();
+  }
+  void showSkinPicker(){if(skins!=null)skins.showPicker();}
+  void chooseSkinPack(){if(skins!=null)skins.choosePack();}
   public void onBackPressed(){if(view==null){super.onBackPressed();return;}page=0;view.invalidate();placeMap();}
   private void disableMapRenderer(Throwable problem){
     android.content.SharedPreferences recovery=getSharedPreferences("evo_startup_recovery",MODE_PRIVATE);
@@ -102,7 +110,38 @@ public final class MainActivity extends Activity {
       placeMap();
     }
   }
-  void placeMap(){if(stage==null||launcherSettings==null||shortcutDock==null)return;boolean shown=page==0||page==2;if(liveMap!=null)liveMap.setVisibility(shown?View.VISIBLE:View.GONE);if(mapRecoveryPlaceholder!=null)mapRecoveryPlaceholder.setVisibility(shown?View.VISIBLE:View.GONE);shortcutDock.setVisibility(page==0?View.VISIBLE:View.GONE);launcherSettings.setVisibility(page==5?View.VISIBLE:View.GONE);int w=stage.getWidth(),h=stage.getHeight();if(w<=0||h<=0)return;float sx=w/1280f,sy=h/720f;if(shown){int x=page==0?20:158,y=page==0?78:169,mw=page==0?600:1052,mh=page==0?490:527;android.widget.FrameLayout.LayoutParams p=new android.widget.FrameLayout.LayoutParams(Math.max(1,Math.round(mw*sx)),Math.max(1,Math.round(mh*sy)));p.leftMargin=Math.round(x*sx);p.topMargin=Math.round(y*sy);if(liveMap!=null)liveMap.setLayoutParams(p);if(mapRecoveryPlaceholder!=null)mapRecoveryPlaceholder.setLayoutParams(p);}android.widget.FrameLayout.LayoutParams dock=new android.widget.FrameLayout.LayoutParams(Math.max(1,Math.round(600*sx)),Math.max(1,Math.round(121*sy)));dock.leftMargin=Math.round(20*sx);dock.topMargin=Math.round(576*sy);shortcutDock.setLayoutParams(dock);android.widget.FrameLayout.LayoutParams prefs=new android.widget.FrameLayout.LayoutParams(Math.max(1,Math.round(1115*sx)),Math.max(1,Math.round(620*sy)));prefs.leftMargin=Math.round(130*sx);prefs.topMargin=Math.round(78*sy);launcherSettings.setLayoutParams(prefs);}
+  void placeMap(){
+    if(stage==null||launcherSettings==null||shortcutDock==null)return;
+    // Never show OSM on Home; only a deliberate click on HARTĂ opens page 2.
+    boolean shown=page==2;
+    if(liveMap!=null)liveMap.setVisibility(shown?View.VISIBLE:View.GONE);
+    if(mapRecoveryPlaceholder!=null)mapRecoveryPlaceholder.setVisibility(shown?View.VISIBLE:View.GONE);
+    shortcutDock.setVisibility(page==0?View.VISIBLE:View.GONE);
+    installedApps.setVisibility(page==4?View.VISIBLE:View.GONE);
+    launcherSettings.setVisibility(page==5?View.VISIBLE:View.GONE);
+    int w=stage.getWidth(),h=stage.getHeight();
+    if(w<=0||h<=0)return;
+    float sx=w/1280f,sy=h/720f;
+    if(shown){
+      android.widget.FrameLayout.LayoutParams mp=new android.widget.FrameLayout.LayoutParams(
+        Math.round(1052*sx),Math.round(527*sy));
+      mp.leftMargin=Math.round(158*sx);mp.topMargin=Math.round(169*sy);
+      if(liveMap!=null)liveMap.setLayoutParams(mp);
+      if(mapRecoveryPlaceholder!=null)mapRecoveryPlaceholder.setLayoutParams(mp);
+    }
+    android.widget.FrameLayout.LayoutParams dock=new android.widget.FrameLayout.LayoutParams(
+      Math.max(1,Math.round(214*sx)),Math.max(1,Math.round(92*sy)));
+    dock.leftMargin=Math.round(409*sx);dock.topMargin=Math.round(623*sy);
+    shortcutDock.setLayoutParams(dock);
+    android.widget.FrameLayout.LayoutParams drawer=new android.widget.FrameLayout.LayoutParams(
+      Math.max(1,Math.round(1115*sx)),Math.max(1,Math.round(620*sy)));
+    drawer.leftMargin=Math.round(130*sx);drawer.topMargin=Math.round(78*sy);
+    installedApps.setLayoutParams(drawer);
+    android.widget.FrameLayout.LayoutParams settings=new android.widget.FrameLayout.LayoutParams(
+      Math.max(1,Math.round(1115*sx)),Math.max(1,Math.round(620*sy)));
+    settings.leftMargin=Math.round(130*sx);settings.topMargin=Math.round(78*sy);
+    launcherSettings.setLayoutParams(settings);
+  }
   static void changed(){MainActivity a=active.get();if(a!=null)a.runOnUiThread(()->{a.refresh();a.view.invalidate();});}
   String labelForMedia(String pkg){
     if(pkg==null||pkg.isEmpty())return "Alege playerul";
@@ -503,7 +542,7 @@ public final class MainActivity extends Activity {
        }
    }
    void row(Canvas c,int y,String name,String desc){r(c,150,y,1088,109,card,14);r(c,150,y,5,109,red,0);t(c,name,177,y+42,25,white);t(c,desc,177,y+80,17,muted);}
-   protected void onDraw(Canvas original){original.save();original.scale(getWidth()/1280f,getHeight()/720f);if(launcherSettings!=null){launcherSettings.drawWallpaper(original);red=launcherSettings.accent();}else original.drawColor(bg);if(page!=0)nav(original);header(original);
+   protected void onDraw(Canvas original){original.save();original.scale(getWidth()/1280f,getHeight()/720f);if(page==0&&skins!=null){skins.draw(original);original.restore();return;}if(launcherSettings!=null){launcherSettings.drawWallpaper(original);red=launcherSettings.accent();}else original.drawColor(bg);if(page!=0)nav(original);header(original);
       if(page==0){map(original,20,78,600,490);music(original,634,78,626,298);gauges(original,634,389,626,310);}
       if(page==1){title(original,"MUZICĂ","Player configurabil • control MediaSession în panou");music(original,158,185,1070,435);}
       if(page==2){title(original,"NAVIGAȚIE","Hartă OSM nativă / Google SDK • GPS și căutare în panou");map(original,158,169,1052,527);}
@@ -512,6 +551,7 @@ public final class MainActivity extends Activity {
       if(page==5){title(original,"SETĂRI","EVO Dark Red • fără animații sau servicii permanente");row(original,186,"Acces notificări","Permite controlul YouTube Music prin MediaSession.");row(original,316,"Google Maps","Hartă interactivă live (Maps SDK cu cheie, altfel OpenStreetMap).");row(original,446,"OBD / ELM327","Citire directă Bluetooth sau API Torque oficial — alege sursa din setări.");row(original,576,"Protecție","Nu modificăm MCU, boot, recovery sau CANBUS.");}
       original.restore();}
    public boolean onTouchEvent(MotionEvent e){if(e.getAction()!=MotionEvent.ACTION_UP)return true;float x=e.getX()*1280/getWidth(),y=e.getY()*720/getHeight();
+       if(page==0&&skins!=null){if(skins.touch(x,y))return true;return true;}
        if(page!=0&&x<109&&y>=73){int idx=(int)((y-73)/105);if(idx>=0&&idx<6)page=idx;invalidate();placeMap();return true;}
        if(page==0){if(y<65&&x<65){page=4;invalidate();placeMap();}else if(y<65&&x>1210){page=5;invalidate();placeMap();}else if(x>=634&&y>=78&&y<386){if(y>294)mediaAction(x<995?0:x<1125?1:2);else choosePlayer();}else if(x>=634&&y>=389){showObdStatus();}}
        else if(page==1){if(y>=520&&y<=620&&x>=350&&x<=715){mediaAction(x<477?0:x<608?1:2);}else if(x>=158&&x<=1228&&y>=185&&y<520){choosePlayer();}}
