@@ -79,6 +79,11 @@ jobs:
           grep -Fq 'createRfcommSocketToServiceRecord(SPP)' "$BASE/DirectElm327.java"
           grep -Fq 'getBondedDevices()' "$BASE/MainActivity.java"
           grep -Fq 'Nominatim' "$BASE/LiveMapPanel.java"
+          # OEM crash hotfix: never initialize Bluetooth before manual setup.
+          grep -Fq 'evo_skip_obd_at_start' "$BASE/MainActivity.java"
+          grep -Fq 'private volatile DirectElm327 direct' "$BASE/ObdReader.java"
+          grep -Fq 'last_exception' "$BASE/EvoApplication.java"
+          grep -Fq 'K2401 EVO — RECUPERARE' "$BASE/SafeModeActivity.java"
           echo 'K2401_RELEASE_SOURCE_GATE=PASS'
       - name: Verify real ECU PID decoding, no fake readings
         shell: bash
