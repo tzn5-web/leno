@@ -49,6 +49,9 @@ print("K2401_REAL_ICON_DOCK_NATIVE=PASS")
 PY
 # Exercise the real app picker and persistence. The emulator's launcher-app
 # inventory varies; select the first actual Android launcher entry.
+# Save the pre-selection state so the test waits for the asynchronous UI tap
+# to be handled before taking its post-selection snapshot.
+adb shell run-as "$APP" cat shared_prefs/evo_launcher_prefs.xml > "$OUT/dock-prefs-baseline.xml"
 python3 - <<'PY'
 import re,subprocess,xml.etree.ElementTree as ET
 nodes=ET.parse("projects/k2401-evo-launcher/screenshots/dock-ui.xml").findall(".//node")
@@ -69,7 +72,17 @@ x1,y1,x2,y2=map(int,re.findall(r"[0-9]+",items[0].attrib["bounds"]))
 subprocess.check_call(["adb","shell","input","tap",str((x1+x2)//2),str((y1+y2)//2)])
 print("K2401_DOCK_PICKER_SELECT=PASS")
 PY
-adb shell run-as "$APP" cat shared_prefs/evo_launcher_prefs.xml > "$OUT/dock-prefs-before-restart.xml"
+# adb input tap returns before Android's dialog callback has necessarily
+# persisted the selected pin. Wait for the actual preference change, not a race.
+for attempt in $(seq 1 30); do
+  adb shell run-as "$APP" cat shared_prefs/evo_launcher_prefs.xml > "$OUT/dock-prefs-before-restart.xml"
+  if ! cmp -s "$OUT/dock-prefs-baseline.xml" "$OUT/dock-prefs-before-restart.xml"; then break; fi
+  sleep 0.3
+done
+if cmp -s "$OUT/dock-prefs-baseline.xml" "$OUT/dock-prefs-before-restart.xml"; then
+  echo "K2401_DOCK_PICKER_DID_NOT_PERSIST_NEW_SELECTION" >&2
+  exit 3
+fi
 grep -Fq 'name="dock_pins_v1"' "$OUT/dock-prefs-before-restart.xml"
 adb shell am force-stop "$APP"
 adb shell am start -W -n "$APP/.MainActivity" >/dev/null
