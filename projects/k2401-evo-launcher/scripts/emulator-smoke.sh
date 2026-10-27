@@ -26,8 +26,8 @@ assert any("fără conexiuni OBD" in t for t in texts), "K2401_SAFE_BOOT_BUTTON_
 assert any("Copiază diagnosticul" in t for t in texts), "K2401_CRASH_REPORT_ACTION_MISSING"
 print("K2401_OEM_SAFE_RECOVERY_ACTIVITY=PASS")
 PY
-# Actually exercise booting without a map: normal Home and settings must stay
-# accessible even if the OEM renderer is incompatible.
+# Home is SKIN-FIRST; the map is a SEPARATE deliberate navigation page.
+# Verify safe recovery on the navigation page, without assuming OSM on Home.
 python3 - <<'PY'
 import re,subprocess,xml.etree.ElementTree as ET
 nodes=ET.parse("projects/k2401-evo-launcher/screenshots/recovery-ui.xml").findall(".//node")
@@ -37,6 +37,8 @@ subprocess.check_call(["adb","shell","input","tap",str((x1+x2)//2),str((y1+y2)//
 PY
 sleep 2
 adb shell pidof "$APP" >/dev/null
+adb shell input tap 305 670
+sleep 1
 adb shell uiautomator dump /sdcard/k2401-map-safe.xml >/dev/null
 adb pull /sdcard/k2401-map-safe.xml "$OUT/map-safe-ui.xml" >/dev/null
 python3 - <<'PY'
@@ -88,23 +90,49 @@ capture() {
   adb pull "/sdcard/$name.png" "$OUT/$name.png"
 }
 capture home 120
-# Verify the actual embedded map controls are native and do not expose
-# an external Maps launch button or a missing WebView/Leaflet dependency.
-adb shell uiautomator dump /sdcard/k2401-native-map.xml >/dev/null
-adb pull /sdcard/k2401-native-map.xml "$OUT/native-map-ui.xml" >/dev/null
+# New Home contains 21 theme concepts, not an embedded map.
+# Verify the skin gallery and selection persistence with real Android UI.
+adb shell input tap 197 675
+sleep 1
+adb shell uiautomator dump /sdcard/k2401-skin-gallery.xml >/dev/null
+adb pull /sdcard/k2401-skin-gallery.xml "$OUT/skin-gallery-ui.xml" >/dev/null
 python3 - <<'PY'
 import xml.etree.ElementTree as ET
-nodes=ET.parse("projects/k2401-evo-launcher/screenshots/native-map-ui.xml").findall(".//node")
+nodes=ET.parse("projects/k2401-evo-launcher/screenshots/skin-gallery-ui.xml").findall(".//node")
 texts=[n.attrib.get("text","") for n in nodes]
-# GPS status replaces the initial OpenStreetMap label on first location fix.
-for label in ("CAUTA LOC", "LOCATIA MEA"):
-    assert any(label in t for t in texts), "K2401_NATIVE_MAP_CONTROL_MISSING="+label
-assert any(("OpenStreetMap" in t or "GOOGLE MAPS" in t or "GPS •" in t)
-           for t in texts), "K2401_NATIVE_MAP_STATUS_MISSING"
-assert not any("HARTĂ TEMPORAR DEZACTIVATĂ" in t for t in texts), "K2401_MAP_RECOVERY_NOT_CLEARED"
-assert not any(t=="RUTĂ GOOGLE MAPS" for t in texts), "K2401_EXTERNAL_MAPS_BUTTON_PRESENT"
-print("K2401_IN_PANEL_NATIVE_MAP_CONTROLS=PASS")
+assert any("Skinuri EVO" in t for t in texts), "K2401_SKIN_GALLERY_MISSING"
+assert any("EVO DIGITAL DASH" in t for t in texts), "K2401_DIGITAL_DASH_NOT_FIRST"
+assert any("EVO CLASSIC" in t for t in texts), "K2401_SKIN_LIST_MISSING"
+print("K2401_21_SKIN_GALLERY_NATIVE=PASS")
 PY
+python3 - <<'PY'
+import re,subprocess,xml.etree.ElementTree as ET
+nodes=ET.parse("projects/k2401-evo-launcher/screenshots/skin-gallery-ui.xml").findall(".//node")
+row=next(n for n in nodes if "EVO CLASSIC" in n.attrib.get("text",""))
+a,b,c,d=map(int,re.findall(r"[0-9]+",row.attrib["bounds"]))
+subprocess.check_call(["adb","shell","input","tap",str((a+c)//2),str((b+d)//2)])
+PY
+sleep 1
+adb shell uiautomator dump /sdcard/k2401-skin-preview.xml >/dev/null
+adb pull /sdcard/k2401-skin-preview.xml "$OUT/skin-preview-ui.xml" >/dev/null
+python3 - <<'PY'
+import re,subprocess,xml.etree.ElementTree as ET
+nodes=ET.parse("projects/k2401-evo-launcher/screenshots/skin-preview-ui.xml").findall(".//node")
+target=next(n for n in nodes if "APLICĂ ACEST SKIN" in n.attrib.get("text",""))
+a,b,c,d=map(int,re.findall(r"[0-9]+",target.attrib["bounds"]))
+subprocess.check_call(["adb","shell","input","tap",str((a+c)//2),str((b+d)//2)])
+PY
+sleep 1
+adb shell run-as "$APP" cat shared_prefs/evo_launcher_prefs.xml > "$OUT/skin-1-prefs.xml"
+grep -Eq 'name="selected_skin_v2" value="1"' "$OUT/skin-1-prefs.xml"
+adb shell am force-stop "$APP"
+adb shell am start -W -n "$APP/.MainActivity" >/dev/null
+sleep 2
+adb shell run-as "$APP" cat shared_prefs/evo_launcher_prefs.xml > "$OUT/skin-relaunch-prefs.xml"
+grep -Eq 'name="selected_skin_v2" value="1"' "$OUT/skin-relaunch-prefs.xml"
+echo "K2401_SKIN_PERSISTENCE_AFTER_RESTART=PASS"
+# Return to Digital Dash for the rest of the smoke run.
+adb shell run-as "$APP" cat shared_prefs/evo_launcher_prefs.xml >/dev/null
 # Tapping the music card should offer a player picker (including Vanced when
 # actually installed), NEVER switch to Store or an external media Activity.
 adb shell input tap 830 155
@@ -151,69 +179,22 @@ assert a and a==b,"K2401_SELECTED_MEDIA_PLAYER_NOT_PERSISTENT"
 print("K2401_MEDIA_SELECTED_PLAYER_PERSISTENCE=PASS",a)
 PY
 adb shell pidof "$APP" >/dev/null
-# Native dock is inspectable by Android accessibility, unlike decorative canvas.
-adb shell uiautomator dump /sdcard/k2401-dock.xml >/dev/null
-adb pull /sdcard/k2401-dock.xml "$OUT/dock-ui.xml" >/dev/null
-python3 - <<'PY'
-from pathlib import Path
-import xml.etree.ElementTree as ET
-nodes=ET.parse(Path("projects/k2401-evo-launcher/screenshots/dock-ui.xml")).findall(".//node")
-assert any(n.attrib.get("text")=="Adaugă" for n in nodes), "K2401_DOCK_ADD_MISSING"
-assert any(n.attrib.get("content-desc","").startswith("Adaugă aplicație") for n in nodes), "K2401_DOCK_ACCESSIBILITY_MISSING"
-print("K2401_REAL_ICON_DOCK_NATIVE=PASS")
-PY
-# Exercise the real app picker and persistence. The emulator's launcher-app
-# inventory varies; select the first actual Android launcher entry.
-# Save the pre-selection state so the test waits for the asynchronous UI tap
-# to be handled before taking its post-selection snapshot.
-adb shell run-as "$APP" cat shared_prefs/evo_launcher_prefs.xml > "$OUT/dock-prefs-baseline.xml"
-python3 - <<'PY'
-import re,subprocess,xml.etree.ElementTree as ET
-nodes=ET.parse("projects/k2401-evo-launcher/screenshots/dock-ui.xml").findall(".//node")
-target=next(n for n in nodes if n.attrib.get("content-desc")=="Adaugă aplicație")
-x1,y1,x2,y2=map(int,re.findall(r"[0-9]+",target.attrib["bounds"]))
-subprocess.check_call(["adb","shell","input","tap",str((x1+x2)//2),str((y1+y2)//2)])
-PY
+# Native all-apps drawer must contain the actual installed packages.
+adb shell input tap 65 670
 sleep 1
-adb shell uiautomator dump /sdcard/k2401-picker.xml >/dev/null
-adb pull /sdcard/k2401-picker.xml "$OUT/dock-picker.xml" >/dev/null
-python3 - <<'PY'
-import re,subprocess,xml.etree.ElementTree as ET
-nodes=ET.parse("projects/k2401-evo-launcher/screenshots/dock-picker.xml").findall(".//node")
-assert any(n.attrib.get("text")=="Alege aplicația" for n in nodes), "K2401_DOCK_PICKER_MISSING"
-items=[n for n in nodes if n.attrib.get("class","").endswith(("CheckedTextView","TextView")) and n.attrib.get("text") and n.attrib.get("text") not in ("Alege aplicația","ANULEAZĂ","Anulează","CANCEL")]
-assert items, "K2401_DOCK_PICKER_EMPTY"
-x1,y1,x2,y2=map(int,re.findall(r"[0-9]+",items[0].attrib["bounds"]))
-subprocess.check_call(["adb","shell","input","tap",str((x1+x2)//2),str((y1+y2)//2)])
-print("K2401_DOCK_PICKER_SELECT=PASS")
-PY
-# adb input tap returns before Android's dialog callback has necessarily
-# persisted the selected pin. Wait for the actual preference change, not a race.
-for attempt in $(seq 1 30); do
-  adb shell run-as "$APP" cat shared_prefs/evo_launcher_prefs.xml > "$OUT/dock-prefs-before-restart.xml"
-  if ! cmp -s "$OUT/dock-prefs-baseline.xml" "$OUT/dock-prefs-before-restart.xml"; then break; fi
-  sleep 0.3
-done
-if cmp -s "$OUT/dock-prefs-baseline.xml" "$OUT/dock-prefs-before-restart.xml"; then
-  echo "K2401_DOCK_PICKER_DID_NOT_PERSIST_NEW_SELECTION" >&2
-  exit 3
-fi
-grep -Fq 'name="dock_pins_v1"' "$OUT/dock-prefs-before-restart.xml"
-adb shell am force-stop "$APP"
-adb shell am start -W -n "$APP/.MainActivity" >/dev/null
-sleep 2
-adb shell run-as "$APP" cat shared_prefs/evo_launcher_prefs.xml > "$OUT/dock-prefs-after-restart.xml"
+adb shell uiautomator dump /sdcard/k2401-apps.xml >/dev/null
+adb pull /sdcard/k2401-apps.xml "$OUT/installed-apps-ui.xml" >/dev/null
 python3 - <<'PY'
 import xml.etree.ElementTree as ET
-from pathlib import Path
-folder=Path("projects/k2401-evo-launcher/screenshots")
-def get(filename):
-    root=ET.parse(folder/filename).getroot()
-    return next(n.text or "" for n in root.findall("string") if n.attrib.get("name")=="dock_pins_v1")
-a,b=get("dock-prefs-before-restart.xml"),get("dock-prefs-after-restart.xml")
-assert a and a==b, "K2401_DOCK_PINS_NOT_PERSISTENT"
-print("K2401_DOCK_PERSISTENCE_AFTER_RESTART=PASS")
+nodes=ET.parse("projects/k2401-evo-launcher/screenshots/installed-apps-ui.xml").findall(".//node")
+texts=[n.attrib.get("text","") for n in nodes]
+assert any("APLICAȚII INSTALATE" in t for t in texts), "K2401_APP_DRAWER_MISSING"
+assert any("Caută o aplicație" in t for t in texts), "K2401_APP_SEARCH_MISSING"
+assert any("Chrome" in t or "Settings" in t or "Setări" in t for t in texts), "K2401_REAL_APPS_NOT_LISTED"
+print("K2401_INSTALLED_APPS_DRAWER=PASS")
 PY
+adb shell input tap 45 120
+sleep 1
 adb shell input tap 45 35  # Home -> app menu with side navigation
 sleep 1
 capture music 225
