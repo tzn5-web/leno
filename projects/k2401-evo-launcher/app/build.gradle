@@ -7,8 +7,8 @@ android {
    applicationId 'ro.evolauncher.k2401'
    minSdk 26
    targetSdk 28
-   versionCode 100
-   versionName '1.0.0'
+   versionCode 101
+   versionName '1.0.1-embedded-panels'
    manifestPlaceholders = [MAPS_API_KEY: googleMapsApiKey]
    buildConfigField 'boolean', 'GOOGLE_MAPS_CONFIGURED', googleMapsApiKey.isEmpty() ? 'false' : 'true'
  }
@@ -38,4 +38,6 @@ android {
 dependencies {
   // SDK is present; it is only initialized with a configured restricted Maps key.
   implementation 'com.google.android.gms:play-services-maps:19.2.0'
+  // Native OSM MapView: no JavaScript CDN, WebView or API key required.
+  implementation 'org.osmdroid:osmdroid-android:6.1.20'
 }
