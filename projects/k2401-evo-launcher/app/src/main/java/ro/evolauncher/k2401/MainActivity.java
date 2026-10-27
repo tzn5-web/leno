@@ -2,10 +2,10 @@ package ro.evolauncher.k2401;
 import android.app.*;import android.content.*;import android.graphics.*;import android.media.*;import android.media.session.*;import android.net.*;import android.os.*;import android.provider.*;import android.view.*;import java.lang.ref.*;import java.text.*;import java.util.*;
 public final class MainActivity extends Activity {
   static WeakReference<MainActivity> active=new WeakReference<>(null);
-  Handler handler=new Handler(); MediaController media; Dashboard view; ObdReader obd; LiveMapPanel liveMap; LauncherSettings launcherSettings; android.widget.FrameLayout stage; int page=0; boolean emu;
+  Handler handler=new Handler(); MediaController media; Dashboard view; ObdReader obd; LiveMapPanel liveMap; LauncherSettings launcherSettings; ShortcutDock shortcutDock; android.widget.FrameLayout stage; int page=0; boolean emu;
   final MediaController.Callback mediaCallback=new MediaController.Callback(){@Override public void onPlaybackStateChanged(PlaybackState s){if(view!=null)view.invalidate();}@Override public void onMetadataChanged(MediaMetadata m){if(view!=null)view.invalidate();}@Override public void onSessionDestroyed(){refresh();if(view!=null)view.invalidate();}};
   final Runnable update=new Runnable(){public void run(){if(view!=null)view.invalidate();handler.postDelayed(this,1000);}};
-  public void onCreate(Bundle state){super.onCreate(state);getWindow().getDecorView().setSystemUiVisibility(5894|View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);emu=Build.FINGERPRINT.contains("generic")||Build.PRODUCT.contains("sdk");launcherSettings=new LauncherSettings(this,()->{if(view!=null)view.invalidate();});view=new Dashboard();obd=new ObdReader(this,()->runOnUiThread(()->{if(view!=null)view.invalidate();}));stage=new android.widget.FrameLayout(this);stage.addView(view,new android.widget.FrameLayout.LayoutParams(-1,-1));liveMap=new LiveMapPanel(this);stage.addView(liveMap,new android.widget.FrameLayout.LayoutParams(200,200));stage.addView(launcherSettings,new android.widget.FrameLayout.LayoutParams(200,200));stage.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or2,ob)->placeMap());setContentView(stage);active=new WeakReference<>(this);placeMap();}
+  public void onCreate(Bundle state){super.onCreate(state);getWindow().getDecorView().setSystemUiVisibility(5894|View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);emu=Build.FINGERPRINT.contains("generic")||Build.PRODUCT.contains("sdk");launcherSettings=new LauncherSettings(this,()->{if(view!=null)view.invalidate();});view=new Dashboard();obd=new ObdReader(this,()->runOnUiThread(()->{if(view!=null)view.invalidate();}));stage=new android.widget.FrameLayout(this);stage.addView(view,new android.widget.FrameLayout.LayoutParams(-1,-1));liveMap=new LiveMapPanel(this);stage.addView(liveMap,new android.widget.FrameLayout.LayoutParams(200,200));shortcutDock=new ShortcutDock(this);stage.addView(shortcutDock,new android.widget.FrameLayout.LayoutParams(200,100));stage.addView(launcherSettings,new android.widget.FrameLayout.LayoutParams(200,200));stage.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or2,ob)->placeMap());setContentView(stage);active=new WeakReference<>(this);placeMap();}
   protected void onStart(){super.onStart();if(liveMap!=null)liveMap.onHostStart();}
   protected void onResume(){super.onResume();if(liveMap!=null)liveMap.onHostResume();refresh();handler.removeCallbacks(update);handler.post(update);startObd();if(!emu&&checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)!=android.content.pm.PackageManager.PERMISSION_GRANTED&&checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION)!=android.content.pm.PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION,android.Manifest.permission.ACCESS_COARSE_LOCATION},2402);}}
   protected void onPause(){handler.removeCallbacks(update);if(obd!=null)obd.stop();if(liveMap!=null)liveMap.onHostPause();super.onPause();}
@@ -15,7 +15,7 @@ public final class MainActivity extends Activity {
   @Override public void onRequestPermissionsResult(int code,String[] permissions,int[] grantResults){super.onRequestPermissionsResult(code,permissions,grantResults);if(code==2402&&liveMap!=null){liveMap.onHostPause();liveMap.onHostStart();}if(code==2401&&obd!=null){for(int result:grantResults)if(result!=android.content.pm.PackageManager.PERMISSION_GRANTED)return;if(grantResults.length>0)obd.start();}}
   @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(launcherSettings!=null)launcherSettings.onPicked(request,result,data);}
   public void onBackPressed(){page=0;view.invalidate();placeMap();}
-  void placeMap(){if(stage==null||liveMap==null||launcherSettings==null)return;boolean shown=page==0||page==2;liveMap.setVisibility(shown?View.VISIBLE:View.GONE);launcherSettings.setVisibility(page==5?View.VISIBLE:View.GONE);int w=stage.getWidth(),h=stage.getHeight();if(w<=0||h<=0)return;float sx=w/1280f,sy=h/720f;if(shown){int x=page==0?124:158,y=page==0?78:169,mw=page==0?522:1052,mh=page==0?622:527;android.widget.FrameLayout.LayoutParams p=new android.widget.FrameLayout.LayoutParams(Math.max(1,Math.round(mw*sx)),Math.max(1,Math.round(mh*sy)));p.leftMargin=Math.round(x*sx);p.topMargin=Math.round(y*sy);liveMap.setLayoutParams(p);}android.widget.FrameLayout.LayoutParams prefs=new android.widget.FrameLayout.LayoutParams(Math.max(1,Math.round(1115*sx)),Math.max(1,Math.round(620*sy)));prefs.leftMargin=Math.round(130*sx);prefs.topMargin=Math.round(78*sy);launcherSettings.setLayoutParams(prefs);}
+  void placeMap(){if(stage==null||liveMap==null||launcherSettings==null||shortcutDock==null)return;boolean shown=page==0||page==2;liveMap.setVisibility(shown?View.VISIBLE:View.GONE);shortcutDock.setVisibility(page==0?View.VISIBLE:View.GONE);launcherSettings.setVisibility(page==5?View.VISIBLE:View.GONE);int w=stage.getWidth(),h=stage.getHeight();if(w<=0||h<=0)return;float sx=w/1280f,sy=h/720f;if(shown){int x=page==0?20:158,y=page==0?78:169,mw=page==0?600:1052,mh=page==0?490:527;android.widget.FrameLayout.LayoutParams p=new android.widget.FrameLayout.LayoutParams(Math.max(1,Math.round(mw*sx)),Math.max(1,Math.round(mh*sy)));p.leftMargin=Math.round(x*sx);p.topMargin=Math.round(y*sy);liveMap.setLayoutParams(p);}android.widget.FrameLayout.LayoutParams dock=new android.widget.FrameLayout.LayoutParams(Math.max(1,Math.round(600*sx)),Math.max(1,Math.round(121*sy)));dock.leftMargin=Math.round(20*sx);dock.topMargin=Math.round(576*sy);shortcutDock.setLayoutParams(dock);android.widget.FrameLayout.LayoutParams prefs=new android.widget.FrameLayout.LayoutParams(Math.max(1,Math.round(1115*sx)),Math.max(1,Math.round(620*sy)));prefs.leftMargin=Math.round(130*sx);prefs.topMargin=Math.round(78*sy);launcherSettings.setLayoutParams(prefs);}
   static void changed(){MainActivity a=active.get();if(a!=null)a.runOnUiThread(()->{a.refresh();a.view.invalidate();});}
   void refresh(){MediaController next=null;try{MediaSessionManager m=(MediaSessionManager)getSystemService(MEDIA_SESSION_SERVICE);List<MediaController> all=m.getActiveSessions(new ComponentName(this,MediaAccessService.class));for(MediaController c:all)if("com.google.android.apps.youtube.music".equals(c.getPackageName())){next=c;break;}}catch(Exception ignored){}if(media!=null&&next!=null&&media.getSessionToken().equals(next.getSessionToken()))return;if(media!=null){try{media.unregisterCallback(mediaCallback);}catch(Exception ignored){}}media=next;if(media!=null)media.registerCallback(mediaCallback,handler);}
   void app(String pkg){try{Intent i=getPackageManager().getLaunchIntentForPackage(pkg);if(i!=null){startActivity(i);return;}startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("market://details?id="+pkg)));}catch(Exception ignored){}}
@@ -27,11 +27,11 @@ public final class MainActivity extends Activity {
    Dashboard(){super(MainActivity.this);}
    void r(Canvas c,float x,float y,float w,float h,int col,float rad){p.setStyle(Paint.Style.FILL);p.setColor(col);c.drawRoundRect(x,y,x+w,y+h,rad,rad,p);}
    void outline(Canvas c,float x,float y,float w,float h,int col){p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2);p.setColor(col);c.drawRoundRect(x,y,x+w,y+h,14,14,p);p.setStyle(Paint.Style.FILL);}
-   void t(Canvas c,String s,float x,float y,int size,int color){p.setStyle(Paint.Style.FILL);p.setShader(null);p.setColor(color);p.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));p.setTextSize(size);c.drawText(s,x,y,p);}
+   void t(Canvas c,String s,float x,float y,int size,int color){p.setStyle(Paint.Style.FILL);p.setShader(null);p.setColor(color);p.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));p.setTextSize(size);c.drawText(s,x,y,p);} void centered(Canvas c,String s,float x,float y,int size,int color){p.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));p.setTextSize(size);t(c,s,x-p.measureText(s)/2f,y,size,color);}
    void l(Canvas c,float x,float y,float xx,float yy,int col,int w){p.setColor(col);p.setStrokeWidth(w);p.setStrokeCap(Paint.Cap.ROUND);c.drawLine(x,y,xx,yy,p);}
    void dot(Canvas c,float x,float y,float radius,int col){p.setColor(col);p.setStyle(Paint.Style.FILL);c.drawCircle(x,y,radius,p);}
    void nav(Canvas c){r(c,0,0,112,720,0xff101720,0);String[] letters={"⌂","♫","➤","▤","▦","⚙"},labels={"Acasă","Muzică","Navigație","Mașină","Aplicații","Setări"};for(int i=0;i<6;i++){int y=73+i*105;if(page==i){r(c,0,y,109,100,0xff321c28,0);r(c,0,y,5,100,red,0);}t(c,letters[i],39,y+42,32,page==i?red:white);t(c,labels[i],i==2?13:23,y+77,16,page==i?white:muted);}}
-   void header(Canvas c){t(c,"MITSUBISHI",140,39,19,white);t(c,"LANCER",295,39,19,white);t(c,"EVOLUTION",397,39,18,red);t(c,"K2401",1130,39,15,muted);t(c,new SimpleDateFormat(launcherSettings!=null&&launcherSettings.use24HourClock()?"HH:mm":"hh:mm a",Locale.getDefault()).format(new Date()),1180,39,22,white);l(c,112,61,1280,61,0xff253244,1);}
+   void header(Canvas c){if(page==0){t(c,"◆",23,41,32,red);t(c,"K2401",72,40,27,white);t(c,"EVO",181,40,28,red);t(c,"LAUNCHER",260,40,26,white);t(c,"ANDROID 10",1015,38,15,muted);t(c,new SimpleDateFormat(launcherSettings!=null&&launcherSettings.use24HourClock()?"HH:mm":"hh:mm a",Locale.getDefault()).format(new Date()),1158,40,23,white);}else{t(c,"MITSUBISHI",140,39,19,white);t(c,"LANCER",295,39,19,white);t(c,"EVOLUTION",397,39,18,red);t(c,"K2401",1130,39,15,muted);t(c,new SimpleDateFormat(launcherSettings!=null&&launcherSettings.use24HourClock()?"HH:mm":"hh:mm a",Locale.getDefault()).format(new Date()),1180,39,22,white);}l(c,page==0?0:112,61,1280,61,0xff58212d,1);}
    void title(Canvas c,String name,String sub){t(c,name,149,121,32,white);t(c,sub,149,158,17,muted);}
    void map(Canvas c,int x,int y,int w,int h){
       r(c,x,y,w,h,0xff182332,16);outline(c,x,y,w,h,0xff384859);t(c,"Se încarcă harta online...",x+28,y+61,19,muted);
@@ -50,20 +50,43 @@ public final class MainActivity extends Activity {
    }
    String formatObd(float value){return Float.isFinite(value)?String.format(Locale.US,"%.1f",value):"N/A";}
    void gauges(Canvas c,int x,int y,int w,int h){
-       r(c,x,y,w,h,card,16);outline(c,x,y,w,h,0xff7e2638);t(c,"TORQUE   •   DATE MOTOR",x+23,y+34,22,white);t(c,emu?"DATE INDISPONIBILE":obd.status(),x+w-239,y+33,15,0xffffb875);
-       l(c,x+20,y+48,x+w-20,y+48,0xff394657,1);
-       String[] name={"RPM","STFT B1","LTFT B1","TEMP. APĂ"},unit={"rpm","%","%","°C"};
-       ObdReader.Reading reading=obd==null?ObdReader.Reading.empty():obd.current();
-       String[] value=emu?new String[]{"N/A","N/A","N/A","N/A"}:new String[]{formatObd(reading.rpm),formatObd(reading.stft),formatObd(reading.ltft),Float.isFinite(reading.coolantC)?""+Math.round(reading.coolantC):"N/A"};
-       for(int i=0;i<4;i++){float cx=x+78+i*(w-160)/3f,cy=y+166;
-           p.setColor(0xff435063);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(9);c.drawArc(cx-59,cy-59,cx+59,cy+59,132,276,false,p);
-           float val=i==0?reading.rpm:i==1?reading.stft:i==2?reading.ltft:reading.coolantC;if(!emu&&Float.isFinite(val)){float progress=i==0?val/8000f:i==3?(val+30)/170f:(val+100)/200f;progress=Math.max(0,Math.min(1,progress));p.setColor(red);c.drawArc(cx-59,cy-59,cx+59,cy+59,132,276*progress,false,p);}p.setStyle(Paint.Style.FILL);
-           t(c,value[i],cx-30,cy+15,35,white);t(c,unit[i],cx-10,cy+39,16,muted);t(c,name[i],cx-58,cy+91,15,white);
+       r(c,x,y,w,h,card,16);outline(c,x,y,w,h,0xff7e2638);
+       t(c,"TORQUE PRO  •  OBD-II",x+20,y+32,20,white);
+       ObdReader.Reading rd=obd==null?ObdReader.Reading.empty():obd.current();
+       t(c,emu?"FĂRĂ ECU":obd.status(),x+w-205,y+30,13,rd.live?0xff36c888:muted);
+       l(c,x+16,y+45,x+w-16,y+45,0xff394657,1);
+       // Order explicitly approved: STFT B1, LTFT B1, RPM, coolant.
+       String[] names={"STFT B1","LTFT B1","RPM","TEMP APĂ"};
+       String[] units={"%","%","rpm","°C"};
+       float[] vals={rd.stft,rd.ltft,rd.rpm,rd.coolantC};
+       float[] minimum={-25f,-25f,0f,40f},maximum={25f,25f,8000f,120f};
+       for(int i=0;i<4;i++){
+         float cx=x+78+i*(w-156)/3f,cy=y+146,rad=57;
+         p.setStyle(Paint.Style.FILL);p.setColor(0xff090e15);c.drawCircle(cx,cy,rad+8,p);
+         p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(4);p.setColor(0xff465366);
+         c.drawArc(cx-rad,cy-rad,cx+rad,cy+rad,135,270,false,p);
+         for(int j=0;j<=10;j++){
+           double a=Math.toRadians(135+27*j);float ca=(float)Math.cos(a),sa=(float)Math.sin(a);
+           l(c,cx+ca*(rad-11),cy+sa*(rad-11),cx+ca*(rad-2),cy+sa*(rad-2),j>=8?red:muted,2);
+         }
+         p.setStyle(Paint.Style.FILL);
+         // No needle at all when Torque has not supplied a fresh finite value.
+         float val=emu?Float.NaN:vals[i];
+         if(Float.isFinite(val)){
+           float fraction=Math.max(0f,Math.min(1f,(val-minimum[i])/(maximum[i]-minimum[i])));
+           double a=Math.toRadians(135+270*fraction);
+           float tx=cx+(float)Math.cos(a)*(rad-15),ty=cy+(float)Math.sin(a)*(rad-15);
+           l(c,cx,cy,tx,ty,red,4);dot(c,cx,cy,5,white);
+         }else{dot(c,cx,cy,3,0xff536073);}
+         String number=!Float.isFinite(val)?"N/A":i==2?String.format(Locale.US,"%.0f",val):i==3?String.format(Locale.US,"%.0f",val):String.format(Locale.US,"%+.1f",val);
+         centered(c,number,cx,cy+89,27,white);
+         centered(c,names[i],cx,cy+112,16,white);
+         centered(c,units[i],cx,cy+132,14,muted);
        }
    }
    void row(Canvas c,int y,String name,String desc){r(c,150,y,1088,109,card,14);r(c,150,y,5,109,red,0);t(c,name,177,y+42,25,white);t(c,desc,177,y+80,17,muted);}
-   protected void onDraw(Canvas original){original.save();original.scale(getWidth()/1280f,getHeight()/720f);if(launcherSettings!=null){launcherSettings.drawWallpaper(original);red=launcherSettings.accent();}else original.drawColor(bg);nav(original);header(original);
-      if(page==0){map(original,124,78,522,622);music(original,659,78,600,298);gauges(original,659,389,600,310);}
+   protected void onDraw(Canvas original){original.save();original.scale(getWidth()/1280f,getHeight()/720f);if(launcherSettings!=null){launcherSettings.drawWallpaper(original);red=launcherSettings.accent();}else original.drawColor(bg);if(page!=0)nav(original);header(original);
+      if(page==0){map(original,20,78,600,490);music(original,634,78,626,298);gauges(original,634,389,626,310);}
       if(page==1){title(original,"MUZICĂ","YouTube Music / control prin sesiunea Android");music(original,158,185,1070,435);}
       if(page==2){title(original,"NAVIGAȚIE","Hartă interactivă • RUTĂ GOOGLE MAPS pentru ghidare");map(original,158,169,1052,527);}
       if(page==3){title(original,"MAȘINĂ","Ceasuri OBD în stil EVO • modul live necesită adaptor ELM327");gauges(original,156,200,1069,335);row(original,560,obd!=null&&obd.current().live?"OBD-II conectat":"ELM327 Bluetooth",obd!=null&&obd.current().live?"Date live din ECU, numai citire, fără comenzi de modificare.":"Deschide Torque Pro și conectează ECU, apoi revino în launcher.");}
@@ -71,8 +94,8 @@ public final class MainActivity extends Activity {
       if(page==5){title(original,"SETĂRI","EVO Dark Red • fără animații sau servicii permanente");row(original,186,"Acces notificări","Permite controlul YouTube Music prin MediaSession.");row(original,316,"Google Maps","Hartă interactivă live (Maps SDK cu cheie, altfel OpenStreetMap).");row(original,446,"Torque / OBD","Torque Pro gestionează ELM327; launcherul citește datele prin IPC.");row(original,576,"Protecție","Nu modificăm MCU, boot, recovery sau CANBUS.");}
       original.restore();}
    public boolean onTouchEvent(MotionEvent e){if(e.getAction()!=MotionEvent.ACTION_UP)return true;float x=e.getX()*1280/getWidth(),y=e.getY()*720/getHeight();
-       if(x<109&&y>=73){int idx=(int)((y-73)/105);if(idx>=0&&idx<6)page=idx;invalidate();placeMap();return true;}
-       if(page==0){if(x>=124&&x<=646)maps();else if(x>=659&&y<386){if(y>294)mediaAction(x<1000?0:x<1130?1:2);else app("com.google.android.apps.youtube.music");}else if(x>=659&&y>=389){page=3;invalidate();}}
+       if(page!=0&&x<109&&y>=73){int idx=(int)((y-73)/105);if(idx>=0&&idx<6)page=idx;invalidate();placeMap();return true;}
+       if(page==0){if(y<65&&x<65){page=4;invalidate();}else if(y<65&&x>1210){page=5;invalidate();}else if(x>=634&&y>=78&&y<386){if(y>294)mediaAction(x<995?0:x<1125?1:2);else app("com.google.android.apps.youtube.music");}else if(x>=634&&y>=389){page=3;invalidate();}}
        else if(page==1){if(y>=520&&y<=620&&x>=350&&x<=715){mediaAction(x<477?0:x<608?1:2);}else if(x>=158&&x<=1228&&y>=185&&y<520){app("com.google.android.apps.youtube.music");}}
        else if(page==2)maps();else if(page==3&&obd!=null&&!obd.current().live){try{startActivity(getPackageManager().getLaunchIntentForPackage("org.prowl.torque"));}catch(Exception ignored){}}
        else if(page==4){int col=(int)((x-158)/360),r=(int)((y-210)/181),i=r*3+col;if(col>=0&&col<3&&r>=0&&r<2){if(i==0)maps();else if(i==1)app("com.google.android.apps.youtube.music");else if(i==2)app("org.prowl.torque");else startActivity(new Intent(Settings.ACTION_SETTINGS));}}
