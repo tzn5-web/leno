@@ -60,7 +60,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: |
-            set -uo pipefail
+            set -u
             DIR=/tmp/shareit-emu
             PKG=com.lenovo.anyshare.gps
             echo "EMULATOR_DEVICE=$(adb shell getprop ro.build.version.release)"
