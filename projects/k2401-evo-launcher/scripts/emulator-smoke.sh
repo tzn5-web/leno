@@ -15,7 +15,8 @@ adb shell getprop ro.build.version.release >> "$OUT/device-info.txt"
 adb shell dumpsys display | grep -m 1 'DisplayInfo' >> "$OUT/device-info.txt" || true
 capture() {
   local name="$1" y="$2"
-  adb shell input tap 45 "$y"
+  # Home does not display the side navigation bar.
+  if [[ "$name" != home ]]; then adb shell input tap 45 "$y"; fi
   sleep 1
   adb shell pidof "$APP" >/dev/null
   adb shell screencap -p "/sdcard/$name.png"
@@ -39,7 +40,7 @@ python3 - <<'PY'
 import re,subprocess,xml.etree.ElementTree as ET
 nodes=ET.parse("projects/k2401-evo-launcher/screenshots/dock-ui.xml").findall(".//node")
 target=next(n for n in nodes if n.attrib.get("content-desc")=="Adaugă aplicație")
-x1,y1,x2,y2=map(int,re.findall(r"\\d+",target.attrib["bounds"]))
+x1,y1,x2,y2=map(int,re.findall(r"[0-9]+",target.attrib["bounds"]))
 subprocess.check_call(["adb","shell","input","tap",str((x1+x2)//2),str((y1+y2)//2)])
 PY
 sleep 1
@@ -51,7 +52,7 @@ nodes=ET.parse("projects/k2401-evo-launcher/screenshots/dock-picker.xml").findal
 assert any(n.attrib.get("text")=="Alege aplicația" for n in nodes), "K2401_DOCK_PICKER_MISSING"
 items=[n for n in nodes if n.attrib.get("class","").endswith("CheckedTextView") and n.attrib.get("text")]
 assert items, "K2401_DOCK_PICKER_EMPTY"
-x1,y1,x2,y2=map(int,re.findall(r"\\d+",items[0].attrib["bounds"]))
+x1,y1,x2,y2=map(int,re.findall(r"[0-9]+",items[0].attrib["bounds"]))
 subprocess.check_call(["adb","shell","input","tap",str((x1+x2)//2),str((y1+y2)//2)])
 print("K2401_DOCK_PICKER_SELECT=PASS")
 PY
@@ -72,6 +73,8 @@ a,b=get("dock-prefs-before-restart.xml"),get("dock-prefs-after-restart.xml")
 assert a and a==b, "K2401_DOCK_PINS_NOT_PERSISTENT"
 print("K2401_DOCK_PERSISTENCE_AFTER_RESTART=PASS")
 PY
+adb shell input tap 45 35  # Home -> app menu with side navigation
+sleep 1
 capture music 225
 capture navigation 332
 capture car 435
@@ -102,7 +105,7 @@ texts=[n.attrib.get("text","") for n in nodes]
 for name in ("WALLPAPER","EVO Carbon","Graphite","Midnight","Alege fotografie"):
     assert any(name in t for t in texts), f"MISSING_NATIVE_SETTING={name}"
 target=next(n for n in nodes if n.attrib.get("text")=="Graphite")
-points=list(map(int,re.findall(r"\d+",target.attrib["bounds"])))
+points=list(map(int,re.findall(r"[0-9]+",target.attrib["bounds"])))
 x=(points[0]+points[2])//2
 y=(points[1]+points[3])//2
 subprocess.check_call(["adb","shell","input","tap",str(x),str(y)])
@@ -128,9 +131,10 @@ for name in ("Setari Android","Bluetooth / Torque","GPS / Locatie"):
 print("K2401_SCROLLABLE_SETTINGS=PASS")
 PY
 for i in $(seq 1 6); do
-  adb shell input tap 45 225
-  adb shell input tap 45 645
-  adb shell input tap 45 120
+  adb shell input tap 45 35  # Home -> app menu with side navigation
+  adb shell input tap 45 225 # Music
+  adb shell input tap 45 645 # Settings
+  adb shell input tap 45 120 # Home
 done
 adb shell am force-stop "$APP"
 adb shell am start -W -n "$APP/.MainActivity" >> "$OUT/launch.txt"
