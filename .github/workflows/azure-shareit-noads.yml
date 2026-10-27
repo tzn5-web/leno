@@ -1,0 +1,99 @@
+name: Azure SHAREit NoAds - process original APKS in Ubuntu VM
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        description: 'Status is free. Process starts Azure VM only if original APK is in private Blob.'
+        default: status
+        required: true
+        options: [status, process]
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: azure-shareit-noads
+  cancel-in-progress: false
+jobs:
+  azure_process:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      ACCOUNT: tzn5androidartifacts26
+      CONTAINER: apks-private
+      GROUP: rg-chatgpt-azure
+      VM: android-dev-linux
+      ORIGINAL: 'input/SHAREit_6.27.58_ww.apks'
+      OUTPUT: 'output/SHAREit_6.27.58_NoAds_SPLITS.apks'
+      REPORT: 'output/SHAREit_6.27.58_NoAds_Azure_Report.json'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate local processor source
+        run: python3 -m py_compile infra/azure-dev-vm/shareit-noads/patch_and_sign.py
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Ensure private input exists before allocating billable compute
+        shell: bash
+        run: |
+          set -euo pipefail
+          export AZURE_STORAGE_KEY="$(az storage account keys list -g "$GROUP" -n "$ACCOUNT" --query '[0].value' -o tsv)"
+          test -n "$AZURE_STORAGE_KEY"
+          echo 'PRIVATE_ACCOUNT_AND_CREDENTIALS=PASS'
+          az storage blob list --account-name "$ACCOUNT" --container-name "$CONTAINER" \
+            --query '[].{file:name,bytes:properties.contentLength}' -o table
+          if [[ "${{ inputs.operation }}" = process ]]; then
+            EXISTS="$(az storage blob exists --account-name "$ACCOUNT" --container-name "$CONTAINER" --name "$ORIGINAL" --query exists -o tsv)"
+            if [[ "$EXISTS" != "True" ]]; then
+              echo 'AZURE_SOURCE_MISSING: upload original APKS into the private blob container first'
+              exit 3
+            fi
+            echo "AZURE_SOURCE_FOUND=YES"
+          fi
+      - name: Process original user APK in Azure VM and upload signed splits privately
+        if: ${{ inputs.operation == 'process' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          MARK="$(az vm show -g "$GROUP" -n "$VM" --query tags.managedBy -o tsv)"
+          test "$MARK" = github-azure-android-dev || { echo 'VM_TAG_MISMATCH'; exit 8; }
+          export AZURE_STORAGE_KEY="$(az storage account keys list -g "$GROUP" -n "$ACCOUNT" --query '[0].value' -o tsv)"
+          EXPIRE="$(date -u -d '+2 hours' +%Y-%m-%dT%H:%MZ)"
+          IN_SAS="$(az storage blob generate-sas -c "$CONTAINER" -n "$ORIGINAL" --account-name "$ACCOUNT" --permissions r --expiry "$EXPIRE" --https-only -o tsv)"
+          OUT_SAS="$(az storage blob generate-sas -c "$CONTAINER" -n "$OUTPUT" --account-name "$ACCOUNT" --permissions cw --expiry "$EXPIRE" --https-only -o tsv)"
+          REP_SAS="$(az storage blob generate-sas -c "$CONTAINER" -n "$REPORT" --account-name "$ACCOUNT" --permissions cw --expiry "$EXPIRE" --https-only -o tsv)"
+          test -n "$IN_SAS" && test -n "$OUT_SAS" && test -n "$REP_SAS"
+          IN_URL="https://${ACCOUNT}.blob.core.windows.net/${CONTAINER}/${ORIGINAL}?${IN_SAS}"
+          OUT_URL="https://${ACCOUNT}.blob.core.windows.net/${CONTAINER}/${OUTPUT}?${OUT_SAS}"
+          REP_URL="https://${ACCOUNT}.blob.core.windows.net/${CONTAINER}/${REPORT}?${REP_SAS}"
+          echo 'STARTING_DEDICATED_AZURE_VM=YES'
+          az vm start -g "$GROUP" -n "$VM" -o none
+          SOURCE_URL="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/infra/azure-dev-vm/shareit-noads/patch_and_sign.py"
+          REMOTE="set -euo pipefail
+          install -d -m 0700 /var/lib/shareit-noads
+          cd /var/lib/shareit-noads
+          curl --fail --silent --show-error --location --retry 3 '$SOURCE_URL' -o processor.py
+          curl --fail --silent --show-error --location --retry 3 '$IN_URL' -o source.apks
+          python3 processor.py source.apks modified.apks --report build-report.json
+          curl --fail --silent --show-error --location --retry 3 -X PUT -H 'x-ms-blob-type: BlockBlob' --data-binary @modified.apks '$OUT_URL'
+          curl --fail --silent --show-error --location --retry 3 -X PUT -H 'x-ms-blob-type: BlockBlob' --data-binary @build-report.json '$REP_URL'
+          echo SHAREIT_AZURE_PROCESS_SUCCESS"
+          OUT="$(az vm run-command invoke -g "$GROUP" -n "$VM" --command-id RunShellScript --scripts "$REMOTE" --query 'value[0].message' -o tsv)"
+          # Do not print private URLs. The guest script only prints non-sensitive status/hashes.
+          echo "$OUT" | tail -c 3000
+          echo "$OUT" | grep -q SHAREIT_AZURE_PROCESS_SUCCESS
+          echo 'AZURE_SHAREIT_PIPELINE=PASS'
+      - name: Deallocate VM after any processing result to conserve trial credit
+        if: ${{ always() && inputs.operation == 'process' }}
+        shell: bash
+        run: |
+          MARK="$(az vm show -g "$GROUP" -n "$VM" --query tags.managedBy -o tsv 2>/dev/null || true)"
+          if [[ "$MARK" = github-azure-android-dev ]]; then
+            az vm deallocate -g "$GROUP" -n "$VM" -o none
+            echo 'AZURE_VM_DEALLOCATED_AFTER_PROCESS=PASS'
+          fi
+      - name: Logout
+        if: always()
+        run: az logout || true
