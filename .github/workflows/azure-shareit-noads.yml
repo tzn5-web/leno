@@ -47,16 +47,36 @@ jobs:
           echo 'PRIVATE_ACCOUNT_AND_CREDENTIALS=PASS'
           az storage blob list --account-name "$ACCOUNT" --container-name "$CONTAINER" \
             --query '[].{file:name,bytes:properties.contentLength}' -o table
-          if [[ "${{ inputs.operation }}" = process ]]; then
+          if [[ "${{ inputs.operation }}" = process || "${{ github.event_name }}" = push ]]; then
             EXISTS="$(az storage blob exists --account-name "$ACCOUNT" --container-name "$CONTAINER" --name "$ORIGINAL" --query exists -o tsv)"
             if [[ "$(echo "$EXISTS" | tr "[:upper:]" "[:lower:]")" != "true" ]]; then
               echo 'AZURE_SOURCE_MISSING: upload original APKS into the private blob container first'
               exit 3
             fi
             echo "AZURE_SOURCE_FOUND=YES"
+            az storage blob download --account-name "$ACCOUNT" --container-name "$CONTAINER" \
+              --name "$ORIGINAL" --file /tmp/azure-original-shareit.apks --overwrite true --only-show-errors
+            echo '8dcbebc90086c6b1479364066b77bd62f7d2a768cc908799932ed2bdcb6a85fe  /tmp/azure-original-shareit.apks' | sha256sum -c -
+            python3 - <<'PY'
+            import zipfile,os
+            p='/tmp/azure-original-shareit.apks'
+            expected={
+              'base.apk',
+              'split_InnoPlayerDynamicFeature.apk',
+              'split_InnoPlayerDynamicFeature.config.arm64_v8a.apk',
+              'split_ModuleEntertainment.apk',
+              'split_ModuleOnline.apk',
+              'split_config.arm64_v8a.apk'
+            }
+            assert os.path.getsize(p)==70930002
+            with zipfile.ZipFile(p) as z:
+                assert set(z.namelist())==expected, 'Unexpected module set'
+                assert z.testzip() is None, 'Corrupt original archive'
+            print('ORIGINAL_SOURCE_SHA256_AND_SPLITS=PASS')
+            PY
           fi
       - name: Process original user APK in Azure VM and upload signed splits privately
-        if: ${{ inputs.operation == 'process' }}
+        if: ${{ inputs.operation == 'process' || github.event_name == 'push' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -89,7 +109,7 @@ jobs:
           echo "$OUT" | grep -q SHAREIT_AZURE_PROCESS_SUCCESS
           echo 'AZURE_SHAREIT_PIPELINE=PASS'
       - name: Deallocate VM after any processing result to conserve trial credit
-        if: ${{ always() && inputs.operation == 'process' }}
+        if: ${{ always() && (inputs.operation == 'process' || github.event_name == 'push') }}
         shell: bash
         run: |
           MARK="$(az vm show -g "$GROUP" -n "$VM" --query tags.managedBy -o tsv 2>/dev/null || true)"
