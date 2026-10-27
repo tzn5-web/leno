@@ -65,7 +65,7 @@ export ANDROID_AVD_HOME="$ROOT/avd" JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 mkdir -p "$ANDROID_HOME/cmdline-tools/latest" "$ANDROID_AVD_HOME"
 curl -fsSL --retry 3 --max-time 240 \
   https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip -o "$ROOT/commandline-tools.zip"
-printf '%s  %s\\n' '4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583' "$ROOT/commandline-tools.zip" | sha256sum -c -
+echo '4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583  '$ROOT'/commandline-tools.zip' | sha256sum -c -
 mkdir -p "$ROOT/sdk-unpacked"
 unzip -q "$ROOT/commandline-tools.zip" -d "$ROOT/sdk-unpacked"
 mv "$ROOT/sdk-unpacked/cmdline-tools/"* "$ANDROID_HOME/cmdline-tools/latest/"
