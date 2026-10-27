@@ -1,0 +1,52 @@
+name: SHAREit runtime ClassNotFound root cause - manifest differential audit
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/shareit-single-manifest-deep-audit.yml']
+permissions: {contents: read, id-token: write}
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Compare original and standalone Azure app manifests and DEX ZIP metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          export AZURE_STORAGE_KEY="$(az storage account keys list -g rg-chatgpt-azure -n tzn5androidartifacts26 --query '[0].value' -o tsv)"
+          az storage blob download --account-name tzn5androidartifacts26 --container-name apks-private \
+            --name output/SHAREit_6.27.58_NoAds_SPLITS.apks --file /tmp/app.apks --overwrite --only-show-errors
+          az storage blob download --account-name tzn5androidartifacts26 --container-name apks-private \
+            --name output/SHAREit_6.27.58_NoAds_SINGLE_ARM64.apk --file /tmp/single.apk --overwrite --only-show-errors
+          unzip -p /tmp/app.apks base.apk >/tmp/base.apk
+          AAPT="$(find "$ANDROID_HOME/build-tools" -name aapt | sort -V | tail -1)"
+          "$AAPT" dump xmltree /tmp/base.apk AndroidManifest.xml >/tmp/base-manifest.txt
+          "$AAPT" dump xmltree /tmp/single.apk AndroidManifest.xml >/tmp/single-manifest.txt
+          echo ====APPLICATION_ATTRIBUTES_ORIGINAL_AND_MERGED====
+          python3 - <<'PY'
+          from pathlib import Path
+          from difflib import unified_diff
+          for tag in ('base','single'):
+              s=Path('/tmp/'+tag+'-manifest.txt').read_text(errors='replace')
+              ln=s.splitlines()
+              ix=next(i for i,l in enumerate(ln) if l.strip().startswith('E: application ('))
+              print('MANIFEST',tag)
+              print('\n'.join(ln[ix:ix+40]))
+              print('--- SPECIFIC ATTRIBUTES ---')
+              for needle in ['useEmbeddedDex','hasCode','extractNativeLibs','isSplitRequired','isolatedSplits','splitTypes','requiredSplitTypes','aashareit.AnyShareApp','AnyShareApp','application (']:
+                  print(needle,sum(needle in x for x in ln))
+          print('=== BINARY MANIFEST DIFFERENCE ===')
+          import zipfile,io,hashlib
+          a=zipfile.ZipFile('/tmp/base.apk');b=zipfile.ZipFile('/tmp/single.apk')
+          for n in ['AndroidManifest.xml','classes.dex','resources.arsc']:
+              x=a.read(n);y=b.read(n)
+              print(n,'bytes',len(x),len(y),'sha256_identical',hashlib.sha256(x).digest()==hashlib.sha256(y).digest())
+          for n in ['classes.dex','classes2.dex','classes3.dex']:
+              x=a.getinfo(n);y=b.getinfo(n)
+              print(n,'source_compression',x.compress_type,'merged_compression',y.compress_type,'source_external_attr',x.external_attr,'merged_external_attr',y.external_attr)
+          PY
