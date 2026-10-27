@@ -1,9 +1,6 @@
 name: Azure Android Linux development VM (one-time provision, budget guarded)
 
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/azure-android-dev-vm.yml']
   workflow_dispatch:
     inputs:
       operation:
