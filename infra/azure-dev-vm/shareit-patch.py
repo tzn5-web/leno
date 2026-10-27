@@ -45,20 +45,21 @@ def main():
     p.add_argument("--source",required=True)
     p.add_argument("--output",required=True)
     p.add_argument("--report",required=True)
+    p.add_argument("--expected-md5",default="74c64f8ff3ac6507730cd6659315883d")
     args=p.parse_args()
     source=pathlib.Path(args.source)
-    expected_md5="74c64f8ff3ac6507730cd6659315883d"
+    expected_md5=args.expected_md5
     md5=hashlib.md5(source.read_bytes()).hexdigest()
-    if md5 != expected_md5:
+    if expected_md5 != "-" and md5 != expected_md5:
         print("SOURCE_MD5_INVALID",md5,"expected",expected_md5,file=sys.stderr)
         raise SystemExit(8)
     total={}; modified=[]; count=0
     with zipfile.ZipFile(source) as z, zipfile.ZipFile(args.output,"w") as out:
         for entry in z.infolist():
             payload=z.read(entry.filename)
-            if re.match(r"^META-INF/[^/]+\\.(RSA|DSA|EC|SF|MF)$",entry.filename,re.I):
+            if re.match(r"^META-INF/[^/]+\.(RSA|DSA|EC|SF|MF)$",entry.filename,re.I):
                 continue
-            if re.fullmatch(r"classes\\d*\\.dex",entry.filename):
+            if re.fullmatch(r"classes\d*\.dex",entry.filename):
                 payload,found=patch_dex(payload)
                 for d,n in found.items(): total[d]=total.get(d,0)+n
                 if found: modified.append(entry.filename);count+=sum(found.values())
