@@ -1,0 +1,82 @@
+name: Azure Ubuntu SHAREit NoAds private APK build
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/azure-shareit-build.yml']
+  workflow_dispatch:
+permissions:
+  id-token: write
+  contents: read
+concurrency:
+  group: shareit-azure-private-build
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 46
+    env:
+      RG: rg-chatgpt-azure
+      VM: android-dev-linux
+      ACC: tzn5androidartifacts26
+      CONT: apks-private
+      BLOB: shareit-6.27.58-azure-nosads-arm64.apk
+    steps:
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Run APK patch and sign inside Azure Ubuntu VM
+        shell: bash
+        run: |
+          set -euo pipefail
+          MARK="$(az vm show -g "$RG" -n "$VM" --query tags.managedBy -o tsv)"
+          test "$MARK" = github-azure-android-dev
+          KEY="$(az storage account keys list -g "$RG" -n "$ACC" --query '[0].value' -o tsv)"
+          echo "::add-mask::$KEY"
+          EXP="$(date -u -d '+3 hours' +%Y-%m-%dT%H:%MZ)"
+          WRITESAS="$(az storage blob generate-sas --account-name "$ACC" --account-key "$KEY" \
+             --container-name "$CONT" --name "$BLOB" --permissions cw \
+             --expiry "$EXP" --https-only -o tsv)"
+          echo "::add-mask::$WRITESAS"
+          az vm start -g "$RG" -n "$VM" -o none
+          echo 'AZURE_VM_START=PASS'
+          az vm auto-shutdown -g "$RG" -n "$VM" --location eastus2 --time 2200 -o none
+          set +e
+          az vm run-command invoke -g "$RG" -n "$VM" --command-id RunShellScript \
+            --scripts 'set -e; curl -fsSL --retry 3 https://raw.githubusercontent.com/tzn5-web/leno/545928751fe96bafaaf0809d21c7c163c6baf38c/infra/azure-dev-vm/shareit-azure-build.sh -o /tmp/azure-shareit-build.sh; bash /tmp/azure-shareit-build.sh "$1"' \
+            --parameters "sas=$WRITESAS" \
+            --query 'value[0].message' -o tsv >/tmp/shareit-guest-result.log 2>/tmp/shareit-guest-error.log
+          RC=$?
+          set -e
+          tail -c 6000 /tmp/shareit-guest-result.log || true
+          if test "$RC" -ne 0; then
+            tail -c 1300 /tmp/shareit-guest-error.log || true
+            echo 'AZURE_SHAREIT_VM_EXECUTION=FAILED'
+            exit "$RC"
+          fi
+          grep -q 'AZURE_SHAREIT_WORKFLOW=PASS' /tmp/shareit-guest-result.log || { echo 'AZURE_SHAREIT_VM_BUILD_NO_PASS'; exit 8; }
+          az storage blob show --account-name "$ACC" --account-key "$KEY" --container-name "$CONT" \
+             --name "$BLOB" --query '{size:properties.contentLength,contentType:properties.contentSettings.contentType}' -o json
+          echo 'AZURE_PRIVATE_APK_VERIFIED=PASS'
+          # Limited read-only access to the built APK. No account key or write SAS in URL.
+          READ_EXP="$(date -u -d '+4 hours' +%Y-%m-%dT%H:%MZ)"
+          READSAS="$(az storage blob generate-sas --account-name "$ACC" --account-key "$KEY" \
+             --container-name "$CONT" --name "$BLOB" --permissions r \
+             --expiry "$READ_EXP" --https-only -o tsv)"
+          echo "AZURE_APK_DOWNLOAD_URL=https://$ACC.blob.core.windows.net/$CONT/$BLOB?$READSAS"
+          echo "READ_URL_EXPIRES_UTC=$READ_EXP"
+      - name: Deallocate VM after build even on failure
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          MARK="$(az vm show -g "$RG" -n "$VM" --query tags.managedBy -o tsv 2>/dev/null || true)"
+          if [ "$MARK" = github-azure-android-dev ]; then
+            az vm deallocate -g "$RG" -n "$VM" -o none
+            echo 'AZURE_VM_DEALLOCATED=PASS'
+          else
+            echo 'VM_NOT_CONTROLLED_SKIPPING'
+          fi
+      - if: always()
+        run: az logout || true
