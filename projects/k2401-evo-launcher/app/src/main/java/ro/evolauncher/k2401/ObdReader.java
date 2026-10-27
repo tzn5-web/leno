@@ -5,61 +5,110 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.os.IBinder;
-import android.os.Parcel;
+import android.os.Looper;
+import android.os.Handler;
 import android.os.RemoteException;
 import android.os.SystemClock;
+import org.prowl.torque.remote.ITorqueService;
+import java.util.Arrays;
+import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
-/** Read-only Torque Pro legacy plugin API bridge. Never opens an ELM327 socket. */
+/**
+ * Read-only Torque Pro AIDL client. Torque is the ONLY owner of the OBD adapter.
+ * Values are never synthesized: unsupported, stale or disconnected => NaN / N/A.
+ */
 final class ObdReader {
   static final class Reading {
     final float rpm, stft, ltft, coolantC;
     final boolean live;
-    Reading(float rpm,float stft,float ltft,float coolantC,boolean live) {
-      this.rpm=rpm;this.stft=stft;this.ltft=ltft;this.coolantC=coolantC;this.live=live;
+    Reading(float r,float s,float l,float c,boolean active){
+      rpm=r;stft=s;ltft=l;coolantC=c;live=active;
     }
     static Reading empty(){return new Reading(Float.NaN,Float.NaN,Float.NaN,Float.NaN,false);}
   }
-  private static final String DESCRIPTOR="org.prowl.torque.remote.ITorqueService";
-  // getValueForPid(long, boolean) is the second method of Torque's published AIDL.
-  private static final int GET_VALUE=IBinder.FIRST_CALL_TRANSACTION+1;
+  private static final String[] PIDS={"010C","0106","0107","0105"};
+  private static final long MAX_STALE_MS=7000L;
   private final Context context;
   private final Runnable onUpdate;
-  private final android.os.Handler ui=new android.os.Handler(android.os.Looper.getMainLooper());
+  private final Handler main=new Handler(Looper.getMainLooper());
+  private final ExecutorService worker=Executors.newSingleThreadExecutor();
   private volatile Reading current=Reading.empty();
   private volatile String state="TORQUE NECONECTAT";
-  private volatile IBinder remote;
-  private boolean bound;
-  private boolean running;
-  private final java.util.concurrent.ExecutorService executor=java.util.concurrent.Executors.newSingleThreadExecutor();
+  private volatile ITorqueService remote;
   private volatile boolean busy;
+  private volatile boolean running;
+  private boolean bound;
+  private final String[] resolved=new String[4];
+
   private final ServiceConnection connection=new ServiceConnection(){
-    public void onServiceConnected(ComponentName name,IBinder binder){
-      remote=binder;state="TORQUE CONECTAT";onUpdate.run();
+    @Override public void onServiceConnected(ComponentName name,IBinder binder){
+      remote=ITorqueService.Stub.asInterface(binder);
+      Arrays.fill(resolved,null);
+      state="TORQUE • VERIFIC ECU";
+      main.post(onUpdate);
     }
-    public void onServiceDisconnected(ComponentName name){
-      remote=null;current=Reading.empty();state="TORQUE DECONECTAT";onUpdate.run();
-    }
+    @Override public void onServiceDisconnected(ComponentName name){disconnect("TORQUE DECONECTAT");}
+    @Override public void onBindingDied(ComponentName name){disconnect("TORQUE • SERVICIU OPRIT");}
+    @Override public void onNullBinding(ComponentName name){disconnect("TORQUE • SERVICIU INDISPONIBIL");}
   };
-  private final Runnable poll=new Runnable(){
-    public void run(){
+  private void disconnect(String reason){
+    remote=null; current=Reading.empty(); state=reason; main.post(onUpdate);
+  }
+  private final Runnable ticker=new Runnable(){
+    @Override public void run(){
       if(!running)return;
-      IBinder b=remote;
-      if(b!=null&&!busy){
+      ITorqueService svc=remote;
+      if(svc!=null && !busy){
         busy=true;
-        executor.execute(()->{try{
-          float rpm=read(b,0x010c),stft=read(b,0x0106),ltft=read(b,0x0107),coolant=read(b,0x0105);
-          // Torque API returns already-scaled PID values; do not apply OBD byte formulas twice.
-          boolean live=Float.isFinite(rpm)&&rpm>=0&&rpm<=12000;
-          current=live?new Reading(rpm,stft,ltft,coolant,true):Reading.empty();
-          state=live?"TORQUE LIVE":"TORQUE • FĂRĂ DATE ECU";
-        }catch(Exception e){current=Reading.empty();state="TORQUE • EROARE API";}
-        finally{busy=false;ui.post(onUpdate);}});
+        worker.execute(()->{
+          try{
+            if(!running)return;
+            if(!svc.isConnectedToECU()){
+              current=Reading.empty();
+              state="TORQUE • ECU NECONECTAT";
+              return;
+            }
+            if(resolved[0]==null)resolvePids(svc);
+            String[] ids=resolved.clone();
+            // Query only supported, resolved PIDs. Never request custom ECU commands.
+            int count=0;
+            for(String id:ids)if(id!=null)count++;
+            if(count==0){current=Reading.empty();state="TORQUE • PID-URI LIPSA";return;}
+            String[] query=new String[count]; int[] slots=new int[count];int p=0;
+            for(int i=0;i<4;i++)if(ids[i]!=null){query[p]=ids[i];slots[p++]=i;}
+            float[] values=svc.getPIDValues(query);
+            long[] times=svc.getPIDUpdateTime(query);
+            float[] fresh={Float.NaN,Float.NaN,Float.NaN,Float.NaN};
+            if(values!=null&&times!=null&&values.length==count&&times.length==count){
+              for(int i=0;i<count;i++){
+                if(isFresh(times[i])&&Float.isFinite(values[i]))fresh[slots[i]]=values[i];
+              }
+            }
+            // Check conservative, physically plausible bounds, not invented measurements.
+            fresh[0]=bounded(fresh[0],0,12000);
+            fresh[1]=bounded(fresh[1],-100,100);
+            fresh[2]=bounded(fresh[2],-100,100);
+            fresh[3]=bounded(fresh[3],-50,170);
+            boolean live=Float.isFinite(fresh[0])||Float.isFinite(fresh[1])||
+                         Float.isFinite(fresh[2])||Float.isFinite(fresh[3]);
+            current=new Reading(fresh[0],fresh[1],fresh[2],fresh[3],live);
+            state=live?"TORQUE • ECU LIVE":"TORQUE • DATE LIPSA/EXPIRATE";
+          }catch(RemoteException|RuntimeException ex){
+            current=Reading.empty();state="TORQUE • API INDISPONIBIL";
+            Arrays.fill(resolved,null);
+          }finally{
+            busy=false;main.post(onUpdate);
+          }
+        });
       }
-      onUpdate.run();
-      ui.postDelayed(this,500);
+      main.postDelayed(this,650);
     }
   };
-  ObdReader(Context context,Runnable onUpdate){this.context=context.getApplicationContext();this.onUpdate=onUpdate;}
+  ObdReader(Context context,Runnable onUpdate){
+    this.context=context.getApplicationContext();this.onUpdate=onUpdate;
+  }
   Reading current(){return current;}
   String status(){return state;}
   synchronized void start(){
@@ -70,22 +119,50 @@ final class ObdReader {
       intent.setComponent(new ComponentName("org.prowl.torque","org.prowl.torque.remote.TorqueService"));
       bound=context.bindService(intent,connection,Context.BIND_AUTO_CREATE);
       if(!bound)state="PORNEȘTE TORQUE PRO";
-    }catch(Exception e){state="TORQUE INDISPONIBIL";}
-    ui.post(poll);
+    }catch(SecurityException|IllegalArgumentException e){state="TORQUE • BIND REFUZAT";}
+    main.post(ticker);
   }
   synchronized void stop(){
-    running=false;ui.removeCallbacks(poll);
-    if(bound){try{context.unbindService(connection);}catch(Exception ignored){}bound=false;}
-    remote=null;current=Reading.empty();state="TORQUE NECONECTAT";
+    running=false;main.removeCallbacks(ticker);
+    if(bound){try{context.unbindService(connection);}catch(IllegalArgumentException ignored){}bound=false;}
+    remote=null;Arrays.fill(resolved,null);current=Reading.empty();state="TORQUE NECONECTAT";
   }
-  private static float read(IBinder binder,long pid)throws RemoteException{
-    Parcel data=Parcel.obtain(),reply=Parcel.obtain();
-    try{
-      data.writeInterfaceToken(DESCRIPTOR);data.writeLong(pid);data.writeInt(0);
-      if(!binder.transact(GET_VALUE,data,reply,0))throw new RemoteException("Torque method unavailable");
-      reply.readException();
-      float value=reply.readFloat();
-      return Float.isFinite(value)?value:Float.NaN;
-    }finally{reply.recycle();data.recycle();}
+  void close(){stop();worker.shutdownNow();}
+
+  private void resolvePids(ITorqueService svc)throws RemoteException{
+    String[] known=svc.listAllPIDs();
+    String[] supported=svc.listECUSupportedPIDs();
+    for(int i=0;i<4;i++){
+      String match=find(PIDS[i],supported);
+      // Some Torque builds report supported IDs differently: fallback to known.
+      if(match==null)match=find(PIDS[i],known);
+      resolved[i]=match;
+    }
+  }
+  private static String find(String pid,String[] entries){
+    if(entries==null)return null;
+    for(String candidate:entries){
+      if(candidate==null)continue;
+      String upper=candidate.trim().toUpperCase(Locale.US);
+      if(upper.startsWith("0X"))upper=upper.substring(2);
+      if(upper.startsWith(pid)&&
+         (upper.length()==pid.length()||!isHex(upper.charAt(pid.length()))))return candidate;
+    }
+    return null;
+  }
+  private static boolean isHex(char ch){
+    return (ch>='0'&&ch<='9')||(ch>='A'&&ch<='F');
+  }
+  private static float bounded(float v,float min,float max){
+    return Float.isFinite(v)&&v>=min&&v<=max?v:Float.NaN;
+  }
+  private static boolean isFresh(long timestamp){
+    if(timestamp<=0)return false;
+    // Torque versions have used both uptime-ms and Unix epoch-ms. Accept either
+    // only when it points to a recent OBD update; no artificial freshness.
+    long wall=System.currentTimeMillis();
+    long elapsed=SystemClock.elapsedRealtime();
+    return (timestamp<=wall&&wall-timestamp<=MAX_STALE_MS) ||
+           (timestamp<=elapsed&&elapsed-timestamp<=MAX_STALE_MS);
   }
 }
