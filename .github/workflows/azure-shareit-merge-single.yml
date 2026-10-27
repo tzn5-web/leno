@@ -29,7 +29,7 @@ jobs:
         run: |
           set -e
           sh -n infra/azure-dev-vm/shareit-noads/merge_verify_single_apk.sh
-          echo 'AZURE_SINGLE_APK_PROCESSOR_SYNTAX=PASS; idempotent -f APKEditor rebuild enabled'
+          echo 'AZURE_SINGLE_APK_PROCESSOR_SYNTAX=PASS; original uncompressed DEX layout restored for class-loader compatibility'
       - uses: azure/login@v3
         with:
           client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
