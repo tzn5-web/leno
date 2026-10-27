@@ -33,6 +33,8 @@ final class ObdReader {
   private static final String[] PIDS={"010C","0106","0107","0105"};
   private static final long MAX_STALE_MS=7000L;
   private final Context context;
+  private final DirectElm327 direct;
+  private volatile boolean useDirect;
   private final Runnable onUpdate;
   private final Handler main=new Handler(Looper.getMainLooper());
   private final ExecutorService worker=Executors.newSingleThreadExecutor();
@@ -142,15 +144,37 @@ final class ObdReader {
   };
   ObdReader(Context context,Runnable onUpdate){
     this.context=context.getApplicationContext();this.onUpdate=onUpdate;
+    this.direct=new DirectElm327(context,onUpdate);
+    // Official Torque API can be selected explicitly; modified/unofficial
+    // Torque apps are NOT assumed to implement org.prowl.torque's AIDL.
+    this.useDirect=!"torque".equals(this.context.getSharedPreferences("evo_launcher_prefs",Context.MODE_PRIVATE)
+      .getString("obd_source","direct"));
   }
   Reading current(){
+    if(useDirect)return direct.current();
     Reading snapshot=current;
     // Also expire readings if the IPC worker hangs and no new poll completes.
     return snapshot.live && SystemClock.elapsedRealtime()-snapshot.capturedAtMs>MAX_STALE_MS
         ? Reading.empty() : snapshot;
   }
-  String status(){return state;}
+  String status(){return useDirect?direct.status():state;}
+  boolean isDirect(){return useDirect;}
+  String adapterAddress(){return direct.adapterAddress();}
+  void chooseDirectAdapter(String mac){
+    stop();
+    direct.selectAdapter(mac);
+    setMode(true);
+  }
+  void setMode(boolean directMode){
+    if(useDirect==directMode){start();return;}
+    stop();
+    useDirect=directMode;
+    context.getSharedPreferences("evo_launcher_prefs",Context.MODE_PRIVATE).edit()
+      .putString("obd_source",useDirect?"direct":"torque").commit();
+    start();
+  }
   synchronized void start(){
+    if(useDirect){direct.start();return;}
     if(running)return;
     running=true;
     try{
@@ -162,11 +186,12 @@ final class ObdReader {
     main.post(ticker);
   }
   synchronized void stop(){
+    direct.stop();
     running=false;generation++;main.removeCallbacks(ticker);
     if(bound){try{context.unbindService(connection);}catch(IllegalArgumentException ignored){}bound=false;}
     remote=null;resolvedOnce=false;Arrays.fill(resolved,null);current=Reading.empty();state="TORQUE NECONECTAT";
   }
-  void close(){stop();worker.shutdownNow();}
+  void close(){stop();direct.close();worker.shutdownNow();}
 
   private void resolvePids(ITorqueService svc)throws RemoteException{
     String[] known=null,supported=null;
