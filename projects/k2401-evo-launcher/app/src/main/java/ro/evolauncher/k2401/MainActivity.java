@@ -116,7 +116,8 @@ public final class MainActivity extends Activity {
     boolean shown=page==2;
     if(liveMap!=null)liveMap.setVisibility(shown?View.VISIBLE:View.GONE);
     if(mapRecoveryPlaceholder!=null)mapRecoveryPlaceholder.setVisibility(shown?View.VISIBLE:View.GONE);
-    shortcutDock.setVisibility(page==0?View.VISIBLE:View.GONE);
+    // Photograph-based Home uses its own Apps button; never cover the artwork.
+    shortcutDock.setVisibility(View.GONE);
     installedApps.setVisibility(page==4?View.VISIBLE:View.GONE);
     launcherSettings.setVisibility(page==5?View.VISIBLE:View.GONE);
     int w=stage.getWidth(),h=stage.getHeight();

@@ -513,7 +513,9 @@ final class SkinEngine {
   }
   private void previewDialog(int which){
     if(galleryDialog!=null){galleryDialog.dismiss();galleryDialog=null;}
-    Bitmap image=preview(which);
+    // Full-size original for the preview dialog; atlas is for thumbnails only.
+    Bitmap image=fullArt(which);
+    if(image==null)image=preview(which);
     ImageView view=new ImageView(host);
     view.setImageBitmap(image);view.setScaleType(ImageView.ScaleType.FIT_CENTER);
     view.setAdjustViewBounds(true);
