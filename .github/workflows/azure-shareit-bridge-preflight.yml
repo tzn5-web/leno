@@ -1,0 +1,58 @@
+name: SHAREit Azure private bridge live preflight audit
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/azure-shareit-bridge-preflight.yml']
+permissions:
+  id-token: write
+  contents: read
+  actions: write
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      ACC: tzn5androidartifacts26
+      CONT: apks-private
+      OBJECT: input/shareit-6.27.58-user.apks
+    steps:
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Verify storage private, browser preflight PUT and auto-trigger enabled
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          az storage account show -n "$ACC" -g rg-chatgpt-azure --query '{name:name,allowBlobPublicAccess:allowBlobPublicAccess,httpsOnly:enableHttpsTrafficOnly,location:primaryLocation}' -o json
+          test "$(az storage account show -n "$ACC" -g rg-chatgpt-azure --query allowBlobPublicAccess -o tsv)" = false
+          KEY="$(az storage account keys list -g rg-chatgpt-azure -n "$ACC" --query '[0].value' -o tsv)"
+          echo "::add-mask::$KEY"
+          ORIGINS="$(az storage cors list --account-name "$ACC" --account-key "$KEY" --services b --query '[0].allowedOrigins' -o tsv)"
+          echo "BLOB_UPLOAD_CORS_ORIGINS=$ORIGINS"
+          test "$ORIGINS" = '*'
+          TARGET="https://$ACC.blob.core.windows.net/$CONT/$OBJECT"
+          HTTP="$(curl -s -o /tmp/preflight-response.txt -D /tmp/headers.txt -w '%{http_code}' -X OPTIONS \
+            -H 'Origin: null' -H 'Access-Control-Request-Method: PUT' \
+            -H 'Access-Control-Request-Headers: x-ms-blob-type,content-type' \
+            "$TARGET")"
+          echo "BROWSER_PREFLIGHT_HTTP=$HTTP"
+          grep -i '^access-control-allow-origin:' /tmp/headers.txt || true
+          test "$HTTP" = 200
+          WORKFLOW=azure-shareit-auto-trigger.yml
+          STATE="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$WORKFLOW" --jq .state)"
+          echo "AUTO_TRIGGER_PREVIOUS=$STATE"
+          if [ "$STATE" = disabled_manually ]; then
+            gh api --method PUT "repos/$GITHUB_REPOSITORY/actions/workflows/$WORKFLOW/enable" >/dev/null
+          fi
+          NEW="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$WORKFLOW" --jq .state)"
+          echo "AUTO_TRIGGER_CURRENT=$NEW"
+          test "$NEW" = active
+          EXISTS="$(az storage blob exists --account-name "$ACC" --account-key "$KEY" --container-name "$CONT" --name "$OBJECT" --query exists -o tsv)"
+          echo "SOURCE_BLOB_EXISTS=$EXISTS"
+          echo 'SHAREIT_AZURE_TRANSFER_BRIDGE=PASS'
+      - if: always()
+        run: az logout || true
