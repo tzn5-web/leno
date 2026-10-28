@@ -599,14 +599,28 @@ final class SkinEngine {
   }
   private void previewDialog(int which){
     if(galleryDialog!=null){galleryDialog.dismiss();galleryDialog=null;}
-    // Full-size original for the preview dialog; atlas is for thumbnails only.
-    Bitmap image=fullArt(which);
-    if(image==null)image=preview(which);
+    // The enlarged preview must show the REAL functional Home canvas,
+    // not just the original AI mockup with fake RPM / time / media numbers.
+    // Live ECU values remain live; unavailable values are labelled N/A.
+    Bitmap fullPreview=null;
+    try{
+      fullPreview=Bitmap.createBitmap(1280,720,Bitmap.Config.RGB_565);
+      int previous=selected;selected=which;
+      try{draw(new Canvas(fullPreview));}
+      finally{selected=previous;}
+    }catch(RuntimeException|OutOfMemoryError failure){
+      if(fullPreview!=null&&!fullPreview.isRecycled())fullPreview.recycle();
+      fullPreview=null;
+    }
+    final Bitmap rendered=fullPreview;
+    Bitmap fallback=rendered==null?fullArt(which):null;
+    if(fallback==null&&rendered==null)fallback=preview(which);
     ImageView view=new ImageView(host);
-    view.setImageBitmap(image);view.setScaleType(ImageView.ScaleType.FIT_CENTER);
+    view.setImageBitmap(rendered==null?fallback:rendered);
+    view.setScaleType(ImageView.ScaleType.FIT_CENTER);
     view.setAdjustViewBounds(true);
     view.setMinimumHeight(dp(250));
-    new AlertDialog.Builder(host).setTitle((which+1)+". "+NAMES[which])
+    AlertDialog dialog=new AlertDialog.Builder(host).setTitle((which+1)+". "+NAMES[which]+" • LIVE")
       .setView(view)
       .setPositiveButton("APLICĂ ACEST SKIN",(d,w)->{
         select(which);host.page=0;
@@ -617,6 +631,12 @@ final class SkinEngine {
       })
       .setNeutralButton("Următorul",(d,w)->previewDialog((which+1)%COUNT))
       .setNegativeButton("Înapoi",(d,w)->previewDialog((which+COUNT-1)%COUNT))
-      .show();
+      .create();
+    dialog.setOnDismissListener(d->{
+      // Avoid retaining a 1280x720 preview after the picker is closed.
+      view.setImageDrawable(null);
+      if(rendered!=null&&!rendered.isRecycled())rendered.recycle();
+    });
+    dialog.show();
   }
 }
