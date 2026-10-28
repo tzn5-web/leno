@@ -120,13 +120,22 @@ final class SkinEngine {
     if(fullArt!=null&&!fullArt.isRecycled()&&fullArtId==id)return fullArt;
     if(fullArt!=null&&!fullArt.isRecycled())fullArt.recycle();
     fullArt=null;fullArtId=id;
-    // Prefer APK-bundled images even if an older prerelease imported a ZIP.
+    // The 2560x1440 artwork is generated from the exact 21 approved images.
+    // The original 1280x720 files are the safe fallback on legacy builds.
     try(InputStream stream=host.getAssets().open(
-      String.format(Locale.US,"skins/skin_%02d.webp",id))){
+      String.format(Locale.US,"skins/uhd/skin_%02d.webp",id))){
       BitmapFactory.Options opts=new BitmapFactory.Options();
       opts.inPreferredConfig=Bitmap.Config.ARGB_8888;
       fullArt=BitmapFactory.decodeStream(stream,null,opts);
     }catch(IOException|RuntimeException ignored){}
+    if(fullArt==null){
+      try(InputStream stream=host.getAssets().open(
+        String.format(Locale.US,"skins/skin_%02d.webp",id))){
+        BitmapFactory.Options opts=new BitmapFactory.Options();
+        opts.inPreferredConfig=Bitmap.Config.ARGB_8888;
+        fullArt=BitmapFactory.decodeStream(stream,null,opts);
+      }catch(IOException|RuntimeException ignored){}
+    }
     if(fullArt==null){
       File root=packDir();
       File image=root==null?null:new File(root,String.format(Locale.US,"skin_%02d.webp",id));
@@ -720,7 +729,7 @@ final class SkinEngine {
     // Show the ACTUAL native skin in the gallery. Never show the source
     // concept image with fake music titles, clocks, app logos or ECU values.
     id=clamp(id);
-    Bitmap thumb=Bitmap.createBitmap(480,270,Bitmap.Config.RGB_565);
+    Bitmap thumb=Bitmap.createBitmap(480,270,Bitmap.Config.ARGB_8888);
     Canvas stage=new Canvas(thumb);
     stage.scale(480f/1280f,270f/720f);
     int before=selected;
