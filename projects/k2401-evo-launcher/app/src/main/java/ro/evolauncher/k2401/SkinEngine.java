@@ -727,17 +727,122 @@ final class SkinEngine {
     if(id>0&&ThemeNativePanels.profile(id).clock==null)
       text(c,time(),1153,36,23,0xffd8e7f5,true);
   }
+  /**
+   * Approved theme #02: the background is ONLY photography. Every clock,
+   * frame, label, album image, sensor number and touch control is drawn live.
+   * No centre ECU/ABS/Doors/Airbag mock panel is ever created.
+   */
+  private void drawCinematicTwo(Canvas c){
+    Bitmap photo=fullArt(1);
+    colour(0xff050e1c);
+    c.drawRect(0,0,1280,720,p);
+    if(photo!=null&&!photo.isRecycled()){
+      colour(Color.WHITE);
+      p.setFilterBitmap(true);
+      c.drawBitmap(photo,new Rect(0,0,photo.getWidth(),photo.getHeight()),
+        new Rect(0,0,1280,720),p);
+    }
+
+    // Five icons plus the existing Settings action, all working and vector.
+    panel(c,0,0,89,720,0xe6060e1b,0);
+    int[] cy={72,169,266,363,460,557};
+    for(int i=0;i<6;i++){
+      NavVectorIcons.draw(c,i,45,cy[i],i==0?0xff5cc9ff:0xffdbeaff);
+    }
+
+    // Responsive native date/clock. No stale static time in the photo.
+    text(c,time(),119,73,57,Color.WHITE,true);
+    text(c,shorten(date(),33),123,113,17,0xffdeeafa,false);
+
+    // Cinematic, clean instrument faces with genuine OBD-II PID values.
+    ObdReader.Reading rd=host.obd==null?ObdReader.Reading.empty():host.obd.current();
+    final int ice=0xff36bdff, crimson=0xffff455d;
+    colour(0xef07111f);
+    c.drawCircle(237,449,158,p);
+    c.drawCircle(1071,450,147,p);
+    gauge(c,237,449,145,"RPM",val(rd.rpm,0),"rpm",rd.rpm,0,8000,crimson,1);
+    gauge(c,1071,450,132,"TEMP APĂ",val(rd.coolantC,0),"°C",
+      rd.coolantC,40,120,ice,2);
+
+    // Real selected music player only. No branded placeholders, no static art.
+    panel(c,884,13,381,148,0xea061021,15);
+    stroke(c,884,13,381,148,0xff2b8bd2,15);
+    text(c,shorten(host.mediaName,23),998,43,19,Color.WHITE,true);
+    MediaController m=host.media;
+    String song="",artist="";
+    Bitmap album=null;
+    if(m!=null&&m.getMetadata()!=null){
+      CharSequence t=m.getMetadata().getText(MediaMetadata.METADATA_KEY_TITLE);
+      CharSequence a=m.getMetadata().getText(MediaMetadata.METADATA_KEY_ARTIST);
+      song=t==null?"":t.toString();artist=a==null?"":a.toString();
+      album=m.getMetadata().getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
+      if(album==null)album=m.getMetadata().getBitmap(MediaMetadata.METADATA_KEY_ART);
+    }
+    if(song.isEmpty())song="Fără redare activă";
+    if(artist.isEmpty())artist="Alege playerul / MediaSession";
+    panel(c,896,28,88,89,0xff152b46,8);
+    if(album!=null){
+      colour(Color.WHITE);p.setFilterBitmap(true);
+      c.drawBitmap(album,null,new Rect(898,30,982,115),p);
+    }else centered(c,"MEDIA",940,78,15,0xffd9edff,true);
+    text(c,shorten(song,24),998,73,17,Color.WHITE,true);
+    text(c,shorten(artist,27),998,96,13,0xff9dc3e9,false);
+    boolean playing=m!=null&&m.getPlaybackState()!=null&&
+      m.getPlaybackState().getState()==PlaybackState.STATE_PLAYING;
+    MediaVectorIcons.draw(c,1040,133,0,Color.WHITE);
+    MediaVectorIcons.draw(c,1126,133,playing?3:1,Color.WHITE);
+    MediaVectorIcons.draw(c,1214,133,2,Color.WHITE);
+
+    // Fuel trims stay functional and clearly separate from coolant. They do
+    // not imply that ABS/Airbag/Doors data are available via ELM327.
+    panel(c,876,596,388,108,0xe9091524,12);
+    stroke(c,876,596,388,108,0xff305f96,12);
+    text(c,"STFT B1",895,631,16,ice,true);
+    text(c,val(rd.stft,1)+"%",1031,632,25,Color.WHITE,true);
+    text(c,"LTFT B1",895,672,16,crimson,true);
+    text(c,val(rd.ltft,1)+"%",1031,673,25,Color.WHITE,true);
+    // Do not add any centre vehicle-status panel: only approved native HUD.
+  }
+
+  private boolean touchCinematicTwo(float x,float y){
+    if(x<90){
+      int slot=Math.round((y-72f)/97f);
+      if(slot<0||slot>5)return false;
+      if(Math.abs(y-(72+97*slot))>43)return false;
+      host.page=slot;
+      if(host.view!=null)host.view.invalidate();
+      host.placeMap();
+      return true;
+    }
+    if(x>=884&&y>=13&&x<=1265&&y<=161){
+      if(y>=106){
+        host.mediaAction(x<1080?0:x<1168?1:2);
+      }else host.choosePlayer();
+      return true;
+    }
+    if(x>=117&&x<=650&&y<=142){showPicker();return true;}
+    if((x>=93&&x<=402&&y>=290&&y<=610)||
+       (x>=922&&x<=1226&&y>=292&&y<=594)||
+       (x>=876&&x<=1264&&y>=596&&y<=704)){
+      host.showObdStatus();
+      return true;
+    }
+    return false;
+  }
+
   void draw(Canvas c){
     // EVO Digital Dash has its own bespoke left/right interactive cockpit.
     // The remaining twenty models use layouts aligned to the *individual*
     // source artwork, rather than one generic four-gauge card on the right.
     int id=selected;
     if(id==0){drawEvoDigitalDashNative(c);return;}
+    if(id==1){drawCinematicTwo(c);return;}
     drawArt(c,id);
     drawNativeStatusBar(c,id);
     nativePanels.draw(c,id);
   }
   boolean touch(float x,float y){
+    if(selected==1)return touchCinematicTwo(x,y);
     if(selected>0&&nativePanels.touch(x,y))return true;
     if(selected==0&&x>=860&&x<=1265&&y>=74&&y<=412){
       if(y>=302){
