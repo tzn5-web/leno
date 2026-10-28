@@ -4,7 +4,7 @@ No screenshot UI, printed fake PIDs, apps, status text or stock car replacements
 are permitted into the native dashboard background. Source assets are immutable.
 """
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter, ImageEnhance
 import hashlib, math
 
 ROOT=Path(__file__).resolve().parents[1]/"app/src/main/assets/skins"
@@ -13,20 +13,20 @@ W,H=2560,1440
 # Individually audited safe car/road regions of the 21 ORIGINAL EVO designs.
 # No car image on the three app-centric skins; native widgets draw actual apps.
 ROI=[
-(350,465,544,685),(305,65,770,333),(204,322,535,533),
+(350,465,544,685),(305,65,770,333),(212,348,535,533),
 (125,75,619,377),(325,55,797,352),None,(321,105,770,393),
 (566,150,829,415),(446,93,787,370),(402,191,814,428),
 (326,105,656,480),(352,95,846,409),(175,213,636,510),
 (225,378,507,557),None,(585,252,826,458),(350,256,826,557),
-(459,279,866,402),(168,164,724,592),None,(436,204,898,614)
+(459,279,866,370),(168,164,724,592),None,(436,204,898,614)
 ]
 PLACEMENT=[
-(445,450,790,708),(304,89,785,402),(237,288,704,563),
-(151,93,665,409),(326,81,868,427),None,(321,98,801,436),
-(522,157,842,452),(428,91,817,451),(367,180,866,451),
-(315,116,676,501),(342,92,888,442),(149,207,700,562),
-(212,351,707,594),None,(566,258,855,505),(338,246,864,582),
-(451,275,883,475),(155,169,744,604),None,(422,205,919,627)
+(415,379,799,717),(240,60,820,458),(205,241,735,607),
+(105,65,755,485),(240,55,910,495),None,(285,68,851,481),
+(472,116,875,489),(350,50,842,457),(300,135,910,512),
+(270,70,725,556),(285,52,921,502),(220,185,770,619),
+(175,322,757,662),None,(510,190,924,566),(275,198,929,638),
+(350,190,935,558),(120,125,754,650),None,(379,145,935,695)
 ]
 COLORS=[(255,42,73),(245,48,68),(33,188,245),(245,54,73),
 (34,198,244),(246,47,81),(243,41,72),(247,52,82),(243,49,78),
@@ -47,9 +47,9 @@ def base(i):
             halo=math.exp(-(((xx-focus)/.32)**2+((yy-.62)/.47)**2)*2.1)
             road=math.exp(-((yy-.68)/.18)**2)
             shade=max(0,1-(abs(xx-.5)+abs(yy-.55))*.65)
-            pix[x,y]=(int(4+8*shade+halo*a[0]*.125+road*a[0]*.021),
-                      int(9+10*shade+halo*a[1]*.135+road*a[1]*.027),
-                      int(18+13*shade+halo*a[2]*.15+road*a[2]*.032))
+            pix[x,y]=(int(5+11*shade+halo*a[0]*.17+road*a[0]*.04),
+                      int(10+12*shade+halo*a[1]*.18+road*a[1]*.04),
+                      int(19+14*shade+halo*a[2]*.18+road*a[2]*.05))
     image=low.resize((W,H),Image.Resampling.BICUBIC)
     d=ImageDraw.Draw(image,"RGBA")
     for k in range(4):
@@ -60,39 +60,42 @@ def base(i):
         d.line(((x,1160),(x-250,1435)),fill=(*a,31),width=3)
     d.arc((370,280,1660,1600),189,355,fill=(*a,26),width=3)
     if i==0:
-        # Approved Digital Dash composition: neon road converging behind the
-        # actual Mitsubishi car, without a printed speed/gear/clock.
-        d.line([(248,1438),(1050,974)],fill=(252,35,73,105),width=12)
-        d.line([(2260,1438),(1515,974)],fill=(35,174,252,92),width=12)
-        d.line([(360,1438),(1090,995)],fill=(242,60,79,38),width=27)
-        d.line([(2185,1438),(1475,995)],fill=(28,180,244,32),width=27)
+        # Approved Digital Dash has a red/cyan night highway converging behind
+        # the REAL Lancer, never a baked speed/gear/clock or demo widget.
+        d.line([(258,1438),(1110,950)],fill=(255,36,75,140),width=13)
+        d.line([(2240,1438),(1480,950)],fill=(32,185,255,125),width=13)
+        d.line([(400,1438),(1150,995)],fill=(255,25,82,48),width=27)
+        d.line([(2160,1438),(1470,995)],fill=(33,210,240,42),width=27)
     return image
 
 def scene(canvas,source,roi,dest):
     car=source.crop(roi).convert("RGB")
     x1,y1,x2,y2=(p*2 for p in dest)
     width,height=x2-x1,y2-y1
-    # Diffuse atmosphere comes from the audited car crop ONLY.
-    sw,sh=int(width*1.9),int(height*2.0)
-    backdrop=car.resize((sw,sh),Image.Resampling.LANCZOS)
-    backdrop=backdrop.filter(ImageFilter.GaussianBlur(84))
-    halo=Image.new("L",(sw,sh),0)
-    ImageDraw.Draw(halo).ellipse((80,55,sw-80,sh-55),fill=94)
-    halo=halo.filter(ImageFilter.GaussianBlur(155))
-    bx=min(W-sw,max(195,x1-(sw-width)//2))
-    by=min(H-sh,max(110,y1-(sh-height)//2))
-    canvas.paste(backdrop,(bx,by),halo)
-    # True aspect ratio preserves wheels, panel geometry and Mitsubishi car.
+    # Keep all wheels/body proportions native; user-approved car imagery only.
     ratio=min(width/car.width,height/car.height)
     car=car.resize((max(1,int(car.width*ratio)),max(1,int(car.height*ratio))),
                    Image.Resampling.LANCZOS)
+    # Use a blurred copy of the SAME approved scene as atmospheric fill.
+    sw,sh=int(car.width*1.45),int(car.height*1.4)
+    backdrop=car.resize((sw,sh),Image.Resampling.LANCZOS)
+    backdrop=backdrop.filter(ImageFilter.GaussianBlur(42))
+    halo=Image.new("L",(sw,sh),0)
+    ImageDraw.Draw(halo).ellipse((22,22,sw-22,sh-22),fill=100)
+    halo=halo.filter(ImageFilter.GaussianBlur(106))
+    bx=max(96,min(W-sw,x1+(width-sw)//2))
+    by=max(100,min(H-sh,y1+(height-sh)//2))
+    canvas.paste(backdrop,(bx,by),halo)
+    # Larger actual car while avoiding screenshot borders and ghost labels.
+    car=ImageEnhance.Contrast(car).enhance(1.11)
+    car=ImageEnhance.Brightness(car).enhance(1.17)
+    car=car.filter(ImageFilter.UnsharpMask(radius=1.2,percent=75,threshold=3))
     mask=Image.new("L",car.size,0)
-    inset=min(34,max(13,min(car.size)//9))
+    inset=min(17,max(7,min(car.size)//25))
     ImageDraw.Draw(mask).rounded_rectangle(
-        (inset,inset,car.width-inset-1,car.height-inset-1),
-        radius=min(65,car.width//7),fill=255)
-    mask=mask.filter(ImageFilter.GaussianBlur(min(34,max(14,min(car.size)//14))))
-    car=car.filter(ImageFilter.UnsharpMask(1.1,85,4))
+      (inset,inset,car.width-inset-1,car.height-inset-1),
+      radius=min(48,car.width//10),fill=255)
+    mask=mask.filter(ImageFilter.GaussianBlur(15))
     canvas.paste(car,(x1+(width-car.width)//2,y1+(height-car.height)//2),mask)
 
 def main():
