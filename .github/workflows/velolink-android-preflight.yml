@@ -24,8 +24,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
-      - name: Static test PC script
-        run: python3 -m py_compile projects/velolink-offline/pc/velolink_pc.py
+      - name: Test PC protocol without internet
+        run: |
+          python3 -m py_compile projects/velolink-offline/pc/velolink_pc.py
+          python3 projects/velolink-offline/pc/test_transfer_protocol.py -v
       - name: Compile Android app
         working-directory: projects/velolink-offline
         run: gradle --no-daemon :app:assembleDebug --stacktrace
