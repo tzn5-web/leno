@@ -152,6 +152,12 @@ final class CleanSkinArt {
       c.drawRect(0,0,W,H,paint);
     }
 
+    // Individual scene cleanup; do not leave the original demo gear/clock
+    // or printed application tabs between real native interactive widgets.
+    if(id==0)round(c,379,398,171,72,0xff081420,0);
+    if(id==15)round(c,505,55,295,203,0xff08121e,0);
+    if(id==19)round(c,390,55,890,71,0xff08121e,0);
+
     // The artwork contains screenshot-only status times, navigation,
     // demo app shortcuts and footer labels. Erase them BEFORE native
     // SkinEngine/ThemeNativePanels repaint the real interactive controls.
