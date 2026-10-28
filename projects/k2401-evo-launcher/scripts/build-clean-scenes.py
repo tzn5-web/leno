@@ -108,6 +108,13 @@ def main():
         with Image.open(original) as src:
             assert src.size==(1280,720)
             result=base(i)
+            # Original illustrated palette provides soft scene continuity.
+            # It is blurred beyond legibility: fake text, app icons, RPM
+            # and weather cannot become readable in the CLEAN asset.
+            atmosphere=src.convert("RGB").resize((W,H),Image.Resampling.LANCZOS)
+            atmosphere=atmosphere.filter(ImageFilter.GaussianBlur(83))
+            atmosphere=ImageEnhance.Brightness(atmosphere).enhance(0.52)
+            result=Image.blend(result,atmosphere,0.62)
             if ROI[i] is not None:
                 scene(result,src,ROI[i],PLACEMENT[i])
         target=OUT/("skin_%02d.webp"%i)
