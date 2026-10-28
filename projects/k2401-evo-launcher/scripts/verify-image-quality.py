@@ -38,4 +38,3 @@ for i in range(21):
     print("K2401_IMAGE_DETAIL_QA",reports[-1])
 assert len(checksums)==21,"Duplicate or missing distinct skin backgrounds"
 print("K2401_IMAGE_DETAIL_QA_ALL_21=PASS")
-(ROOT.parent.parent.parent.parent/"screenshots").mkdir(parents=True,exist_ok=True)
