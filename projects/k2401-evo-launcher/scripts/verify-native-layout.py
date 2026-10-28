@@ -105,5 +105,14 @@ assert 'compactDigitalFuelTrim(c,1066,426,199,205' in ENGINE,"LTFT card displace
 assert 'selected==0&&x>=860&&x<=1265&&y>=74&&y<=412' in ENGINE
 assert 'host.mediaAction(x<1080?0:x<1165?1:2)' in ENGINE
 assert '(x>=627&&x<=843&&y>=220&&y<=436)' in ENGINE, "Coolant gauge lost OBD details touch"
+# Unrelated legacy mock artwork must not come back after a UI-only refresh.
+MAIN=(ROOT/"app/src/main/java/ro/evolauncher/k2401/MainActivity.java").read_text()
+VECTOR=(ROOT/"app/src/main/java/ro/evolauncher/k2401/NavVectorIcons.java").read_text()
+assert 't(c,"YT",' not in MAIN,"Misleading baked YouTube album fallback"
+assert 'Permite controlul YouTube Music prin MediaSession' not in MAIN
+assert 'NavVectorIcons.draw(c,i,54,y+38' in MAIN,"OEM font icons returned"
+assert all(f"case {i}:" in VECTOR for i in range(6)),"Missing native icon"
+assert 'MediaVectorIcons.draw(c,x+390,y+h-46' in MAIN,"Old font-based player controls"
+print("K2401_NATIVE_NAV_AND_MEDIA_ZERO_FALSE_ICONS=PASS")
 print("K2401_DIGITAL_DASH_VISUAL_TOUCH_ALIGNMENT=PASS")
 
