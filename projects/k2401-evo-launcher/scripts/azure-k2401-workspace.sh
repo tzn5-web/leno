@@ -80,7 +80,10 @@ du -h "$ROOT"/*.tar.gz | tee "$REPORT/archive-sizes.txt"
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 export ANDROID_HOME="$ROOT/android-sdk"
 export ANDROID_SDK_ROOT="$ANDROID_HOME"
-export PATH="$JAVA_HOME/bin:$PATH"
+export PATH="$ROOT/venv/bin:$JAVA_HOME/bin:$PATH"
+# Gradle invokes python3 for generateUhdSkins; use the same pinned virtualenv
+# that already passed Pillow/OpenCV model reconstruction and integrity QA.
+python3 -c "from PIL import Image; import cv2; print('K2401_AZURE_GRADLE_PYTHON_VENV=PASS')"
 mkdir -p "$ANDROID_HOME/cmdline-tools"
 if [ ! -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
   curl -fsSL --retry 3 --max-time 240 \
