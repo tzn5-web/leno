@@ -173,7 +173,8 @@ final class SkinEngine {
   int selection(){return selected;}
   void select(int id){
     selected=clamp(id);
-    if(fullArt!=null&&!fullArt.isRecycled())fullArt.recycle();fullArt=null;fullArtId=-1;
+    if(fullArt!=null&&!fullArt.isRecycled())fullArt.recycle();fullArt=null;
+    fullArtId=-1;fullArtIsClean=false;
     prefs.edit().putInt(KEY,selected).commit();
     if(host.view!=null)host.view.invalidate();
     host.placeMap();
@@ -443,7 +444,8 @@ final class SkinEngine {
     text(c,"ECU / ELM327",393,281,17,0xffa7bcd1,true);
     ObdReader.Reading data=host.obd==null?ObdReader.Reading.empty():host.obd.current();
     text(c,data.live?"CONECTAT":"N/A",393,333,27,data.live?0xff5af5ba:ice,true);
-    text(c,"DATE LIVE",393,362,15,azure,true);
+    text(c,data.live?"DATE LIVE":"FĂRĂ DATE",393,362,15,
+      data.live?azure:0xff9db0c4,true);
 
     // Main round gauges. Semi-opaque black under the *dynamic* arcs hides
     // baked-in readings and keeps the original tachometer-like placement.
@@ -699,7 +701,11 @@ final class SkinEngine {
     panel(c,0,0,1280,54,0xf508111d,0);
     text(c,String.format(Locale.US,"%02d/21   %s",id+1,NAMES[id]),
       17,36,23,Color.WHITE,true);
-    text(c,time(),1153,36,23,0xffd8e7f5,true);
+    // Avoid drawing a second clock above a real native clock card.
+    // Digital Dash has its own large clock; the other 20 render an independent
+    // header clock only if their layout has no visible native clock card.
+    if(id>0&&ThemeNativePanels.profile(id).clock==null)
+      text(c,time(),1153,36,23,0xffd8e7f5,true);
   }
   void draw(Canvas c){
     // EVO Digital Dash has its own bespoke left/right interactive cockpit.
