@@ -6,10 +6,16 @@ export DEBIAN_FRONTEND=noninteractive
 ROOT=/opt/k2401-evo-workspace
 REPORT="$ROOT/reports"
 mkdir -p "$REPORT" "$ROOT/original-immutable" "$ROOT/generated" "$ROOT/tools"
-exec > >(tee -a "$REPORT/azure-setup.log") 2>&1
-trap 'echo "K2401_VM_RUN_EXIT=$?"' EXIT
-EXPECTED_SHA=''
-BLOB_SAS_B64=''
+exec 3>&1
+exec > >(tee -a "$REPORT/azure-setup.log" >&3) 2>&1
+trap 'code=$?; echo "K2401_VM_RUN_EXIT=$code"; if test "$code" -ne 0; then tail -n 60 "$REPORT/azure-setup.log" >&3 || true; fi' EXIT
+EXPECTED_SHA=""
+BLOB_SAS_B64=""
+# Azure RunShellScript may inject named parameters as variables rather than
+# positional arguments. Accept BOTH documented forms; never continue without
+# the immutable SHA.
+if test -n "${ExpectedSha:-}"; then EXPECTED_SHA="${ExpectedSha}"; fi
+if test -n "${BlobSasB64:-}"; then BLOB_SAS_B64="${BlobSasB64}"; fi
 for arg in "$@"; do
   case "$arg" in
     ExpectedSha=*) EXPECTED_SHA="$(printf '%s' "$arg" | cut -d = -f 2)";;
