@@ -16,6 +16,11 @@ trap smoke_failure ERR
 adb shell wm density 160
 adb shell settings put system accelerometer_rotation 0
 adb install -r projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.apk
+# Hermetic emulator run: the Azure AVD persists userdata between *separate*
+# runs even with -no-snapshot. Reset only this emulator's test application,
+# never the physical user's K2401 device or any connected handset.
+adb shell pm clear "$APP" >/dev/null
+echo "K2401_EMULATOR_ISOLATED_FIRST_INSTALL=PASS"
 # Real devices request location permission at runtime; emulator smoke tests
 # grant it explicitly to avoid a permission dialog obscuring the six screens.
 adb shell pm grant "$APP" android.permission.ACCESS_FINE_LOCATION
