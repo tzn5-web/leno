@@ -271,12 +271,9 @@ final class ThemeNativePanels {
     boolean valid=Float.isFinite(v);
     int color=(idx==0?accent(theme):idx==1?0xff31c9ff:idx==2?0xfff2ae48:0xffee445d);
     int x=area.left,y=area.top,w=area.width(),h=area.height();
-    // Future, GT Cockpit and Digital Cockpit put the live RPM ring directly
-    // over the approved vehicle photograph. Keep the scene visible below the
-    // native readable gauge instead of covering the whole car with an opaque card.
-    final boolean photoBehindRpm=(idx==0&&(theme==2||theme==7||theme==13));
-    fill(c,area,photoBehindRpm?0xa008111e:0xff08111e,color,
-      Math.min(15,Math.max(6,h/8)));
+    // Opaque live instrument face: photographed sample RPM must never show
+    // through the real N/A or sensor value on Future/GT/Digital Cockpit.
+    fill(c,area,0xff08111e,color,Math.min(15,Math.max(6,h/8)));
     String num=!valid?"N/A":idx==0||idx==3?
       String.format(Locale.US,"%.0f",v):String.format(Locale.US,"%+.1f",v);
     if(h<135||w<150||preferred==4||preferred==5){
