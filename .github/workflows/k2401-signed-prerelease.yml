@@ -229,10 +229,13 @@ jobs:
             for i in range(21):
               orig=f"assets/skins/skin_{i:02}.webp"
               high=f"assets/skins/uhd/skin_{i:02}.webp"
-              assert orig in z.namelist() and high in z.namelist(), (orig,high)
+              clean=f"assets/skins/clean/skin_{i:02}.webp"
+              assert orig in z.namelist() and high in z.namelist() and clean in z.namelist(), (orig,high,clean)
               with Image.open(io.BytesIO(z.read(high))) as img:
                 assert img.size == (2560,1440), (high,img.size)
-          print("K2401_21_ORIGINAL_AND_HIRES_THEMES_IN_SIGNED_APK=PASS")
+              with Image.open(io.BytesIO(z.read(clean))) as img:
+                assert img.size == (2560,1440), (clean,img.size)
+          print("K2401_21_APPROVED_ORIGINALS_AND_CLEAN_BACKGROUNDS_SIGNED=PASS")
           PY
       - name: Verify Android 10 APK signature and persistent certificate
         shell: bash
