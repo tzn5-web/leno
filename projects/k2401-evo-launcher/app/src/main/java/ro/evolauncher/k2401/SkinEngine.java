@@ -413,8 +413,122 @@ final class SkinEngine {
       0xff2dd4ff,2);
     text(c,"ACTUALIZARE PRIORITARĂ",210,541,17,0xff8dd6ea,true);
   }
+
+  /**
+   * EVO DIGITAL DASH. Unlike a generic two-column HUD, place real controls
+   * on the same geometry as the approved original:
+   *  left RPM and coolant tachometers; centre status; upper right real media;
+   *  lower right STFT and LTFT. The illustrated car/road stays visible.
+   * No generated screenshot number is trusted as a live ECU measurement.
+   */
+  private void drawEvoDigitalDashNative(Canvas c){
+    drawArt(c,0);
+    final int crimson=0xfffa304d,azure=0xff30cfff,ice=0xffedf6ff;
+    // Repaint only the obsolete labels / clock from the original render.
+    panel(c,2,4,308,46,0xf009121e,11);
+    text(c,"EVO DIGITAL DASH",19,36,24,ice,true);
+    panel(c,352,86,236,87,0xf0081421,17);
+    text(c,time(),373,130,43,ice,true);
+    text(c,shorten(date(),27),373,159,16,0xffcddde9,false);
+
+    // The mockup has "0 km/h" without a vehicle-speed PID. Do not make it
+    // appear live: replace just its centre with a real connection indicator.
+    panel(c,379,246,169,155,0xf0081420,17);
+    text(c,"ECU / ELM327",393,281,17,0xffa7bcd1,true);
+    ObdReader.Reading data=host.obd==null?ObdReader.Reading.empty():host.obd.current();
+    text(c,data.live?"CONECTAT":"N/A",393,333,27,data.live?0xff5af5ba:ice,true);
+    text(c,"DATE LIVE",393,362,15,azure,true);
+
+    // Main round gauges. Semi-opaque black under the *dynamic* arcs hides
+    // baked-in readings and keeps the original tachometer-like placement.
+    colour(0xf207111e);c.drawCircle(240,328,108,p);c.drawCircle(658,328,108,p);
+    gauge(c,240,323,98,"RPM",val(data.rpm,0),"rpm",data.rpm,0,8000,crimson,1);
+    gauge(c,658,323,98,"TEMP APĂ",val(data.coolantC,0),"°C",
+      data.coolantC,40,120,azure,2);
+
+    // Media panel exactly within the right-hand rectangular music location.
+    panel(c,799,74,466,362,0xee08121e,15);
+    stroke(c,799,74,466,362,crimson,15);
+    text(c,shorten(host.mediaName,25),822,108,22,ice,true);
+    MediaController controller=host.media;
+    Bitmap cover=null;
+    if(controller!=null&&controller.getMetadata()!=null){
+      cover=controller.getMetadata().getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
+      if(cover==null)cover=controller.getMetadata().getBitmap(MediaMetadata.METADATA_KEY_ART);
+    }
+    panel(c,821,128,124,146,0xff3f1526,10);
+    if(cover!=null){
+      colour(Color.WHITE);p.setFilterBitmap(true);
+      c.drawBitmap(cover,null,new Rect(823,130,943,272),p);
+    }else{
+      centered(c,"YT",883,202,42,ice,true);
+      centered(c,"MUSIC",883,231,17,ice,true);
+    }
+    String song="",performer="";
+    if(controller!=null&&controller.getMetadata()!=null){
+      CharSequence t=controller.getMetadata().getText(MediaMetadata.METADATA_KEY_TITLE);
+      CharSequence a=controller.getMetadata().getText(MediaMetadata.METADATA_KEY_ARTIST);
+      song=t==null?"":t.toString();performer=a==null?"":a.toString();
+    }
+    if(song.isEmpty())song="Fără redare activă";
+    if(performer.isEmpty())performer="Alege playerul / MediaSession";
+    text(c,shorten(song,22),962,183,23,ice,true);
+    text(c,shorten(performer,29),962,218,16,0xff9fb2c6,false);
+    line(c,967,260,1242,260,0xff41556c,4);
+    if(controller!=null&&controller.getMetadata()!=null&&controller.getPlaybackState()!=null){
+      long duration=controller.getMetadata().getLong(MediaMetadata.METADATA_KEY_DURATION);
+      long pos=controller.getPlaybackState().getPosition();
+      if(duration>0&&pos>=0)line(c,967,260,967+275f*Math.min(1f,(float)pos/duration),260,
+        crimson,4);
+    }
+    panel(c,999,319,70,73,crimson,33);
+    boolean playing=controller!=null&&controller.getPlaybackState()!=null&&
+      controller.getPlaybackState().getState()==PlaybackState.STATE_PLAYING;
+    centered(c,"◀◀",967,363,27,ice,true);
+    centered(c,playing?"Ⅱ":"▶",1034,368,29,ice,true);
+    centered(c,"▶▶",1143,363,27,ice,true);
+    text(c,controller==null?"MEDIA OFFLINE":"MEDIA LIVE",823,417,13,
+      controller==null?0xffacbacb:0xff5af5ba,true);
+
+    // The two rectangular live fuel-trim instruments correspond to the two
+    // cards in the original lower right, not a duplicate four-dial panel.
+    compactDigitalFuelTrim(c,799,462,223,226,"STFT B1",data.stft,azure);
+    compactDigitalFuelTrim(c,1034,462,229,226,"LTFT B1",data.ltft,crimson);
+    text(c,"K2401 • "+NAMES[0],416,698,16,0xffb5c8d9,true);
+
+    // Small functional bottom dock instead of a 620x310 HUD obscuring the car.
+    panel(c,5,630,389,88,0xe60a1320,14);
+    stroke(c,5,630,389,88,0xffa72a43,14);
+    String[] shortcuts={"APLICAȚII","SKINURI","HARTĂ"};
+    String[] icons={"▦","◈","➤"};
+    int[] bx={13,142,277},bw={119,125,114};
+    for(int i=0;i<3;i++){
+      panel(c,bx[i],635,bw[i],76,0xff1b2a3b,9);
+      centered(c,icons[i],bx[i]+bw[i]/2f,671,29,crimson,true);
+      centered(c,shortcuts[i],bx[i]+bw[i]/2f,699,13,ice,true);
+    }
+  }
+  private void compactDigitalFuelTrim(Canvas c,int x,int y,int w,int h,
+                                      String name,float reading,int accent){
+    panel(c,x,y,w,h,0xf0081421,16);
+    stroke(c,x,y,w,h,accent,16);
+    text(c,name,x+19,y+44,23,iceForFuelTrim(),true);
+    String value=val(reading,1);
+    text(c,value,x+19,y+118,52,iceForFuelTrim(),true);
+    text(c,"%",x+w-33,y+116,19,accent,true);
+    line(c,x+17,y+154,x+w-17,y+154,0xff344457,4);
+    if(Float.isFinite(reading)){
+      float ratio=clipped(reading,-25,25);
+      line(c,x+17,y+154,x+17+(w-34)*ratio,y+154,accent,5);
+    }
+    text(c,Float.isFinite(reading)?"ECU • LIVE":"ECU • N/A",
+      x+19,y+196,16,Float.isFinite(reading)?0xff70dbbd:0xffa8b6c8,true);
+  }
+  private int iceForFuelTrim(){return Color.WHITE;}
+
   void draw(Canvas c){
     int id=selected,accent=COLORS[id],style=STYLES[id];
+    if(id==0){drawEvoDigitalDashNative(c);return;}
     drawArt(c,id);
     // Source mockups had baked numbers ("4. EVO DIGITAL DASH", "22:36").
     // Draw the real selected skin index and live time on top of those examples.
