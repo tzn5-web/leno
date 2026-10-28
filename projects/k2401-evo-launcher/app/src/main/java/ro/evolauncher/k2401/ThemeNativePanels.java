@@ -391,7 +391,8 @@ final class ThemeNativePanels {
   }
   void draw(Canvas c,int id){
     lastStyle=id;
-    hidePrintedDemo(c,id);
+    // CleanSkinArt already removed every baked-in mockup label and sample PID.
+    // Do not paint old opaque demo-masking patches across clean vehicle art.
     layout=profile(id);
     int color=accent(id);
     clock(c,layout.clock,color);
