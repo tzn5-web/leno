@@ -26,6 +26,11 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install exact 21-theme image restoration dependency
+        run: python -m pip install --disable-pip-version-check Pillow==11.3.0
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -212,6 +217,22 @@ jobs:
             missing=required-entries
             assert not missing, "SKINS MISSING FROM APK: "+", ".join(sorted(missing))
             print("K2401_SIGNED_APK_EMBEDS_ALL_21_SKINS=PASS")
+          PY
+      - name: Verify all twenty-one original and high-resolution assets in signed APK
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import io,zipfile
+          from PIL import Image
+          apk="projects/k2401-evo-launcher/app/build/outputs/apk/release/app-release.apk"
+          with zipfile.ZipFile(apk) as z:
+            for i in range(21):
+              orig=f"assets/skins/skin_{i:02}.webp"
+              high=f"assets/skins/uhd/skin_{i:02}.webp"
+              assert orig in z.namelist() and high in z.namelist(), (orig,high)
+              with Image.open(io.BytesIO(z.read(high))) as img:
+                assert img.size == (2560,1440), (high,img.size)
+          print("K2401_21_ORIGINAL_AND_HIRES_THEMES_IN_SIGNED_APK=PASS")
           PY
       - name: Verify Android 10 APK signature and persistent certificate
         shell: bash
