@@ -101,6 +101,50 @@ final class CleanSkinArt {
     c.drawText(str,x,y,paint);paint.setTextAlign(Paint.Align.LEFT);
   }
   /**
+   * High-resolution vector-only pictograms. Avoid fallback emoji fonts and
+   * blurry baked-in image icons on Android 10 head units.
+   */
+  private void icon(Canvas c,int index,float x,float y,int color){
+    solid(color);paint.setStrokeWidth(3.2f);paint.setStrokeCap(Paint.Cap.ROUND);
+    paint.setStrokeJoin(Paint.Join.ROUND);paint.setStyle(Paint.Style.STROKE);
+    if(index==0){ // Home
+      Path roof=new Path();roof.moveTo(x-13,y-1);roof.lineTo(x,y-13);
+      roof.lineTo(x+13,y-1);roof.moveTo(x-10,y-2);roof.lineTo(x-10,y+12);
+      roof.lineTo(x+10,y+12);roof.lineTo(x+10,y-2);
+      c.drawPath(roof,paint);
+      c.drawLine(x-2,y+12,x-2,y+4,paint);c.drawLine(x+3,y+12,x+3,y+4,paint);
+    }else if(index==1){ // Media note
+      c.drawLine(x+2,y-12,x+2,y+6,paint);
+      c.drawLine(x+2,y-12,x+14,y-15,paint);
+      c.drawLine(x+14,y-15,x+14,y+3,paint);
+      c.drawOval(x-8,y+4,x+3,y+12,paint);
+      c.drawOval(x+4,y+1,x+15,y+9,paint);
+    }else if(index==2){ // Navigation pointer
+      Path pointer=new Path();pointer.moveTo(x,y-15);
+      pointer.lineTo(x+13,y+14);pointer.lineTo(x,y+6);
+      pointer.lineTo(x-12,y+13);pointer.close();c.drawPath(pointer,paint);
+    }else if(index==3){ // ECU round gauge
+      c.drawArc(x-13,y-13,x+13,y+13,145,251,false,paint);
+      c.drawLine(x,y,x+8,y-8,paint);paint.setStyle(Paint.Style.FILL);
+      c.drawCircle(x,y,3.2f,paint);paint.setStyle(Paint.Style.STROKE);
+    }else if(index==4){ // Apps grid
+      paint.setStyle(Paint.Style.FILL);
+      for(int row=0;row<2;row++)for(int col=0;col<2;col++){
+        float left=x-13+col*16,top=y-12+row*16;
+        c.drawRoundRect(left,top,left+11,top+11,2,2,paint);
+      }
+    }else{ // Settings / mechanical gear
+      c.drawCircle(x,y,10,paint);c.drawCircle(x,y,3,paint);
+      for(int i=0;i<8;i++){
+        double angle=i*Math.PI/4;
+        c.drawLine(x+(float)Math.cos(angle)*11,y+(float)Math.sin(angle)*11,
+          x+(float)Math.cos(angle)*16,y+(float)Math.sin(angle)*16,paint);
+      }
+    }
+    paint.setStyle(Paint.Style.FILL);
+  }
+
+  /**
    * The entire bitmap is deliberately NEVER stretched onto the screen:
    * its font-sized artifacts were the root cause of unreadable fake values.
    * Photo details remain at approximately native source dimensions.
@@ -166,14 +210,13 @@ final class CleanSkinArt {
     // Vector-only navigation rail. No resized screenshots or baked-in text.
     round(c,4,219,85,399,0xf208111d,12);
     stroke(c,4,219,85,399,(tone&0x00ffffff)|0x66000000,12,1);
-    final String[] icon={"⌂","♫","➤","◉","▦","⚙"};
-    final String[] name={"HOME","MEDIA","HARTĂ","OBD","APPS","SET"};
+    final String[] name={"ACASĂ","MUZICĂ","HARTĂ","OBD","APPS","SETĂRI"};
     for(int i=0;i<6;i++){
       int y=233+i*61;
       round(c,11,y,70,54,i==4?0xff62263c:0xff152331,8);
       if(i==4)stroke(c,11,y,70,54,tone,8,2);
-      label(c,icon[i],46,y+30,25,i==4?tone:0xffeaf4fd);
-      label(c,name[i],46,y+47,10,0xffd6e6f6);
+      icon(c,i,46,y+20,i==4?tone:0xffeaf4fd);
+      label(c,name[i],46,y+48,11,0xffd6e6f6);
     }
     // The HUD marker is art, not fake "connected" telemetry.
     line(c,105,60,1270,60,(tone&0x00ffffff)|0x88000000,1);
