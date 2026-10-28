@@ -102,7 +102,7 @@ assert 'panel(c,860,74,405,338' in ENGINE,"Digital Dash media artwork/hit mismat
 assert 'int[] bx={13,201,389},bw={184,184,184}' in ENGINE,"Dock art/hit mismatch"
 assert 'compactDigitalFuelTrim(c,860,426,194,205' in ENGINE,"STFT card displaced"
 assert 'compactDigitalFuelTrim(c,1066,426,199,205' in ENGINE,"LTFT card displaced"
-assert 'selected==0&&x>=860&&x<=1265&&y>=74&&y<=436' in ENGINE
+assert 'selected==0&&x>=860&&x<=1265&&y>=74&&y<=412' in ENGINE
 assert 'host.mediaAction(x<1080?0:x<1165?1:2)' in ENGINE
 assert '(x>=627&&x<=843&&y>=220&&y<=436)' in ENGINE, "Coolant gauge lost OBD details touch"
 print("K2401_DIGITAL_DASH_VISUAL_TOUCH_ALIGNMENT=PASS")
