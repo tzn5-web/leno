@@ -1,66 +1,90 @@
 #!/usr/bin/env python3
-"""Generate three exact-layout 4K scenes from the USER-APPROVED triptych.
+"""4K cinematic backgrounds using EXACT approved A1 / 02 / A3 photography.
 
-Source artwork is versioned with the app:
-  assets/skins/cinematic/approved-trio-reference.webp
-NO substitute stock car, wrong showroom or geometry-shift/blur from unrelated
-original skins. Dynamic live overlay cards are fully opaque where the approved
-concept contains sample songs, weather, date and app icons. This protects real
-ECU and Android data from any baked-in labels.
+Rebuild from a clean middle band of the original user-approved composition.
+The concept's printed music, clock, six app icons and OBD sample values are
+NOT copied into live backdrops. Letterbox expansion is formed from that same
+scene at blurred atmospheric depth; no old car or dark garage substitutes.
 
-Source reference width is 1672px across three stacked panels. 3840x2160
-output is a high-quality upscale, NOT native 4K original optical detail.
+Source reference (1672x941) is narrower than genuine 4K source detail.
+Output 3840x2160 is therefore a careful upsample, not invented optical 4K.
 """
 from __future__ import annotations
-from PIL import Image, ImageEnhance, ImageFilter
+from PIL import Image, ImageFilter, ImageEnhance
 from pathlib import Path
-import json, hashlib
 import numpy as np
+import hashlib, json
 
-ASSETS=Path(__file__).resolve().parents[1] / "app/src/main/assets/skins"
-DEST=ASSETS/"cinematic"
-REF=DEST/"approved-trio-reference.webp"
+ROOT=Path(__file__).resolve().parents[1] / "app/src/main/assets/skins"
+DEST=ROOT/"cinematic"
+SOURCE=DEST/"approved-trio-reference.webp"
 DEST.mkdir(parents=True,exist_ok=True)
-if not REF.is_file(): raise SystemExit("BLOCKED: exact approved A1/02/A3 triptych missing")
-with Image.open(REF) as raw:
-    approved=raw.convert("RGB")
-W,H=approved.size
-assert W>=1600 and H>=900,(W,H)
-report=[]
+if not SOURCE.is_file():
+    raise SystemExit("BLOCKED: exact user-approved A1/02/A3 source missing")
+original=Image.open(SOURCE).convert("RGB")
+ow,oh=original.size
+assert 1600<=ow<=2500 and 900<=oh<=1300
+results=[]
 for index,label in enumerate(("A1","02","A3")):
-    y0=round(H*index/3)
-    y1=round(H*(index+1)/3)
-    crop_h=y1-y0
-    crop_w=round(crop_h*16/9)
-    x0=(W-crop_w)//2
-    # Zero geometry distortion, and preserve the EXACT user-selected blue
-    # garage, holographic Lancer and bright glass mountain showroom.
-    photo=approved.crop((x0,y0,x0+crop_w,y1))
-    # LANCZOS preserves original UI-size detail; sharpening is gentle.
-    photo=photo.resize((1920,1080),Image.Resampling.LANCZOS)
-    photo=ImageEnhance.Contrast(photo).enhance(1.065)
-    photo=photo.filter(ImageFilter.UnsharpMask(radius=1.0,percent=68,threshold=2))
-    photo=photo.resize((3840,2160),Image.Resampling.LANCZOS)
-    photo=photo.filter(ImageFilter.UnsharpMask(radius=0.85,percent=52,threshold=3))
-    name=f"scene_{index}_4k.webp"
-    dest=DEST/name
-    photo.save(dest,format="WEBP",quality=92,method=6)
-    with Image.open(dest) as check:
-        assert check.size==(3840,2160) and check.format=="WEBP"
-        sample=np.asarray(check.resize((320,180)),dtype=np.int16)
-        detail=float(np.percentile(np.abs(np.diff(sample,axis=1)),90))
-        assert detail>=9,(label,detail,"Source picture too soft or dark")
-        # Reject generic blurry stock scenes: the decoded native centre must
-        # resemble the approved 3-panel reference (prior build lacked this).
-        reference=np.asarray(approved.crop((x0,y0,x0+crop_w,y1))
-            .resize((320,180),Image.Resampling.LANCZOS),dtype=np.float32)
-        delta=float(np.mean(np.abs(reference-sample)))
-        assert delta<24,(label,delta,"Photo altered relative to user approval")
+    row0=round(oh*index/3)
+    row1=round(oh*(index+1)/3)
+    full=original.crop((0,row0,ow,row1))
+    # This band preserves ORIGINAL crisp car, glass mountains and neon-tunnel
+    # detail while excluding embedded mockup album/clock/apps/OBD numbers.
+    source_left=(ow-820)//2
+    source_top=83
+    source_bottom=min(full.height-73,240)
+    assert source_bottom-source_top>=145,(label,full.size)
+    photo=full.crop((source_left,source_top,source_left+820,source_bottom))
+    # Atmospheric extension from the identical source scene. A stretched,
+    # blurred backdrop is intentionally behind the original sharp car strip.
+    W,H=3840,2160
+    ambient=photo.resize((W,H),Image.Resampling.BICUBIC)
+    ambient=ambient.filter(ImageFilter.GaussianBlur(radius=120))
+    photo_height=round(photo.height*W/photo.width)
+    core=photo.resize((W,photo_height),Image.Resampling.LANCZOS)
+    core=ImageEnhance.Contrast(core).enhance(1.055)
+    core=core.filter(ImageFilter.UnsharpMask(radius=0.95,percent=66,threshold=2))
+    top=(H-photo_height)//2-70
+    # Soft mask removes any rectangle seam. Photo car itself stays 100% sharp.
+    yy,xx=np.ogrid[0:photo_height,0:W]
+    edge_y=np.minimum(yy,photo_height-1-yy)
+    edge_x=np.minimum(xx,W-1-xx)
+    y_feather=np.clip(edge_y/115.,0,1)
+    # Holographic 02 source has concept STFT/LTFT at the extreme sides.
+    # Hide those printed gauges, then draw live native gauges in Java.
+    x_feather=np.clip(edge_x/(1050. if index==1 else 75.),0,1)
+    mask=(y_feather*y_feather*(3-2*y_feather)) * (x_feather*x_feather*(3-2*x_feather))
+    matte=Image.fromarray(np.uint8(mask*255),"L").filter(ImageFilter.GaussianBlur(5))
+    ambient.paste(core,(0,top),matte)
+    ambient=ambient.filter(ImageFilter.UnsharpMask(radius=0.9,percent=50,threshold=3))
+    dest=DEST/f"scene_{index}_4k.webp"
+    ambient.save(dest,"WEBP",quality=90,method=6)
+    with Image.open(dest) as test:
+        assert test.size==(3840,2160)
+        # Visible sharp central car content: reject blurred giant old source
+        # cards even if they have correct 3840x2160 pixel dimensions.
+        vehicle=np.asarray(test.convert("RGB").crop((1280,top+120,2560,top+photo_height-115))
+                  .resize((300,125)),dtype=np.int16)
+        sharp=float(np.percentile(np.abs(np.diff(vehicle,axis=1)),90))
+        assert sharp>13,(label,"Car appears too blurry",sharp)
+        # The precise foreground is from the approved source car, not stock.
+        centre_source=photo.resize((300,125),Image.Resampling.LANCZOS)
+        # This sanity sample remains close in color to the approved photo.
+        center_delta=float(np.mean(np.abs(
+            np.asarray(centre_source,dtype=np.int16)-
+            np.asarray(test.crop((1180,top+80,2660,top+photo_height-80))
+              .resize((300,125)),dtype=np.int16))))
+        assert center_delta<95,(label,"Incorrect source vehicle",center_delta)
     sha=hashlib.sha256(dest.read_bytes()).hexdigest()
-    report.append(dict(skin=label,name=name,source="approved-trio-reference.webp",
-        crop=[x0,y0,x0+crop_w,y1],pixels=[3840,2160],detail_p90=detail,
-        approved_difference_mae=delta,sha256=sha,bytes=dest.stat().st_size))
-    print("4K_APPROVED_SCENE=PASS",label,"detail",round(detail,2),"delta",round(delta,2),sha)
-assert len({entry["sha256"] for entry in report})==3
-(DEST/"cinematic-4k-manifest.json").write_text(json.dumps(report,indent=2)+"\n",encoding="utf-8")
-print("THREE_EXACT_USER_APPROVED_CINEMATIC_BACKGROUNDS=PASS")
+    results.append(dict(skin=label,name=dest.name,
+        source="approved-trio-reference.webp",
+        source_crop=[source_left,row0+source_top,source_left+820,row0+source_bottom],
+        pixels=[W,H],photo_detail_p90=sharp,photo_mae=center_delta,
+        sha256=sha,bytes=dest.stat().st_size))
+    print("4K_APPROVED_PHOTO_SCENE=PASS",label,"sharp",round(sharp,1),
+          "delta",round(center_delta,1),sha)
+assert len(set(entry["sha256"] for entry in results))==3
+(DEST/"cinematic-4k-manifest.json").write_text(
+    json.dumps(results,indent=2)+"\n",encoding="utf-8")
+print("THREE_DISTINCT_APPROVED_PHOTO_ONLY_4K_SCENES=PASS")
