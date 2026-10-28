@@ -36,6 +36,26 @@ for index,label in enumerate(("A1","02","A3")):
     source_bottom=min(full.height-73,240)
     assert source_bottom-source_top>=145,(label,full.size)
     photo=full.crop((source_left,source_top,source_left+820,source_bottom))
+    if index==1:
+        # In the original 02 mood board, the outer 170px of the photo band
+        # contain static STFT/LTFT numbers. Replace ONLY those distant side
+        # patches with the adjacent tunnel itself, retaining the central
+        # approved holographic blue Lancer pixel-for-pixel.
+        left=photo.crop((185,0,230,photo.height)).resize(
+            (185,photo.height),Image.Resampling.BICUBIC)
+        right=photo.crop((590,0,635,photo.height)).resize(
+            (185,photo.height),Image.Resampling.BICUBIC)
+        photo.paste(left,(0,0))
+        photo.paste(right,(635,0))
+        # Tiny feather is enough to remove hard vertical seams at the joins.
+        arr=np.asarray(photo).copy()
+        for xx in range(12):
+            a=(xx+1)/13.
+            arr[:,173+xx,:]=np.uint8(
+                arr[:,173+xx,:]*(1-a)+arr[:,185+xx,:]*a)
+            arr[:,635+xx,:]=np.uint8(
+                arr[:,635+xx,:]*a+arr[:,623+xx,:]*(1-a))
+        photo=Image.fromarray(arr,"RGB")
     # Atmospheric extension from the identical source scene. A stretched,
     # blurred backdrop is intentionally behind the original sharp car strip.
     W,H=3840,2160
