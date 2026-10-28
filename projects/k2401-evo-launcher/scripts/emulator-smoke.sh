@@ -274,4 +274,24 @@ if grep -E 'Process: ro.evolauncher.k2401|ANR in ro.evolauncher.k2401' "$OUT/log
   echo "LAUNCHER_CRASH_OR_ANR_DETECTED" >&2
   exit 3
 fi
+# Check all twenty-one original skin canvases in a debug Android 10 emulator.
+for n in $(seq 0 20); do
+  adb shell am force-stop "$APP"
+  adb shell am start -W -n "$APP/.MainActivity" --ei k2401_skin_preview_ci "$n" >/dev/null
+  sleep 0.6
+  adb shell pidof "$APP" >/dev/null
+  adb shell screencap -p "/sdcard/skin_$n.png"
+  adb pull "/sdcard/skin_$n.png" "$OUT/skin_$n.png" >/dev/null
+done
+python3 - <<'PY'
+from pathlib import Path
+from hashlib import sha256
+import struct
+folder=Path("projects/k2401-evo-launcher/screenshots")
+images=[folder/f"skin_{i}.png" for i in range(21)]
+assert all(x.is_file() for x in images)
+assert all(struct.unpack(">II",x.read_bytes()[16:24])==(1280,720) for x in images)
+assert len({sha256(x.read_bytes()).digest() for x in images})==21
+print("K2401_ALL_21_NATIVE_SKIN_SCREENSHOTS=PASS")
+PY
 echo "SIX_SCREEN_EMULATOR_SMOKE=PASS; RESOLUTION=1280x720; RESTART=PASS"
