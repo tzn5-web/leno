@@ -117,12 +117,26 @@ jobs:
           folder=pathlib.Path("projects/k2401-evo-launcher/app/src/main/assets/skins")
           files=sorted(folder.glob("skin_??.webp"))
           assert len(files)==21, f"Expected 21 originals; found {len(files)}"
+          import hashlib
+          digests=[]
           for image in files:
               body=image.read_bytes()
               assert body[:4]==b'RIFF' and body[8:12]==b'WEBP',image
               assert len(body)>=128,image
-          print('K2401_21_ORIGINAL_SKIN_ASSETS=PASS')
+              # The 21 project originals are 1280x720 VP8 WebP.
+              assert body[12:16]==b'VP8 ',f"Unexpected image codec: {image}"
+              width=int.from_bytes(body[26:28],'little') & 0x3fff
+              height=int.from_bytes(body[28:30],'little') & 0x3fff
+              assert (width,height)==(1280,720),f"Wrong skin resolution: {image}: {width}x{height}"
+              digests.append(hashlib.sha256(body).hexdigest())
+          assert len(set(digests))==21,"Skin images are unexpectedly duplicated"
+          print('K2401_21_ORIGINAL_SKIN_ASSETS=PASS 1280x720 unique=21')
           PY
+          grep -Fq 'static final int[] STYLES' "$BASE/SkinEngine.java"
+          grep -Fq 'ObdReader.Reading rd=' "$BASE/SkinEngine.java"
+          grep -Fq 'Float.isFinite(reading)' "$BASE/SkinEngine.java"
+          grep -Fq 'host.showInstalledApps()' "$BASE/SkinEngine.java"
+          grep -Fq 'renderMusic(c,accent,style)' "$BASE/SkinEngine.java"
           grep -Fq 'showSkinPicker()' "$BASE/MainActivity.java"
           grep -Fq 'selected_skin_v2' "$BASE/SkinEngine.java"
           grep -Fq 'getAssets().open(' "$BASE/SkinEngine.java"
