@@ -226,6 +226,10 @@ upload_visual_evidence(){
     echo "K2401_PRIVATE_AZURE_EMULATOR_DIAGNOSTICS_SAVED=$status"
   fi
 }
+# Independent Azure emulator run for the current immutable Git commit.
+# Reproduce the entire Android 10 test on the existing Linux VM, not the
+# developer's device, and keep logs if navigation or Settings assertions fail.
+echo "K2401_AZURE_TESTING_GIT_SHA=$EXPECTED_SHA"
 timeout 900 bash "$SCRIPT/scripts/emulator-smoke.sh" \
   > "$REPORT/azure-android-emulator-smoke.log" 2>&1 || {
     tail -n 130 "$REPORT/azure-android-emulator-smoke.log"
