@@ -76,8 +76,10 @@ final class ThemeNativePanels {
     switch(id){
       case 1: return new Layout(rect(105,58,213,203),rect(780,59,480,359),
         rect(105,269,210,147),null,four(104,447,1154,242,12),0); // Classic
-      case 2: return new Layout(rect(285,528,269,157),rect(945,55,320,308),
-        null,rect(643,523,618,177),leftHero(107,89,641,419,761,85,169,387),0); // Future
+      case 2: return new Layout(rect(285,528,269,157),rect(785,55,478,391),
+        null,rect(643,523,618,177),new int[][]{
+          {112,85,485,425},{609,77,157,130},{609,214,157,130},
+          {609,352,157,130}},0); // Future: preserve original car in RPM ring
         // Clock covers illustrated 22:36; launcher tiles now represent real apps.
       case 3: return new Layout(rect(628,58,160,138),rect(795,52,463,359),
         rect(964,393,296,298),null,four(103,449,890,240,11),0); // Gauge Pro
@@ -87,8 +89,10 @@ final class ThemeNativePanels {
         null,rect(105,64,796,614),rightGrid(923,396,331,282,9),1); // Apps
       case 6: return new Layout(rect(104,65,238,183),rect(787,67,471,341),
         rect(103,257,227,140),null,four(105,455,1155,240,12),0); // Evolution Night
-      case 7: return new Layout(rect(101,18,273,84),rect(925,65,336,308),
-        null,null,leftHero(105,100,665,455,780,386,474,308),0); // GT
+      case 7: return new Layout(null,rect(838,65,420,323),
+        null,null,new int[][]{
+          {106,96,516,460},{636,425,202,248},{845,425,202,248},
+          {1053,425,202,248}},0); // GT: three real bottom gauges, exposed rear car
       case 8: return new Layout(rect(105,63,233,168),rect(844,57,411,339),
         null,null,four(443,448,813,221,10),0); // Red Front
       case 9: return new Layout(rect(108,55,252,192),rect(914,57,341,311),
@@ -101,8 +105,10 @@ final class ThemeNativePanels {
         // Hide the baked 2520/-3.2/+2.8/89 examples rather than showing both.
       case 12:return new Layout(rect(102,52,305,203),rect(773,52,486,347),
         rect(102,262,268,142),null,rightGrid(778,413,478,282,12),0); // Hero
-      case 13:return new Layout(rect(374,54,380,141),rect(832,53,423,310),
-        null,null,leftHero(112,166,633,389,838,386,411,296),0); // Cockpit
+      case 13:return new Layout(null,rect(730,56,527,268),
+        null,null,new int[][]{
+          {112,165,580,389},{730,333,256,151},{997,333,258,151},
+          {730,493,525,176}},0); // Cockpit: original car + three native readings
       case 14:return new Layout(rect(103,58,429,155),rect(925,52,331,297),
         null,rect(106,245,690,436),rightGrid(835,363,422,310,13),1); // Grid
       case 15:return new Layout(rect(505,58,295,135),null,
@@ -276,6 +282,20 @@ final class ThemeNativePanels {
     fill(c,area,0xff08111e,color,Math.min(15,Math.max(6,h/8)));
     String num=!valid?"N/A":idx==0||idx==3?
       String.format(Locale.US,"%.0f",v):String.format(Locale.US,"%+.1f",v);
+    // Three approved concepts have a very large photorealistic tachometer
+    // with the car INSIDE its ring. Painting a solid 500-650px native card
+    // destroyed the scene; update only the sample RPM digits in place.
+    // The theme's original car and dial composition remain visible.
+    if(idx==0&&(theme==2||theme==7||theme==13)){
+      final Rect face=theme==2?rect(309,204,154,125):
+        theme==7?rect(269,276,151,126):rect(321,201,182,125);
+      fill(c,face,0xf7091422,0xff36536a,15);
+      middle(c,num,face.centerX(),face.top+67,
+        theme==7?49:56,WHITE);
+      middle(c,valid?"RPM • ECU LIVE":"RPM • N/A",face.centerX(),
+        face.top+105,15,valid?0xff63eac3:MUTED);
+      return;
+    }
     if(h<135||w<150||preferred==4||preferred==5){
       text(c,labels[idx],x+11,y+Math.min(26,h*.34f),Math.min(17,Math.max(12,h*.17f)),color,true);
       text(c,num,x+13,y+Math.min(69,h*.67f),Math.min(37,Math.max(20,h*.34f)),WHITE,true);
@@ -413,6 +433,16 @@ final class ThemeNativePanels {
     layout=profile(id);
     hidePrintedDemo(c,id);
     int color=accent(id);
+    if(id==7){
+      // The original GT mockup prints a fictional "78 km/h" here.
+      // No speed PID is collected by this launcher: show connection state.
+      Rect fictionalSpeed=rect(430,370,196,181);
+      maskWallpaperDemo(c,fictionalSpeed,0xff335169,15);
+      ObdReader.Reading r=host.obd==null?ObdReader.Reading.empty():host.obd.current();
+      middle(c,"ECU / ELM327",fictionalSpeed.centerX(),418,16,MUTED);
+      middle(c,r.live?"CONECTAT":"N/A",fictionalSpeed.centerX(),472,
+        28,r.live?0xff62e8ba:WHITE);
+    }
     clock(c,layout.clock,color);
     if(layout.apps!=null)apps(c,layout.apps);
     if(layout.status!=null)status(c,layout.status,color);
