@@ -115,7 +115,7 @@ final class ThemeNativePanels {
       case 18:return new Layout(rect(98,49,344,118),null,
         rect(735,117,525,558),null,rightGrid(750,207,488,430,11),2); // Status
       case 19:return new Layout(rect(98,49,305,81),null,
-        null,rect(109,120,1148,563),new int[][]{
+        null,rect(109,120,1148,440),new int[][]{
           {700,590,125,78},{833,590,125,78},{965,590,125,78},{1097,590,125,78}
         },1); // Launcher
       case 20:return new Layout(rect(118,45,370,85),null,
