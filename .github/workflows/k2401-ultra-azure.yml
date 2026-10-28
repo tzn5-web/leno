@@ -110,6 +110,11 @@ jobs:
           grep -Fq '"0146"' "$BASE/ObdReader.java"
           grep -Fq '0x46' "$BASE/DirectElm327.java"
           grep -Fq 'obd.ambientC' "$BASE/UltraCockpitTheme.java"
+          # Exact user-approved A1, 02 and A3 image (not 21-skin stock).
+          test -s projects/k2401-evo-launcher/app/src/main/assets/skins/cinematic/approved-trio-reference.webp
+          grep -Fq 'approved-trio-reference.webp' projects/k2401-evo-launcher/scripts/generate-cinematic-4k.py
+          grep -Fq 'THREE_DISTINCT_APPROVED_PHOTO_ONLY_4K_SCENES=PASS' projects/k2401-evo-launcher/scripts/generate-cinematic-4k.py
+          echo 'AZURE_EXACT_APPROVED_A1_02_A3_SOURCE_GATE=PASS'
           grep -Fq 'rect(c,448,170,455,94,15,0xff071526)' "$BASE/UltraCockpitTheme.java"
           grep -Fq 'drawTopStatus(c); // STATUS CLOCK MUST ALWAYS BE THE FINAL PAINT PASS' "$BASE/UltraCockpitTheme.java"
           grep -Fq 'versionCode 115' projects/k2401-evo-launcher/app/build.gradle
