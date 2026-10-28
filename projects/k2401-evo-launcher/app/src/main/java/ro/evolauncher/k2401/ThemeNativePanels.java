@@ -59,6 +59,11 @@ final class ThemeNativePanels {
     return new int[][]{{x,y,ww,hh},{x+ww+gap,y,ww,hh},
       {x,y+hh+gap,ww,hh},{x+ww+gap,y+hh+gap,ww,hh}};
   }
+  private static int[][] verticalFour(int x,int y,int w,int h,int gap){
+    int hh=(h-3*gap)/4;
+    return new int[][]{{x,y,w,hh},{x,y+hh+gap,w,hh},
+      {x,y+2*(hh+gap),w,hh},{x,y+3*(hh+gap),w,hh}};
+  }
   private static int[][] leftHero(int x,int y,int w,int h,int rightX,int rightY,int rightW,int rightH){
     int gap=10,hh=(rightH-2*gap)/3;
     return new int[][]{{x,y,w,h},{rightX,rightY,rightW,hh},
@@ -71,10 +76,11 @@ final class ThemeNativePanels {
     switch(id){
       case 1: return new Layout(rect(105,58,213,203),rect(780,59,480,359),
         rect(105,269,210,147),null,four(104,447,1154,242,12),0); // Classic
-      case 2: return new Layout(rect(895,528,320,102),rect(945,55,320,308),
-        null,null,leftHero(107,89,641,419,761,85,169,387),0); // Future
+      case 2: return new Layout(rect(285,528,269,157),rect(945,55,320,308),
+        null,rect(643,523,618,177),leftHero(107,89,641,419,761,85,169,387),0); // Future
+        // Clock covers illustrated 22:36; launcher tiles now represent real apps.
       case 3: return new Layout(rect(628,58,160,138),rect(795,52,463,359),
-        rect(1014,454,246,236),null,four(103,449,890,240,11),0); // Gauge Pro
+        rect(964,393,296,298),null,four(103,449,890,240,11),0); // Gauge Pro
       case 4: return new Layout(rect(105,61,243,184),rect(920,55,340,331),
         rect(918,495,342,181),null,four(101,496,799,179,10),3); // Multi Info
       case 5: return new Layout(null,rect(920,55,338,314),
@@ -88,9 +94,11 @@ final class ThemeNativePanels {
       case 9: return new Layout(rect(108,55,252,192),rect(914,57,341,311),
         rect(108,251,248,151),null,four(105,458,1151,215,12),0); // Mountain
       case 10:return new Layout(rect(101,50,259,174),rect(938,51,319,337),
-        rect(103,255,259,213),null,four(407,79,255,388,9),2); // Speed
+        rect(103,255,259,213),null,verticalFour(674,32,235,496,7),2); // Speed
+        // Live RPM/STFT/LTFT/ECT cover all four illustrated fictional values.
       case 11:return new Layout(rect(100,59,284,175),rect(934,55,324,335),
-        null,null,four(104,505,1153,146,12),0); // Sunset
+        null,null,four(104,385,1153,271,12),0); // Sunset
+        // Hide the baked 2520/-3.2/+2.8/89 examples rather than showing both.
       case 12:return new Layout(rect(102,52,305,203),rect(773,52,486,347),
         rect(102,262,268,142),null,rightGrid(778,413,478,282,12),0); // Hero
       case 13:return new Layout(rect(374,54,380,141),rect(832,53,423,310),
