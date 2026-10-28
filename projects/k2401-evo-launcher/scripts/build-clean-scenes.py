@@ -249,6 +249,14 @@ def main():
                 if i!=0:
                     extend_photo_atmosphere(result,src,ROI[i],PLACEMENT[i],i)
                 scene(result,src,ROI[i],PLACEMENT[i],i)
+        if i==1:
+            # New approved theme #02: replace ONLY photographic scene; gauges,
+            # time/date, media and touch widgets are native Android canvases.
+            # This picture has no baked telemetry and no ECU/ABS/Doors panel.
+            import runpy
+            module=runpy.run_path(str(Path(__file__).with_name("generate-theme2-photo.py")))
+            result=module["render"]()
+            print("K2401_THEME02_NO_PRINTED_ECU_ABS_DOORS=PASS")
         target=OUT/("skin_%02d.webp"%i)
         # Preserve reconstructed edges and gradients; 92 caused visible softening
         # of Lancer taillights and gauge-adjacent road details on Android 10.
