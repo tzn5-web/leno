@@ -50,5 +50,7 @@ dependencies {
    commandLine 'python3', "${rootProject.projectDir}/scripts/build-uhd-skins.py"
    inputs.files fileTree('src/main/assets/skins') { include 'skin_??.webp' }
    outputs.dir file('src/main/assets/skins/uhd')
+   outputs.dir file('src/main/assets/skins/clean')
+   inputs.file file("${rootProject.projectDir}/scripts/build-clean-scenes.py")
  }
  tasks.named('preBuild') { dependsOn tasks.named('generateUhdSkins') }
