@@ -209,6 +209,12 @@ def main():
         print("K2401_CLEAN_SCENE=%02d BYTES=%d"%(i,target.stat().st_size))
     assert len(set(digests))==21
     print("K2401_ALL_21_CLEAN_PHOTO_BACKGROUNDS=PASS")
+    # Strict source/detail QA in CI and Azure. Do not make builds depend on
+    # OpenCV for non-CI/legacy local developers who explicitly skip SR.
+    if os.environ.get("K2401_REQUIRE_SR")=="YES":
+        import runpy
+        runpy.run_path(str(Path(__file__).with_name("verify-image-quality.py")),
+                       run_name="__main__")
 
 if __name__=="__main__":
     main()
