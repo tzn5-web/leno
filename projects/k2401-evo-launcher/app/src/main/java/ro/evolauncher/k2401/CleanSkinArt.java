@@ -163,6 +163,22 @@ final class CleanSkinArt {
       round(c,97,558,1183,162,0xff08121e,0);
     }
 
+    // Per-skin clean plates established from the 21 Android 10 emulator
+    // screenshots. These only cover obsolete, noninteractive content from
+    // photographed mockups; native touch widgets are painted afterwards.
+    switch(id){
+      case 3: round(c,98,393,902,63,0xff09131e,0); break;   // gauge sample heads
+      case 4: round(c,914,386,366,111,0xff08121e,0); break; // demo fuel graph
+      case 6: round(c,99,395,241,62,0xff08121e,0); break;  // duplicate weather
+      case 8: round(c,97,516,347,110,0xff08121e,0); break; // fake app dock
+      case 10:round(c,97,540,574,86,0xff08121e,0); break; // fake bottom shortcuts
+      case 14:round(c,795,55,131,309,0xff08121e,0); break;// demo player strip
+      case 16:round(c,98,217,250,207,0xff08121e,0); break;// fake 0 km/h
+      case 17:round(c,382,55,381,190,0xff08121e,0); break;// static 12 C weather
+      case 18:round(c,430,55,470,68,0xff08121e,0); break; // nonfunctional tabs
+      case 20:round(c,96,55,1184,82,0xff08121e,0); break; // nonfunctional tabs
+    }
+
     // The artwork contains screenshot-only status times, navigation,
     // demo app shortcuts and footer labels. Erase them BEFORE native
     // SkinEngine/ThemeNativePanels repaint the real interactive controls.
