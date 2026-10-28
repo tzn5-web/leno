@@ -1,0 +1,53 @@
+name: K2401 Azure private 4K assets - quality review export (no VM start)
+on:
+  push:
+    branches: [feature/k2401-evo-launcher]
+    paths: ['.github/workflows/k2401-azure-artifacts-export.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  read-only-export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      RESOURCE_GROUP: rg-chatgpt-azure
+      STORAGE_ACCOUNT: tzn5androidartifacts26
+      STORAGE_CONTAINER: k2401-evo-private
+      LOCKED_BUILD: frozen-01ca399820ef
+    steps:
+      - name: Login Azure using existing GitHub OIDC (VM remains off)
+        uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Read frozen SHA-verified images, never modify Azure account
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p azure-locked-audit
+          KEY="$(az storage account keys list -g "$RESOURCE_GROUP" -n "$STORAGE_ACCOUNT" --query '[0].value' -o tsv)"
+          echo "::add-mask::$KEY"
+          for NAME in k2401-21-uhd-assets.tar.gz k2401-locked-originals.tar.gz approved-originals-sha256.txt uhd-asset-sha256.txt image-asset-qa.txt layout-agent.txt; do
+            az storage blob download -c "$STORAGE_CONTAINER" \
+              -n "$LOCKED_BUILD/$NAME" --account-name "$STORAGE_ACCOUNT" --account-key "$KEY" \
+              -f "azure-locked-audit/$NAME" --overwrite true -o none
+            test -s "azure-locked-audit/$NAME"
+          done
+          tar tzf azure-locked-audit/k2401-21-uhd-assets.tar.gz | grep -E 'generated/(clean|uhd|draft_4k)/skin_[0-9]{2}.webp' | sort > azure-locked-audit/archive-list.txt
+          test "$(grep -c '/skin_' azure-locked-audit/archive-list.txt)" -eq 63
+          echo 'K2401_PRIVATE_AZURE_63_SCENE_IMAGES_EXPORTED=PASS'
+          az vm get-instance-view -g "$RESOURCE_GROUP" -n android-dev-linux -o json \
+            > azure-locked-audit/vm-state.json
+      - name: Upload 21 UHD + 21 4K images and immutable originals for independent visual audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: k2401-azure-21-clean-21-uhd-21-4k-originals
+          path: azure-locked-audit/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Logout
+        if: always()
+        run: az logout || true
