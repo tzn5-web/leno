@@ -138,55 +138,36 @@ final class CleanSkinArt {
       0xff050a11,Shader.TileMode.CLAMP));
     c.drawRect(0,0,W,H,paint);paint.setShader(null);
 
-    // Original, native-resolution geometric/carbon background.
-    int soft=(tone&0x00ffffff)|0x12000000;
-    solid(soft);paint.setStrokeWidth(1f);
-    for(int x=-720;x<1580;x+=25)c.drawLine(x,0,x+720,720,paint);
-    for(int y=90;y<690;y+=76){
-      line(c,95,y,1270,y,0x18315a76,1);
-    }
-    // A background glow/road-lines pattern that remains sharp at 1280x720.
-    solid(0x1c173f61);
-    c.drawCircle(id%3==1?660:420,490,325,paint);
-    solid((tone&0x00ffffff)|0x16000000);
-    c.drawCircle(1100,80,300,paint);
-    for(int k=0;k<7;k++){
-      float y=180+k*54;
-      line(c,110,y,755-(k%3)*48,y-20,0x23415d83,2);
-    }
-
-    // Vehicle scene window: source ROI excludes old mockup text,
-    // MediaSession album art, falsely drawn app icons and other sensor values.
-    final int[] src=SRC[id],dest=DEST[id];
-    if(source!=null&&!source.isRecycled()&&src[2]>src[0]&&dest[2]>dest[0]){
-      int left=Math.min(source.getWidth()-1,Math.max(0,src[0]));
-      int top=Math.min(source.getHeight()-1,Math.max(0,src[1]));
-      int right=Math.max(left+1,Math.min(source.getWidth(),src[2]));
-      int bottom=Math.max(top+1,Math.min(source.getHeight(),src[3]));
-      int dx=dest[0],dy=dest[1],dw=dest[2]-dx,dh=dest[3]-dy;
-      // No custom border, mock card, or artificial bitmap enlargement.
-      // Original photo geometry and scene aspect ratio stay untouched.
+    // The 21 user-approved composition sheets remain the exact base designs.
+    // Prefer the optional reconstructed 2560x1440 asset. Both images are
+    // mapped to the same 1280x720 design coordinates; do not stretch a crop.
+    if(source!=null&&!source.isRecycled()){
       solid(Color.WHITE);
       paint.setFilterBitmap(true);
-      c.drawBitmap(source,new Rect(left,top,right,bottom),
-        new Rect(dx,dy,dx+dw,dy+dh),paint);
+      c.drawBitmap(source,new Rect(0,0,source.getWidth(),source.getHeight()),
+        new Rect(0,0,W,H),paint);
     }else{
-      // Apps Center, Tech Grid and App Launcher use ONLY the real installed-app
-      // tiles painted by ThemeNativePanels. No duplicate decorative placeholders.
+      // Asset failure: neutral readable background, never a fake ECU snapshot.
+      solid(0xff07121e);
+      c.drawRect(0,0,W,H,paint);
     }
 
-    // Vector-only navigation rail. No resized screenshots or baked-in text.
-    round(c,4,219,85,399,0xf208111d,12);
-    stroke(c,4,219,85,399,(tone&0x00ffffff)|0x66000000,12,1);
-    // The left rail already has six functional hit targets in SkinEngine.touch.
-    // Show one native vector pictogram per action, with no redundant printed glyph
-    // or miniature caption competing with the original approved navigation rail.
-    for(int i=0;i<6;i++){
-      int y=233+i*61;
-      boolean active=i==0; // Home is the only page drawing a skin.
-      round(c,11,y,70,54,active?0xff422335:0xff152331,8);
-      if(active)stroke(c,11,y,70,54,tone,8,2);
-      icon(c,i,46,y+27,active?tone:0xffeaf4fd);
+    // The artwork contains screenshot-only status times, navigation,
+    // demo app shortcuts and footer labels. Erase them BEFORE native
+    // SkinEngine/ThemeNativePanels repaint the real interactive controls.
+    round(c,0,0,W,55,0xff08121e,0);
+    round(c,0,54,96,666,0xf508111d,0);
+    round(c,0,625,W,95,0xf408111d,0);
+    line(c,96,55,96,625,(tone&0x00ffffff)|0x52000000,1);
+
+    // Exactly one native pictogram for each of six existing touch actions.
+    // No duplicate wallpaper glyphs, unused labels or permanently lit Apps.
+    final int[] railY={233,294,355,416,477,538};
+    for(int i=0;i<railY.length;i++){
+      int y=railY[i];
+      round(c,11,y,70,54,i==0?0xff422335:0xff152331,8);
+      if(i==0)stroke(c,11,y,70,54,tone,8,2);
+      icon(c,i,46,y+27,i==0?tone:0xffeaf4fd);
     }
     // The HUD marker is art, not fake "connected" telemetry.
     line(c,105,60,1270,60,(tone&0x00ffffff)|0x88000000,1);
