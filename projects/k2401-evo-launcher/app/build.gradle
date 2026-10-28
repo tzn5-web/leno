@@ -10,8 +10,8 @@ android {
    applicationId parallelInstall ? 'ro.evolauncher.k2401.ultra' : 'ro.evolauncher.k2401'
    minSdk 26
    targetSdk 28
-   versionCode 110
-   versionName parallelInstall ? '1.0.110-ultra-parallel' : '1.0.110-ultra-install-fix'
+   versionCode 111
+   versionName parallelInstall ? '1.0.111-ultra-parallel' : '1.0.111-ultra-clean-clock'
    manifestPlaceholders = [MAPS_API_KEY: googleMapsApiKey, APP_LABEL: (parallelInstall ? 'EVO Ultra (Test)' : 'EVO Launcher')]
    buildConfigField 'boolean', 'GOOGLE_MAPS_CONFIGURED', googleMapsApiKey.isEmpty() ? 'false' : 'true'
  }
