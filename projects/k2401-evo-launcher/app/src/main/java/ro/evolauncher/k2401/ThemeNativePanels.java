@@ -379,16 +379,14 @@ final class ThemeNativePanels {
       case 17:demo=rect(356,63,162,150);break; // 12°C mock card
     }
     if(demo!=null){
-      fill(c,demo,0xff0a1421,0xff3d5067,11);
-      text(c,"MITSUBISHI",demo.left+12,demo.top+28,16,WHITE,true);
-      text(c,"EVO LAUNCHER",demo.left+12,demo.top+56,13,MUTED,false);
+      // Neutral mask, not a new mock widget or duplicated decorative caption.
+      fill(c,demo,0xff0a1421,0xff23384a,11);
     }
     if(id==10){
       // Concept illustration advertises 14.1 V; this ELM poller does not
       // read the voltage PID, therefore displaying 14.1 V would be false.
       fill(c,rect(38,471,191,118),0xff0a1421,0xff415469,10);
-      text(c,"OBD-II",53,518,19,WHITE,true);
-      text(c,"Numai date ECU",53,548,14,MUTED,false);
+      // Unavailable example voltage is blanked; do not substitute non-live text.
     }
     if(id==15){
       // The mockup bottom strip has LTFT, 87°C and 14.1 V examples
