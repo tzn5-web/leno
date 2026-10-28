@@ -65,10 +65,13 @@ jobs:
           with zipfile.ZipFile(apk) as z:
             for i in range(21):
               hi=f"assets/skins/uhd/skin_{i:02}.webp"
-              assert hi in z.namelist(), hi
+              clean=f"assets/skins/clean/skin_{i:02}.webp"
+              assert hi in z.namelist() and clean in z.namelist(), (hi,clean)
               with Image.open(io.BytesIO(z.read(hi))) as im:
                 assert im.size==(2560,1440),hi
-          print("K2401_21_NATIVE_THEME_ASSETS=PASS")
+              with Image.open(io.BytesIO(z.read(clean))) as im:
+                assert im.size==(2560,1440),clean
+          print("K2401_21_NATIVE_CLEAN_THEME_ASSETS=PASS")
           PY
       - uses: actions/upload-artifact@v4
         with:
