@@ -76,6 +76,7 @@ final class SkinEngine {
   private final ThemeNativePanels nativePanels;
   private final SharedPreferences prefs;
   private final Paint p=new Paint(3);
+  private final CleanSkinArt cleanArt=new CleanSkinArt();
   private Bitmap atlas;
   private Bitmap fullArt;
   private int fullArtId=-1;
@@ -187,39 +188,10 @@ final class SkinEngine {
     return s.length()>chars?s.substring(0,chars-1)+"…":s;
   }
   private void drawArt(Canvas c,int id){
-    colour(0xff090f18);c.drawColor(0xff090f18);
-    Bitmap original=fullArt(id);
-    if(original!=null&&!original.isRecycled()){
-      p.setFilterBitmap(true);
-      c.drawBitmap(original,null,new Rect(0,0,1280,720),p);
-      return;
-    }
-    if(atlas!=null&&!atlas.isRecycled()){
-      int w=atlas.getWidth()/3,h=atlas.getHeight()/7;
-      Rect src=new Rect((id%3)*w,(id/3)*h,(id%3+1)*w,(id/3+1)*h);
-      p.setFilterBitmap(true);
-      c.drawBitmap(atlas,src,new Rect(0,0,1280,720),p);
-      return;
-    }
-    // Offline procedural fallback: actual car scenes are supplied as concept
-    // artwork, not assembled by fabricating photos or telemetry.
-    colour(0xff080e1b);
-    p.setShader(new LinearGradient(0,0,1280,720,0xff172135,
-      0xff070a10,Shader.TileMode.CLAMP));
-    c.drawRect(0,0,1280,720,p);p.setShader(null);
-    colour(0x501f2b3c);
-    for(int a=-720;a<1800;a+=28)c.drawLine(a,0,a+700,720,p);
-    // Deliberately generic Lancer-inspired silhouette if image asset missing.
-    colour(0xff152232);
-    Path silhouette=new Path();silhouette.moveTo(85,500);silhouette.lineTo(165,450);
-    silhouette.lineTo(290,385);silhouette.lineTo(465,377);
-    silhouette.lineTo(545,438);silhouette.lineTo(596,468);
-    silhouette.lineTo(609,515);silhouette.lineTo(88,515);silhouette.close();
-    c.drawPath(silhouette,p);
-    colour(COLORS[id]);
-    p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(3);c.drawPath(silhouette,p);
-    c.drawCircle(205,515,39,p);c.drawCircle(491,515,39,p);
-    p.setStyle(Paint.Style.FILL);
+    // The original 21 mockups are only PHOTO sources. Drawing the full mockup
+    // on Home duplicated low-resolution icons, sample RPM, fake weather, track
+    // names and status indicators. All interactive UI is drawn natively.
+    cleanArt.draw(c,fullArt(id),id);
   }
   private void renderTime(Canvas c,int accent,int style){
     // Original concept artwork contains a static clock (22:36 etc.). On the
@@ -747,18 +719,20 @@ final class SkinEngine {
     return false;
   }
   Bitmap preview(int id){
+    // Show the ACTUAL native skin in the gallery. Never show the source
+    // concept image with fake music titles, clocks, app logos or ECU values.
     id=clamp(id);
-    if(atlas!=null&&!atlas.isRecycled()){
-      int w=atlas.getWidth()/3,h=atlas.getHeight()/7;
-      return Bitmap.createBitmap(atlas,(id%3)*w,(id/3)*h,w,h);
+    Bitmap thumb=Bitmap.createBitmap(480,270,Bitmap.Config.RGB_565);
+    Canvas stage=new Canvas(thumb);
+    stage.scale(480f/1280f,270f/720f);
+    int before=selected;
+    try{
+      selected=id;
+      draw(stage);
+    }finally{
+      selected=before;
     }
-    // No absent-asset crash: render the actual live layout for preview.
-    Bitmap fallback=Bitmap.createBitmap(320,180,Bitmap.Config.RGB_565);
-    Canvas canvas=new Canvas(fallback);
-    canvas.scale(.25f,.25f);
-    int previous=selected;selected=id;
-    try{draw(canvas);}finally{selected=previous;}
-    return fallback;
+    return thumb;
   }
   void choosePack(){
     Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);
