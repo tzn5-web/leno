@@ -244,9 +244,12 @@ final class UltraCockpitTheme {
     String dt=new SimpleDateFormat("EEE, d MMM yyyy",new Locale("ro","RO")).format(new Date());
     center(c,hh,654,221,53,WHITE,true);
     label(c,trimmed(dt,28),477,257,15,0xffc7d9e9,false);
-    // Ambient temperature PID 0x0146 not yet present in existing verified
-    // OBD reader. Never display a fake car temperature or a weather API value.
-    label(c,"EXT: ECU N/A",711,255,15,CYAN,false);
+    // Real OBD Mode 01 PID 46 only; no internet weather or simulated reading.
+    // Unsupported/stale vehicle sensors remain N/A.
+    ObdReader.Reading obd=host.obd==null?ObdReader.Reading.empty():host.obd.current();
+    String exterior=Float.isFinite(obd.ambientC)?
+      String.format(Locale.US,"EXT: %.0f°C",obd.ambientC):"EXT: N/A";
+    label(c,exterior,711,255,15,CYAN,false);
   }
   private void drawSlots(Canvas c){
     for(int i=0;i<SLOT_COUNT;i++){
