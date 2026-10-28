@@ -1,0 +1,8 @@
+Theme 2 replacement background photograph — license and provenance
+
+Photographer: sdl sanjaya.
+Source: https://unsplash.com/photos/a-silver-car-at-night-with-its-taillights-lit-dwLOsSfsbo4
+Image request: https://images.unsplash.com/photo-1752773462774-16e3b911a90f
+License: Unsplash License (https://unsplash.com/license); free to modify/use in an application, subject to its terms.
+Only the photograph is downloaded. No mock instrument, album cover, font, indicator, heading or telemetry is transferred into the Android launcher.
+The photo is reproducibly processed by scripts/generate-theme2-photo.py and the source SHA-256 is written to CI logs.
