@@ -110,6 +110,10 @@ jobs:
           grep -Fq '"0146"' "$BASE/ObdReader.java"
           grep -Fq '0x46' "$BASE/DirectElm327.java"
           grep -Fq 'obd.ambientC' "$BASE/UltraCockpitTheme.java"
+          grep -Fq 'rect(c,448,170,455,94,15,0xff071526)' "$BASE/UltraCockpitTheme.java"
+          grep -Fq 'drawTopStatus(c); // STATUS CLOCK MUST ALWAYS BE THE FINAL PAINT PASS' "$BASE/UltraCockpitTheme.java"
+          grep -Fq 'versionCode 111' projects/k2401-evo-launcher/app/build.gradle
+          echo 'AZURE_ULTRA_CLEAN_CLOCK_NO_GHOST_GATE=PASS'
           mkdir -p /tmp/k2401-ambient-jvm
           javac -encoding UTF-8 -d /tmp/k2401-ambient-jvm \
             "$BASE/ObdPidCodec.java" \
