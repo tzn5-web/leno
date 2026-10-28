@@ -136,7 +136,13 @@ jobs:
           grep -Fq 'ObdReader.Reading rd=' "$BASE/SkinEngine.java"
           grep -Fq 'Float.isFinite(reading)' "$BASE/SkinEngine.java"
           grep -Fq 'host.showInstalledApps()' "$BASE/SkinEngine.java"
-          grep -Fq 'renderMusic(c,accent,style)' "$BASE/SkinEngine.java"
+          # The first skin has bespoke Dashboard widgets; the other 20 use
+          # native artwork-aligned media, PID gauges and real app icons.
+          grep -Fq 'drawEvoDigitalDashNative(c)' "$BASE/SkinEngine.java"
+          grep -Fq 'nativePanels.draw(c,id)' "$BASE/SkinEngine.java"
+          grep -Fq 'MediaController mc=host.media' "$BASE/ThemeNativePanels.java"
+          grep -Fq 'float[] values={rd.rpm,rd.stft,rd.ltft,rd.coolantC}' "$BASE/ThemeNativePanels.java"
+          grep -Fq 'pm.getApplicationIcon(installed.get(i))' "$BASE/ThemeNativePanels.java"
           grep -Fq 'showSkinPicker()' "$BASE/MainActivity.java"
           grep -Fq 'selected_skin_v2' "$BASE/SkinEngine.java"
           grep -Fq 'getAssets().open(' "$BASE/SkinEngine.java"
