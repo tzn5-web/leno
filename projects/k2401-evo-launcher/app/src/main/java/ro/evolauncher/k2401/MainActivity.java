@@ -75,6 +75,19 @@ public final class MainActivity extends Activity {
       finish();
     }
   }
+  @Override public void onWindowFocusChanged(boolean focused){
+    super.onWindowFocusChanged(focused);
+    // Android 10 OEMs can restore the top status bar after another Activity
+    // closes. Reapply native immersive fullscreen only for EVO ULTRA NEON.
+    if(focused&&skins!=null&&skins.selection()==21){
+      getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
+      getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN);
+      getWindow().getDecorView().setSystemUiVisibility(
+        View.SYSTEM_UI_FLAG_LAYOUT_STABLE|View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN|
+        View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|
+        View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+    }
+  }
   protected void onStart(){super.onStart();if(liveMap!=null){
     try{liveMap.onHostStart();}catch(RuntimeException|LinkageError e){disableMapRenderer(e);}
   }}
