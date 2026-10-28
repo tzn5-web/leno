@@ -138,6 +138,11 @@ final class SkinEngine {
       String.format(Locale.US,"skins/clean/skin_%02d.webp",id))){
       BitmapFactory.Options cleanOpts=new BitmapFactory.Options();
       cleanOpts.inPreferredConfig=Bitmap.Config.ARGB_8888;
+      // Build with 2560x1440 detail reconstruction, but K2401 displays a
+      // 1280x720 framebuffer. Decode at exact display pixels to cut native
+      // bitmap RAM from 14.1 MiB to 3.5 MiB per theme without visible loss.
+      // This also prevents OEM GPU memory spikes during the 21-skin picker.
+      cleanOpts.inSampleSize=2;
       fullArt=BitmapFactory.decodeStream(stream,null,cleanOpts);
       fullArtIsClean=fullArt!=null;
     }catch(IOException|RuntimeException ignored){}
@@ -148,6 +153,7 @@ final class SkinEngine {
       String.format(Locale.US,"skins/uhd/skin_%02d.webp",id))){
       BitmapFactory.Options opts=new BitmapFactory.Options();
       opts.inPreferredConfig=Bitmap.Config.ARGB_8888;
+      opts.inSampleSize=2;
       fullArt=BitmapFactory.decodeStream(stream,null,opts);
     }catch(IOException|RuntimeException ignored){}
     if(fullArt==null){
