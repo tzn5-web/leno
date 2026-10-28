@@ -81,6 +81,9 @@ java=Path("projects/k2401-evo-launcher/app/src/main/java/ro/evolauncher/k2401/Ci
 assert "color(edge);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(16)" in java
 assert "color(0xff5f819e);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1.5f)" in java
 assert 'c.drawRect(0,0,1280,146,p)' in java
+assert 'color(0xff081626);c.drawCircle(cx,cy,r-12,p)' in java
+assert '"x1000 rpm",line);' in java
+assert 'p.setTextAlign(Paint.Align.RIGHT)' in java
 assert 'c.drawRect(0,554,1280,720,p)' in java
 assert 'vertical(c,217,159,149,387,"STFT"' in java
 assert 'vertical(c,917,159,149,387,"LTFT"' in java
