@@ -14,6 +14,11 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install exact 21-theme image restoration dependency
+        run: python -m pip install --disable-pip-version-check Pillow==11.3.0
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
       - name: Locate Android SDK manager
@@ -51,6 +56,20 @@ jobs:
         run: |
           test -s projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.apk
           sha256sum projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.apk
+      - name: Assert all twenty-one hi-res skins shipped in debug APK
+        run: |
+          python3 - <<'PY'
+          import io,zipfile
+          from PIL import Image
+          apk="projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.apk"
+          with zipfile.ZipFile(apk) as z:
+            for i in range(21):
+              hi=f"assets/skins/uhd/skin_{i:02}.webp"
+              assert hi in z.namelist(), hi
+              with Image.open(io.BytesIO(z.read(hi))) as im:
+                assert im.size==(2560,1440),hi
+          print("K2401_21_NATIVE_THEME_ASSETS=PASS")
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: k2401-evo-apk
