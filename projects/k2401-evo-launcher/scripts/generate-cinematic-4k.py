@@ -35,6 +35,16 @@ for index, (label, filename, rgb) in enumerate(SOURCES):
         source = source.convert("RGB")
         assert source.size == (2560, 1440), (original, source.size)
         scene = source.resize((W, H), Image.Resampling.LANCZOS)
+    # Correct actual user-visible composition from Android 10 screenshots:
+    # A1/02 previous vehicles were too far left, A3 too low (covered by dock).
+    dx,dy=((720,225),(615,-270),(0,-360))[index]
+    blurred=scene.filter(ImageFilter.GaussianBlur(radius=65))
+    blurred.paste(scene,(dx,dy))
+    scene=blurred
+    if index==0:
+        scene=ImageEnhance.Color(scene).enhance(.74)
+    if index==2:
+        scene=ImageEnhance.Brightness(scene).enhance(1.28)
     # Edges are enhanced carefully; 3840x2160 decoded image is full pixel
     # dimensions without pretending to have newly captured optical detail.
     scene = ImageEnhance.Contrast(scene).enhance(1.08)
