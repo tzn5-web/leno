@@ -183,11 +183,15 @@ final class CinematicTrioTheme {
     panel(c,x,y,w,h,11,0xf6071929,edge);
     text(c,label,x+15,y+27,15,ICE,true,false);
     text(c,value,x+15,y+65,32,WHITE,true,false);
-    text(c,unit,x+w-29,y+65,15,LT,false,false);
+    // Right-aligned unit stays INSIDE the card, even for "x1000 rpm".
+    color(LT);p.setTextSize(13);p.setTypeface(Typeface.DEFAULT);
+    p.setTextAlign(Paint.Align.RIGHT);
+    c.drawText(unit,x+w-12,y+65,p);
+    p.setTextAlign(Paint.Align.LEFT);
   }
   private void circle(Canvas c,float cx,float cy,float r,String key,String value,
                       String unit,float fraction,int edge){
-    color(0xf6081626);c.drawCircle(cx,cy,r-12,p);
+    color(0xff081626);c.drawCircle(cx,cy,r-12,p); // opaque: no old sample-gauge ghosts
     color(0xff294259);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(15);
     c.drawArc(cx-r,cy-r,cx+r,cy+r,132,276,false,p);
     if(Float.isFinite(fraction)){
@@ -243,7 +247,7 @@ final class CinematicTrioTheme {
       // A3: glass showroom, compact rectangular instrument cards on sides.
       ObdReader.Reading r=host.obd==null?ObdReader.Reading.empty():host.obd.current();
       boxGauge(c,25,230,210,98,"RPM",Float.isFinite(r.rpm)?
-        String.format(Locale.US,"%.1f",r.rpm/1000f):"N/A","k",line);
+        String.format(Locale.US,"%.1f",r.rpm/1000f):"N/A","x1000 rpm",line);
       boxGauge(c,25,349,210,98,"STFT",labelValue(r.stft,true),"%",line);
       boxGauge(c,1045,230,210,98,"TEMP APĂ",degrees(r.coolantC),"",line);
       boxGauge(c,1045,349,210,98,"LTFT",labelValue(r.ltft,true),"%",line);
