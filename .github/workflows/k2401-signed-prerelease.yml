@@ -237,7 +237,12 @@ jobs:
                 assert img.size == (2560,1440), (high,img.size)
               with Image.open(io.BytesIO(z.read(clean))) as img:
                 assert img.size == (2560,1440), (clean,img.size)
+            approved="assets/skins/approved/ultra-neon-2560x1440.webp"
+            assert approved in z.namelist(), "Approved UHD wallpaper missing from signed APK"
+            with Image.open(io.BytesIO(z.read(approved))) as image:
+              assert image.size==(2560,1440), image.size
           print("K2401_21_APPROVED_ORIGINALS_AND_CLEAN_BACKGROUNDS_SIGNED=PASS")
+          print("K2401_22ND_APPROVED_UHD_ASSET_SIGNED=PASS")
           PY
       - name: Verify Android 10 APK signature and persistent certificate
         shell: bash
