@@ -104,5 +104,6 @@ assert 'compactDigitalFuelTrim(c,860,462,194,226' in ENGINE,"STFT card displaced
 assert 'compactDigitalFuelTrim(c,1066,462,199,226' in ENGINE,"LTFT card displaced"
 assert 'selected==0&&x>=860&&x<=1265&&y>=74&&y<=436' in ENGINE
 assert 'host.mediaAction(x<1080?0:x<1165?1:2)' in ENGINE
+assert '(x>=627&&x<=843&&y>=220&&y<=436)' in ENGINE, "Coolant gauge lost OBD details touch"
 print("K2401_DIGITAL_DASH_VISUAL_TOUCH_ALIGNMENT=PASS")
 
