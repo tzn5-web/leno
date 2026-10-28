@@ -13,7 +13,7 @@ W,H=2560,1440
 # Individually audited safe car/road regions of the 21 ORIGINAL EVO designs.
 # No car image on the three app-centric skins; native widgets draw actual apps.
 ROI=[
-(350,465,544,685),(305,65,770,333),(212,348,535,533),
+(220,471,685,693),(305,65,770,333),(212,348,535,533),
 (125,75,619,377),(325,55,797,352),None,(321,105,770,393),
 (566,150,829,415),(446,93,787,370),(402,191,814,428),
 (326,105,656,480),(352,95,846,409),(175,213,636,510),
@@ -21,7 +21,7 @@ ROI=[
 (459,279,866,370),(168,164,724,592),None,(436,204,898,614)
 ]
 PLACEMENT=[
-(415,379,799,717),(240,60,820,458),(205,241,735,607),
+(130,370,798,708),(240,60,820,458),(205,241,735,607),
 (105,65,755,485),(240,55,910,495),None,(285,68,851,481),
 (472,116,875,489),(350,50,842,457),(300,135,910,512),
 (270,70,725,556),(285,52,921,502),(220,185,770,619),
@@ -68,7 +68,7 @@ def base(i):
         d.line([(2160,1438),(1470,995)],fill=(33,210,240,42),width=27)
     return image
 
-def scene(canvas,source,roi,dest):
+def scene(canvas,source,roi,dest,theme):
     car=source.crop(roi).convert("RGB")
     x1,y1,x2,y2=(p*2 for p in dest)
     width,height=x2-x1,y2-y1
@@ -92,9 +92,19 @@ def scene(canvas,source,roi,dest):
     car=car.filter(ImageFilter.UnsharpMask(radius=1.2,percent=75,threshold=3))
     mask=Image.new("L",car.size,0)
     inset=min(17,max(7,min(car.size)//25))
-    ImageDraw.Draw(mask).rounded_rectangle(
-      (inset,inset,car.width-inset-1,car.height-inset-1),
-      radius=min(48,car.width//10),fill=255)
+    if theme==0:
+        # The original EVO roadway has printed gauge fragments only at
+        # its top corners. Trim these diagonally, retain the entire car
+        # and road instead of cutting out a tiny vehicle-only thumbnail.
+        ImageDraw.Draw(mask).polygon([
+            (int(car.width*.15),0),(int(car.width*.85),0),
+            (car.width-1,int(car.height*.36)),
+            (car.width-1,car.height-1),(0,car.height-1),
+            (0,int(car.height*.36))],fill=255)
+    else:
+        ImageDraw.Draw(mask).rounded_rectangle(
+          (inset,inset,car.width-inset-1,car.height-inset-1),
+          radius=min(48,car.width//10),fill=255)
     mask=mask.filter(ImageFilter.GaussianBlur(15))
     canvas.paste(car,(x1+(width-car.width)//2,y1+(height-car.height)//2),mask)
 
@@ -116,7 +126,7 @@ def main():
             atmosphere=ImageEnhance.Brightness(atmosphere).enhance(0.52)
             result=Image.blend(result,atmosphere,0.62)
             if ROI[i] is not None:
-                scene(result,src,ROI[i],PLACEMENT[i])
+                scene(result,src,ROI[i],PLACEMENT[i],i)
         target=OUT/("skin_%02d.webp"%i)
         result.save(target,"WEBP",quality=92,method=6)
         with Image.open(target) as check:
