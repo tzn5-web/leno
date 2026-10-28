@@ -58,7 +58,10 @@ final class SkinEngine {
     "LANCER HERO","DIGITAL COCKPIT","TECH GRID",
     "GAUGES FOCUS","LANCER SHOWROOM","MINIMAL SPORT",
     "CAR STATUS","APP LAUNCHER","PERFORMANCE",
-    "EVO ULTRA NEON UHD"
+    "EVO ULTRA NEON UHD",
+    "A1 • HOLOGRAPHIC VERTICAL 4K",
+    "02 • HOLOGRAPHIC BLUE 4K",
+    "A3 • GLASS SHOWROOM 4K"
   };
   // Variants correspond to concept-sheet crops in /assets/skins/atlas.webp.
   static final int COUNT=NAMES.length;
@@ -79,6 +82,7 @@ final class SkinEngine {
   private final Paint p=new Paint(3);
   private final CleanSkinArt cleanArt=new CleanSkinArt();
   private final UltraCockpitTheme ultra;
+  private final CinematicTrioTheme trio;
   private Bitmap atlas;
   private Bitmap fullArt;
   private int fullArtId=-1;
@@ -96,6 +100,7 @@ final class SkinEngine {
     nativePanels=new ThemeNativePanels(activity);
     prefs=host.getSharedPreferences(PREFS,Context.MODE_PRIVATE);
     ultra=new UltraCockpitTheme(activity);
+    trio=new CinematicTrioTheme(activity,ultra);
     selected=clamp(prefs.getInt(KEY,0));
     loadAtlas();
   }
@@ -190,6 +195,7 @@ final class SkinEngine {
   }
   void release(){
     ultra.release();
+    trio.dispose();
     if(atlas!=null&&!atlas.isRecycled()){atlas.recycle();atlas=null;}
     if(fullArt!=null&&!fullArt.isRecycled()){fullArt.recycle();fullArt=null;}
   }
@@ -838,6 +844,7 @@ final class SkinEngine {
   void draw(Canvas c){
     // Independent 22nd UHD cockpit; original 21 themes remain unchanged.
     if(selected==21){ultra.draw(c);return;}
+    if(selected>=CinematicTrioTheme.FIRST&&selected<=CinematicTrioTheme.LAST){trio.draw(c,selected);return;}
     // EVO Digital Dash has its own bespoke left/right interactive cockpit.
     // The remaining twenty models use layouts aligned to the *individual*
     // source artwork, rather than one generic four-gauge card on the right.
@@ -848,12 +855,19 @@ final class SkinEngine {
     drawNativeStatusBar(c,id);
     nativePanels.draw(c,id);
   }
-  void ultraTouchDown(float x,float y){if(selected==21)ultra.down(x,y);}
-  void ultraTouchMove(float x,float y){if(selected==21)ultra.move(x,y);}
+  void ultraTouchDown(float x,float y){if(selected>=21)ultra.down(x,y);}
+  void ultraTouchMove(float x,float y){if(selected>=21)ultra.move(x,y);}
   void ultraTouchCancel(){ultra.cancel();}
-  boolean ultraTouchUp(float x,float y){return selected==21&&ultra.up(x,y);}
+  boolean ultraTouchUp(float x,float y){
+    if(selected==21)return ultra.up(x,y);
+    if(selected>=CinematicTrioTheme.FIRST&&selected<=CinematicTrioTheme.LAST)
+      return ultra.upSlotOnly(x,y)||trio.touch(x,y);
+    return false;
+  }
   boolean touch(float x,float y){
     if(selected==21)return ultra.touch(x,y);
+    if(selected>=CinematicTrioTheme.FIRST&&selected<=CinematicTrioTheme.LAST)
+      return trio.touch(x,y);
     if(selected==1)return touchCinematicTwo(x,y);
     if(selected>0&&nativePanels.touch(x,y))return true;
     if(selected==0&&x>=860&&x<=1265&&y>=74&&y<=412){
