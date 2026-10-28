@@ -35,18 +35,34 @@ button=next(n for n in nodes if "harta și OBD dezactivate" in n.attrib.get("tex
 x1,y1,x2,y2=map(int,re.findall(r"[0-9]+",button.attrib["bounds"]))
 subprocess.check_call(["adb","shell","input","tap",str((x1+x2)//2),str((y1+y2)//2)])
 PY
-sleep 2
+sleep 3
 adb shell pidof "$APP" >/dev/null
-adb shell input tap 305 670
-sleep 1
-adb shell uiautomator dump /sdcard/k2401-map-safe.xml >/dev/null
-adb pull /sdcard/k2401-map-safe.xml "$OUT/map-safe-ui.xml" >/dev/null
-python3 - <<'PY'
+# On slow Android 10 emulators the first tap can arrive before the real Home
+# receives window focus. Re-open the independent navigation page (not the
+# Home wallpaper) and verify its disabled-map placeholder with bounded retries.
+map_recovered=0
+for attempt in 1 2 3 4; do
+  adb shell input tap 305 670
+  sleep 2
+  adb shell uiautomator dump /sdcard/k2401-map-safe.xml >/dev/null
+  adb pull /sdcard/k2401-map-safe.xml "$OUT/map-safe-ui.xml" >/dev/null
+  if python3 - <<'PY'
 import xml.etree.ElementTree as ET
 nodes=ET.parse("projects/k2401-evo-launcher/screenshots/map-safe-ui.xml").findall(".//node")
-assert any("HARTĂ TEMPORAR DEZACTIVATĂ" in n.attrib.get("text","") for n in nodes), "K2401_MAP_CRASH_FALLBACK_MISSING"
-print("K2401_RECOVER_WITHOUT_MAP_AND_OBD=PASS")
+assert any("HARTĂ TEMPORAR DEZACTIVATĂ" in n.attrib.get("text","") for n in nodes)
 PY
+  then
+    map_recovered=1
+    break
+  fi
+  echo "K2401_MAP_RECOVERY_WAIT_ATTEMPT=$attempt"
+done
+if [[ "$map_recovered" != 1 ]]; then
+  adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' || true
+  echo "::error::Map recovery placeholder missing on separate NAVIGATION page"
+  exit 1
+fi
+echo "K2401_RECOVER_WITHOUT_MAP_AND_OBD=PASS"
 # Restore native map for regular emulator tests without clearing app data,
 # thus also verifying the manual recovery button.
 adb shell am force-stop "$APP"
