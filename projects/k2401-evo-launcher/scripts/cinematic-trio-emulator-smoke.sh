@@ -39,6 +39,10 @@ with ZipFile("projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.
         with Image.open(BytesIO(z.read(asset))) as pic:
             assert pic.size==(3840,2160),(asset,pic.size)
     assert "assets/skins/cinematic/cinematic-4k-manifest.json" in z.namelist()
+java=Path("projects/k2401-evo-launcher/app/src/main/java/ro/evolauncher/k2401/CinematicTrioTheme.java").read_text()
+assert "color(edge);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(16)" in java
+assert "color(0xff5f819e);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1.5f)" in java
+print("K2401_02_GAUGE_ARC_NEVER_SOLID_DISK=PASS")
 print("K2401_A1_02_A3_DIFFERENT_NATIVE_SCREENSHOTS=PASS")
 print("K2401_A1_02_A3_4K_ART_IN_APK=PASS")
 PY
