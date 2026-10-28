@@ -116,3 +116,19 @@ assert 'MediaVectorIcons.draw(c,x+390,y+h-46' in MAIN,"Old font-based player con
 print("K2401_NATIVE_NAV_AND_MEDIA_ZERO_FALSE_ICONS=PASS")
 print("K2401_DIGITAL_DASH_VISUAL_TOUCH_ALIGNMENT=PASS")
 
+
+
+# Theme #02 is its own composition, not the old EVO Classic 4-gauge template.
+# The central ECU/ABS/Doors/Airbag demo is forbidden, while actual RPM,
+# coolant, clock, music and fuel trims remain native/live.
+cinema=ENGINE.split("private void drawCinematicTwo(Canvas c){",1)[1].split(
+    "private boolean touchCinematicTwo",1)[0]
+assert 'if(id==1){drawCinematicTwo(c);return;}' in ENGINE
+for required in ('fullArt(1)','gauge(c,237,449,145','gauge(c,1071,450,132',
+                 'shorten(host.mediaName','val(rd.stft,1)','val(rd.ltft,1)',
+                 'MediaVectorIcons.draw','text(c,time()'):
+    assert required in cinema,("K2401_SKIN2_NATIVE_RENDER_MISSING",required)
+for forbidden in ('ECU / ELM327','"ABS"','"Airbag"','"Doors"','"2530"','"87"'):
+    assert forbidden not in cinema,("K2401_SKIN2_PRINTED_FALSE_SENSOR",forbidden)
+assert 'if(selected==1)return touchCinematicTwo(x,y);' in ENGINE
+print("K2401_SKIN02_NATIVE_LIVE_RENDER_NO_ECU_ABS_DOORS=PASS")
