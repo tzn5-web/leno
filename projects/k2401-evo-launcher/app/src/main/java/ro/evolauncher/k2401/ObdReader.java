@@ -34,7 +34,7 @@ final class ObdReader {
     static Reading empty(){return new Reading(Float.NaN,Float.NaN,Float.NaN,Float.NaN,false);}
   }
   private static final String[] PIDS={"010C","0106","0107","0105","0146"};
-  private static final long MAX_STALE_MS=7000L;
+  private static final long MAX_STALE_MS=7000L,AMBIENT_STALE_MS=35000L;
   private final Context context;
   private volatile DirectElm327 direct;
   private volatile boolean useDirect;
@@ -107,7 +107,8 @@ final class ObdReader {
                   long[] times=svc.getPIDUpdateTime(query);
                   if(values!=null&&times!=null&&values.length==count&&times.length==count){
                     for(int i=0;i<count;i++)
-                      if(isFresh(times[i])&&Float.isFinite(values[i]))fresh[slots[i]]=values[i];
+                      if(isFresh(times[i],slots[i]==4?AMBIENT_STALE_MS:MAX_STALE_MS)&&
+                         Float.isFinite(values[i]))fresh[slots[i]]=values[i];
                   }
                 }catch(RemoteException|RuntimeException ignored){
                   // AIDL string API absent: continue with numeric legacy API.
@@ -238,7 +239,8 @@ final class ObdReader {
       try{
         float v=svc.getValueForPid(ids[i],true);
         long timestamp=svc.getUpdateTimeForPID(ids[i]);
-        if(isFresh(timestamp)&&Float.isFinite(v)){fresh[i]=v;updated=true;}
+        if(isFresh(timestamp,i==4?AMBIENT_STALE_MS:MAX_STALE_MS)&&
+           Float.isFinite(v)){fresh[i]=v;updated=true;}
       }catch(RemoteException|RuntimeException ignored){
         // Some Torque builds do not export this deprecated numeric method.
       }
@@ -263,13 +265,13 @@ final class ObdReader {
   private static float bounded(float v,float min,float max){
     return Float.isFinite(v)&&v>=min&&v<=max?v:Float.NaN;
   }
-  private static boolean isFresh(long timestamp){
+  private static boolean isFresh(long timestamp,long maxAgeMs){
     if(timestamp<=0)return false;
     // Torque versions have used both uptime-ms and Unix epoch-ms. Accept either
     // only when it points to a recent OBD update; no artificial freshness.
     long wall=System.currentTimeMillis();
     long elapsed=SystemClock.elapsedRealtime();
-    return (timestamp<=wall&&wall-timestamp<=MAX_STALE_MS) ||
-           (timestamp<=elapsed&&elapsed-timestamp<=MAX_STALE_MS);
+    return (timestamp<=wall&&wall-timestamp<=maxAgeMs) ||
+           (timestamp<=elapsed&&elapsed-timestamp<=maxAgeMs);
   }
 }
