@@ -746,7 +746,8 @@ final class SkinEngine {
     }
     // The App Center and App Launcher backgrounds include decorative example
     // icons. Touching that area opens the REAL installed-app search drawer.
-    if(selected==0&&x>100&&x<629&&y>220&&y<573){
+    if(selected==0&&((x>100&&x<629&&y>220&&y<573)||
+        (x>=627&&x<=843&&y>=220&&y<=436))){
       host.showObdStatus();return true;
     }
     if((selected==5||selected==19)&&x>95&&x<620&&y>225&&y<620){
