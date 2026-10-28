@@ -39,9 +39,46 @@ with ZipFile("projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.
         with Image.open(BytesIO(z.read(asset))) as pic:
             assert pic.size==(3840,2160),(asset,pic.size)
     assert "assets/skins/cinematic/cinematic-4k-manifest.json" in z.namelist()
+    # Guard the actual car and mountain photo, not just 3840x2160 metadata.
+    exact="assets/skins/cinematic/approved-trio-reference.webp"
+    assert exact in z.namelist(), "Exact approved photo reference absent"
+    approval=Image.open(BytesIO(z.read(exact))).convert("RGB")
+    rw,rh=approval.size
+    for k in range(3):
+        asset=f"assets/skins/cinematic/scene_{k}_4k.webp"
+        with Image.open(BytesIO(z.read(asset))) as data:
+            image=data.convert("RGB").resize((1280,720),Image.Resampling.LANCZOS)
+        crop_h=round(rh*(k+1)/3)-round(rh*k/3)
+        crop_w=round(crop_h*16/9)
+        left=(rw-crop_w)//2
+        user=approval.crop((left,round(rh*k/3),left+crop_w,round(rh*(k+1)/3)))
+        approved=user.resize((1280,720),Image.Resampling.LANCZOS)
+        photo_delta=np.mean(np.abs(np.asarray(image,dtype=np.int16)-
+                                   np.asarray(approved,dtype=np.int16)))
+        assert photo_delta<28,(k,"wrong vehicle/garage or blurry stock replacement",photo_delta)
+        # Compare the unoccluded vehicle centre to the actual Android 10
+        # emulator screenshot. This FAILS if a fake card hides the vehicle.
+        roi=(465,190,814,524)
+        screen=np.asarray(shots[22+k].crop(roi),dtype=np.int16)
+        real=np.asarray(image.crop(roi),dtype=np.int16)
+        screen_delta=np.mean(np.abs(screen-real))
+        assert screen_delta<49,(k,"approved vehicle covered in emulator",screen_delta)
+        print("K2401_APPROVED_CINEMATIC_PHOTO_IN_EMULATOR=PASS",
+              k,round(float(photo_delta),2),round(float(screen_delta),2))
+    assert "cinematic-4k-manifest.json" in " ".join(z.namelist())
 java=Path("projects/k2401-evo-launcher/app/src/main/java/ro/evolauncher/k2401/CinematicTrioTheme.java").read_text()
 assert "color(edge);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(16)" in java
 assert "color(0xff5f819e);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1.5f)" in java
+assert 'c.drawRect(0,0,1280,146,p)' in java
+assert 'c.drawRect(0,554,1280,720,p)' in java
+assert 'vertical(c,217,159,149,387,"STFT"' in java
+assert 'vertical(c,917,159,149,387,"LTFT"' in java
+assert 'circle(c,371,382,78,"STFT"' in java
+assert 'circle(c,909,382,78,"LTFT"' in java
+assert 'panel(c,261,12,484,88,12,0xff081725,line)' in java
+assert 'panel(c,767,8,276,94,13,0xff081725,line)' in java
+print("K2401_FOUR_OBD_APPROVED_GAUGE_GEOMETRY=PASS")
+print("K2401_ZERO_GHOST_APP_CLOCK_MUSIC_OVERLAP=PASS")
 print("K2401_02_GAUGE_ARC_NEVER_SOLID_DISK=PASS")
 print("K2401_A1_02_A3_DIFFERENT_NATIVE_SCREENSHOTS=PASS")
 print("K2401_A1_02_A3_4K_ART_IN_APK=PASS")
