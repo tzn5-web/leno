@@ -3,7 +3,7 @@
 
 No numbers, text, gauges, fake status indicators or touch surfaces are ever
 drawn into the photo. The actual Android UI remains vector/native and live.
-Source is a permitted Unsplash image; credits are in THEME2_PHOTO_LICENSE.txt.
+Source is a Pexels image (black Mitsubishi Lancer Evo); credits are in THEME2_PHOTO_LICENSE.txt.
 """
 from __future__ import annotations
 from pathlib import Path
@@ -16,8 +16,8 @@ import numpy as np
 from PIL import Image, ImageEnhance, ImageDraw, ImageFilter
 
 W,H=2560,1440
-SOURCE="https://images.unsplash.com/photo-1752773462774-16e3b911a90f?auto=format&fit=crop&w=3000&q=90"
-CACHE=Path(__file__).resolve().parents[1]/"app/src/main/assets/skins/photographic_sources/theme2_unsplash.jpg"
+SOURCE="https://images.pexels.com/photos/12590854/pexels-photo-12590854.jpeg"
+CACHE=Path(__file__).resolve().parents[1]/"app/src/main/assets/skins/photographic_sources/theme2_pexels_black_evo.jpg"
 
 def source_image():
     CACHE.parent.mkdir(parents=True,exist_ok=True)
