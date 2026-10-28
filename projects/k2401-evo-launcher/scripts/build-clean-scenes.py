@@ -142,7 +142,9 @@ def scene(canvas,source,roi,dest,theme):
           radius=min(48,car.width//10),fill=255)
     # Feather only the crop perimeter, never the vehicle centre.
     # The old 15px transition showed a rectangular photo edge on K2401.
-    mask=mask.filter(ImageFilter.GaussianBlur(52 if theme==0 else 30))
+    # Wider alpha feather removes the visible rectangular crop seams without
+    # rescaling or redrawing the car. Native gauges remain an independent layer.
+    mask=mask.filter(ImageFilter.GaussianBlur(110 if theme==0 else 58))
     canvas.paste(car,(x1+(width-car.width)//2,y1+(height-car.height)//2),mask)
 
 def main():
