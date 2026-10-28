@@ -526,9 +526,172 @@ final class SkinEngine {
   }
   private int iceForFuelTrim(){return Color.WHITE;}
 
+
+  /**
+   * Remaining 20 designs: the original image remains the base layer, while
+   * skin-specific instrument placements prevent a single giant generic
+   * right-hand OBD rectangle from obscuring the car photograph.
+   * No demo RPM, fuel trim, speed, tyre pressure or fuel range is used.
+   */
+  private void drawPhotoSkin(Canvas c,int id,int accent){
+    drawArt(c,id);
+    final ObdReader.Reading rd=host.obd==null?ObdReader.Reading.empty():host.obd.current();
+    // Layouts: 1=motorsport dial row, 2=large tachometer,
+    // 3=compact telemetry bars, 4=right-hand 2x2 cluster,
+    // 5=vehicle status, 6=full app-list artwork.
+    final int[] shape={0,1,2,1,3,4,1,2,3,1,4,3,4,2,4,3,4,1,5,6,4};
+    int kind=shape[id];
+    final int[] clocksX={0,37,856,450,38,40,40,40,40,40,40,40,38,670,40,460,40,40,44,40,40};
+    int cx=clocksX[id],cy=(id==2||id==7||id==13)?512:65;
+    if(id==15)cy=65;
+    // Replace the picture's decorative/sample clock, keeping it in roughly
+    // the same native region as the approved concept.
+    panel(c,cx,cy,kind==2?333:285,105,0xe60a1420,13);
+    stroke(c,cx,cy,kind==2?333:285,105,accent,13);
+    text(c,time(),cx+17,cy+53,45,Color.WHITE,true);
+    text(c,shorten(date(),24),cx+17,cy+84,14,0xffbbcbdb,false);
+    ObdReader.Reading data=rd;
+    float[] vv={data.rpm,data.stft,data.ltft,data.coolantC};
+    String[] nn={"RPM","STFT B1","LTFT B1","TEMP APĂ"};
+    String[] unit={"rpm","%","%","°C"};
+    float[] low={0,-25,-25,40},high={8000,25,25,120};
+    int[] colors={accent,0xff32c8fa,0xffe9a23d,0xff62ddc1};
+    if(kind==1){
+      // EVO Classic, Gauge Pro, Night, Mountain, Hero, Minimal Sport:
+      // analogue instrument strip near the photo's lower row.
+      panel(c,94,479,1172,234,0xe408111d,17);
+      stroke(c,94,479,1172,234,accent,17);
+      for(int i=0;i<4;i++){
+        float x=235+290*i;
+        gauge(c,x,561,69,nn[i],val(vv[i],i==0||i==3?0:1),
+          unit[i],vv[i],low[i],high[i],colors[i],id);
+      }
+    }else if(kind==2){
+      // Future / GT Cockpit: one giant actual RPM dial plus compact values
+      // at the right, retaining the illustrated vehicle under the RPM ring.
+      panel(c,91,185,426,335,0xc6091521,20);
+      stroke(c,91,185,426,335,accent,20);
+      gauge(c,302,348,119,"RPM",val(vv[0],0),"rpm",vv[0],0,8000,accent,id);
+      for(int i=1;i<4;i++){
+        float y=420+90*(i-1);
+        miniValue(c,738,y,148,78,nn[i],vv[i],unit[i],colors[i],i);
+      }
+    }else if(kind==3){
+      // Multi Info / digital-bar examples: narrow live numerical bars.
+      panel(c,94,516,1169,197,0xdf09131f,17);
+      stroke(c,94,516,1169,197,accent,17);
+      for(int i=0;i<4;i++)
+        miniValue(c,112+286*i,535,263,155,nn[i],vv[i],unit[i],colors[i],i);
+    }else if(kind==4){
+      // App Center, Digital Dash derivative, Tech Grid, showroom and
+      // Performance: four independent gauges in a right-side cluster.
+      panel(c,780,384,486,328,0xd808121e,17);
+      stroke(c,780,384,486,328,accent,17);
+      for(int i=0;i<4;i++){
+        float x=890+(i%2)*254,y=463+(i/2)*148;
+        gauge(c,x,y,48,nn[i],val(vv[i],i==0||i==3?0:1),unit[i],
+          vv[i],low[i],high[i],colors[i],id);
+      }
+    }else if(kind==5){
+      // Car Status: never borrow fabricated tyre PSI / fuel range from
+      // concept art; present only sensors currently read from the ECU.
+      panel(c,778,108,483,550,0xed08121e,18);
+      stroke(c,778,108,483,550,accent,18);
+      text(c,"STARE VEHICUL • ECU",802,151,23,Color.WHITE,true);
+      for(int i=0;i<4;i++){
+        int y=187+i*111;
+        miniValue(c,802,y,437,96,nn[i],vv[i],unit[i],colors[i],i);
+      }
+      text(c,"Alte valori nu sunt disponibile prin PID-urile citite.",799,678,14,
+        0xffbbcad9,false);
+    }else if(kind==6){
+      // The app-list-themed original uses real installed apps, not fake
+      // destinations. A touch anywhere in the large panel opens AppsDrawer.
+      panel(c,115,149,1050,449,0xe70a1420,19);
+      stroke(c,115,149,1050,449,accent,19);
+      text(c,"APLICAȚII INSTALATE",153,225,38,Color.WHITE,true);
+      text(c,"APASĂ AICI PENTRU LISTA REALĂ DE APLICAȚII",153,291,20,
+        0xff9dbdd5,false);
+      text(c,"CĂUTARE • PICTOGRAME REALE • LANSARE DIRECTĂ",153,341,17,accent,true);
+      miniValue(c,153,411,227,127,nn[0],vv[0],unit[0],colors[0],0);
+      miniValue(c,394,411,227,127,nn[1],vv[1],unit[1],colors[1],1);
+    }
+    // Music is drawn only where the original has a media player. Other
+    // concepts expose media through the existing Home side navigation.
+    if(kind!=5&&kind!=6)nativeMediaOverlay(c,id,accent);
+    panel(c,6,628,392,89,0xe608121e,15);
+    stroke(c,6,628,392,89,accent,15);
+    String[] names={"APLICAȚII","SKINURI","HARTĂ"},glyph={"▦","◈","➤"};
+    int[] x={14,143,278},width={118,125,112};
+    for(int i=0;i<3;i++){
+      panel(c,x[i],633,width[i],76,0xff1c2b3b,9);
+      centered(c,glyph[i],x[i]+width[i]/2f,670,30,accent,true);
+      centered(c,names[i],x[i]+width[i]/2f,699,13,Color.WHITE,true);
+    }
+    text(c,String.format(Locale.US,"%02d / 21  %s",id+1,NAMES[id]),
+      413,705,17,Color.WHITE,true);
+  }
+  private void miniValue(Canvas c,int x,float y,int w,int h,String name,
+                         float value,String unit,int accent,int type){
+    panel(c,x,y,w,h,0xee0b1623,13);
+    stroke(c,x,y,w,h,accent,13);
+    text(c,name,x+14,y+30,19,accent,true);
+    text(c,val(value,type==0||type==3?0:1),x+14,y+77,35,Color.WHITE,true);
+    text(c,unit,x+w-47,y+78,16,0xffc2d4e5,false);
+    line(c,x+14,y+h-20,x+w-14,y+h-20,0xff384d63,4);
+    if(Float.isFinite(value)){
+      float ratio=type==0?clipped(value,0,8000):type==3?
+        clipped(value,40,120):clipped(value,-25,25);
+      line(c,x+14,y+h-20,x+14+(w-28)*ratio,y+h-20,accent,4);
+    }
+  }
+  private void nativeMediaOverlay(Canvas c,int id,int accent){
+    int x=id==2?936:id==3?798:799;
+    int y=(id==8||id==11)?79:78;
+    int w=1264-x,h=(id==2)?292:297;
+    // Compact native media panel sits over the image's mocked track,
+    // ensuring the album/title/transport state are never invented.
+    panel(c,x,y,w,h,0xf0081421,15);
+    stroke(c,x,y,w,h,accent,15);
+    text(c,shorten(host.mediaName,23),x+18,y+31,21,Color.WHITE,true);
+    MediaController m=host.media;
+    String title="",artist="";
+    Bitmap art=null;
+    if(m!=null&&m.getMetadata()!=null){
+      CharSequence song=m.getMetadata().getText(MediaMetadata.METADATA_KEY_TITLE);
+      CharSequence performer=m.getMetadata().getText(MediaMetadata.METADATA_KEY_ARTIST);
+      title=song==null?"":song.toString();
+      artist=performer==null?"":performer.toString();
+      art=m.getMetadata().getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
+      if(art==null)art=m.getMetadata().getBitmap(MediaMetadata.METADATA_KEY_ART);
+    }
+    if(title.isEmpty())title="Fără redare activă";
+    if(artist.isEmpty())artist="MediaSession / alege player";
+    int cover=Math.min(123,Math.max(67,w/3));
+    panel(c,x+18,y+59,cover,cover,0xff481a32,11);
+    if(art!=null){
+      colour(Color.WHITE);p.setFilterBitmap(true);
+      c.drawBitmap(art,null,new Rect(x+18,y+59,x+18+cover,y+59+cover),p);
+    }else{
+      centered(c,"YT",x+18+cover/2f,y+116,35,Color.WHITE,true);
+    }
+    int textX=x+cover+32;
+    text(c,shorten(title,Math.max(8,(w-cover-45)/15)),textX,y+111,21,Color.WHITE,true);
+    text(c,shorten(artist,Math.max(8,(w-cover-45)/11)),textX,y+145,14,0xffa2b5c8,false);
+    line(c,x+19,y+h-99,x+w-19,y+h-99,0xff45596c,3);
+    boolean playing=m!=null&&m.getPlaybackState()!=null&&
+      m.getPlaybackState().getState()==PlaybackState.STATE_PLAYING;
+    centered(c,"◀◀",x+w*.24f,y+h-34,24,Color.WHITE,true);
+    panel(c,x+w*.48f-17,y+h-84,70,68,accent,28);
+    centered(c,playing?"Ⅱ":"▶",x+w*.48f+18,y+h-37,29,Color.WHITE,true);
+    centered(c,"▶▶",x+w*.80f,y+h-34,24,Color.WHITE,true);
+  }
+
   void draw(Canvas c){
     int id=selected,accent=COLORS[id],style=STYLES[id];
     if(id==0){drawEvoDigitalDashNative(c);return;}
+    drawPhotoSkin(c,id,accent);return;
+
     drawArt(c,id);
     // Source mockups had baked numbers ("4. EVO DIGITAL DASH", "22:36").
     // Draw the real selected skin index and live time on top of those examples.
