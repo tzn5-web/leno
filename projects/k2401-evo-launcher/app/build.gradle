@@ -7,8 +7,8 @@ android {
    applicationId 'ro.evolauncher.k2401'
    minSdk 26
    targetSdk 28
-   versionCode 102
-   versionName '1.0.2-skins-bundled'
+   versionCode 103
+   versionName '1.0.3-original21-hires'
    manifestPlaceholders = [MAPS_API_KEY: googleMapsApiKey]
    buildConfigField 'boolean', 'GOOGLE_MAPS_CONFIGURED', googleMapsApiKey.isEmpty() ? 'false' : 'true'
  }
@@ -41,3 +41,14 @@ dependencies {
   // Native OSM MapView: no JavaScript CDN, WebView or API key required.
   implementation 'org.osmdroid:osmdroid-android:6.1.20'
 }
+
+ // Produce exact 2x scene assets before packaging, both debug and signed release.
+ // They are derived from the 21 original screenshots at build time. Android
+ // keeps original skins/skin_XX.webp as a fallback if HiRes decode fails.
+ tasks.register('generateUhdSkins', Exec) {
+   workingDir rootProject.projectDir
+   commandLine 'python3', "${rootProject.projectDir}/scripts/build-uhd-skins.py"
+   inputs.files fileTree('src/main/assets/skins') { include 'skin_??.webp' }
+   outputs.dir file('src/main/assets/skins/uhd')
+ }
+ tasks.named('preBuild') { dependsOn tasks.named('generateUhdSkins') }
