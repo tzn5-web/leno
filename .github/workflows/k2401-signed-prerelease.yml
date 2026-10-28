@@ -31,6 +31,8 @@ jobs:
           python-version: '3.12'
       - name: Install exact 21-theme image restoration dependency
         run: python -m pip install --disable-pip-version-check Pillow==11.3.0
+      - name: Verify all 20 native layout geometries and 21-theme UI contracts
+        run: python3 projects/k2401-evo-launcher/scripts/verify-native-layout.py
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
