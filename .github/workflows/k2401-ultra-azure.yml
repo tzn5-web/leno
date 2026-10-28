@@ -31,11 +31,20 @@ jobs:
           set -euo pipefail
           STATE="$(az vm show -g "$AZURE_RG" -n "$AZURE_VM" --show-details --query powerState -o tsv)"
           echo "AZURE_INITIAL_POWER=$STATE"
-          if [[ "$STATE" == "VM deallocated" || "$STATE" == "VM stopped" ]]; then
-            az vm start -g "$AZURE_RG" -n "$AZURE_VM" -o none
+          if [[ "$STATE" == "VM running" ]]; then
+            echo "::warning::VM is already running (may belong to a different CI run); do NOT interrupt it."
+            echo "STARTED_BY_US=NO" >> "$GITHUB_ENV"
+            exit 0
           fi
+          if [[ "$STATE" != "VM deallocated" && "$STATE" != "VM stopped" ]]; then
+            echo "::error::Unexpected VM power state $STATE"
+            exit 3
+          fi
+          az vm start -g "$AZURE_RG" -n "$AZURE_VM" -o none
+          echo "STARTED_BY_US=YES" >> "$GITHUB_ENV"
           echo "AZURE_EXISTING_VM_READY=PASS"
       - name: Compile the Android 10 APK inside the Azure VM (bounded run)
+        if: env.STARTED_BY_US == 'YES'
         shell: bash
         timeout-minutes: 47
         run: |
@@ -103,12 +112,30 @@ jobs:
           sha256sum "$APK"
           echo 'AZURE_K2401_ULTRA_ANDROID10_BUILD=PASS'
           AZURE_SCRIPT
-          az vm run-command invoke -g "$AZURE_RG" -n "$AZURE_VM" \
-            --command-id RunShellScript --scripts @/tmp/k2401-build-on-azure.sh \
-            --query "value[0].message" -o tsv | tee /tmp/k2401-ultra-azure-build.log
+          # A previous Azure extension can still be releasing its command slot.
+          # Wait a bounded interval, never deallocate another CI owner's VM.
+          completed=0
+          for attempt in 1 2 3 4 5; do
+            if az vm run-command invoke -g "$AZURE_RG" -n "$AZURE_VM" \
+                --command-id RunShellScript --scripts @/tmp/k2401-build-on-azure.sh \
+                --query "value[0].message" -o tsv \
+                > /tmp/k2401-ultra-azure-build.log 2>/tmp/k2401-ultra-azure-error.log; then
+              completed=1
+              break
+            fi
+            if grep -Fq 'Run command extension execution is in progress' /tmp/k2401-ultra-azure-error.log; then
+              echo "AZURE_EXTENSION_BUSY_RETRY=$attempt"
+              sleep 20
+            else
+              cat /tmp/k2401-ultra-azure-error.log >&2
+              exit 1
+            fi
+          done
+          test "$completed" = 1 || { echo "::error::Azure RunCommand still busy"; exit 4; }
+          cat /tmp/k2401-ultra-azure-build.log
           grep -Fq 'AZURE_K2401_ULTRA_ANDROID10_BUILD=PASS' /tmp/k2401-ultra-azure-build.log
-      - name: Always deallocate the Linux VM to stop compute billing
-        if: always()
+      - name: Always deallocate the Linux VM only if this job started it
+        if: always() && env.STARTED_BY_US == 'YES'
         shell: bash
         timeout-minutes: 8
         run: |
