@@ -101,4 +101,22 @@ texts=[n.attrib.get("text","") for n in
 assert any("Aplicația 1" in t for t in texts),"Long press cannot replace the selected app"
 print("K2401_ULTRA_LONG_PRESS_REPLACE_EXISTING_APP=PASS")
 PY
+# Exercise focus loss/restore. The live top-right clock must remain visible
+# when a native Android dialog closes (previously reported disappearing).
+adb shell input keyevent BACK
+sleep 2
+adb shell screencap -p /sdcard/k2401-ultra-after-dialog.png
+adb pull /sdcard/k2401-ultra-after-dialog.png "$OUT/k2401-ultra-after-dialog.png" >/dev/null
+python3 - <<'PY'
+from PIL import Image
+from pathlib import Path
+pic=Image.open(Path("projects/k2401-evo-launcher/screenshots/k2401-ultra-after-dialog.png")).convert("RGB")
+assert pic.size==(1280,720)
+# The status surface is solid and only the native foreground clock is light.
+# An empty/dismissed time group has nearly no pixels over 155 in this region.
+area=pic.crop((1065,66,1251,110))
+bright=sum(1 for r,g,b in area.getdata() if min(r,g,b)>150)
+assert bright>105,f"Clock in top-right vanished after dialog; bright={bright}"
+print("K2401_ULTRA_TOP_RIGHT_CLOCK_SURVIVES_DIALOG=PASS")
+PY
 echo "K2401_ULTRA_TEMPERATURE_AND_SIX_SLOTS_SMOKE=PASS"
