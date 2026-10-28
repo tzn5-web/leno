@@ -262,9 +262,11 @@ for name in ("home","music","navigation","car","apps","settings"):
     print(f"SCREEN {name}: {w}x{h}")
     assert (w,h) == (1280,720), f"{name}: incorrect landscape resolution {w}x{h}"
 PY
-# Assert that settings contain actual native controls, then change the wallpaper
-# preset through UI (not by changing XML behind the app's back).
-adb shell input tap 45 557 # native theme-02 Settings icon
+# "capture settings 557" above ALREADY opened Settings. A second tap at
+# y=557 uses the normal (non-Home) navigation coordinates and switches to Apps.
+# Do not retap. Verify that the UI is genuinely the Settings panel instead.
+# Keep each setting test tied to the visible native page, never test Apps drawer
+# while expecting WALLPAPER controls.
 adb shell uiautomator dump /sdcard/k2401-ui.xml >/dev/null
 adb pull /sdcard/k2401-ui.xml "$OUT/settings-ui.xml" >/dev/null
 python3 - <<'PY'
@@ -273,6 +275,7 @@ from pathlib import Path
 xml=ET.parse(Path("projects/k2401-evo-launcher/screenshots/settings-ui.xml"))
 nodes=xml.findall(".//node")
 texts=[n.attrib.get("text","") for n in nodes]
+assert not any("Caută o aplicație instalată" in t for t in texts), "SETTINGS_PAGE_OBSCURED_BY_APPS_DRAWER"
 for name in ("WALLPAPER","EVO Carbon","Graphite","Midnight","Alege fotografie"):
     assert any(name in t for t in texts), f"MISSING_NATIVE_SETTING={name}"
 target=next(n for n in nodes if n.attrib.get("text")=="Graphite")
