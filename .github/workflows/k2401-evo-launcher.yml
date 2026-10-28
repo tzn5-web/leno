@@ -73,7 +73,12 @@ jobs:
                 assert im.size==(2560,1440),hi
               with Image.open(io.BytesIO(z.read(clean))) as im:
                 assert im.size==(2560,1440),clean
+            approved="assets/skins/approved/ultra-neon-2560x1440.webp"
+            assert approved in z.namelist(), "Approved UHD artwork missing from APK"
+            with Image.open(io.BytesIO(z.read(approved))) as image:
+              assert image.size==(2560,1440), image.size
           print("K2401_21_NATIVE_CLEAN_THEME_ASSETS=PASS")
+          print("K2401_ULTRA_USER_APPROVED_UHD_ASSET=PASS")
           PY
       - uses: actions/upload-artifact@v4
         with:
