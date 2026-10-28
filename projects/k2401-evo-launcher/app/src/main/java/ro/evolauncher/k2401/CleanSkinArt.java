@@ -30,22 +30,22 @@ final class CleanSkinArt {
   private static final int[][] SRC={
     {350,465,544,685},   // 00 Digital Dash: car on motorway
     {305,65,770,333},    // 01 Classic: silver Evo
-    {441,203,679,446},   // 02 Future: rear night city
+    {187,297,535,533},   // 02 Future: rear night city
     {125,75,619,377},    // 03 Gauge Pro: cutaway vehicle
     {325,55,797,352},    // 04 Multi Info: mountain road
     {0,0,0,0},           // 05 App Center: pure native UI
     {321,105,770,393},  // 06 Evolution Night: black Evo front
-    {465,47,820,420},   // 07 GT Cockpit: rear and road
-    {446,91,802,442},   // 08 Red Front: red garage
-    {337,95,813,426},   // 09 Mountain
+    {566,150,829,415},   // 07 GT Cockpit: rear and road
+    {446,93,787,370},   // 08 Red Front: red garage
+    {402,191,814,428},   // 09 Mountain
     {326,105,656,480},  // 10 Speed: vehicle top view
     {352,95,846,409},   // 11 Sunset
     {175,213,636,510},  // 12 Lancer Hero
-    {372,287,756,558},  // 13 Digital Cockpit
+    {225,378,507,557},  // 13 Digital Cockpit
     {0,0,0,0},           // 14 Tech Grid: pure native UI
-    {418,356,788,557},  // 15 Gauge Focus
+    {585,252,826,458},  // 15 Gauge Focus
     {350,256,826,557},  // 16 Showroom
-    {427,107,880,446},  // 17 Minimal Sport
+    {459,279,866,478},  // 17 Minimal Sport
     {168,164,724,592},  // 18 Car Status
     {0,0,0,0},           // 19 App Launcher: pure native UI
     {436,204,898,614}   // 20 Performance
