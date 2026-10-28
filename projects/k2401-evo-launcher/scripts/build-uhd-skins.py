@@ -30,3 +30,8 @@ for skin in range(21):
 
 assert len(list(DEST.glob("skin_??.webp"))) == 21
 print("K2401_APPROVED_21_UHD_RESOURCES=PASS")
+
+# Rebuild immutable-source photo-only scenes used for actual Home artwork.
+# The 21 original screenshots are kept as a fallback and never modified.
+import runpy
+runpy.run_path(str(Path(__file__).with_name("build-clean-scenes.py")),run_name="__main__")
