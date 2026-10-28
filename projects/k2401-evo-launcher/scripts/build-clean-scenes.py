@@ -134,6 +134,37 @@ def base(i):
         image=Image.alpha_composite(image.convert("RGBA"),glow).convert("RGB")
     return image
 
+def extend_photo_atmosphere(canvas,source,roi,dest,theme):
+    """Blend the SAME approved car/road scene into the nearby background.
+
+    The previous 21 previews looked like small sharp rectangular photos pasted
+    over pure black. This deliberately keeps the individual photographed
+    car, its lighting and scenic perspective without importing fake UI labels.
+    """
+    x1,y1,x2,y2=dest
+    w,h=x2-x1,y2-y1
+    left=max(97,int(x1-w*.23))
+    top=max(55,int(y1-h*.24))
+    right=min(1280,int(x2+w*.23))
+    bottom=min(720,int(y2+h*.24))
+    if right-left<90 or bottom-top<90:return
+    size=((right-left)*2,(bottom-top)*2)
+    photo=ImageOps.fit(source.crop(roi).convert("RGB"),size,
+                       Image.Resampling.LANCZOS,centering=(.5,.56))
+    # Remove any screenshot-era fragments at the boundary before native UI.
+    photo=photo.filter(ImageFilter.GaussianBlur(46))
+    photo=ImageEnhance.Color(photo).enhance(1.24)
+    photo=ImageEnhance.Contrast(photo).enhance(1.12)
+    photo=ImageEnhance.Brightness(photo).enhance(.80)
+    feather=Image.new("L",size,0)
+    margin=max(16,min(size)//10)
+    ImageDraw.Draw(feather).rounded_rectangle(
+        (margin,margin,size[0]-margin-1,size[1]-margin-1),
+        radius=max(30,min(size)//8),fill=173)
+    feather=feather.filter(ImageFilter.GaussianBlur(68))
+    canvas.paste(photo,(left*2,top*2),feather)
+
+
 def scene(canvas,source,roi,dest,theme):
     car=superresolve_vehicle(source.crop(roi).convert("RGB"))
     x1,y1,x2,y2=(p*2 for p in dest)
@@ -215,6 +246,8 @@ def main():
                 fade=fade.filter(ImageFilter.GaussianBlur(100))
                 result.paste(road,(188,130),fade)
             if ROI[i] is not None:
+                if i!=0:
+                    extend_photo_atmosphere(result,src,ROI[i],PLACEMENT[i],i)
                 scene(result,src,ROI[i],PLACEMENT[i],i)
         target=OUT/("skin_%02d.webp"%i)
         # Preserve reconstructed edges and gradients; 92 caused visible softening
