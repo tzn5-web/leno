@@ -745,7 +745,7 @@ final class SkinEngine {
   }
   boolean touch(float x,float y){
     if(selected>0&&nativePanels.touch(x,y))return true;
-    if(selected==0&&x>=860&&x<=1265&&y>=74&&y<=436){
+    if(selected==0&&x>=860&&x<=1265&&y>=74&&y<=412){
       if(y>=302){
         host.mediaAction(x<1080?0:x<1165?1:2);
       }else host.choosePlayer();
