@@ -278,7 +278,18 @@ fi
 for n in $(seq 0 20); do
   adb shell am force-stop "$APP"
   adb shell am start -W -n "$APP/.MainActivity" --ei k2401_skin_preview_ci "$n" >/dev/null
-  adb shell pidof "$APP" >/dev/null
+  # Android 10 may not publish the freshly started process in pidof immediately
+  # after am start returns. Retry briefly; a real crash still fails with logcat.
+  alive=0
+  for check in 1 2 3 4 5 6 7 8; do
+    if adb shell pidof "$APP" >/dev/null 2>&1; then alive=1; break; fi
+    sleep 1
+  done
+  if [ "$alive" -ne 1 ]; then
+    echo "K2401_SKIN_APP_DIED_AFTER_START id=$n" >&2
+    adb logcat -d -s AndroidRuntime:E | tail -100 >&2 || true
+    exit 5
+  fi
   # Some Android emulators briefly expose a blank 48,48,48 splash between
   # activity launch and SurfaceView composition. Never count that as a skin.
   valid=0
