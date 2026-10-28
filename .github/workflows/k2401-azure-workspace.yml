@@ -76,6 +76,8 @@ jobs:
           echo 'K2401_START_ATTEMPTED=true' >> "$GITHUB_ENV"
           az vm start -g "$RESOURCE_GROUP" -n "$VM_NAME" -o none
           echo 'K2401_VM_STARTED=PASS'
+      # This invocation uses the pinned Python virtualenv for Gradle and saves
+      # the 21 source-locked 4K candidates before compilation, even on build failure.
       - name: Install agents, restore locked images, compile APK inside Azure
         timeout-minutes: 42
         run: |
