@@ -185,10 +185,11 @@ final class CinematicTrioTheme {
     color(0xff294259);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(15);
     c.drawArc(cx-r,cy-r,cx+r,cy+r,132,276,false,p);
     if(Float.isFinite(fraction)){
-      color(edge);p.setStrokeWidth(16);
+      color(edge);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(16);
       c.drawArc(cx-r,cy-r,cx+r,cy+r,132,276*cap(fraction),false,p);
     }
-    color(0xff5f819e);p.setStrokeWidth(1.5f);
+    // Always render a THIN neon ring, never a filled pie/disk.
+    color(0xff5f819e);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1.5f);
     c.drawCircle(cx,cy,r-19,p);p.setStyle(Paint.Style.FILL);
     for(int k=0;k<=12;k++){
       double angle=Math.toRadians(132.0+276.0*k/12);
