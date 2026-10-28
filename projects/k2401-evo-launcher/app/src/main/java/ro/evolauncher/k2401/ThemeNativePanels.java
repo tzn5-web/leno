@@ -81,8 +81,8 @@ final class ThemeNativePanels {
           {106,78,164,126},{279,78,164,126},{452,78,164,126},
           {625,78,158,126}},0); // Future: 4 ECU instruments ABOVE car scene
         // Clock covers illustrated 22:36; launcher tiles now represent real apps.
-      case 3: return new Layout(rect(628,58,160,138),rect(795,52,463,359),
-        rect(964,393,296,298),null,four(103,449,890,240,11),0); // Gauge Pro
+      case 3: return new Layout(rect(628,58,160,138),rect(795,56,463,351),
+        rect(1000,418,258,256),null,four(103,449,890,240,11),0); // Gauge Pro
       case 4: return new Layout(rect(105,61,243,184),rect(920,55,340,331),
         rect(918,495,342,181),null,four(101,496,799,179,10),3); // Multi Info
       case 5: return new Layout(null,rect(920,55,338,314),
@@ -97,34 +97,34 @@ final class ThemeNativePanels {
         null,null,four(443,448,813,221,10),0); // Red Front
       case 9: return new Layout(rect(108,55,252,192),rect(914,57,341,311),
         rect(108,251,248,151),null,four(105,458,1151,215,12),0); // Mountain
-      case 10:return new Layout(rect(101,50,259,174),rect(938,51,319,337),
-        rect(103,255,259,213),null,verticalFour(674,32,235,496,7),2); // Speed
+      case 10:return new Layout(rect(101,56,259,168),rect(938,56,319,332),
+        rect(103,255,259,213),null,verticalFour(674,58,235,470,7),2); // Speed
         // Live RPM/STFT/LTFT/ECT cover all four illustrated fictional values.
       case 11:return new Layout(rect(100,59,284,175),rect(934,55,324,335),
-        null,null,four(104,385,1153,271,12),0); // Sunset
+        null,null,four(104,398,1153,258,12),0); // Sunset
         // Hide the baked 2520/-3.2/+2.8/89 examples rather than showing both.
-      case 12:return new Layout(rect(102,52,305,203),rect(773,52,486,347),
+      case 12:return new Layout(rect(102,56,305,199),rect(773,56,486,343),
         rect(102,262,268,142),null,rightGrid(778,413,478,282,12),0); // Hero
       case 13:return new Layout(null,rect(730,56,527,268),
         null,null,new int[][]{
           {106,158,213,151},{328,158,213,151},{730,333,256,151},
           {997,333,258,151}},0); // Cockpit: preserve entire original lower-left Lancer
-      case 14:return new Layout(rect(103,58,429,155),rect(925,52,331,297),
+      case 14:return new Layout(rect(103,58,429,155),rect(925,56,331,293),
         null,rect(106,245,690,436),rightGrid(835,363,422,310,13),1); // Grid
       case 15:return new Layout(rect(505,58,295,135),null,
         null,null,new int[][]{{102,177,315,375},{115,567,478,128},
           {620,567,493,128},{936,181,313,365}},0); // Focus
       case 16:return new Layout(rect(104,57,277,157),rect(827,57,431,323),
         rect(101,422,260,251),null,rightGrid(840,396,412,295,11),2); // Showroom
-      case 17:return new Layout(rect(106,52,305,160),rect(908,58,350,336),
+      case 17:return new Layout(rect(106,56,305,156),rect(908,58,350,336),
         null,null,four(105,449,1153,243,12),0); // Minimal Sport
-      case 18:return new Layout(rect(98,49,344,118),null,
+      case 18:return new Layout(rect(98,56,344,111),null,
         rect(735,117,525,558),null,rightGrid(750,207,488,430,11),2); // Status
-      case 19:return new Layout(rect(98,49,305,81),null,
+      case 19:return new Layout(rect(98,56,305,60),null,
         null,rect(109,120,1148,440),new int[][]{
           {700,590,125,78},{833,590,125,78},{965,590,125,78},{1097,590,125,78}
         },1); // Launcher
-      case 20:return new Layout(rect(118,45,370,85),null,
+      case 20:return new Layout(rect(118,56,370,74),null,
         null,null,new int[][]{{104,152,270,213},{913,153,340,222},
           {105,417,286,228},{931,429,324,226}},0); // Performance
       default:return new Layout(rect(112,55,250,143),rect(813,56,442,317),
@@ -202,7 +202,9 @@ final class ThemeNativePanels {
     text(c,"STARE VEHICUL • OBD-II",area.left+13,area.top+28,Math.min(17,area.width()/15f),WHITE,true);
     text(c,crop(state,Math.max(11,area.width()/10)),area.left+13,
       area.top+59,Math.min(15,area.width()/17f),rd.live?0xff62e8ba:MUTED,false);
-    if(area.height()>125){
+    // Car Status paints the same real RPM in the four live gauge cards; a
+    // second copy under those cards was obscured and visually meaningless.
+    if(area.height()>125 && lastStyle!=18){
       text(c,"RPM",area.left+13,area.top+101,15,MUTED,false);
       String rpm=Float.isFinite(rd.rpm)?String.format(Locale.US,"%.0f",rd.rpm):"N/A";
       text(c,rpm+" rpm",area.left+76,area.top+101,17,WHITE,true);
