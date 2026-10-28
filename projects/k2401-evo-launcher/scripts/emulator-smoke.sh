@@ -278,10 +278,22 @@ fi
 for n in $(seq 0 20); do
   adb shell am force-stop "$APP"
   adb shell am start -W -n "$APP/.MainActivity" --ei k2401_skin_preview_ci "$n" >/dev/null
-  sleep 0.6
   adb shell pidof "$APP" >/dev/null
-  adb shell screencap -p "/sdcard/skin_$n.png"
-  adb pull "/sdcard/skin_$n.png" "$OUT/skin_$n.png" >/dev/null
+  # Some Android emulators briefly expose a blank 48,48,48 splash between
+  # activity launch and SurfaceView composition. Never count that as a skin.
+  valid=0
+  for attempt in 1 2 3 4 5 6; do
+    sleep 1
+    adb shell screencap -p "/sdcard/skin_$n.png"
+    adb pull "/sdcard/skin_$n.png" "$OUT/skin_$n.png" >/dev/null
+    bytes=$(wc -c < "$OUT/skin_$n.png")
+    if [ "$bytes" -ge 70000 ]; then valid=1; break; fi
+    echo "K2401_SKIN_SCREEN_WAIT id=$n attempt=$attempt bytes=$bytes"
+  done
+  if [ "$valid" -ne 1 ]; then
+    echo "K2401_SKIN_SCREEN_BLANK id=$n" >&2
+    exit 4
+  fi
 done
 python3 - <<'PY'
 from pathlib import Path
