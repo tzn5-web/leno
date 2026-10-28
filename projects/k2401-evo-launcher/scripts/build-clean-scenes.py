@@ -187,26 +187,26 @@ def scene(canvas,source,roi,dest,theme):
     car=ImageEnhance.Contrast(car).enhance(1.11)
     car=ImageEnhance.Brightness(car).enhance(1.17)
     car=car.filter(ImageFilter.UnsharpMask(radius=1.2,percent=75,threshold=3))
-    mask=Image.new("L",car.size,0)
-    inset=min(17,max(7,min(car.size)//25))
-    if theme==0:
-        # The original EVO roadway has printed gauge fragments only at
-        # its top corners. Trim these diagonally, retain the entire car
-        # and road instead of cutting out a tiny vehicle-only thumbnail.
-        ImageDraw.Draw(mask).polygon([
-            (int(car.width*.15),0),(int(car.width*.85),0),
-            (car.width-1,int(car.height*.36)),
-            (car.width-1,car.height-1),(0,car.height-1),
-            (0,int(car.height*.36))],fill=255)
-    else:
-        ImageDraw.Draw(mask).rounded_rectangle(
-          (inset,inset,car.width-inset-1,car.height-inset-1),
-          radius=min(48,car.width//10),fill=255)
-    # Feather only the crop perimeter, never the vehicle centre.
-    # The old 15px transition showed a rectangular photo edge on K2401.
-    # Wider alpha feather removes the visible rectangular crop seams without
-    # rescaling or redrawing the car. Native gauges remain an independent layer.
-    mask=mask.filter(ImageFilter.GaussianBlur(110 if theme==0 else 58))
+    # A blurred polygon alone left 20%-opaque pixels at crop edges, making a
+    # harsh rectangular black box visible on the approved 1280x720 cockpit.
+    # A C1-continuous alpha MUST be exactly zero at every photo boundary.
+    # The native vehicle stays sharp in the centre; do not sharpen text/UI.
+    import numpy as np
+    ww,hh=car.size
+    xx=np.arange(ww,dtype=np.float32)[None,:]
+    yy=np.arange(hh,dtype=np.float32)[:,None]
+    fade_x=max(24.,ww*(.17 if theme==0 else .12))
+    fade_top=max(12.,hh*(.14 if theme==0 else .10))
+    fade_bottom=max(21.,hh*(.17 if theme==0 else .12))
+    fx=np.clip(np.minimum(xx,(ww-1)-xx)/fade_x,0.,1.)
+    fy=np.clip(np.minimum(yy/fade_top,((hh-1)-yy)/fade_bottom),0.,1.)
+    smooth_x=fx*fx*(3.-2.*fx)
+    smooth_y=fy*fy*(3.-2.*fy)
+    matte=np.uint8(np.clip(smooth_x*smooth_y*255.,0.,255.))
+    mask=Image.fromarray(matte,"L")
+    assert mask.getpixel((0,hh//2))==0 and mask.getpixel((ww-1,hh//2))==0
+    assert mask.getpixel((ww//2,0))==0 and mask.getpixel((ww//2,hh-1))==0
+    # Avoid hard rectangular or false gauge fragments across all 18 photos.
     canvas.paste(car,(x1+(width-car.width)//2,y1+(height-car.height)//2),mask)
 
 def main():
