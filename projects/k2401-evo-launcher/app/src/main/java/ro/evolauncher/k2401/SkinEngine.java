@@ -83,11 +83,11 @@ final class SkinEngine {
   private boolean fullArtIsClean=false;
   private AlertDialog galleryDialog;
   private int selected;
-  private final Rect mediaRect=new Rect(640,86,1260,364);
-  private final Rect statsRect=new Rect(640,387,1260,699);
-  private final Rect appRect=new Rect(13,630,132,714);
-  private final Rect skinRect=new Rect(142,630,267,714);
-  private final Rect mapsRect=new Rect(277,630,391,714);
+  private final Rect mediaRect=new Rect(860,74,1265,436);
+  private final Rect statsRect=new Rect(860,462,1266,689);
+  private final Rect appRect=new Rect(13,630,197,714);
+  private final Rect skinRect=new Rect(201,630,385,714);
+  private final Rect mapsRect=new Rect(389,630,573,714);
 
   SkinEngine(MainActivity activity){
     host=activity;
@@ -453,43 +453,43 @@ final class SkinEngine {
     final int crimson=0xfffa304d,azure=0xff30cfff,ice=0xffedf6ff;
     // The shared native status bar above already renders the EVO DIGITAL DASH
     // title once. Do not add another opaque title card over the first skin.
-    panel(c,352,86,236,87,0xff081421,17);
-    text(c,time(),373,130,43,ice,true);
-    text(c,shorten(date(),27),373,159,16,0xffcddde9,false);
+    panel(c,420,86,255,87,0xff081421,17);
+    text(c,time(),441,130,43,ice,true);
+    text(c,shorten(date(),27),441,159,16,0xffcddde9,false);
 
     // The mockup has "0 km/h" without a vehicle-speed PID. Do not make it
     // appear live: replace just its centre with a real connection indicator.
-    panel(c,379,246,169,155,0xff081420,17);
-    text(c,"ECU / ELM327",393,281,17,0xffa7bcd1,true);
+    panel(c,446,246,171,155,0xff081420,17);
+    text(c,"ECU / ELM327",460,281,17,0xffa7bcd1,true);
     ObdReader.Reading data=host.obd==null?ObdReader.Reading.empty():host.obd.current();
-    text(c,data.live?"CONECTAT":"N/A",393,333,27,data.live?0xff5af5ba:ice,true);
-    text(c,data.live?"DATE LIVE":"FĂRĂ DATE",393,362,15,
+    text(c,data.live?"CONECTAT":"N/A",460,333,27,data.live?0xff5af5ba:ice,true);
+    text(c,data.live?"DATE LIVE":"FĂRĂ DATE",460,362,15,
       data.live?azure:0xff9db0c4,true);
 
     // Main round gauges. Semi-opaque black under the *dynamic* arcs hides
     // baked-in readings and keeps the original tachometer-like placement.
-    colour(0xff07111e);c.drawCircle(240,328,108,p);c.drawCircle(658,328,108,p);
-    gauge(c,240,323,98,"RPM",val(data.rpm,0),"rpm",data.rpm,0,8000,crimson,1);
-    gauge(c,658,323,98,"TEMP APĂ",val(data.coolantC,0),"°C",
+    colour(0xff07111e);c.drawCircle(298,328,108,p);c.drawCircle(735,328,108,p);
+    gauge(c,298,323,98,"RPM",val(data.rpm,0),"rpm",data.rpm,0,8000,crimson,1);
+    gauge(c,735,323,98,"TEMP APĂ",val(data.coolantC,0),"°C",
       data.coolantC,40,120,azure,2);
 
     // Media panel exactly within the right-hand rectangular music location.
-    panel(c,799,74,466,362,0xff08121e,15);
-    stroke(c,799,74,466,362,crimson,15);
-    text(c,shorten(host.mediaName,25),822,108,22,ice,true);
+    panel(c,860,74,405,362,0xff08121e,15);
+    stroke(c,860,74,405,362,crimson,15);
+    text(c,shorten(host.mediaName,22),882,108,22,ice,true);
     MediaController controller=host.media;
     Bitmap cover=null;
     if(controller!=null&&controller.getMetadata()!=null){
       cover=controller.getMetadata().getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
       if(cover==null)cover=controller.getMetadata().getBitmap(MediaMetadata.METADATA_KEY_ART);
     }
-    panel(c,821,128,124,146,0xff3f1526,10);
+    panel(c,882,128,118,146,0xff3f1526,10);
     if(cover!=null){
       colour(Color.WHITE);p.setFilterBitmap(true);
-      c.drawBitmap(cover,null,new Rect(823,130,943,272),p);
+      c.drawBitmap(cover,null,new Rect(884,130,998,272),p);
     }else{
       // Do not draw a YouTube logo if Morphe, Spotify or another player is selected.
-      centered(c,"MEDIA",883,211,23,ice,true);
+      centered(c,"MEDIA",941,211,23,ice,true);
     }
     String song="",performer="";
     if(controller!=null&&controller.getMetadata()!=null){
@@ -499,35 +499,35 @@ final class SkinEngine {
     }
     if(song.isEmpty())song="Fără redare activă";
     if(performer.isEmpty())performer="Alege playerul / MediaSession";
-    text(c,shorten(song,22),962,183,23,ice,true);
-    text(c,shorten(performer,29),962,218,16,0xff9fb2c6,false);
-    line(c,967,260,1242,260,0xff41556c,4);
+    text(c,shorten(song,19),1012,183,22,ice,true);
+    text(c,shorten(performer,25),1012,218,15,0xff9fb2c6,false);
+    line(c,1012,260,1242,260,0xff41556c,4);
     if(controller!=null&&controller.getMetadata()!=null&&controller.getPlaybackState()!=null){
       long duration=controller.getMetadata().getLong(MediaMetadata.METADATA_KEY_DURATION);
       long pos=controller.getPlaybackState().getPosition();
-      if(duration>0&&pos>=0)line(c,967,260,967+275f*Math.min(1f,(float)pos/duration),260,
+      if(duration>0&&pos>=0)line(c,1012,260,1012+230f*Math.min(1f,(float)pos/duration),260,
         crimson,4);
     }
-    panel(c,999,319,70,73,crimson,33);
+    panel(c,1089,319,70,73,crimson,33);
     boolean playing=controller!=null&&controller.getPlaybackState()!=null&&
       controller.getPlaybackState().getState()==PlaybackState.STATE_PLAYING;
-    centered(c,"◀◀",967,363,27,ice,true);
-    centered(c,playing?"Ⅱ":"▶",1034,368,29,ice,true);
-    centered(c,"▶▶",1143,363,27,ice,true);
-    text(c,controller==null?"MEDIA OFFLINE":"MEDIA LIVE",823,417,13,
+    centered(c,"◀◀",1040,363,27,ice,true);
+    centered(c,playing?"Ⅱ":"▶",1124,368,29,ice,true);
+    centered(c,"▶▶",1211,363,27,ice,true);
+    text(c,controller==null?"MEDIA OFFLINE":"MEDIA LIVE",882,417,13,
       controller==null?0xffacbacb:0xff5af5ba,true);
 
     // The two rectangular live fuel-trim instruments correspond to the two
     // cards in the original lower right, not a duplicate four-dial panel.
-    compactDigitalFuelTrim(c,799,462,223,226,"STFT B1",data.stft,azure);
-    compactDigitalFuelTrim(c,1034,462,229,226,"LTFT B1",data.ltft,crimson);
-    text(c,"K2401 • "+NAMES[0],416,698,16,0xffb5c8d9,true);
+    compactDigitalFuelTrim(c,860,462,194,226,"STFT B1",data.stft,azure);
+    compactDigitalFuelTrim(c,1066,462,199,226,"LTFT B1",data.ltft,crimson);
+    text(c,"K2401 • "+NAMES[0],590,698,16,0xffb5c8d9,true);
 
     // Small functional bottom dock instead of a 620x310 HUD obscuring the car.
-    panel(c,5,630,389,88,0xff0a1320,14);
-    stroke(c,5,630,389,88,0xffa72a43,14);
+    panel(c,5,630,573,88,0xff0a1320,14);
+    stroke(c,5,630,573,88,0xffa72a43,14);
     String[] shortcuts={"APLICAȚII","SKINURI","HARTĂ"};
-    int[] bx={13,142,277},bw={119,125,114};
+    int[] bx={13,201,389},bw={184,184,184};
     for(int i=0;i<3;i++){
       panel(c,bx[i],635,bw[i],76,0xff1b2a3b,9);
       // Crisp vector artwork: exact same original on-screen touch rectangles.
@@ -738,9 +738,9 @@ final class SkinEngine {
   }
   boolean touch(float x,float y){
     if(selected>0&&nativePanels.touch(x,y))return true;
-    if(selected==0&&x>=799&&x<=1265&&y>=74&&y<=436){
+    if(selected==0&&x>=860&&x<=1265&&y>=74&&y<=436){
       if(y>=302){
-        host.mediaAction(x<995?0:x<1092?1:2);
+        host.mediaAction(x<1080?0:x<1165?1:2);
       }else host.choosePlayer();
       return true;
     }
