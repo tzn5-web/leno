@@ -57,26 +57,28 @@ final class SkinEngine {
     "EVO RED FRONT","LANCER MOUNTAIN","EVO SPEED","EVO SUNSET",
     "LANCER HERO","DIGITAL COCKPIT","TECH GRID",
     "GAUGES FOCUS","LANCER SHOWROOM","MINIMAL SPORT",
-    "CAR STATUS","APP LAUNCHER","PERFORMANCE"
+    "CAR STATUS","APP LAUNCHER","PERFORMANCE",
+    "EVO ULTRA NEON UHD"
   };
   // Variants correspond to concept-sheet crops in /assets/skins/atlas.webp.
   static final int COUNT=NAMES.length;
   // Each of the 21 originals has a distinct native interaction/gauge profile,
   // rather than just recycling one of six dashboard canvases.
   private static final int[] STYLES={
-    0,1,2,3,4,5,6, 7,8,9,10,11,12,13, 14,15,16,17,18,19,20
+    0,1,2,3,4,5,6, 7,8,9,10,11,12,13, 14,15,16,17,18,19,20,21
   };
   private static final int[] COLORS={
     0xfff02e4a,0xffff3450,0xff1ec7ff,0xfff02e4a,0xff24c9ff,0xffef3551,
     0xffff314e,0xfffe3951,0xffff3556,0xffed4a50,0xff21c4eb,0xffff7650,
     0xffff3650,0xffed3154,0xff29d6ee,0xffed2e54,0xfff55b43,0xff27cdf0,
-    0xffe52b51,0xff33b6ea,0xffee334d
+    0xffe52b51,0xff33b6ea,0xffee334d,0xff29d5ff
   };
   private final MainActivity host;
   private final ThemeNativePanels nativePanels;
   private final SharedPreferences prefs;
   private final Paint p=new Paint(3);
   private final CleanSkinArt cleanArt=new CleanSkinArt();
+  private final UltraCockpitTheme ultra;
   private Bitmap atlas;
   private Bitmap fullArt;
   private int fullArtId=-1;
@@ -93,6 +95,7 @@ final class SkinEngine {
     host=activity;
     nativePanels=new ThemeNativePanels(activity);
     prefs=host.getSharedPreferences(PREFS,Context.MODE_PRIVATE);
+    ultra=new UltraCockpitTheme(activity);
     selected=clamp(prefs.getInt(KEY,0));
     loadAtlas();
   }
@@ -186,6 +189,7 @@ final class SkinEngine {
     host.placeMap();
   }
   void release(){
+    ultra.release();
     if(atlas!=null&&!atlas.isRecycled()){atlas.recycle();atlas=null;}
     if(fullArt!=null&&!fullArt.isRecycled()){fullArt.recycle();fullArt=null;}
   }
@@ -832,6 +836,8 @@ final class SkinEngine {
   }
 
   void draw(Canvas c){
+    // Independent 22nd UHD cockpit; original 21 themes remain unchanged.
+    if(selected==21){ultra.draw(c);return;}
     // EVO Digital Dash has its own bespoke left/right interactive cockpit.
     // The remaining twenty models use layouts aligned to the *individual*
     // source artwork, rather than one generic four-gauge card on the right.
@@ -842,7 +848,12 @@ final class SkinEngine {
     drawNativeStatusBar(c,id);
     nativePanels.draw(c,id);
   }
+  void ultraTouchDown(float x,float y){if(selected==21)ultra.down(x,y);}
+  void ultraTouchMove(float x,float y){if(selected==21)ultra.move(x,y);}
+  void ultraTouchCancel(){ultra.cancel();}
+  boolean ultraTouchUp(float x,float y){return selected==21&&ultra.up(x,y);}
   boolean touch(float x,float y){
+    if(selected==21)return ultra.touch(x,y);
     if(selected==1)return touchCinematicTwo(x,y);
     if(selected>0&&nativePanels.touch(x,y))return true;
     if(selected==0&&x>=860&&x<=1265&&y>=74&&y<=412){
@@ -940,7 +951,7 @@ final class SkinEngine {
               boolean isAtlas="atlas.webp".equals(file);
               int index=-1;
               if(!isAtlas){
-                for(int i=0;i<COUNT;i++){
+                for(int i=0;i<21;i++){
                   if(file.equals(String.format(Locale.US,"skin_%02d.webp",i))){index=i;break;}
                 }
               }
@@ -970,7 +981,7 @@ final class SkinEngine {
           }
         }
         if(!atlasSeen)throw new IOException("Lipsește atlas.webp");
-        for(int i=0;i<COUNT;i++)if(!seen[i])
+        for(int i=0;i<21;i++)if(!seen[i])
           throw new IOException("Lipsește skin_"+String.format(Locale.US,"%02d",i)+".webp");
         if(!prefs.edit().putString("skin_pack_dir",folder).putBoolean("use_custom_skin_pack",true).commit())
           throw new IOException("Nu pot salva selecția imaginilor");
@@ -1017,7 +1028,7 @@ final class SkinEngine {
       list.addView(entry,new LinearLayout.LayoutParams(-1,dp(146)));
       entry.setOnClickListener(v->previewDialog(index));
     }
-    galleryDialog=new AlertDialog.Builder(host).setTitle("Skinuri EVO • 21 modele • primul EVO DIGITAL DASH")
+    galleryDialog=new AlertDialog.Builder(host).setTitle("Skinuri EVO • 22 modele • 21 originale + EVO ULTRA NEON UHD")
       .setView(scroll).setNegativeButton("Închide",null).create();
     galleryDialog.show();
   }
