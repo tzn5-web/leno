@@ -30,7 +30,7 @@ import java.util.concurrent.Executors;
 final class DirectElm327 {
   private static final UUID SPP=UUID.fromString("00001101-0000-1000-8000-00805f9b34fb");
   private static final String PREFS="evo_launcher_prefs",KEY="elm327_mac",KEY_MODE="elm327_last_mode";
-  private static final long FAST_STALE=2200L,SLOW_STALE=14000L;
+  private static final long FAST_STALE=2200L,SLOW_STALE=14000L,AMBIENT_STALE=35000L;
   private final Context context;
   private final SharedPreferences preferences;
   private final Handler ui=new Handler(Looper.getMainLooper());
@@ -46,10 +46,10 @@ final class DirectElm327 {
   private volatile int ratePerSecond;
   // This flag is owned by the I/O worker except at start() scheduling.
   private boolean workerActive;
-  private final float[] values={Float.NaN,Float.NaN,Float.NaN,Float.NaN};
-  private final long[] times={0,0,0,0};
-  private final int[] pids={0x0C,0x06,0x05,0x07};
-  // Index 0=RPM, 1=STFT, 2=coolant, 3=LTFT.
+  private final float[] values={Float.NaN,Float.NaN,Float.NaN,Float.NaN,Float.NaN};
+  private final long[] times={0,0,0,0,0};
+  private final int[] pids={0x0C,0x06,0x05,0x07,0x46};
+  // Index 0=RPM, 1=STFT, 2=coolant, 3=LTFT, 4=ambient °C.
   private long fastCounter;
 
   DirectElm327(Context host,Runnable callback){
@@ -86,9 +86,10 @@ final class DirectElm327 {
       long now=SystemClock.elapsedRealtime();
       float rpm=fresh(0,now,FAST_STALE),stft=fresh(1,now,FAST_STALE);
       float water=fresh(2,now,SLOW_STALE),ltft=fresh(3,now,SLOW_STALE);
+      float ambient=fresh(4,now,AMBIENT_STALE);
       boolean live=Float.isFinite(rpm)||Float.isFinite(stft)||
-        Float.isFinite(water)||Float.isFinite(ltft);
-      return new ObdReader.Reading(rpm,stft,ltft,water,live);
+        Float.isFinite(water)||Float.isFinite(ltft)||Float.isFinite(ambient);
+      return new ObdReader.Reading(rpm,stft,ltft,water,ambient,live);
     }
   }
   private float fresh(int i,long now,long ttl){
@@ -96,7 +97,7 @@ final class DirectElm327 {
   }
   private void clearValues(){
     synchronized(values){
-      for(int i=0;i<4;i++){values[i]=Float.NaN;times[i]=0;}
+      for(int i=0;i<values.length;i++){values[i]=Float.NaN;times[i]=0;}
     }
     sample=ObdReader.Reading.empty();
     notifyUI();
@@ -282,12 +283,12 @@ final class DirectElm327 {
     if(combined!=null)throw combined;
   }
   private void pollLoop(ObdInputPump pump,OutputStream out,long token)throws Exception{
-    long lastCoolant=0,lastLtft=0,lastNotify=0,rateStart=SystemClock.elapsedRealtime();
+    long lastCoolant=0,lastLtft=0,lastAmbient=0,lastNotify=0,rateStart=SystemClock.elapsedRealtime();
     int completed=0;
     long nextAllowed=0;
     while(alive(token)){
       long now=SystemClock.elapsedRealtime();
-      int[] requests=ObdPollPlan.next(now,lastCoolant,lastLtft);
+      int[] requests=ObdPollPlan.next(now,lastCoolant,lastLtft,lastAmbient);
       // Fast sensor requests are always first. One command outstanding.
       for(int i:requests){
         if(!alive(token))return;
@@ -305,6 +306,7 @@ final class DirectElm327 {
         }
         if(i==2)lastCoolant=t1;
         if(i==3)lastLtft=t1;
+        if(i==4)lastAmbient=t1;
         // Avoid blindly hammering ELM firmware; adapt to real response.
         nextAllowed=t1+ObdPollPlan.minimumGapMs(roundTripMs);
         if(t1-lastNotify>=85L){
