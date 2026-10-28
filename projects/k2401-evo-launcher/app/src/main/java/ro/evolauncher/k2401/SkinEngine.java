@@ -455,7 +455,8 @@ final class SkinEngine {
    */
   private void drawEvoDigitalDashNative(Canvas c){
     drawArt(c,0);
-    drawNativeStatusBar(c,0);
+    // The approved Digital Dash has no duplicated 01/21 gallery header.
+    // Real clock is already drawn below; title remains in the bottom strip.
     final int crimson=0xfffa304d,azure=0xff30cfff,ice=0xffedf6ff;
     // The shared native status bar above already renders the EVO DIGITAL DASH
     // title once. Do not add another opaque title card over the first skin.
@@ -474,9 +475,9 @@ final class SkinEngine {
 
     // Main round gauges. Semi-opaque black under the *dynamic* arcs hides
     // baked-in readings and keeps the original tachometer-like placement.
-    colour(0xff07111e);c.drawCircle(298,328,108,p);c.drawCircle(735,328,108,p);
-    gauge(c,298,323,98,"RPM",val(data.rpm,0),"rpm",data.rpm,0,8000,crimson,1);
-    gauge(c,735,323,98,"TEMP APĂ",val(data.coolantC,0),"°C",
+    colour(0xff07111e);c.drawCircle(298,300,130,p);c.drawCircle(735,305,116,p);
+    gauge(c,298,300,122,"RPM",val(data.rpm,0),"rpm",data.rpm,0,8000,crimson,1);
+    gauge(c,735,305,107,"TEMP APĂ",val(data.coolantC,0),"°C",
       data.coolantC,40,120,azure,2);
 
     // Media panel exactly within the right-hand rectangular music location.
