@@ -333,4 +333,7 @@ assert all(struct.unpack(">II",x.read_bytes()[16:24])==(1280,720) for x in image
 assert len({sha256(x.read_bytes()).digest() for x in images})==21
 print("K2401_ALL_21_NATIVE_SKIN_SCREENSHOTS=PASS")
 PY
+# This is image evidence from the actual Android 10 emulator, not concept art.
+# Keep three photographed vehicle scenes visible below native LIVE RPM.
+python3 projects/k2401-evo-launcher/scripts/verify-scene-visibility.py
 echo "SIX_SCREEN_EMULATOR_SMOKE=PASS; RESOLUTION=1280x720; RESTART=PASS"
