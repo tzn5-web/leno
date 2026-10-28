@@ -72,10 +72,50 @@ for kind in ['clean','uhd']:
  print('K2401_21_'+kind.upper()+'_UHD_IMAGES=PASS')
 print('K2401_21_APPROVED_ORIGINALS_IMMUTABLE=PASS')
 PY
-( cd "$ROOT/generated" && sha256sum clean/skin_??.webp uhd/skin_??.webp | sort ) > "$REPORT/uhd-asset-sha256.txt"
+# Provide full 4K (3840x2160) restoration candidates separately from the
+# 2560x1440 artwork used in the actual 1280x720 Android launcher.
+# No car identity or new scenery is generated; only source-preserving resampling.
+mkdir -p "$ROOT/generated/draft_4k"
+"$ROOT/venv/bin/python" - <<'PY'
+from pathlib import Path
+from PIL import Image,ImageFilter
+base=Path("/opt/k2401-evo-workspace/generated")
+for i in range(21):
+ source=base/"clean"/f"skin_{i:02}.webp"
+ target=base/"draft_4k"/f"skin_{i:02}.webp"
+ with Image.open(source) as im:
+  image=im.convert("RGB").resize((3840,2160),Image.Resampling.LANCZOS)
+  image=image.filter(ImageFilter.UnsharpMask(radius=1.08,percent=125,threshold=3))
+  image.save(target,"WEBP",quality=96,method=6)
+  assert image.size==(3840,2160)
+print("K2401_21_SEPARATE_4K_IMAGE_CANDIDATES=PASS")
+PY
+( cd "$ROOT/generated" && sha256sum clean/skin_??.webp uhd/skin_??.webp draft_4k/skin_??.webp | sort ) > "$REPORT/uhd-asset-sha256.txt"
 tar -C "$ROOT" -czf "$ROOT/k2401-locked-originals.tar.gz" original-immutable reports/approved-originals-sha256.txt
 tar -C "$ROOT" -czf "$ROOT/k2401-21-uhd-assets.tar.gz" generated reports/uhd-asset-sha256.txt
 du -h "$ROOT"/*.tar.gz | tee "$REPORT/archive-sizes.txt"
+# Publish source backups and all 63 derived 2K/4K images BEFORE Gradle so an
+# Android compilation error never loses the source-preserving artwork.
+if [ -n "$BLOB_SAS_B64" ]; then
+  PRIVATE_URL="$(printf '%s' "$BLOB_SAS_B64" | base64 -d)"
+  case "$PRIVATE_URL" in
+    https://tzn5androidartifacts26.blob.core.windows.net/k2401-evo-private\?*) ;;
+    *) echo 'ERROR=UNEXPECTED_PRIVATE_STORAGE_URL'; exit 8;;
+  esac
+  BASE="$(printf '%s' "$PRIVATE_URL" | cut -d '?' -f 1)"
+  QUERY="$(printf '%s' "$PRIVATE_URL" | cut -d '?' -f 2-)"
+  UPLOAD_FOLDER="frozen-$(git rev-parse --short=12 HEAD)"
+  for f in "$ROOT/k2401-locked-originals.tar.gz" "$ROOT/k2401-21-uhd-assets.tar.gz" \
+      "$REPORT/approved-originals-sha256.txt" "$REPORT/uhd-asset-sha256.txt" \
+      "$REPORT/image-asset-qa.txt" "$REPORT/layout-agent.txt"; do
+    name="$(basename "$f")"
+    curl -fsSL --retry 3 --max-time 300 -X PUT \
+      -H 'x-ms-blob-type: BlockBlob' -H 'x-ms-version: 2020-10-02' \
+      -H 'Content-Type: application/octet-stream' --upload-file "$f" \
+      "$BASE/$UPLOAD_FOLDER/$name?$QUERY" >/dev/null
+    echo "K2401_PRIVATE_AZURE_ASSET_SAVED=$name"
+  done
+fi
 # Android SDK and Gradle stay installed on the existing VM disk between runs.
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 export ANDROID_HOME="$ROOT/android-sdk"
@@ -104,6 +144,8 @@ if [ ! -x "$ROOT/tools/gradle-8.11.1/bin/gradle" ]; then
   unzip -oq "$ROOT/tools/gradle-8.11.1-bin.zip" -d "$ROOT/tools"
 fi
 printf 'sdk.dir=%s\n' "$ANDROID_HOME" > "$SCRIPT/local.properties"
+# Gradle invokes python3 directly; point that name to the verified venv.
+export PATH="$ROOT/venv/bin:$PATH"
 "$ROOT/tools/gradle-8.11.1/bin/gradle" --no-daemon -p "$SCRIPT" :app:assembleDebug \
   > "$REPORT/android-build.log" 2>&1 || {
     tail -n 90 "$REPORT/android-build.log"
