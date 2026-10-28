@@ -611,7 +611,7 @@ public final class MainActivity extends Activity {
                             try (InputStream source = new BufferedInputStream(
                                     getContentResolver().openInputStream(file.uri), 1024*1024)) {
                                 long left = file.bytes, sent = 0, start = System.currentTimeMillis();
-                                long last = 0;
+                                long lastProgress = 0;
                                 byte[] buffer = new byte[1024*1024];
                                 while (left > 0) {
                                     int n = source.read(buffer, 0, (int)Math.min(left, buffer.length));
@@ -619,9 +619,9 @@ public final class MainActivity extends Activity {
                                     out.write(buffer, 0, n);
                                     left -= n;
                                     sent += n;
-                                    if (System.currentTimeMillis() - last > 450) {
+                                    if (System.currentTimeMillis() - lastProgress > 450) {
                                         progress(sent, file.bytes, start);
-                                        last = System.currentTimeMillis();
+                                        lastProgress = System.currentTimeMillis();
                                     }
                                 }
                             }
