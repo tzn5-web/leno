@@ -1,0 +1,59 @@
+name: VeloLink Offline - Android 16 install and launch smoke test
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/velolink-offline-android16-smoke.yml']
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  android16:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Download verified APK compiled in Azure
+        run: |
+          set -euo pipefail
+          export AZURE_STORAGE_KEY="$(az storage account keys list -g rg-chatgpt-azure -n tzn5androidartifacts26 --query '[0].value' -o tsv)"
+          mkdir -p /tmp/velolink-smoke
+          az storage blob download --account-name tzn5androidartifacts26 -c apks-private -n velolink/output/VeloLink-Offline-v0.1.0-Android.apk --file /tmp/velolink-smoke/velolink.apk --overwrite --only-show-errors >/dev/null
+          unzip -t /tmp/velolink-smoke/velolink.apk | tail -n1
+          echo AZURE_APK_SOURCE=PASS
+      - name: Enable KVM for Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -e /dev/kvm
+      - name: Install and launch in Android 16
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_4
+          cores: 2
+          ram-size: 3072M
+          disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            set -e
+            adb install /tmp/velolink-smoke/velolink.apk
+            adb shell am start -W -n dev.velolink.offline/.MainActivity
+            sleep 5
+            PID="$(adb shell pidof dev.velolink.offline | tr -d '\r')"
+            test -n "$PID"
+            adb logcat -d -v time > /tmp/velolink-smoke/logcat.log
+            if grep -A5 'FATAL EXCEPTION' /tmp/velolink-smoke/logcat.log | grep -q 'dev.velolink.offline'; then
+              echo VELOLINK_FATAL_CRASH_FOUND
+              exit 3
+            fi
+            echo "VELOLINK_ANDROID16_INSTALL_LAUNCH_PASS PID=$PID"
+      - if: always()
+        run: az logout || true
