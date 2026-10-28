@@ -9,8 +9,12 @@ mkdir -p "$REPORT" "$ROOT/original-immutable" "$ROOT/generated" "$ROOT/tools"
 exec > >(tee -a "$REPORT/azure-setup.log") 2>&1
 trap 'echo "K2401_VM_RUN_EXIT=$?"' EXIT
 EXPECTED_SHA=''
+BLOB_SAS_B64=''
 for arg in "$@"; do
-  case "$arg" in ExpectedSha=*) EXPECTED_SHA="$(printf '%s' "$arg" | cut -d = -f 2)";; esac
+  case "$arg" in
+    ExpectedSha=*) EXPECTED_SHA="$(printf '%s' "$arg" | cut -d = -f 2)";;
+    BlobSasB64=*) BLOB_SAS_B64="$(printf '%s' "$arg" | cut -d = -f 2-)";;
+  esac
 done
 [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'ERROR=INVALID_EXPECTED_SHA'; exit 2; }
 date -u --iso-8601=seconds > "$REPORT/started-utc.txt"
@@ -66,4 +70,63 @@ PY
 tar -C "$ROOT" -czf "$ROOT/k2401-locked-originals.tar.gz" original-immutable reports/approved-originals-sha256.txt
 tar -C "$ROOT" -czf "$ROOT/k2401-21-uhd-assets.tar.gz" generated reports/uhd-asset-sha256.txt
 du -h "$ROOT"/*.tar.gz | tee "$REPORT/archive-sizes.txt"
+# Android SDK and Gradle stay installed on the existing VM disk between runs.
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+export ANDROID_HOME="$ROOT/android-sdk"
+export ANDROID_SDK_ROOT="$ANDROID_HOME"
+export PATH="$JAVA_HOME/bin:$PATH"
+mkdir -p "$ANDROID_HOME/cmdline-tools"
+if [ ! -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+  curl -fsSL --retry 3 --max-time 240 \
+    https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip \
+    -o "$ROOT/tools/android-commandline-tools.zip"
+  mkdir -p "$ROOT/tools/sdk-extracted"
+  unzip -oq "$ROOT/tools/android-commandline-tools.zip" -d "$ROOT/tools/sdk-extracted"
+  mv "$ROOT/tools/sdk-extracted/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+fi
+SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+(yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null 2>&1) || true
+"$SDKMANAGER" --sdk_root="$ANDROID_HOME" 'platforms;android-35' \
+  'build-tools;35.0.0' 'platform-tools' > "$REPORT/android-sdk-install.log" 2>&1
+if [ ! -x "$ROOT/tools/gradle-8.11.1/bin/gradle" ]; then
+  curl -fsSL --retry 3 --max-time 240 \
+    https://services.gradle.org/distributions/gradle-8.11.1-bin.zip \
+    -o "$ROOT/tools/gradle-8.11.1-bin.zip"
+  unzip -oq "$ROOT/tools/gradle-8.11.1-bin.zip" -d "$ROOT/tools"
+fi
+printf 'sdk.dir=%s\n' "$ANDROID_HOME" > "$SCRIPT/local.properties"
+"$ROOT/tools/gradle-8.11.1/bin/gradle" --no-daemon -p "$SCRIPT" :app:assembleDebug \
+  > "$REPORT/android-build.log" 2>&1 || {
+    tail -n 90 "$REPORT/android-build.log"
+    echo 'K2401_AZURE_ANDROID_COMPILE=FAIL'
+    exit 7
+  }
+APK="$SCRIPT/app/build/outputs/apk/debug/app-debug.apk"
+test -s "$APK"
+sha256sum "$APK" > "$REPORT/azure-android-debug-apk-sha256.txt"
+cp "$APK" "$ROOT/k2401-audited-debug-not-release.apk"
+echo 'K2401_AZURE_ANDROID_COMPILE=PASS'
+# The existing Azure storage account remains PRIVATE; never enable public blobs.
+# Container SAS is issued in the temporary GitHub OIDC job for this run only.
+if [ -n "$BLOB_SAS_B64" ]; then
+  PRIVATE_URL="$(printf '%s' "$BLOB_SAS_B64" | base64 -d)"
+  case "$PRIVATE_URL" in
+    https://tzn5androidartifacts26.blob.core.windows.net/k2401-evo-private\?*) ;;
+    *) echo 'ERROR=UNEXPECTED_PRIVATE_STORAGE_URL'; exit 8;;
+  esac
+  BASE="$(printf '%s' "$PRIVATE_URL" | cut -d '?' -f 1)"
+  QUERY="$(printf '%s' "$PRIVATE_URL" | cut -d '?' -f 2-)"
+  UPLOAD_FOLDER="frozen-$(git rev-parse --short=12 HEAD)"
+  for f in "$ROOT/k2401-locked-originals.tar.gz" "$ROOT/k2401-21-uhd-assets.tar.gz" \
+      "$ROOT/k2401-audited-debug-not-release.apk" \
+      "$REPORT/approved-originals-sha256.txt" "$REPORT/uhd-asset-sha256.txt" \
+      "$REPORT/image-asset-qa.txt" "$REPORT/layout-agent.txt"; do
+    name="$(basename "$f")"
+    curl -fsSL --retry 3 --max-time 300 -X PUT \
+      -H 'x-ms-blob-type: BlockBlob' -H 'x-ms-version: 2020-10-02' \
+      -H 'Content-Type: application/octet-stream' \
+      --upload-file "$f" "$BASE/$UPLOAD_FOLDER/$name?$QUERY" >/dev/null
+    echo "K2401_PRIVATE_AZURE_BLOB_UPLOADED=$name"
+  done
+fi
 echo 'K2401_AZURE_WORKSPACE_AGENTS=PASS'
