@@ -150,7 +150,7 @@ final class CleanSkinArt {
    * its font-sized artifacts were the root cause of unreadable fake values.
    * Photo details remain at approximately native source dimensions.
    */
-  void draw(Canvas c,Bitmap source,int id){
+  void draw(Canvas c,Bitmap source,int id,boolean cleanScene){
     id=Math.max(0,Math.min(COUNT-1,id));
     final int tone=REDS[id],blue=0xff2bcffa;
     solid(0xff060d17);
@@ -173,6 +173,8 @@ final class CleanSkinArt {
       c.drawRect(0,0,W,H,paint);
     }
 
+    if(!cleanScene){
+    // Legacy fallback only: old image still contains screenshot UI.
     // Individual scene cleanup; do not leave the original demo gear/clock
     // or printed application tabs between real native interactive widgets.
     if(id==0){
@@ -204,12 +206,15 @@ final class CleanSkinArt {
       case 20:round(c,96,55,1184,82,0xff08121e,0); break; // nonfunctional tabs
     }
 
+    }
     // The artwork contains screenshot-only status times, navigation,
     // demo app shortcuts and footer labels. Erase them BEFORE native
     // SkinEngine/ThemeNativePanels repaint the real interactive controls.
     round(c,0,0,W,55,0xff08121e,0);
     round(c,0,54,96,666,0xf508111d,0);
-    round(c,0,625,W,95,0xf408111d,0);
+    // Do not hide the real car/road beneath a screen-wide footer. Clean scenes
+    // never contain fake printed app shortcuts, and native panels own the dock.
+    if(!cleanScene)round(c,0,625,W,95,0xf408111d,0);
     line(c,96,55,96,625,(tone&0x00ffffff)|0x52000000,1);
 
     // Exactly one native pictogram for each of six existing touch actions.
