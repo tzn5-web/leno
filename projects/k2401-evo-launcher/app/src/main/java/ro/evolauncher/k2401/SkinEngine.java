@@ -80,6 +80,7 @@ final class SkinEngine {
   private Bitmap atlas;
   private Bitmap fullArt;
   private int fullArtId=-1;
+  private boolean fullArtIsClean=false;
   private AlertDialog galleryDialog;
   private int selected;
   private final Rect mediaRect=new Rect(640,86,1260,364);
@@ -119,10 +120,19 @@ final class SkinEngine {
   private Bitmap fullArt(int id){
     if(fullArt!=null&&!fullArt.isRecycled()&&fullArtId==id)return fullArt;
     if(fullArt!=null&&!fullArt.isRecycled())fullArt.recycle();
-    fullArt=null;fullArtId=id;
+    fullArt=null;fullArtId=id;fullArtIsClean=false;
+    // UI-free audited car-scene art has priority; no baked fake ECU values.
+    try(InputStream stream=host.getAssets().open(
+      String.format(Locale.US,"skins/clean/skin_%02d.webp",id))){
+      BitmapFactory.Options cleanOpts=new BitmapFactory.Options();
+      cleanOpts.inPreferredConfig=Bitmap.Config.ARGB_8888;
+      fullArt=BitmapFactory.decodeStream(stream,null,cleanOpts);
+      fullArtIsClean=fullArt!=null;
+    }catch(IOException|RuntimeException ignored){}
+    // Preserve the approved legacy photo when an old APK lacks clean assets.
     // The 2560x1440 artwork is generated from the exact 21 approved images.
     // The original 1280x720 files are the safe fallback on legacy builds.
-    try(InputStream stream=host.getAssets().open(
+    if(fullArt==null)try(InputStream stream=host.getAssets().open(
       String.format(Locale.US,"skins/uhd/skin_%02d.webp",id))){
       BitmapFactory.Options opts=new BitmapFactory.Options();
       opts.inPreferredConfig=Bitmap.Config.ARGB_8888;
@@ -147,6 +157,7 @@ final class SkinEngine {
     }
     return fullArt;
   }
+  boolean isCleanArt(){return fullArtIsClean;}
   int selection(){return selected;}
   void select(int id){
     selected=clamp(id);
@@ -200,7 +211,8 @@ final class SkinEngine {
     // The original 21 mockups are only PHOTO sources. Drawing the full mockup
     // on Home duplicated low-resolution icons, sample RPM, fake weather, track
     // names and status indicators. All interactive UI is drawn natively.
-    cleanArt.draw(c,fullArt(id),id);
+    Bitmap scene=fullArt(id);
+    cleanArt.draw(c,scene,id,fullArtIsClean);
   }
   private void renderTime(Canvas c,int accent,int style){
     // Original concept artwork contains a static clock (22:36 etc.). On the
