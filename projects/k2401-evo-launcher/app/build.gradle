@@ -10,8 +10,8 @@ android {
    applicationId parallelInstall ? 'ro.evolauncher.k2401.ultra' : 'ro.evolauncher.k2401'
    minSdk 26
    targetSdk 28
-   versionCode 114
-   versionName parallelInstall ? '1.0.114-cinematic-parallel' : '1.0.114-cinematic-trio'
+   versionCode 115
+   versionName parallelInstall ? '1.0.115-cinematic-parallel' : '1.0.115-cinematic-approved-repair'
    manifestPlaceholders = [MAPS_API_KEY: googleMapsApiKey, APP_LABEL: (parallelInstall ? 'EVO Ultra (Test)' : 'EVO Launcher')]
    buildConfigField 'boolean', 'GOOGLE_MAPS_CONFIGURED', googleMapsApiKey.isEmpty() ? 'false' : 'true'
  }
@@ -66,6 +66,7 @@ dependencies {
    workingDir rootProject.projectDir
    commandLine 'python3', "${rootProject.projectDir}/scripts/generate-cinematic-4k.py"
    inputs.file file("${rootProject.projectDir}/scripts/generate-cinematic-4k.py")
+   inputs.file file("src/main/assets/skins/cinematic/approved-trio-reference.webp")
    inputs.files fileTree('src/main/assets/skins/clean') { include 'skin_??.webp' }
    outputs.dir file('src/main/assets/skins/cinematic')
  }
