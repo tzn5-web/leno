@@ -359,6 +359,21 @@ final class ThemeNativePanels {
     middle(c,"SKINURI",skin.centerX(),701,14,WHITE);
     middle(c,"APLICAȚII",app.centerX(),701,14,WHITE);
   }
+  /**
+   * Wallpaper demo erasure must never paint over the six real vector controls
+   * in the left navigation rail (x=0..95), native header (y=0..54), or
+   * genuine footer shortcuts (y=625..719). Some old weather masks began at
+   * x=17 and previously erased the HOME/MEDIA/OBD pictograms themselves.
+   * Only decorative pixels inside the canvas content are eligible.
+   */
+  private void maskWallpaperDemo(Canvas c,Rect area,int border,int radius){
+    if(area==null)return;
+    Rect safe=new Rect(
+      Math.max(96,area.left),Math.max(55,area.top),
+      Math.min(1280,area.right),Math.min(625,area.bottom));
+    if(safe.width()<=0||safe.height()<=0)return;
+    fill(c,safe,0xff0a1421,border,radius);
+  }
   private void hidePrintedDemo(Canvas c,int id){
     // The supplied original photographs include baked-in weather and sensor
     // values. These are NOT live. Mask only the unsupported example cards,
@@ -376,19 +391,19 @@ final class ThemeNativePanels {
       case 17:demo=rect(356,63,162,150);break; // 12°C mock card
     }
     if(demo!=null){
-      // Neutral mask, not a new mock widget or duplicated decorative caption.
-      fill(c,demo,0xff0a1421,0xff23384a,11);
+      // Keep restored native navigation and shortcuts visible.
+      maskWallpaperDemo(c,demo,0xff23384a,11);
     }
     if(id==10){
       // Concept illustration advertises 14.1 V; this ELM poller does not
       // read the voltage PID, therefore displaying 14.1 V would be false.
-      fill(c,rect(38,471,191,118),0xff0a1421,0xff415469,10);
+      maskWallpaperDemo(c,rect(38,471,191,118),0xff415469,10);
       // Unavailable example voltage is blanked; do not substitute non-live text.
     }
     if(id==15){
       // The mockup bottom strip has LTFT, 87°C and 14.1 V examples
       // underneath our real widgets. Remove every printed value first.
-      fill(c,rect(424,479,840,215),0xff08111e,0,12);
+      maskWallpaperDemo(c,rect(424,479,840,215),0,12);
     }
   }
   void draw(Canvas c,int id){
