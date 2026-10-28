@@ -1,0 +1,82 @@
+name: VeloLink Offline - compile and deliver APK from Azure Linux VM
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/velolink-offline-azure-build.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: velolink-offline-azure
+  cancel-in-progress: false
+jobs:
+  azure_build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      RESOURCE_GROUP: rg-chatgpt-azure
+      VM: android-dev-linux
+      ACCOUNT: tzn5androidartifacts26
+      CONTAINER: apks-private
+      OUT: velolink/output/VeloLink-Offline-v0.1.0-Android.apk
+    steps:
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Build in Azure VM using official Gradle distribution
+        shell: bash
+        run: |
+          set -euo pipefail
+          MARK="$(az vm show -g "$RESOURCE_GROUP" -n "$VM" --query tags.managedBy -o tsv)"
+          test "$MARK" = github-azure-android-dev
+          export AZURE_STORAGE_KEY="$(az storage account keys list -g "$RESOURCE_GROUP" -n "$ACCOUNT" --query '[0].value' -o tsv)"
+          EXP="$(date -u -d '+2 hours' +%Y-%m-%dT%H:%MZ)"
+          SAS="$(az storage blob generate-sas --account-name "$ACCOUNT" -c "$CONTAINER" -n "$OUT" --permissions cw --expiry "$EXP" --https-only -o tsv)"
+          test -n "$SAS"
+          URL="https://$ACCOUNT.blob.core.windows.net/$CONTAINER/$OUT?$SAS"
+          SOURCE_URL="https://raw.githubusercontent.com/tzn5-web/leno/$GITHUB_SHA/infra/azure-dev-vm/velolink-offline/build.sh"
+          az vm start -g "$RESOURCE_GROUP" -n "$VM" -o none
+          echo AZURE_BUILD_VM_STARTED
+          SCRIPT="set -eu
+          curl -fsSL --retry 3 '$SOURCE_URL' -o /tmp/velolink-build.sh
+          /bin/sh /tmp/velolink-build.sh '$URL' '$GITHUB_SHA'"
+          MESSAGE="$(az vm run-command invoke -g "$RESOURCE_GROUP" -n "$VM" --command-id RunShellScript --scripts "$SCRIPT" --query 'value[0].message' -o tsv)"
+          echo "$MESSAGE" | tail -c 5000
+          echo "$MESSAGE" | grep -q VELOLINK_AZURE_BUILD_UPLOAD_PASS
+          echo AZURE_VELOLINK_BUILD_PASS
+      - name: Deallocate Azure VM to preserve credit
+        if: always()
+        shell: bash
+        run: |
+          if az account show >/dev/null 2>&1; then
+            MARK="$(az vm show -g "$RESOURCE_GROUP" -n "$VM" --query tags.managedBy -o tsv 2>/dev/null || true)"
+            if [[ "$MARK" = github-azure-android-dev ]]; then
+              az vm deallocate -g "$RESOURCE_GROUP" -n "$VM" -o none
+              echo AZURE_VELOLINK_VM_DEALLOCATED
+            fi
+          fi
+      - name: Retrieve compiled APK from private Azure Blob
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          export AZURE_STORAGE_KEY="$(az storage account keys list -g "$RESOURCE_GROUP" -n "$ACCOUNT" --query '[0].value' -o tsv)"
+          mkdir -p dist
+          az storage blob download --account-name "$ACCOUNT" -c "$CONTAINER" -n "$OUT" --file dist/VeloLink-Offline-v0.1.0-Android.apk --overwrite --only-show-errors >/dev/null
+          test -s dist/VeloLink-Offline-v0.1.0-Android.apk
+          unzip -t dist/VeloLink-Offline-v0.1.0-Android.apk | tail -n 1
+          sha256sum dist/VeloLink-Offline-v0.1.0-Android.apk
+          echo AZURE_APK_DELIVERY_INTEGRITY_PASS
+      - name: Deliver installable Android APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: VeloLink-Offline-Azure-Android-APK
+          path: dist/*.apk
+          retention-days: 14
+          if-no-files-found: error
+      - if: always()
+        run: az logout || true
