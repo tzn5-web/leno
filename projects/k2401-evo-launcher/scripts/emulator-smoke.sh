@@ -52,7 +52,7 @@ adb shell pidof "$APP" >/dev/null
 # Home wallpaper) and verify its disabled-map placeholder with bounded retries.
 map_recovered=0
 for attempt in 1 2 3 4; do
-  adb shell input tap 481 670 # native HARTĂ action, 389..573 on approved wider dock
+  adb shell input tap 45 355 # verified native left-rail NAVIGATION target on default Digital Dash
   sleep 2
   adb shell uiautomator dump /sdcard/k2401-map-safe.xml >/dev/null
   adb pull /sdcard/k2401-map-safe.xml "$OUT/map-safe-ui.xml" >/dev/null
@@ -69,6 +69,9 @@ PY
 done
 if [[ "$map_recovered" != 1 ]]; then
   adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' || true
+  adb shell screencap -p /sdcard/k2401-map-recovery-failure.png || true
+  adb pull /sdcard/k2401-map-recovery-failure.png "$OUT/map-recovery-failure.png" >/dev/null 2>&1 || true
+  adb shell run-as "$APP" cat shared_prefs/evo_startup_recovery.xml > "$OUT/map-recovery-preferences.xml" 2>/dev/null || true
   echo "::error::Map recovery placeholder missing on separate NAVIGATION page"
   exit 1
 fi
