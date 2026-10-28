@@ -21,16 +21,19 @@ import java.util.concurrent.Executors;
  */
 final class ObdReader {
   static final class Reading {
-    final float rpm, stft, ltft, coolantC;
+    final float rpm, stft, ltft, coolantC, ambientC;
     final boolean live;
     final long capturedAtMs;
     Reading(float r,float s,float l,float c,boolean active){
-      rpm=r;stft=s;ltft=l;coolantC=c;live=active;
+      this(r,s,l,c,Float.NaN,active);
+    }
+    Reading(float r,float s,float l,float c,float ambient,boolean active){
+      rpm=r;stft=s;ltft=l;coolantC=c;ambientC=ambient;live=active;
       capturedAtMs=SystemClock.elapsedRealtime();
     }
     static Reading empty(){return new Reading(Float.NaN,Float.NaN,Float.NaN,Float.NaN,false);}
   }
-  private static final String[] PIDS={"010C","0106","0107","0105"};
+  private static final String[] PIDS={"010C","0106","0107","0105","0146"};
   private static final long MAX_STALE_MS=7000L;
   private final Context context;
   private volatile DirectElm327 direct;
@@ -47,7 +50,7 @@ final class ObdReader {
   private volatile long generation;
   private volatile boolean resolvedOnce;
   private boolean bound;
-  private final String[] resolved=new String[4];
+  private final String[] resolved=new String[PIDS.length];
 
   private final ServiceConnection connection=new ServiceConnection(){
     @Override public void onServiceConnected(ComponentName name,IBinder binder){
@@ -92,13 +95,13 @@ final class ObdReader {
               // versions only expose numeric 0x010C/0106/0107/0105 PIDs.
               // Try both public APIs, but NEVER synthesize an ECU measurement.
               String[] ids=resolved.clone();
-              float[] fresh={Float.NaN,Float.NaN,Float.NaN,Float.NaN};
+              float[] fresh={Float.NaN,Float.NaN,Float.NaN,Float.NaN,Float.NaN};
               int count=0;
               for(String id:ids)if(id!=null)count++;
               if(count>0){
                 String[] query=new String[count];
                 int[] slots=new int[count];int p=0;
-                for(int i=0;i<4;i++)if(ids[i]!=null){query[p]=ids[i];slots[p++]=i;}
+                for(int i=0;i<PIDS.length;i++)if(ids[i]!=null){query[p]=ids[i];slots[p++]=i;}
                 try{
                   float[] values=svc.getPIDValues(query);
                   long[] times=svc.getPIDUpdateTime(query);
@@ -116,9 +119,11 @@ final class ObdReader {
               fresh[1]=bounded(fresh[1],-100,100);
               fresh[2]=bounded(fresh[2],-100,100);
               fresh[3]=bounded(fresh[3],-50,170);
+              fresh[4]=bounded(fresh[4],-40,85);
               boolean live=Float.isFinite(fresh[0])||Float.isFinite(fresh[1])||
-                           Float.isFinite(fresh[2])||Float.isFinite(fresh[3]);
-              next=new Reading(fresh[0],fresh[1],fresh[2],fresh[3],live);
+                           Float.isFinite(fresh[2])||Float.isFinite(fresh[3])||
+                           Float.isFinite(fresh[4]);
+              next=new Reading(fresh[0],fresh[1],fresh[2],fresh[3],fresh[4],live);
               nextState=live?(numericFallback?"TORQUE • ECU LIVE (PID NUMERIC)":"TORQUE • ECU LIVE"):
                 (count==0?"TORQUE • AȘTEPTĂ PID / PERMISIUNI":"TORQUE • DATE LIPSA/EXPIRATE");
 
@@ -206,7 +211,7 @@ final class ObdReader {
     // New string-ID endpoints may not be implemented by old Torque builds.
     try{known=svc.listAllPIDs();}catch(RemoteException|RuntimeException ignored){}
     try{supported=svc.listECUSupportedPIDs();}catch(RemoteException|RuntimeException ignored){}
-    for(int i=0;i<4;i++){
+    for(int i=0;i<PIDS.length;i++){
       String match=find(PIDS[i],supported);
       // Some Torque builds report supported IDs differently: fallback to known.
       if(match==null)match=find(PIDS[i],known);
@@ -219,10 +224,10 @@ final class ObdReader {
    */
   private boolean readNumericPids(ITorqueService svc,float[] fresh){
     boolean updated=false;
-    final long[] ids={0x010CL,0x0106L,0x0107L,0x0105L};
+    final long[] ids={0x010CL,0x0106L,0x0107L,0x0105L,0x0146L};
     long[] supported=null;
     try{supported=svc.getListOfECUSupportedPids();}catch(RemoteException|RuntimeException ignored){}
-    for(int i=0;i<4;i++){
+    for(int i=0;i<PIDS.length;i++){
       if(Float.isFinite(fresh[i]))continue;
       // If Torque knows unsupported IDs, avoid needless ELM traffic.
       if(supported!=null&&supported.length>0){
