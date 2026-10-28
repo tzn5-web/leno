@@ -517,9 +517,9 @@ final class SkinEngine {
     panel(c,1089,319,70,73,crimson,33);
     boolean playing=controller!=null&&controller.getPlaybackState()!=null&&
       controller.getPlaybackState().getState()==PlaybackState.STATE_PLAYING;
-    centered(c,"◀◀",1040,363,27,ice,true);
-    centered(c,playing?"Ⅱ":"▶",1124,368,29,ice,true);
-    centered(c,"▶▶",1211,363,27,ice,true);
+    MediaVectorIcons.draw(c,1040,363,0,ice);
+    MediaVectorIcons.draw(c,1124,363,playing?3:1,ice);
+    MediaVectorIcons.draw(c,1211,363,2,ice);
     text(c,controller==null?"MEDIA OFFLINE":"MEDIA LIVE",882,417,13,
       controller==null?0xffacbacb:0xff5af5ba,true);
 
