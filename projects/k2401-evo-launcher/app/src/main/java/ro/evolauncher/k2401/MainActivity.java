@@ -570,7 +570,20 @@ public final class MainActivity extends Activity {
       if(page==4){title(original,"APLICAȚII","Lansează aplicații reale sau adaugă-le în bara de pinuri");String[] labels={"Google Maps","Alege player","OBD / ELM327","Alege aplicație","Setări Android","Bluetooth"};for(int i=0;i<6;i++){int x=158+(i%3)*360,y=210+(i/3)*181;r(original,x,y,324,150,card,14);t(original,labels[i],x+24,y+90,24,white);}}
       if(page==5){title(original,"SETĂRI","EVO Dark Red • fără animații sau servicii permanente");row(original,186,"Acces notificări","Permite controlul playerului selectat prin MediaSession.");row(original,316,"Google Maps","Hartă interactivă live (Maps SDK cu cheie, altfel OpenStreetMap).");row(original,446,"OBD / ELM327","Citire directă Bluetooth sau API Torque oficial — alege sursa din setări.");row(original,576,"Protecție","Nu modificăm MCU, boot, recovery sau CANBUS.");}
       original.restore();}
-   public boolean onTouchEvent(MotionEvent e){if(e.getAction()!=MotionEvent.ACTION_UP)return true;float x=e.getX()*1280/getWidth(),y=e.getY()*720/getHeight();
+   public boolean onTouchEvent(MotionEvent e){
+       // Premium cockpit: distinguish a single tap from a 550 ms hold.
+       // Other 21 layouts keep their existing tap semantics unchanged.
+       if(page==0&&skins!=null&&skins.selection()==21){
+         float ux=e.getX()*1280f/getWidth(),uy=e.getY()*720f/getHeight();
+         switch(e.getActionMasked()){
+           case MotionEvent.ACTION_DOWN: skins.ultraTouchDown(ux,uy);return true;
+           case MotionEvent.ACTION_MOVE: skins.ultraTouchMove(ux,uy);return true;
+           case MotionEvent.ACTION_CANCEL: skins.ultraTouchCancel();return true;
+           case MotionEvent.ACTION_UP: skins.ultraTouchUp(ux,uy);return true;
+           default:return true;
+         }
+       }
+       if(e.getAction()!=MotionEvent.ACTION_UP)return true;float x=e.getX()*1280/getWidth(),y=e.getY()*720/getHeight();
        if(page==0&&skins!=null){if(skins.touch(x,y))return true;return true;}
        if(page!=0&&x<109&&y>=73){int idx=(int)((y-73)/105);if(idx>=0&&idx<6)page=idx;invalidate();placeMap();return true;}
        if(page==0){if(y<65&&x<65){page=4;invalidate();placeMap();}else if(y<65&&x>1210){page=5;invalidate();placeMap();}else if(x>=634&&y>=78&&y<386){if(y>294)mediaAction(x<995?0:x<1125?1:2);else choosePlayer();}else if(x>=634&&y>=389){showObdStatus();}}
