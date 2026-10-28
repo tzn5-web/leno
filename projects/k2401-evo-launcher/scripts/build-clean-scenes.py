@@ -105,7 +105,9 @@ def scene(canvas,source,roi,dest,theme):
         ImageDraw.Draw(mask).rounded_rectangle(
           (inset,inset,car.width-inset-1,car.height-inset-1),
           radius=min(48,car.width//10),fill=255)
-    mask=mask.filter(ImageFilter.GaussianBlur(15))
+    # Feather only the crop perimeter, never the vehicle centre.
+    # The old 15px transition showed a rectangular photo edge on K2401.
+    mask=mask.filter(ImageFilter.GaussianBlur(52 if theme==0 else 30))
     canvas.paste(car,(x1+(width-car.width)//2,y1+(height-car.height)//2),mask)
 
 def main():
