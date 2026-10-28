@@ -13,8 +13,15 @@ smoke_failure(){
   exit "$code"
 }
 trap smoke_failure ERR
+# Match the actual physical K2401 target (1280x720), not the default
+# graphics resolution of whichever Azure/GitHub emulator is running.
+# Touch inputs in this script are real display pixels, not dp or canvas units.
+adb shell wm size 1280x720
 adb shell wm density 160
 adb shell settings put system accelerometer_rotation 0
+adb shell wm size | tee "$OUT/display-size-before.txt"
+adb shell wm size | grep -F 'Override size: 1280x720' >/dev/null
+echo 'K2401_EMULATOR_PHYSICAL_1280x720=PASS'
 adb install -r projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.apk
 # Hermetic emulator run: the Azure AVD persists userdata between *separate*
 # runs even with -no-snapshot. Reset only this emulator's test application,
@@ -52,6 +59,41 @@ subprocess.check_call(["adb","shell","input","tap",str((x1+x2)//2),str((y1+y2)//
 PY
 sleep 3
 adb shell pidof "$APP" >/dev/null
+# Azure's fresh Android 10 emulator shows an OS modal "Viewing full screen /
+# Got it" over the launcher. This was the actual 2026-10-28 Azure failure:
+# no touches could reach navigation, even though the launcher had started.
+# Read the real OS confirmation button from UI hierarchy; never blind-tap
+# a control that might be a real in-app action on another emulator.
+for immersive_attempt in 1 2 3; do
+  adb shell uiautomator dump /sdcard/k2401-immersive.xml >/dev/null
+  adb pull /sdcard/k2401-immersive.xml "$OUT/immersive-ui.xml" >/dev/null
+  if python3 - <<'PY'
+import re,subprocess,xml.etree.ElementTree as ET
+nodes=ET.parse("projects/k2401-evo-launcher/screenshots/immersive-ui.xml").findall(".//node")
+buttons=[n for n in nodes if n.attrib.get("text","").strip().lower()=="got it"]
+if buttons:
+    x1,y1,x2,y2=map(int,re.findall(r"[0-9]+",buttons[0].attrib["bounds"]))
+    subprocess.check_call(["adb","shell","input","tap",str((x1+x2)//2),str((y1+y2)//2)])
+    print("K2401_ANDROID_IMMERSIVE_PERMISSION_DISMISSED=PASS")
+else:
+    print("K2401_ANDROID_IMMERSIVE_PERMISSION_NOT_PRESENT=PASS")
+PY
+  then
+    sleep 1
+    break
+  fi
+  sleep 2
+done
+# On a new image the overlay may have been shown *after* the first tap.
+# A fresh UI dump must never still contain the obstructing OS dialog.
+adb shell uiautomator dump /sdcard/k2401-immersive-verified.xml >/dev/null
+adb pull /sdcard/k2401-immersive-verified.xml "$OUT/immersive-verified-ui.xml" >/dev/null
+python3 - <<'PY'
+import xml.etree.ElementTree as ET
+nodes=ET.parse("projects/k2401-evo-launcher/screenshots/immersive-verified-ui.xml").findall(".//node")
+assert not any(n.attrib.get("text","").strip().lower()=="got it" for n in nodes), "System full screen modal still obstructs K2401 controls"
+print("K2401_ANDROID_SYSTEM_OVERLAY_NOT_OBSTRUCTING=PASS")
+PY
 # On slow Android 10 emulators the first tap can arrive before the real Home
 # receives window focus. Re-open the independent navigation page (not the
 # Home wallpaper) and verify its disabled-map placeholder with bounded retries.
