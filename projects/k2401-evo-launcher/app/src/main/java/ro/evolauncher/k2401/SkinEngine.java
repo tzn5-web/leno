@@ -267,18 +267,12 @@ final class SkinEngine {
     text(c,shorten(song,27),x+174,y+124,26,Color.WHITE,true);
     text(c,shorten(artist,35),x+174,y+163,17,0xffa9b9ce,false);
     line(c,x+178,y+178,x+w-20,y+178,0xff405266,4);
-    if(media!=null&&media.getPlaybackState()!=null){
-      boolean playing=media.getPlaybackState().getState()==PlaybackState.STATE_PLAYING;
-      text(c,"◀◀",x+220,y+h-25,26,0xffeff5ff,true);
-      panel(c,x+350,y+h-72,58,57,accent,29);
-      text(c,playing?"Ⅱ":"▶",x+369,y+h-31,29,Color.WHITE,true);
-      text(c,"▶▶",x+490,y+h-25,26,0xffeff5ff,true);
-    }else{
-      text(c,"◀◀",x+220,y+h-25,26,0xffeff5ff,true);
-      panel(c,x+350,y+h-72,58,57,accent,29);
-      text(c,"▶",x+369,y+h-31,29,Color.WHITE,true);
-      text(c,"▶▶",x+490,y+h-25,26,0xffeff5ff,true);
-    }
+    boolean playing=media!=null&&media.getPlaybackState()!=null&&
+      media.getPlaybackState().getState()==PlaybackState.STATE_PLAYING;
+    MediaVectorIcons.draw(c,x+238,y+h-39,0,0xffeff5ff);
+    panel(c,x+350,y+h-72,58,57,accent,29);
+    MediaVectorIcons.draw(c,x+379,y+h-43,playing?3:1,Color.WHITE);
+    MediaVectorIcons.draw(c,x+509,y+h-39,2,0xffeff5ff);
   }
   private static float clipped(float value,float lo,float hi){
     return Math.max(0f,Math.min(1f,(value-lo)/Math.max(1f,hi-lo)));
@@ -715,10 +709,10 @@ final class SkinEngine {
     line(c,x+19,y+h-99,x+w-19,y+h-99,0xff45596c,3);
     boolean playing=m!=null&&m.getPlaybackState()!=null&&
       m.getPlaybackState().getState()==PlaybackState.STATE_PLAYING;
-    centered(c,"◀◀",x+w*.24f,y+h-34,24,Color.WHITE,true);
+    MediaVectorIcons.draw(c,x+w*.24f,y+h-43,0,Color.WHITE);
     panel(c,x+w*.48f-17,y+h-84,70,68,accent,28);
-    centered(c,playing?"Ⅱ":"▶",x+w*.48f+18,y+h-37,29,Color.WHITE,true);
-    centered(c,"▶▶",x+w*.80f,y+h-34,24,Color.WHITE,true);
+    MediaVectorIcons.draw(c,x+w*.48f+18,y+h-50,playing?3:1,Color.WHITE);
+    MediaVectorIcons.draw(c,x+w*.80f,y+h-43,2,Color.WHITE);
   }
 
   private void drawNativeStatusBar(Canvas c,int id){
