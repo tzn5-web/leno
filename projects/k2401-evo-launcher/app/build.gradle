@@ -1,14 +1,17 @@
 plugins { id 'com.android.application' }
 def googleMapsApiKey = (System.getenv('K2401_MAPS_API_KEY') ?: '').trim()
+// The parallel package installs alongside an older K2401 with a different
+// certificate, with no uninstall/data loss. CI builds both via Azure Key Vault.
+def parallelInstall = 'YES'.equalsIgnoreCase(System.getenv('K2401_PARALLEL_APK') ?: '')
 android {
  namespace 'ro.evolauncher.k2401'
  compileSdk 35
  defaultConfig {
-   applicationId 'ro.evolauncher.k2401'
+   applicationId parallelInstall ? 'ro.evolauncher.k2401.ultra' : 'ro.evolauncher.k2401'
    minSdk 26
    targetSdk 28
-   versionCode 105
-   versionName '1.0.105-original21-visual-repair'
+   versionCode 110
+   versionName parallelInstall ? '1.0.110-ultra-parallel' : '1.0.110-ultra-install-fix'
    manifestPlaceholders = [MAPS_API_KEY: googleMapsApiKey]
    buildConfigField 'boolean', 'GOOGLE_MAPS_CONFIGURED', googleMapsApiKey.isEmpty() ? 'false' : 'true'
  }
