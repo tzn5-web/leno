@@ -912,6 +912,9 @@ final class SkinEngine {
       // Avoid retaining a 1280x720 preview after the picker is closed.
       view.setImageDrawable(null);
       if(rendered!=null&&!rendered.isRecycled())rendered.recycle();
+      // The preview temporarily draws a different skin. Restore the active
+      // theme's native hit rectangles before any subsequent touch.
+      if(host.view!=null)host.view.invalidate();
     });
     dialog.show();
   }
