@@ -131,4 +131,5 @@ for required in ('fullArt(1)','gauge(c,237,449,145','gauge(c,1071,450,132',
 for forbidden in ('ECU / ELM327','"ABS"','"Airbag"','"Doors"','"2530"','"87"'):
     assert forbidden not in cinema,("K2401_SKIN2_PRINTED_FALSE_SENSOR",forbidden)
 assert 'if(selected==1)return touchCinematicTwo(x,y);' in ENGINE
+assert 'if(slot==4){host.showInstalledApps();return true;}' in ENGINE, 'Cinematic theme 2 Apps icon must refresh real app drawer'
 print("K2401_SKIN02_NATIVE_LIVE_RENDER_NO_ECU_ABS_DOORS=PASS")
