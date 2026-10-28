@@ -38,9 +38,21 @@ for index, (label, filename, rgb) in enumerate(SOURCES):
     # Correct actual user-visible composition from Android 10 screenshots:
     # A1/02 previous vehicles were too far left, A3 too low (covered by dock).
     dx,dy=((720,225),(615,-270),(0,-360))[index]
-    blurred=scene.filter(ImageFilter.GaussianBlur(radius=65))
-    blurred.paste(scene,(dx,dy))
-    scene=blurred
+    # Feather the relocated photograph against its own blurred original.
+    # A hard paste creates an obvious rectangular seam at x=dx and y=dy,
+    # which is unacceptable in the original approved borderless 4K cockpit.
+    ambient=scene.filter(ImageFilter.GaussianBlur(radius=65))
+    relocated=Image.new("RGB",(W,H),(4,11,21))
+    relocated.paste(scene,(dx,dy))
+    mask=Image.new("L",(W,H),0)
+    m=ImageDraw.Draw(mask)
+    x0=max(0,dx)+90
+    y0=max(0,dy)+90
+    x1=min(W,W+dx)-70
+    y1=min(H,H+dy)-80
+    m.rounded_rectangle((x0,y0,x1,y1),radius=340,fill=255)
+    mask=mask.filter(ImageFilter.GaussianBlur(radius=175))
+    scene=Image.composite(relocated,ambient,mask)
     if index==0:
         scene=ImageEnhance.Color(scene).enhance(.74)
     if index==2:
