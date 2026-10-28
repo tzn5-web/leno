@@ -103,33 +103,35 @@ final class SkinEngine {
     atlas=null;
     BitmapFactory.Options options=new BitmapFactory.Options();
     options.inPreferredConfig=Bitmap.Config.RGB_565;
-    File root=packDir();
-    File local=root==null?null:new File(root,"atlas.webp");
-    if(local!=null&&local.isFile())atlas=BitmapFactory.decodeFile(local.getPath(),options);
+    // The official 21 designs always come from the APK assets.
+    try(InputStream stream=host.getAssets().open("skins/atlas.webp")){
+      atlas=BitmapFactory.decodeStream(stream,null,options);
+    }catch(IOException|RuntimeException ignored){}
     if(atlas==null){
-      try(InputStream stream=host.getAssets().open("skins/atlas.webp")){
-        atlas=BitmapFactory.decodeStream(stream,null,options);
-      }catch(IOException|RuntimeException ignored){}
+      File root=packDir();
+      File local=root==null?null:new File(root,"atlas.webp");
+      if(local!=null&&local.isFile())atlas=BitmapFactory.decodeFile(local.getPath(),options);
     }
   }
   private Bitmap fullArt(int id){
     if(fullArt!=null&&!fullArt.isRecycled()&&fullArtId==id)return fullArt;
     if(fullArt!=null&&!fullArt.isRecycled())fullArt.recycle();
     fullArt=null;fullArtId=id;
-    File root=packDir();
-    File image=root==null?null:new File(root,String.format(Locale.US,"skin_%02d.webp",id));
-    if(image!=null&&image.isFile()){
+    // Prefer APK-bundled images even if an older prerelease imported a ZIP.
+    try(InputStream stream=host.getAssets().open(
+      String.format(Locale.US,"skins/skin_%02d.webp",id))){
       BitmapFactory.Options opts=new BitmapFactory.Options();
       opts.inPreferredConfig=Bitmap.Config.RGB_565;
-      fullArt=BitmapFactory.decodeFile(image.getAbsolutePath(),opts);
-    }
+      fullArt=BitmapFactory.decodeStream(stream,null,opts);
+    }catch(IOException|RuntimeException ignored){}
     if(fullArt==null){
-      try(InputStream stream=host.getAssets().open(
-        String.format(Locale.US,"skins/skin_%02d.webp",id))){
+      File root=packDir();
+      File image=root==null?null:new File(root,String.format(Locale.US,"skin_%02d.webp",id));
+      if(image!=null&&image.isFile()){
         BitmapFactory.Options opts=new BitmapFactory.Options();
         opts.inPreferredConfig=Bitmap.Config.RGB_565;
-        fullArt=BitmapFactory.decodeStream(stream,null,opts);
-      }catch(IOException|RuntimeException ignored){}
+        fullArt=BitmapFactory.decodeFile(image.getAbsolutePath(),opts);
+      }
     }
     return fullArt;
   }
