@@ -482,11 +482,11 @@ final class SkinEngine {
     panel(c,5,630,389,88,0xff0a1320,14);
     stroke(c,5,630,389,88,0xffa72a43,14);
     String[] shortcuts={"APLICAȚII","SKINURI","HARTĂ"};
-    String[] icons={"▦","◈","➤"};
     int[] bx={13,142,277},bw={119,125,114};
     for(int i=0;i<3;i++){
       panel(c,bx[i],635,bw[i],76,0xff1b2a3b,9);
-      centered(c,icons[i],bx[i]+bw[i]/2f,671,29,crimson,true);
+      // Crisp vector artwork: exact same original on-screen touch rectangles.
+      cleanArt.shortcutIcon(c,i,bx[i]+bw[i]/2f,660,crimson);
       centered(c,shortcuts[i],bx[i]+bw[i]/2f,699,13,ice,true);
     }
   }
