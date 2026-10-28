@@ -156,7 +156,12 @@ final class CleanSkinArt {
     // or printed application tabs between real native interactive widgets.
     if(id==0)round(c,379,398,171,72,0xff081420,0);
     if(id==15)round(c,505,55,295,203,0xff08121e,0);
-    if(id==19)round(c,390,55,890,71,0xff08121e,0);
+    if(id==19){
+      round(c,390,55,890,71,0xff08121e,0);
+      // The bottom of the original app screenshot is baked-in fake icons.
+      // This band now belongs only to four native live ECU gauges.
+      round(c,97,558,1183,162,0xff08121e,0);
+    }
 
     // The artwork contains screenshot-only status times, navigation,
     // demo app shortcuts and footer labels. Erase them BEFORE native
