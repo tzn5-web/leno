@@ -24,11 +24,13 @@ final class ObdPidCodec {
         switch(pid){
           case 0x06:case 0x07:result=(a-128)*100f/128f;break;
           case 0x0C:result=(256*a+b)/4f;break;
-          case 0x05:result=a-40;break;
+          case 0x05:case 0x46:result=a-40;break; // 0146 = ambient air temperature (°C)
           default:return Float.NaN;
         }
-        float low=pid==0x0C?0:pid==0x05?-40:-100;
-        float high=pid==0x0C?12000:pid==0x05?170:100;
+        float low=pid==0x0C?0:(pid==0x05||pid==0x46)?-40:-100;
+        // Ambient above 85°C is not a plausible exterior-air measurement.
+        // Invalid/unsupported replies remain N/A instead of showing 215°C.
+        float high=pid==0x0C?12000:pid==0x05?170:pid==0x46?85:100;
         if(result>=low&&result<=high)return result;
       }catch(NumberFormatException ignored){}
     }
