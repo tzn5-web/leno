@@ -1,0 +1,111 @@
+name: K2401 Ultra Neon UHD - build on existing Azure Linux VM
+on:
+  push:
+    branches: [feature/k2401-evo-launcher]
+    paths: [.github/workflows/k2401-ultra-azure.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: k2401-ultra-on-existing-azure-vm
+  cancel-in-progress: false
+
+jobs:
+  azure-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    env:
+      AZURE_RG: rg-chatgpt-azure
+      AZURE_VM: android-dev-linux
+    steps:
+      - name: Login to the existing Azure subscription via OIDC
+        uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Start existing Android development VM only
+        shell: bash
+        run: |
+          set -euo pipefail
+          STATE="$(az vm show -g "$AZURE_RG" -n "$AZURE_VM" --show-details --query powerState -o tsv)"
+          echo "AZURE_INITIAL_POWER=$STATE"
+          if [[ "$STATE" == "VM deallocated" || "$STATE" == "VM stopped" ]]; then
+            az vm start -g "$AZURE_RG" -n "$AZURE_VM" -o none
+          fi
+          echo "AZURE_EXISTING_VM_READY=PASS"
+      - name: Compile the Android 10 APK inside the Azure VM (bounded run)
+        shell: bash
+        timeout-minutes: 47
+        run: |
+          set -euo pipefail
+          cat > /tmp/k2401-build-on-azure.sh <<'AZURE_SCRIPT'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
+          if ! command -v git >/dev/null || ! command -v java >/dev/null || ! command -v python3 >/dev/null; then
+            apt-get -qq update
+            apt-get -qq install -y git openjdk-17-jdk-headless python3 python3-venv python3-pip curl unzip
+          fi
+          if ! command -v unzip >/dev/null || ! command -v curl >/dev/null; then
+            apt-get -qq update
+            apt-get -qq install -y unzip curl
+          fi
+          export JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          SDKMANAGER="$(find /opt /home /usr/local/lib -type f -name sdkmanager -print -quit 2>/dev/null || true)"
+          if [[ -z "$SDKMANAGER" ]]; then
+            mkdir -p /opt/android-sdk/cmdline-tools
+            curl -fsSL --retry 3 --connect-timeout 15 \
+              https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip \
+              -o /tmp/k2401-android-tools.zip
+            unzip -qo /tmp/k2401-android-tools.zip -d /tmp/k2401-android-tools
+            mkdir -p /opt/android-sdk/cmdline-tools/latest
+            cp -a /tmp/k2401-android-tools/cmdline-tools/. /opt/android-sdk/cmdline-tools/latest/
+            SDKMANAGER=/opt/android-sdk/cmdline-tools/latest/bin/sdkmanager
+          fi
+          export ANDROID_HOME="$(dirname "$(dirname "$(dirname "$SDKMANAGER")")")"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" 'platforms;android-35' 'build-tools;35.0.0' >/dev/null
+          if ! command -v gradle >/dev/null; then
+            INSTALLED="$(find /opt /home -type f -path '*/gradle*/bin/gradle' -print -quit 2>/dev/null || true)"
+            if [[ -n "$INSTALLED" ]]; then
+              export PATH="$(dirname "$INSTALLED"):$PATH"
+            else
+              curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-8.11.1-bin.zip -o /tmp/k2401-gradle.zip
+              unzip -qo /tmp/k2401-gradle.zip -d /opt
+              export PATH="/opt/gradle-8.11.1/bin:$PATH"
+            fi
+          fi
+          python3 -m venv /tmp/k2401-ultra-venv
+          source /tmp/k2401-ultra-venv/bin/activate
+          python3 -m pip install -q --disable-pip-version-check \
+            'Pillow==11.3.0' 'opencv-contrib-python-headless==4.10.0.84'
+          WORK=/tmp/k2401-ultra-source
+          rm -rf "$WORK"
+          git clone -q --depth 1 --branch feature/k2401-evo-launcher \
+            https://github.com/tzn5-web/leno.git "$WORK"
+          cd "$WORK"
+          python3 projects/k2401-evo-launcher/scripts/verify-native-layout.py
+          test -s projects/k2401-evo-launcher/app/src/main/java/ro/evolauncher/k2401/UltraCockpitTheme.java
+          gradle --no-daemon -p projects/k2401-evo-launcher :app:assembleDebug
+          APK=projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          sha256sum "$APK"
+          echo 'AZURE_K2401_ULTRA_ANDROID10_BUILD=PASS'
+          AZURE_SCRIPT
+          az vm run-command invoke -g "$AZURE_RG" -n "$AZURE_VM" \
+            --command-id RunShellScript --scripts @/tmp/k2401-build-on-azure.sh \
+            --query "value[0].message" -o tsv | tee /tmp/k2401-ultra-azure-build.log
+          grep -Fq 'AZURE_K2401_ULTRA_ANDROID10_BUILD=PASS' /tmp/k2401-ultra-azure-build.log
+      - name: Always deallocate the Linux VM to stop compute billing
+        if: always()
+        shell: bash
+        timeout-minutes: 8
+        run: |
+          set +e
+          az vm deallocate -g "$AZURE_RG" -n "$AZURE_VM" -o none
+          echo "AZURE_VM_DEALLOCATE_REQUESTED=YES"
