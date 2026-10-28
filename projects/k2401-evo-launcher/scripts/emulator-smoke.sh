@@ -129,8 +129,8 @@ capture() {
   fi
   sleep 2
   if [[ "$name" != home ]]; then
-    adb shell input tap 45 35
-    sleep 1
+    # Selected theme 02 has its own six exact native vector targets:
+    # Home 72 / Music 169 / Navigation 266 / Car 363 / Apps 460 / Settings 557.
     adb shell input tap 45 "$y"
   fi
   sleep 1
@@ -243,15 +243,14 @@ assert any("Caută o aplicație" in t for t in texts), "K2401_APP_SEARCH_MISSING
 assert any("Chrome" in t or "Settings" in t or "Setări" in t for t in texts), "K2401_REAL_APPS_NOT_LISTED"
 print("K2401_INSTALLED_APPS_DRAWER=PASS")
 PY
-adb shell input tap 45 120
+adb shell input tap 45 72 # return to theme-02 Home icon
 sleep 1
-adb shell input tap 45 35  # Home -> app menu with side navigation
 sleep 1
-capture music 225
-capture navigation 332
-capture car 435
-capture apps 545
-capture settings 645
+capture music 169
+capture navigation 266
+capture car 363
+capture apps 460
+capture settings 557
 python3 - <<'PY'
 from pathlib import Path
 from struct import unpack
@@ -265,7 +264,7 @@ for name in ("home","music","navigation","car","apps","settings"):
 PY
 # Assert that settings contain actual native controls, then change the wallpaper
 # preset through UI (not by changing XML behind the app's back).
-adb shell input tap 45 645
+adb shell input tap 45 557 # native theme-02 Settings icon
 adb shell uiautomator dump /sdcard/k2401-ui.xml >/dev/null
 adb pull /sdcard/k2401-ui.xml "$OUT/settings-ui.xml" >/dev/null
 python3 - <<'PY'
@@ -304,10 +303,10 @@ for name in ("Setari Android","Bluetooth / Torque","GPS / Locatie"):
 print("K2401_SCROLLABLE_SETTINGS=PASS")
 PY
 for i in $(seq 1 6); do
-  adb shell input tap 45 35  # Home -> app menu with side navigation
-  adb shell input tap 45 225 # Music
-  adb shell input tap 45 645 # Settings
-  adb shell input tap 45 120 # Home
+  adb shell input tap 45 72  # Theme-02 Home
+  adb shell input tap 45 169 # Music
+  adb shell input tap 45 557 # Settings
+  adb shell input tap 45 72  # Home
 done
 adb shell am force-stop "$APP"
 adb shell am start -W -n "$APP/.MainActivity" >> "$OUT/launch.txt"
