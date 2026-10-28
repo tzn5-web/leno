@@ -3,6 +3,11 @@
 set -Eeuo pipefail
 umask 077
 export DEBIAN_FRONTEND=noninteractive
+# Azure RunShellScript does not always export HOME; the Android AVD manager
+# requires a writable user home even when the script runs under root.
+export HOME="${HOME:-$(getent passwd "$(id -u)" | cut -d: -f6)}"
+if [ -z "$HOME" ]; then export HOME=/root; fi
+mkdir -p "$HOME/.android"
 ROOT=/opt/k2401-evo-workspace
 REPORT="$ROOT/reports"
 mkdir -p "$REPORT" "$ROOT/original-immutable" "$ROOT/generated" "$ROOT/tools"
