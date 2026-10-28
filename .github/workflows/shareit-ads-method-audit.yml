@@ -1,0 +1,43 @@
+name: SHAREit - diagnose ad SDK display methods (read-only Azure)
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/shareit-ads-method-audit.yml']
+  workflow_dispatch:
+permissions: {contents: read, id-token: write}
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Inspect public code ad interception targets in actual private SHAREit APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          export AZURE_STORAGE_KEY="$(az storage account keys list -g rg-chatgpt-azure -n tzn5androidartifacts26 --query '[0].value' -o tsv)"
+          echo "::add-mask::$AZURE_STORAGE_KEY"
+          az storage blob download --account-name tzn5androidartifacts26 --container-name apks-private \
+             --name output/SHAREit_6.27.58_NoAds_SINGLE_ARM64.apk \
+             --file /tmp/shareit.apk --overwrite --only-show-errors
+          echo 'a377f7789b957b33d5efa130ed35fc7f61b82afcff18ea318099eea22c33c64f  /tmp/shareit.apk' | sha256sum -c -
+          python3 -m py_compile infra/azure-dev-vm/shareit-noads/disable_ad_rendering.py
+          python3 infra/azure-dev-vm/shareit-noads/disable_ad_rendering.py \
+            /tmp/shareit.apk /tmp/shareit-ads-disabled-unsigned.apk \
+            --report /tmp/ads-methods.json
+          python3 - <<'PY'
+          import json
+          j=json.load(open('/tmp/ads-methods.json'))
+          print('AD_METHODS_DISABLED',j['method_entrypoints_disabled'])
+          for dex,items in j['by_dex'].items():
+              print('DEX',dex,'methods',len(items))
+              for entry in items[:25]:
+                  print('TARGET',entry['class'],entry['method'],entry['return'])
+          PY
+      - if: always()
+        run: az logout || true
