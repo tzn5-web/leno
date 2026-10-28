@@ -260,10 +260,10 @@ final class ThemeNativePanels {
     line(c,xb,yb,xb+wb,yb,0xff455566,4f);
     if(duration>0&&pos>=0)line(c,xb,yb,xb+wb*Math.min(1,(float)pos/duration),yb,accent,4f);
     final float cy=y+h-36;
-    middle(c,"◀",x+w*.39f,cy,30,WHITE);
+    MediaVectorIcons.draw(c,x+w*.39f,cy,0,WHITE);
     fill(c,rect((int)(x+w*.54f)-30,(int)(cy-34),60,54),accent,0,25);
-    middle(c,play?"Ⅱ":"▶",x+w*.54f,cy+1,27,WHITE);
-    middle(c,"▶",x+w*.73f,cy,30,WHITE);
+    MediaVectorIcons.draw(c,x+w*.54f,cy,play?3:1,WHITE);
+    MediaVectorIcons.draw(c,x+w*.73f,cy,2,WHITE);
   }
   private static float normalize(float value,float lo,float hi){
     return Math.max(0f,Math.min(1f,(value-lo)/(hi-lo)));
