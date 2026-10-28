@@ -202,16 +202,41 @@ if [ "$READY" != YES ]; then
   exit 10
 fi
 echo 'K2401_AZURE_ANDROID10_EMULATOR_BOOT=PASS'
+upload_visual_evidence(){
+  local status="$1"
+  mkdir -p "$ROOT/emulator-screens"
+  cp -a "$SCRIPT/screenshots/." "$ROOT/emulator-screens/" 2>/dev/null || true
+  cp "$REPORT/azure-android-emulator-smoke.log" "$ROOT/emulator-screens/smoke.log" 2>/dev/null || true
+  printf 'TEST_RESULT=%s\nGITHUB_SHA=%s\n' "$status" "$EXPECTED_SHA" > "$ROOT/emulator-screens/result.txt"
+  tar -C "$ROOT" -czf "$ROOT/k2401-azure-emulator-21-screens.tar.gz" emulator-screens
+  if [ -n "$BLOB_SAS_B64" ]; then
+    local private_url base query shortsha
+    private_url="$(printf '%s' "$BLOB_SAS_B64" | base64 -d)"
+    case "$private_url" in
+      https://tzn5androidartifacts26.blob.core.windows.net/k2401-evo-private\?*) ;;
+      *) echo 'ERROR=UNEXPECTED_PRIVATE_STORAGE_URL'; return 1;;
+    esac
+    base="$(printf '%s' "$private_url" | cut -d '?' -f 1)"
+    query="$(printf '%s' "$private_url" | cut -d '?' -f 2-)"
+    shortsha="$(printf '%s' "$EXPECTED_SHA" | cut -c1-12)"
+    curl -fsSL --retry 2 --max-time 120 -X PUT \
+      -H 'x-ms-blob-type: BlockBlob' \
+      --upload-file "$ROOT/k2401-azure-emulator-21-screens.tar.gz" \
+      "$base/frozen-$shortsha/k2401-azure-emulator-21-screens.tar.gz?$query" >/dev/null
+    echo "K2401_PRIVATE_AZURE_EMULATOR_DIAGNOSTICS_SAVED=$status"
+  fi
+}
 timeout 900 bash "$SCRIPT/scripts/emulator-smoke.sh" \
   > "$REPORT/azure-android-emulator-smoke.log" 2>&1 || {
     tail -n 130 "$REPORT/azure-android-emulator-smoke.log"
+    upload_visual_evidence FAIL || true
+    adb emu kill >/dev/null 2>&1 || true
     kill "$EMU_PID" >/dev/null 2>&1 || true
     echo 'K2401_AZURE_21_SKIN_EMULATOR_SMOKE=FAIL'
     exit 11
   }
 echo 'K2401_AZURE_21_SKIN_EMULATOR_SMOKE=PASS'
-cp -a "$SCRIPT/screenshots" "$ROOT/emulator-screens"
-tar -C "$ROOT" -czf "$ROOT/k2401-azure-emulator-21-screens.tar.gz" emulator-screens
+upload_visual_evidence PASS
 adb emu kill >/dev/null 2>&1 || true
 kill "$EMU_PID" >/dev/null 2>&1 || true
 # The existing Azure storage account remains PRIVATE; never enable public blobs.
