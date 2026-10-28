@@ -305,6 +305,25 @@ final class SkinEngine {
       }
       return;
     }
+    // EVO Digital Dash only: decorative outer neon segments (not a fake
+    // sensor reading). The inner arc/needle below remains ECU-driven and
+    // is empty when a PID is unavailable. This matches the approved red/cyan
+    // cockpit without changing any ECU value, unit or touch function.
+    if(style==1||style==2){
+      float outer=radius+17f;
+      colour(style==1?0xff205b97:0xff1f9bd0);
+      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(7f);
+      c.drawArc(cx-outer,cy-outer,cx+outer,cy+outer,130,292,false,p);
+      colour(style==1?0xfff63157:0xff25d6ff);
+      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(9f);
+      c.drawArc(cx-outer,cy-outer,cx+outer,cy+outer,
+        style==1?135:190,style==1?105:156,false,p);
+      colour(style==1?0xff25bcfb:0xfff03a56);
+      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(8f);
+      c.drawArc(cx-outer,cy-outer,cx+outer,cy+outer,
+        style==1?250:355,style==1?150:50,false,p);
+      p.setStyle(Paint.Style.FILL);
+    }
     colour(0xed06101c);
     c.drawCircle(cx,cy,radius+5,p);
     if(geometry==3)stroke(c,cx-radius-3,cy-radius-3,radius*2+6,radius*2+6,applied,9);
