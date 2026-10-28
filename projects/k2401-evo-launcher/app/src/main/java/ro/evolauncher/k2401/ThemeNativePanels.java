@@ -322,12 +322,13 @@ final class ThemeNativePanels {
     if(area==null)return;
     fill(c,area,0xff081322,0xffbc3156,14);
     text(c,"APLICAȚII INSTALATE",area.left+16,area.top+35,23,WHITE,true);
-    int cols=area.width()>700?5:3,iconH=110,gap=8;
+    int cols=area.width()>700?5:3,iconH=area.height()<220?90:110,gap=8;
     int inner=area.width()-30;
     int ww=(inner-gap*(cols-1))/cols;
     appRects.clear();
     PackageManager pm=host.getPackageManager();
-    int limit=Math.min(installed.size(),cols*(area.height()-74)/iconH);
+    int visibleRows=Math.max(1,(area.height()-66)/iconH);
+    int limit=Math.min(installed.size(),cols*visibleRows);
     for(int i=0;i<limit;i++){
       int col=i%cols,row=i/cols;
       int xx=area.left+14+col*(ww+gap),yy=area.top+54+row*iconH;
