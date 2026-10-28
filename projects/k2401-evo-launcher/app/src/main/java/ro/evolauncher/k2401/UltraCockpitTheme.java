@@ -22,6 +22,7 @@ import android.media.session.MediaController;
 import android.media.session.PlaybackState;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.Settings;
 import android.view.HapticFeedbackConstants;
 
 import java.io.IOException;
@@ -196,7 +197,9 @@ final class UltraCockpitTheme {
     }
   }
   private void drawMusic(Canvas c){
-    rect(c,113,12,1152,128,17,0xf407111e);
+    // Completely opaque media surface prevents obsolete album/clock/BT pixels
+    // printed into the approved concept art from bleeding through live values.
+    rect(c,113,12,1152,128,17,0xff071321);
     stroke(c,113,12,1152,128,17,0xff235887,2);
     MediaController m=host.media;
     String song="",artist="";
@@ -232,24 +235,54 @@ final class UltraCockpitTheme {
     stroke(c,827,30,75,75,37,CYAN,2);
     MediaVectorIcons.draw(c,865,69,playing?3:1,WHITE);
     MediaVectorIcons.draw(c,950,76,2,WHITE);
-    // Single system indicators cluster, top-right only.
-    label(c,"BT  ·  Wi-Fi",1052,49,15,0xffc3d8e8,false);
-    label(c,new SimpleDateFormat("HH:mm",Locale.getDefault()).format(new Date()),
-      1161,83,27,WHITE,true);
+    // Status icons and the live upper-right clock are painted last by
+    // drawTopStatus(). They are not owned by MediaSession redraws.
   }
+  /**
+   * Covers ALL concept-art clock/date/air text, not merely the center number.
+   * The previous 90%-opaque 399px panel exposed "14 Jan 2025", "22:34",
+   * "Exterior 7°C" beneath live readings. These are not ECU values.
+   * This 3-column panel is fully opaque and clips NONE of the live labels.
+   */
   private void drawTime(Canvas c){
-    rect(c,454,164,399,112,14,0xe50a1629);
-    stroke(c,454,164,399,112,14,0xff236498,1.4f);
-    String hh=new SimpleDateFormat("HH:mm",Locale.getDefault()).format(new Date());
-    String dt=new SimpleDateFormat("EEE, d MMM yyyy",new Locale("ro","RO")).format(new Date());
-    center(c,hh,654,221,53,WHITE,true);
-    label(c,trimmed(dt,28),477,257,15,0xffc7d9e9,false);
-    // Real OBD Mode 01 PID 46 only; no internet weather or simulated reading.
-    // Unsupported/stale vehicle sensors remain N/A.
-    ObdReader.Reading obd=host.obd==null?ObdReader.Reading.empty():host.obd.current();
+    rect(c,448,170,455,94,15,0xff071526);
+    stroke(c,448,170,455,94,15,0xff24638a,1.8f);
+    line(c,572,184,572,248,0xff234563,1.2f);
+    line(c,755,184,755,248,0xff234563,1.2f);
+    Date now=new Date();
+    String day=new SimpleDateFormat("EEEE",new Locale("ro","RO")).format(now);
+    String date=new SimpleDateFormat("d MMM yyyy",new Locale("ro","RO")).format(now);
+    label(c,trimmed(day,12),466,205,16,0xffc2d8ed,true);
+    label(c,trimmed(date,13),466,234,17,WHITE,false);
+    center(c,new SimpleDateFormat("HH:mm",Locale.getDefault()).format(now),
+      663,231,52,WHITE,true);
+    ObdReader.Reading obd=host.obd==null?
+      ObdReader.Reading.empty():host.obd.current();
+    label(c,"EXTERIOR",774,203,14,0xffa2c6e0,false);
     String exterior=Float.isFinite(obd.ambientC)?
-      String.format(Locale.US,"EXT: %.0f°C",obd.ambientC):"EXT: N/A";
-    label(c,exterior,711,255,15,CYAN,false);
+      String.format(Locale.US,"%.0f°C",obd.ambientC):"N/A";
+    label(c,exterior,774,237,28,CYAN,true);
+  }
+  /**
+   * Dedicated top-right status group. Re-rendered EVERY clock tick and drawn
+   * after music, date, OBD and shortcuts, so changing MediaSession metadata
+   * or the wallpaper can never cover the clock. No duplicate art icons remain.
+   * Read Android system toggle state only; never initialize the OEM BT stack.
+   */
+  private void drawTopStatus(Canvas c){
+    rect(c,1030,28,227,92,12,0xff081523);
+    stroke(c,1030,28,227,92,12,0xff27557b,1.5f);
+    boolean bt=false,wifi=false;
+    try{
+      bt=Settings.Global.getInt(host.getContentResolver(),"bluetooth_on",0)!=0;
+      wifi=Settings.Global.getInt(host.getContentResolver(),"wifi_on",0)!=0;
+    }catch(RuntimeException ignored){
+      // OEM firmware sometimes denies settings access; draw muted labels.
+    }
+    label(c,"BT",1050,52,15,bt?CYAN:0xff73869b,true);
+    label(c,"Wi-Fi",1101,52,15,wifi?CYAN:0xff73869b,true);
+    label(c,new SimpleDateFormat("HH:mm",Locale.getDefault()).format(new Date()),
+      1073,94,40,WHITE,true);
   }
   private void drawSlots(Canvas c){
     for(int i=0;i<SLOT_COUNT;i++){
@@ -287,6 +320,7 @@ final class UltraCockpitTheme {
     gauge(c,551,492,79,"STFT",reading(rd.stft,1),"%",rd.stft,-25,25,CYAN,false);
     gauge(c,773,492,79,"LTFT",reading(rd.ltft,1),"%",rd.ltft,-25,25,RED,false);
     drawSlots(c);
+    drawTopStatus(c); // STATUS CLOCK MUST ALWAYS BE THE FINAL PAINT PASS
   }
   private int slotAt(float x,float y){
     if(y<SLOT_Y||y>SLOT_Y+SLOT_H)return -1;
