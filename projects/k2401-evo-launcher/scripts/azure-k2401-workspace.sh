@@ -26,7 +26,10 @@ done
 date -u --iso-8601=seconds > "$REPORT/started-utc.txt"
 echo "K2401_FROZEN_SHA=$EXPECTED_SHA"
 apt-get update -qq
-apt-get install -y -qq git ca-certificates curl unzip zip jq openjdk-17-jdk-headless python3 python3-pip python3-venv python3-dev build-essential libgl1 >/dev/null
+apt-get install -y -qq git ca-certificates curl unzip zip jq openjdk-17-jdk-headless \
+  python3 python3-pip python3-venv python3-dev build-essential libgl1 \
+  imagemagick libvips-tools ffmpeg librsvg2-bin fonts-dejavu-core \
+  libglu1-mesa libpulse0 libnss3 libx11-6 libxext6 libxrender1 >/dev/null
 python3 -m venv "$ROOT/venv"
 "$ROOT/venv/bin/python" -m pip install -q --upgrade pip
 "$ROOT/venv/bin/python" -m pip install -q 'Pillow==11.3.0' 'opencv-contrib-python-headless==4.10.0.84' 'numpy==1.26.4'
@@ -136,7 +139,8 @@ fi
 SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
 (yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null 2>&1) || true
 "$SDKMANAGER" --sdk_root="$ANDROID_HOME" 'platforms;android-35' \
-  'build-tools;35.0.0' 'platform-tools' > "$REPORT/android-sdk-install.log" 2>&1
+  'build-tools;35.0.0' 'platform-tools' 'emulator' \
+  'system-images;android-29;google_apis;x86_64' > "$REPORT/android-sdk-install.log" 2>&1
 if [ ! -x "$ROOT/tools/gradle-8.11.1/bin/gradle" ]; then
   curl -fsSL --retry 3 --max-time 240 \
     https://services.gradle.org/distributions/gradle-8.11.1-bin.zip \
@@ -157,6 +161,54 @@ test -s "$APK"
 sha256sum "$APK" > "$REPORT/azure-android-debug-apk-sha256.txt"
 cp "$APK" "$ROOT/k2401-audited-debug-not-release.apk"
 echo 'K2401_AZURE_ANDROID_COMPILE=PASS'
+echo "K2401_IMAGE_TOOLS_INSTALLED=$(command -v convert) $(command -v vips) $(command -v ffmpeg)"
+export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+AVD_NAME=k2401_api29_azure
+if [ ! -f "$HOME/.android/avd/$AVD_NAME.ini" ]; then
+  mkdir -p "$HOME/.android"
+  printf 'no\n' | avdmanager create avd --force --name "$AVD_NAME" \
+    --package 'system-images;android-29;google_apis;x86_64' \
+    --device 'pixel_2' > "$REPORT/avd-create.log" 2>&1
+fi
+if [ -e /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+  ACCEL=on
+else
+  ACCEL=off
+fi
+echo "K2401_AZURE_EMULATOR_ACCEL=$ACCEL"
+emulator -avd "$AVD_NAME" -no-window -no-boot-anim -no-audio \
+  -no-snapshot -gpu swiftshader_indirect -accel "$ACCEL" \
+  -memory 3072 -partition-size 2048 \
+  > "$REPORT/emulator-boot.log" 2>&1 &
+EMU_PID=$!
+READY=NO
+for j in $(seq 1 90); do
+  if timeout 4 adb wait-for-device >/dev/null 2>&1 &&
+     [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; then
+    READY=YES
+    break
+  fi
+  sleep 4
+done
+if [ "$READY" != YES ]; then
+  echo 'K2401_AZURE_ANDROID10_EMULATOR_BOOT=FAIL'
+  tail -n 80 "$REPORT/emulator-boot.log"
+  kill "$EMU_PID" >/dev/null 2>&1 || true
+  exit 10
+fi
+echo 'K2401_AZURE_ANDROID10_EMULATOR_BOOT=PASS'
+timeout 900 bash "$SCRIPT/scripts/emulator-smoke.sh" \
+  > "$REPORT/azure-android-emulator-smoke.log" 2>&1 || {
+    tail -n 130 "$REPORT/azure-android-emulator-smoke.log"
+    kill "$EMU_PID" >/dev/null 2>&1 || true
+    echo 'K2401_AZURE_21_SKIN_EMULATOR_SMOKE=FAIL'
+    exit 11
+  }
+echo 'K2401_AZURE_21_SKIN_EMULATOR_SMOKE=PASS'
+cp -a "$SCRIPT/screenshots" "$ROOT/emulator-screens"
+tar -C "$ROOT" -czf "$ROOT/k2401-azure-emulator-21-screens.tar.gz" emulator-screens
+adb emu kill >/dev/null 2>&1 || true
+kill "$EMU_PID" >/dev/null 2>&1 || true
 # The existing Azure storage account remains PRIVATE; never enable public blobs.
 # Container SAS is issued in the temporary GitHub OIDC job for this run only.
 if [ -n "$BLOB_SAS_B64" ]; then
