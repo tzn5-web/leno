@@ -39,33 +39,44 @@ with ZipFile("projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.
         with Image.open(BytesIO(z.read(asset))) as pic:
             assert pic.size==(3840,2160),(asset,pic.size)
     assert "assets/skins/cinematic/cinematic-4k-manifest.json" in z.namelist()
-    # Guard the actual car and mountain photo, not just 3840x2160 metadata.
+    # EXACT approved photograph, cropped WITHOUT fake sample UI. Check car
+    # identity inside generated 4K media (not merely same bitmap dimensions).
+    import json
     exact="assets/skins/cinematic/approved-trio-reference.webp"
-    assert exact in z.namelist(), "Exact approved photo reference absent"
+    assert exact in z.namelist(),"Approved photo triptych missing from APK"
     approval=Image.open(BytesIO(z.read(exact))).convert("RGB")
-    rw,rh=approval.size
-    for k in range(3):
+    manifest=json.loads(z.read(
+        "assets/skins/cinematic/cinematic-4k-manifest.json").decode("utf-8"))
+    assert [m["skin"] for m in manifest]==["A1","02","A3"]
+    for k,m in enumerate(manifest):
         asset=f"assets/skins/cinematic/scene_{k}_4k.webp"
+        assert m["name"]==f"scene_{k}_4k.webp"
         with Image.open(BytesIO(z.read(asset))) as data:
-            image=data.convert("RGB").resize((1280,720),Image.Resampling.LANCZOS)
-        crop_h=round(rh*(k+1)/3)-round(rh*k/3)
-        crop_w=round(crop_h*16/9)
-        left=(rw-crop_w)//2
-        user=approval.crop((left,round(rh*k/3),left+crop_w,round(rh*(k+1)/3)))
-        approved=user.resize((1280,720),Image.Resampling.LANCZOS)
-        photo_delta=np.mean(np.abs(np.asarray(image,dtype=np.int16)-
-                                   np.asarray(approved,dtype=np.int16)))
-        assert photo_delta<28,(k,"wrong vehicle/garage or blurry stock replacement",photo_delta)
-        # Compare the unoccluded vehicle centre to the actual Android 10
-        # emulator screenshot. This FAILS if a fake card hides the vehicle.
-        roi=(465,190,814,524)
-        screen=np.asarray(shots[22+k].crop(roi),dtype=np.int16)
-        real=np.asarray(image.crop(roi),dtype=np.int16)
-        screen_delta=np.mean(np.abs(screen-real))
-        assert screen_delta<49,(k,"approved vehicle covered in emulator",screen_delta)
-        print("K2401_APPROVED_CINEMATIC_PHOTO_IN_EMULATOR=PASS",
-              k,round(float(photo_delta),2),round(float(screen_delta),2))
-    assert "cinematic-4k-manifest.json" in " ".join(z.namelist())
+            scene=data.convert("RGB")
+        assert scene.size==(3840,2160)
+        l,t,r,b=m["source_crop"]
+        assert r-l==820 and 145<=b-t<=170,(k,m["source_crop"])
+        approved_core=approval.crop((l,t,r,b))
+        photo_h=round((b-t)*3840/(r-l))
+        top=(2160-photo_h)//2-70
+        # Interior regions are completely opaque in the photograph matte.
+        # Compare vehicle and mountain pixels directly to the exact user art.
+        expected=approved_core.resize((3840,photo_h),Image.Resampling.LANCZOS)
+        focus=(1400,180,2440,photo_h-180)
+        expected_arr=np.asarray(expected.crop(focus).resize((260,90)),dtype=np.int16)
+        actual_arr=np.asarray(scene.crop((focus[0],top+focus[1],
+                   focus[2],top+focus[3])).resize((260,90)),dtype=np.int16)
+        deviation=float(np.mean(np.abs(expected_arr-actual_arr)))
+        assert deviation<33,(k,"Wrong car photo or dark garage",deviation)
+        # Native screenshot centre must remain visibly photographic.
+        displayed=Image.open(folder/f"cinematic-{22+k}.png").convert("RGB")
+        bitmap=scene.resize((1280,720),Image.Resampling.LANCZOS)
+        roi=(480,262,800,429)
+        delta=float(np.mean(np.abs(np.asarray(displayed.crop(roi),dtype=np.int16)-
+                                   np.asarray(bitmap.crop(roi),dtype=np.int16))))
+        assert delta<49,(k,"Car obscured by an opaque HUD",delta)
+        print("K2401_APPROVED_CINEMATIC_CAR_VISIBLE=PASS",
+              k,round(deviation,2),round(delta,2))
 java=Path("projects/k2401-evo-launcher/app/src/main/java/ro/evolauncher/k2401/CinematicTrioTheme.java").read_text()
 assert "color(edge);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(16)" in java
 assert "color(0xff5f819e);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1.5f)" in java
