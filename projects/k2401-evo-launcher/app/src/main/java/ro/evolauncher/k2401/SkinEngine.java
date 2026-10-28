@@ -425,6 +425,7 @@ final class SkinEngine {
    */
   private void drawEvoDigitalDashNative(Canvas c){
     drawArt(c,0);
+    drawNativeStatusBar(c,0);
     final int crimson=0xfffa304d,azure=0xff30cfff,ice=0xffedf6ff;
     // Repaint only the obsolete labels / clock from the original render.
     panel(c,2,4,308,46,0xff09121e,11);
@@ -689,6 +690,14 @@ final class SkinEngine {
     centered(c,"▶▶",x+w*.80f,y+h-34,24,Color.WHITE,true);
   }
 
+  private void drawNativeStatusBar(Canvas c,int id){
+    // Static concept images contain old fake Android status icons and times.
+    // Always cover those illustrated values with real system clock + skin name.
+    panel(c,0,0,1280,54,0xf508111d,0);
+    text(c,String.format(Locale.US,"%02d/21   %s",id+1,NAMES[id]),
+      17,36,23,Color.WHITE,true);
+    text(c,time(),1153,36,23,0xffd8e7f5,true);
+  }
   void draw(Canvas c){
     // EVO Digital Dash has its own bespoke left/right interactive cockpit.
     // The remaining twenty models use layouts aligned to the *individual*
@@ -696,6 +705,7 @@ final class SkinEngine {
     int id=selected;
     if(id==0){drawEvoDigitalDashNative(c);return;}
     drawArt(c,id);
+    drawNativeStatusBar(c,id);
     nativePanels.draw(c,id);
   }
   boolean touch(float x,float y){
