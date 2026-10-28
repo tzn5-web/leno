@@ -7,8 +7,8 @@ android {
    applicationId 'ro.evolauncher.k2401'
    minSdk 26
    targetSdk 28
-   versionCode 104
-   versionName '1.0.4-original21-clean-scenes'
+   versionCode 105
+   versionName '1.0.105-original21-visual-repair'
    manifestPlaceholders = [MAPS_API_KEY: googleMapsApiKey]
    buildConfigField 'boolean', 'GOOGLE_MAPS_CONFIGURED', googleMapsApiKey.isEmpty() ? 'false' : 'true'
  }
