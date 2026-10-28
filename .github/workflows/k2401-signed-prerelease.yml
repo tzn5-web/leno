@@ -301,7 +301,7 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging \
             K2401-EVO-ULTRA-INSTALL-SEPARAT.apk | grep -Fq "package: name='ro.evolauncher.k2401.ultra'"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging \
-            K2401-EVO-ULTRA-INSTALL-SEPARAT.apk | grep -Fq "versionCode='113'"
+            K2401-EVO-ULTRA-INSTALL-SEPARAT.apk | grep -Fq "versionCode='114'"
           # Recreate the exact original production APK, never accidentally
           # publish the parallel APK as an in-place update.
           cp K2401-EVO-UPDATE-SIGNED.apk "$APK"
@@ -350,7 +350,7 @@ jobs:
           if gh release create "$TAG" "$ASSET" K2401-EVO-ULTRA-INSTALL-SEPARAT.apk k2401-signed-prerelease-report.txt \
             --target "$GITHUB_SHA" --prerelease --latest=false \
             --title "K2401 EVO Android 10 signed prerelease ($TAG)" \
-            --notes "v113: adds 3 independent 4K cinematic dashboards A1/02/A3 with native telemetry and six personalized apps. Verified Android 10 signed install. Update the existing EVO Launcher to retain settings; do not uninstall it. Car OEM integration requires physical testing."; then
+            --notes "v114: visual geometry fixes to 3 independent 4K cinematic dashboards A1/02/A3 with native telemetry and six personalized apps. Verified Android 10 signed install. Update the existing EVO Launcher to retain settings; do not uninstall it. Car OEM integration requires physical testing."; then
             echo "DIRECT_APK_URL=https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$ASSET" >> "$GITHUB_STEP_SUMMARY"
             echo 'K2401_DIRECT_APK_GITHUB_RELEASE=PASS'
           else
