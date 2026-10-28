@@ -92,36 +92,42 @@ final class CinematicTrioTheme {
         0xff0a1830,0xff030811,Shader.TileMode.CLAMP));c.drawRect(0,0,1280,720,p);p.setShader(null);
     }
     // Vary lighting without overprinting the imported photographic artwork.
-    color(0x8d040b17);c.drawRect(0,0,1280,128,p);
-    color(0x9d040a14);c.drawRect(0,594,1280,720,p);
-    color(0xa0081324);c.drawRect(0,120,150,590,p);
-    color(0xa0081324);c.drawRect(1125,120,1280,590,p);
+    // APPROVED reference is a visual screenshot and contains sample player
+    // words/app icons. Full opacity is mandatory: no phantom second clock,
+    // duplicated app, fake ECU data or album covers can show through.
+    // Original vehicle/mountain hologram stays fully visible between bars.
+    color(0xff040d1b);c.drawRect(0,0,1280,146,p);
+    color(0xff040d1b);c.drawRect(0,554,1280,720,p);
+    color(0x65061223);c.drawRect(0,146,22,554,p);
+    color(0x65061223);c.drawRect(1258,146,1280,554,p);
   }
   private void bar(Canvas c,int id,int line){
     // Only ONE clock/date + one exterior temperature: always drawn over opaque
     // backing. No imprinted numbers or duplicated Wi-Fi/BT groups.
-    panel(c,387,8,394,94,13,0xff081725,line);
+    // Player sits at top-centre, the SINGLE clock at top-right.
+    // Separate fully opaque cards prevent any baked clock/album leakage.
+    panel(c,767,8,276,94,13,0xff081725,line);
     Date now=new Date();
     String date=new SimpleDateFormat("EEE, d MMM yyyy",new Locale("ro","RO")).format(now);
-    text(c,new SimpleDateFormat("HH:mm",Locale.getDefault()).format(now),517,59,42,WHITE,true,true);
-    text(c,date,517,82,14,ICE,false,true);
+    text(c,new SimpleDateFormat("HH:mm",Locale.getDefault()).format(now),854,60,39,WHITE,true,true);
+    text(c,date,854,84,13,ICE,false,true);
     ObdReader.Reading rd=host.obd==null?ObdReader.Reading.empty():host.obd.current();
-    text(c,"EXTERIOR",655,34,13,LT,false,false);
-    text(c,degrees(rd.ambientC),653,70,25,BLUE,true,false);
-    panel(c,1071,12,195,86,12,0xff081725,line);
+    text(c,"EXT",954,36,13,LT,false,false);
+    text(c,degrees(rd.ambientC),951,70,23,BLUE,true,false);
+    panel(c,1053,12,213,86,12,0xff081725,line);
     boolean bt=false,wifi=false;
     try{
       bt=Settings.Global.getInt(host.getContentResolver(),"bluetooth_on",0)!=0;
       wifi=Settings.Global.getInt(host.getContentResolver(),"wifi_on",0)!=0;
     }catch(RuntimeException ignored){}
-    text(c,"BT",1097,42,16,bt?BLUE:LT,true,false);
-    text(c,"Wi-Fi",1170,42,16,wifi?BLUE:LT,true,false);
-    text(c,"EVO",1098,77,18,ICE,true,false);
-    // Exact selected theme label, not an additional permanent clock.
-    text(c,id==22?"A1":id==23?"02":"A3",1199,77,18,BLUE,true,false);
+    text(c,"BT",1078,42,16,bt?BLUE:LT,true,false);
+    text(c,"Wi-Fi",1151,42,16,wifi?BLUE:LT,true,false);
+    text(c,"EVO",1080,77,18,ICE,true,false);
+    // Label is descriptive only, never a duplicate clock or status icon.
+    text(c,id==22?"A1":id==23?"02":"A3",1191,77,18,BLUE,true,false);
   }
   private void music(Canvas c,int line){
-    panel(c,20,12,344,88,12,0xff081725,line);
+    panel(c,261,12,484,88,12,0xff081725,line);
     MediaController m=host.media;
     String artist=host.mediaName,song="Nicio redare";
     Bitmap cover=null;
@@ -135,19 +141,19 @@ final class CinematicTrioTheme {
       if(cover==null)cover=meta.getBitmap(MediaMetadata.METADATA_KEY_ART);
     }
     if(cover!=null&&!cover.isRecycled()){
-      color(WHITE);c.drawBitmap(cover,null,new Rect(30,22,90,82),p);
+      color(WHITE);c.drawBitmap(cover,null,new Rect(272,22,333,82),p);
     }else{
-      panel(c,30,21,62,62,9,0xff102c4c,line);
-      text(c,"♪",60,64,37,BLUE,true,true);
+      panel(c,272,21,62,62,9,0xff102c4c,line);
+      text(c,"♪",302,64,37,BLUE,true,true);
     }
     if(artist==null||artist.isEmpty())artist="Alege playerul";
-    text(c,clip(artist,16),101,37,13,LT,false,false);
-    text(c,clip(song,18),101,57,16,WHITE,true,false);
+    text(c,clip(artist,21),346,39,13,LT,false,false);
+    text(c,clip(song,24),346,64,17,WHITE,true,false);
     boolean playing=m!=null&&m.getPlaybackState()!=null&&
       m.getPlaybackState().getState()==PlaybackState.STATE_PLAYING;
-    MediaVectorIcons.draw(c,200,77,0,WHITE);
-    MediaVectorIcons.draw(c,250,77,playing?3:1,BLUE);
-    MediaVectorIcons.draw(c,302,77,2,WHITE);
+    MediaVectorIcons.draw(c,616,57,0,WHITE);
+    MediaVectorIcons.draw(c,670,57,playing?3:1,BLUE);
+    MediaVectorIcons.draw(c,724,57,2,WHITE);
   }
   private static String clip(String s,int limit){
     if(s==null)return "";
@@ -208,23 +214,31 @@ final class CinematicTrioTheme {
     if(id==22){
       // The approved A1 tall holographic readouts flanking the front-view car.
       ObdReader.Reading r=host.obd==null?ObdReader.Reading.empty():host.obd.current();
-      vertical(c,25,174,156,400,"RPM",
+      // Four tall, nonoverlapping holographic meters like approved A1:
+      // RPM / STFT / LTFT / TEMP APĂ. NO VOLT/BOOST placeholders.
+      vertical(c,25,159,153,387,"RPM",
         Float.isFinite(r.rpm)?String.format(Locale.US,"%.1f",r.rpm/1000f):"N/A",
-        "x1000 rpm",r.rpm/8000f,line,0xe5092035);
-      vertical(c,1100,174,155,400,"TEMP APĂ",degrees(r.coolantC),
-        "",(r.coolantC-40)/90f,0xffc65fff,0xe5092035);
-      boxGauge(c,220,479,161,87,"STFT",labelValue(r.stft,true),"%",line);
-      boxGauge(c,902,479,162,87,"LTFT",labelValue(r.ltft,true),"%",line);
+        "x1000 rpm",r.rpm/8000f,line,0xff071b2f);
+      vertical(c,217,159,149,387,"STFT",labelValue(r.stft,true),
+        "%",(r.stft+25f)/50f,line,0xff071b2f);
+      vertical(c,917,159,149,387,"LTFT",labelValue(r.ltft,true),
+        "%",(r.ltft+25f)/50f,0xff55ceff,0xff071b2f);
+      vertical(c,1105,159,153,387,"TEMP APĂ",degrees(r.coolantC),
+        "",(r.coolantC-40)/90f,0xffa85cff,0xff071b2f);
     }else if(id==23){
       // 02: two circular blue holographic main gauges, small fuel trims
       // below the actual vehicle photo, NOT the same geometry as A1.
       ObdReader.Reading r=host.obd==null?ObdReader.Reading.empty():host.obd.current();
-      circle(c,202,344,145,"RPM",Float.isFinite(r.rpm)?
+      // Approved 02 geometry: 2 LARGE + 2 SMALL concentric circles.
+      // The four native gauges never cover the central holographic vehicle.
+      circle(c,160,352,126,"RPM",Float.isFinite(r.rpm)?
         String.format(Locale.US,"%.1f",r.rpm/1000f):"N/A","x1000 rpm",r.rpm/8000f,line);
-      circle(c,1078,344,145,"TEMP APĂ",degrees(r.coolantC),"",
+      circle(c,371,382,78,"STFT",labelValue(r.stft,true),
+        "%",(r.stft+25f)/50f,0xff47d0ff);
+      circle(c,909,382,78,"LTFT",labelValue(r.ltft,true),
+        "%",(r.ltft+25f)/50f,0xff45d5ff);
+      circle(c,1120,352,126,"TEMP APĂ",degrees(r.coolantC),"",
         (r.coolantC-40f)/90f,0xff54dcff);
-      boxGauge(c,430,481,179,87,"STFT",labelValue(r.stft,true),"%",line);
-      boxGauge(c,675,481,179,87,"LTFT",labelValue(r.ltft,true),"%",line);
     }else{
       // A3: glass showroom, compact rectangular instrument cards on sides.
       ObdReader.Reading r=host.obd==null?ObdReader.Reading.empty():host.obd.current();
@@ -241,12 +255,12 @@ final class CinematicTrioTheme {
     personalApps.drawUserSlots(c);
   }
   boolean touch(float x,float y){
-    if(y<=110&&x>=20&&x<=365){
-      if(x<178)host.choosePlayer();
-      else host.mediaAction(x<229?0:x<278?1:2);
+    if(y<=110&&x>=261&&x<=747){
+      if(x<593)host.choosePlayer();
+      else host.mediaAction(x<642?0:x<697?1:2);
       return true;
     }
-    if(y<=115&&x>=387&&x<=781){host.showSkinPicker();return true;}
+    if(y<=115&&x>=767&&x<=1044){host.showSkinPicker();return true;}
     if(y>=160&&y<579&&((x<380)||(x>900))){host.showObdStatus();return true;}
     if(y>=160&&y<579){host.showObdStatus();return true;}
     return false;
