@@ -171,7 +171,7 @@ final class ThemeNativePanels {
   }[Math.max(1,Math.min(20,id))-1];}
   private void clock(Canvas c,Rect area,int accent){
     if(area==null)return;
-    fill(c,area,0xe50a1421,accent,14);
+    fill(c,area,0xff0a1421,accent,14);
     float x=area.left+13,y=area.top;
     boolean hour24=host.launcherSettings==null||host.launcherSettings.use24HourClock();
     String now=new SimpleDateFormat(hour24?"HH:mm":"hh:mm",Locale.getDefault()).format(new java.util.Date());
@@ -182,7 +182,7 @@ final class ThemeNativePanels {
   }
   private void status(Canvas c,Rect area,int color){
     if(area==null)return;
-    fill(c,area,0xed091321,color,12);
+    fill(c,area,0xff091321,color,12);
     ObdReader.Reading rd=host.obd==null?ObdReader.Reading.empty():host.obd.current();
     String state=host.obd==null?"OBD neconectat":host.obd.status();
     text(c,"STARE VEHICUL • OBD-II",area.left+13,area.top+28,Math.min(17,area.width()/15f),WHITE,true);
@@ -196,7 +196,7 @@ final class ThemeNativePanels {
   }
   private void media(Canvas c,Rect area,int accent){
     if(area==null)return;
-    fill(c,area,0xf0091320,accent,16);
+    fill(c,area,0xff091320,accent,16);
     int x=area.left,y=area.top,w=area.width(),h=area.height();
     text(c,crop(host.mediaName.isEmpty()?"EVO MEDIA":host.mediaName,29),x+18,y+34,
       Math.min(24,Math.max(16,h/14f)),WHITE,true);
@@ -261,7 +261,7 @@ final class ThemeNativePanels {
     boolean valid=Float.isFinite(v);
     int color=(idx==0?accent(theme):idx==1?0xff31c9ff:idx==2?0xfff2ae48:0xffee445d);
     int x=area.left,y=area.top,w=area.width(),h=area.height();
-    fill(c,area,0xf008111e,color,Math.min(15,Math.max(6,h/8)));
+    fill(c,area,0xff08111e,color,Math.min(15,Math.max(6,h/8)));
     String num=!valid?"N/A":idx==0||idx==3?
       String.format(Locale.US,"%.0f",v):String.format(Locale.US,"%+.1f",v);
     if(h<135||w<150||preferred==4||preferred==5){
@@ -312,7 +312,7 @@ final class ThemeNativePanels {
   }
   private void apps(Canvas c,Rect area){
     if(area==null)return;
-    fill(c,area,0xf1081322,0xffbc3156,14);
+    fill(c,area,0xff081322,0xffbc3156,14);
     text(c,"APLICAȚII INSTALATE",area.left+16,area.top+35,23,WHITE,true);
     int cols=area.width()>700?5:3,iconH=110,gap=8;
     int inner=area.width()-30;
