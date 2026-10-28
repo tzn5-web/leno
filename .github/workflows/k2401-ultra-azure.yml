@@ -105,7 +105,20 @@ jobs:
             https://github.com/tzn5-web/leno.git "$WORK"
           cd "$WORK"
           python3 projects/k2401-evo-launcher/scripts/verify-native-layout.py
-          test -s projects/k2401-evo-launcher/app/src/main/java/ro/evolauncher/k2401/UltraCockpitTheme.java
+          BASE=projects/k2401-evo-launcher/app/src/main/java/ro/evolauncher/k2401
+          test -s "$BASE/UltraCockpitTheme.java"
+          grep -Fq '"0146"' "$BASE/ObdReader.java"
+          grep -Fq '0x46' "$BASE/DirectElm327.java"
+          grep -Fq 'obd.ambientC' "$BASE/UltraCockpitTheme.java"
+          mkdir -p /tmp/k2401-ambient-jvm
+          javac -encoding UTF-8 -d /tmp/k2401-ambient-jvm \
+            "$BASE/ObdPidCodec.java" \
+            projects/k2401-evo-launcher/scripts/ObdPidCodecCheck.java \
+            "$BASE/ObdPollPlan.java" \
+            projects/k2401-evo-launcher/scripts/ObdPollPlanCheck.java
+          java -cp /tmp/k2401-ambient-jvm ro.evolauncher.k2401.ObdPidCodecCheck
+          java -cp /tmp/k2401-ambient-jvm ro.evolauncher.k2401.ObdPollPlanCheck
+          echo 'AZURE_AMBIENT_0146_UNIT_TESTS=PASS'
           gradle --no-daemon -p projects/k2401-evo-launcher :app:assembleDebug
           APK=projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
