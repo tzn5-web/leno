@@ -56,7 +56,7 @@ ROI=[
 (170,250,735,426),(168,164,724,592),None,(436,204,898,614)
 ]
 PLACEMENT=[
-(195,370,863,708),(240,60,820,458),(205,241,735,607),
+(295,355,825,610),(240,60,820,458),(205,241,735,607),
 (105,65,755,485),(240,55,910,495),None,(285,68,851,481),
 (472,116,875,489),(350,50,842,457),(300,135,910,512),
 (270,70,725,556),(285,52,921,502),(220,185,770,619),
@@ -95,12 +95,43 @@ def base(i):
         d.line(((x,1160),(x-250,1435)),fill=(*a,31),width=3)
     d.arc((370,280,1660,1600),189,355,fill=(*a,26),width=3)
     if i==0:
-        # Approved Digital Dash has a red/cyan night highway converging behind
-        # the REAL Lancer, never a baked speed/gear/clock or demo widget.
-        d.line([(258,1438),(1110,950)],fill=(255,36,75,140),width=13)
-        d.line([(2240,1438),(1480,950)],fill=(32,185,255,125),width=13)
-        d.line([(400,1438),(1150,995)],fill=(255,25,82,48),width=27)
-        d.line([(2160,1438),(1470,995)],fill=(33,210,240,42),width=27)
+        # Approved Digital Dash: the whole road, not a rectangular inset,
+        # remains visible around the real Mitsubishi; no printed telemetry.
+        # Coordinate space is 2560x1440, the native screenshot is 1280x720.
+        horizon=808
+        mountains=[(195,872)]
+        for x in range(195,1785,54):
+            y=int(horizon+37+19*math.sin(x/91)+13*math.cos(x/47))
+            mountains.append((x,y))
+        mountains.extend([(1785,1034),(195,1034)])
+        d.polygon(mountains,fill=(2,16,36,230))
+        d.polygon([(1000,825),(1205,825),(2020,1372),(170,1372)],
+                  fill=(4,13,29,165))
+        # Perspective lines converge behind the car and continue past it.
+        edges=[
+          ([(1000,839),(225,1408)],(250,38,70,190),20),
+          ([(1205,839),(1890,1408)],(35,205,255,171),19),
+          ([(1042,855),(435,1404)],(240,62,109,102),9),
+          ([(1180,856),(1695,1404)],(46,180,248,85),9)]
+        for points,col,wide in edges:
+            d.line(points,fill=col,width=wide,joint="curve")
+        # Road markers: each strip recedes towards the car, not UI widgets.
+        for lane in range(7):
+            t=(lane+1)/8
+            yy=int(900+(t*t)*489)
+            w=int(10+45*t)
+            x1=int(1085-(140+420*t));x2=int(1150+(170+450*t))
+            d.line([(x1,yy),(x1-w,yy+18+28*t)],
+                   fill=(244,41,95,int(75+75*t)),width=max(2,int(3+8*t)))
+            d.line([(x2,yy),(x2+w,yy+18+28*t)],
+                   fill=(38,172,244,int(65+62*t)),width=max(2,int(3+8*t)))
+        # Broad photographic atmospheric glow rather than stock HUD symbols.
+        glow=Image.new("RGBA",(W,H),(0,0,0,0))
+        brush=ImageDraw.Draw(glow,"RGBA")
+        brush.line([(1000,839),(225,1408)],fill=(253,23,96,104),width=32)
+        brush.line([(1205,839),(1890,1408)],fill=(11,181,255,90),width=30)
+        glow=glow.filter(ImageFilter.GaussianBlur(49))
+        image=Image.alpha_composite(image.convert("RGBA"),glow).convert("RGB")
     return image
 
 def scene(canvas,source,roi,dest,theme):
