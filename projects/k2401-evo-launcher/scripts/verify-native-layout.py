@@ -81,3 +81,28 @@ for number,body in cases:
 assert ids==set(range(1,21)),sorted(ids)
 assert "lastStyle!=18" in CODE,"Car Status duplicate RPM text reintroduced"
 print("K2401_ALL_20_NATIVE_LAYOUTS_NO_OVERLAP=PASS")
+
+# Skin 00 uses its own Digital Dash implementation. Verify that the
+# approved visible media + three footer controls have the same hit boxes,
+# and the two fuel-trim cards do not extend beyond the 1280px viewport.
+ENGINE=(ROOT/"app/src/main/java/ro/evolauncher/k2401/SkinEngine.java").read_text()
+expected={
+    "mediaRect":(860,74,1265,436),
+    "appRect":(13,630,197,714),
+    "skinRect":(201,630,385,714),
+    "mapsRect":(389,630,573,714),
+}
+for name,box in expected.items():
+    pattern=rf"private final Rect {name}=new Rect\(([^)]*)\)"
+    match=re.search(pattern,ENGINE)
+    assert match,(name,"missing action rectangle")
+    actual=tuple(map(int,match.group(1).split(",")))
+    assert actual==box,(name,actual,box)
+assert 'panel(c,860,74,405,362' in ENGINE,"Digital Dash media artwork/hit mismatch"
+assert 'int[] bx={13,201,389},bw={184,184,184}' in ENGINE,"Dock art/hit mismatch"
+assert 'compactDigitalFuelTrim(c,860,462,194,226' in ENGINE,"STFT card displaced"
+assert 'compactDigitalFuelTrim(c,1066,462,199,226' in ENGINE,"LTFT card displaced"
+assert 'selected==0&&x>=860&&x<=1265&&y>=74&&y<=436' in ENGINE
+assert 'host.mediaAction(x<1080?0:x<1165?1:2)' in ENGINE
+print("K2401_DIGITAL_DASH_VISUAL_TOUCH_ALIGNMENT=PASS")
+
