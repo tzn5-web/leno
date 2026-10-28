@@ -42,7 +42,7 @@ adb shell pidof "$APP" >/dev/null
 # Home wallpaper) and verify its disabled-map placeholder with bounded retries.
 map_recovered=0
 for attempt in 1 2 3 4; do
-  adb shell input tap 305 670
+  adb shell input tap 481 670 # native HARTĂ action, 389..573 on approved wider dock
   sleep 2
   adb shell uiautomator dump /sdcard/k2401-map-safe.xml >/dev/null
   adb pull /sdcard/k2401-map-safe.xml "$OUT/map-safe-ui.xml" >/dev/null
@@ -108,7 +108,7 @@ capture() {
 capture home 120
 # New Home contains 21 theme concepts, not an embedded map.
 # Verify the skin gallery and selection persistence with real Android UI.
-adb shell input tap 197 675
+adb shell input tap 293 675 # native SKINURI action, 201..385 on approved wider dock
 sleep 1
 adb shell uiautomator dump /sdcard/k2401-skin-gallery.xml >/dev/null
 adb pull /sdcard/k2401-skin-gallery.xml "$OUT/skin-gallery-ui.xml" >/dev/null
