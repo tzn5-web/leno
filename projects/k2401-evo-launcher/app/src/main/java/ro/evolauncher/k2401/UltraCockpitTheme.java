@@ -358,7 +358,11 @@ final class UltraCockpitTheme {
     longPressJob=null;
     down=-1;
   }
-  boolean up(float x,float y){
+  // Shared shortcut selector for all cinematic variants: one tap opens,
+  // holding 550 ms changes the selected app. Existing skin 22 retains
+  // its unchanged fallback navigation/touch dispatch.
+  void drawUserSlots(Canvas c){drawSlots(c);}
+  boolean upSlotOnly(float x,float y){
     int slot=down;
     boolean wasLong=longPressed;
     cancel();
@@ -367,8 +371,9 @@ final class UltraCockpitTheme {
     if(slot>=0&&slotAt(x,y)==slot){
       openSlot(slot);return true;
     }
-    return touch(x,y);
+    return false;
   }
+  boolean up(float x,float y){return upSlotOnly(x,y)||touch(x,y);}
   private void openSlot(int index){
     String pkg=slots[index];
     if(pkg==null||pkg.isEmpty()){choose(index);return;}
