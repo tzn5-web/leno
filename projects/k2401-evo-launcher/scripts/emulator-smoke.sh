@@ -177,7 +177,7 @@ echo "K2401_SKIN_PERSISTENCE_AFTER_RESTART=PASS"
 adb shell run-as "$APP" cat shared_prefs/evo_launcher_prefs.xml >/dev/null
 # Tapping the music card should offer a player picker (including Vanced when
 # actually installed), NEVER switch to Store or an external media Activity.
-adb shell input tap 830 155
+adb shell input tap 1010 71 # Theme #02 real top-right media header, not old Classic coordinates
 sleep 1
 adb shell uiautomator dump /sdcard/k2401-media-picker.xml >/dev/null
 adb pull /sdcard/k2401-media-picker.xml "$OUT/media-picker-ui.xml" >/dev/null
@@ -222,7 +222,7 @@ print("K2401_MEDIA_SELECTED_PLAYER_PERSISTENCE=PASS",a)
 PY
 adb shell pidof "$APP" >/dev/null
 # Native all-apps drawer must contain the actual installed packages.
-adb shell input tap 65 670
+adb shell input tap 45 460 # Theme #02 real left-side Apps icon; old footer no longer exists
 sleep 1
 adb shell uiautomator dump /sdcard/k2401-apps.xml >/dev/null
 adb pull /sdcard/k2401-apps.xml "$OUT/installed-apps-ui.xml" >/dev/null
