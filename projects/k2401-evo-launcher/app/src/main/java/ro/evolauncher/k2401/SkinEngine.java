@@ -107,22 +107,34 @@ final class SkinEngine {
     atlas=null;
     BitmapFactory.Options options=new BitmapFactory.Options();
     options.inPreferredConfig=Bitmap.Config.ARGB_8888;
-    // The official 21 designs always come from the APK assets.
-    try(InputStream stream=host.getAssets().open("skins/atlas.webp")){
-      atlas=BitmapFactory.decodeStream(stream,null,options);
-    }catch(IOException|RuntimeException ignored){}
+    // User-enabled and validated 21-skin ZIP takes priority over bundled art.
+    // The previous order always loaded the APK atlas and silently ignored ZIPs.
+    File root=packDir();
+    File local=root==null?null:new File(root,"atlas.webp");
+    if(local!=null&&local.isFile())atlas=BitmapFactory.decodeFile(local.getPath(),options);
     if(atlas==null){
-      File root=packDir();
-      File local=root==null?null:new File(root,"atlas.webp");
-      if(local!=null&&local.isFile())atlas=BitmapFactory.decodeFile(local.getPath(),options);
+      try(InputStream stream=host.getAssets().open("skins/atlas.webp")){
+        atlas=BitmapFactory.decodeStream(stream,null,options);
+      }catch(IOException|RuntimeException ignored){}
     }
   }
   private Bitmap fullArt(int id){
     if(fullArt!=null&&!fullArt.isRecycled()&&fullArtId==id)return fullArt;
     if(fullArt!=null&&!fullArt.isRecycled())fullArt.recycle();
     fullArt=null;fullArtId=id;fullArtIsClean=false;
+    // Explicitly imported skins must win over APK assets. Never ignore a
+    // successfully validated, user-selected ZIP pack.
+    File importedRoot=packDir();
+    File importedFile=importedRoot==null?null:new File(importedRoot,
+      String.format(Locale.US,"skin_%02d.webp",id));
+    if(importedFile!=null&&importedFile.isFile()){
+      BitmapFactory.Options opts=new BitmapFactory.Options();
+      opts.inPreferredConfig=Bitmap.Config.ARGB_8888;
+      fullArt=BitmapFactory.decodeFile(importedFile.getAbsolutePath(),opts);
+    }
+    // Bundled clean backgrounds take priority only when no import is active.
     // UI-free audited car-scene art has priority; no baked fake ECU values.
-    try(InputStream stream=host.getAssets().open(
+    if(fullArt==null)try(InputStream stream=host.getAssets().open(
       String.format(Locale.US,"skins/clean/skin_%02d.webp",id))){
       BitmapFactory.Options cleanOpts=new BitmapFactory.Options();
       cleanOpts.inPreferredConfig=Bitmap.Config.ARGB_8888;
