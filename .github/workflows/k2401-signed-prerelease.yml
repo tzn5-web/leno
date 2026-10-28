@@ -30,7 +30,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install exact 21-theme image restoration dependency
-        run: python -m pip install --disable-pip-version-check Pillow==11.3.0
+        run: python -m pip install --disable-pip-version-check "Pillow==11.3.0" "opencv-contrib-python-headless==4.10.0.84"
       - name: Verify all 20 native layout geometries and 21-theme UI contracts
         run: python3 projects/k2401-evo-launcher/scripts/verify-native-layout.py
       - uses: actions/setup-java@v4
@@ -207,7 +207,7 @@ jobs:
           else
             echo 'GOOGLE_MAPS_SDK_KEY=ABSENT_OSM_FALLBACK'
           fi
-          gradle --no-daemon -p projects/k2401-evo-launcher :app:assembleRelease
+          K2401_REQUIRE_SR=YES gradle --no-daemon -p projects/k2401-evo-launcher :app:assembleRelease
           test -s "$APK"
           python3 - <<'PY'
           import zipfile
