@@ -44,7 +44,7 @@ jobs:
              -in /tmp/shareitv2/SHAREit-NoAds-v2.apk \
              -out /tmp/shareitv2/SHAREit-NoAds-v2.apk.enc
           openssl pkeyutl -encrypt -pubin \
-             -inkey infra/azure-dev-vm/shareit-noads/delivery_v2_public.pem \
+             -inkey infra/azure-dev-vm/shareit-noads/delivery_v2_20261028_public.pem \
              -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 \
              -in /tmp/shareitv2/password.txt -out /tmp/shareitv2/password.rsa
           shred -u /tmp/shareitv2/password.txt /tmp/shareitv2/SHAREit-NoAds-v2.apk
