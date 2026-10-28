@@ -6,6 +6,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
@@ -23,6 +24,8 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.HapticFeedbackConstants;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -47,6 +50,7 @@ final class UltraCockpitTheme {
   private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
   private final String[] slots=new String[SLOT_COUNT];
   private final Drawable[] icons=new Drawable[SLOT_COUNT];
+  private Bitmap approvedWallpaper;
   private final Handler ui=new Handler(Looper.getMainLooper());
   private int down=-1;
   private float downX,downY;
@@ -57,6 +61,12 @@ final class UltraCockpitTheme {
     this.host=host;
     prefs=host.getSharedPreferences("evo_launcher_prefs",0);
     for(int i=0;i<SLOT_COUNT;i++)slots[i]=prefs.getString("ultra_app_slot_"+i,"");
+    try(InputStream image=host.getAssets().open("skins/approved/ultra-neon-2560x1440.webp")){
+      BitmapFactory.Options options=new BitmapFactory.Options();
+      options.inPreferredConfig=Bitmap.Config.ARGB_8888;
+      options.inSampleSize=2; // 2560x1440 archived, 1280x720 display RAM
+      approvedWallpaper=BitmapFactory.decodeStream(image,null,options);
+    }catch(IOException|RuntimeException ignored){approvedWallpaper=null;}
   }
   private void color(int value){p.setColor(value);p.setStyle(Paint.Style.FILL);p.setShader(null);p.setStrokeWidth(1);}
   private void rect(Canvas c,float x,float y,float w,float h,float r,int col){
@@ -107,6 +117,18 @@ final class UltraCockpitTheme {
                      String unit,float current,float minimum,float maximum,int mainColour,
                      boolean large){
     // Opaque dynamic centre hides static artwork, preventing sample numbers.
+    if(approvedWallpaper!=null){
+      color(0xff06101c);c.drawCircle(cx,cy,radius*(large?.66f:.67f),p);
+      // Art's original outer chrome/neon ring is decoration only.
+      // A separate INNER arc displays actual ECU progress.
+      neon(c,cx,cy,radius-(large?29f:16f),minimum,maximum,current,mainColour);
+      center(c,heading,cx,cy-(large?54:23),large?19:16,0xff90d8f4,true);
+      center(c,value,cx,cy+(large?13:18),large?54:36,WHITE,true);
+      center(c,unit,cx,cy+(large?46:39),large?19:14,0xffc0d7e6,false);
+      if(!Float.isFinite(current))
+        center(c,"ECU N/A",cx,cy+radius*.55f,12,0xff93a7ba,false);
+      return;
+    }
     color(0xf807101d);c.drawCircle(cx,cy,radius-20,p);
     color(0xff0c2237);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2);
     c.drawCircle(cx,cy,radius-19,p);p.setStyle(Paint.Style.FILL);
@@ -126,6 +148,13 @@ final class UltraCockpitTheme {
       center(c,"ECU N/A",cx,cy+radius*.65f,12,0xff93a7ba,false);
   }
   private void drawBackdrop(Canvas c){
+    // The EXACT user-approved screenshot is embedded in the signed APK.
+    // The printed sample data on it is covered below by native live widgets.
+    if(approvedWallpaper!=null&&!approvedWallpaper.isRecycled()){
+      color(Color.WHITE);p.setFilterBitmap(true);
+      c.drawBitmap(approvedWallpaper,null,new Rect(0,0,1280,720),p);
+      return;
+    }
     color(BG);c.drawColor(BG);
     color(WHITE);
     p.setShader(new LinearGradient(0,170,1280,700,0xff15223d,0xff040a14,
@@ -246,12 +275,14 @@ final class UltraCockpitTheme {
   void draw(Canvas c){
     drawBackdrop(c);drawRail(c);drawMusic(c);drawTime(c);
     ObdReader.Reading rd=host.obd==null?ObdReader.Reading.empty():host.obd.current();
-    gauge(c,282,416,165,"RPM",reading(rd.rpm/1000f,1),"x1000 rpm",
+    String rpm=Float.isFinite(rd.rpm)?
+      String.format(Locale.US,"%.1f",rd.rpm/1000f):"N/A";
+    gauge(c,282,380,165,"RPM",rpm,"x1000 rpm",
       rd.rpm,0,8000,RED,true);
-    gauge(c,1050,416,164,"TEMP APĂ",reading(rd.coolantC,0),"°C",
+    gauge(c,1047,380,164,"TEMP APĂ",reading(rd.coolantC,0),"°C",
       rd.coolantC,40,130,CYAN,true);
-    gauge(c,566,501,80,"STFT",reading(rd.stft,1),"%",rd.stft,-25,25,CYAN,false);
-    gauge(c,782,501,80,"LTFT",reading(rd.ltft,1),"%",rd.ltft,-25,25,RED,false);
+    gauge(c,551,492,79,"STFT",reading(rd.stft,1),"%",rd.stft,-25,25,CYAN,false);
+    gauge(c,773,492,79,"LTFT",reading(rd.ltft,1),"%",rd.ltft,-25,25,RED,false);
     drawSlots(c);
   }
   private int slotAt(float x,float y){
@@ -359,5 +390,8 @@ final class UltraCockpitTheme {
     if(y>=285&&x>=100&&x<1250){host.showObdStatus();return true;}
     return false;
   }
-  void release(){cancel();}
+  void release(){cancel();
+    if(approvedWallpaper!=null&&!approvedWallpaper.isRecycled())approvedWallpaper.recycle();
+    approvedWallpaper=null;
+  }
 }
