@@ -431,7 +431,9 @@ final class ThemeNativePanels {
     // Keep the approved full scene but erase its unsupported printed demo
     // telemetry/weather outside the genuine native widget rectangles.
     layout=profile(id);
-    hidePrintedDemo(c,id);
+    // Clean generated backgrounds have NO baked demo weather, app icons or RPM.
+    // Never paint old repair rectangles over the vehicle photograph.
+    if(host.skins==null||!host.skins.isCleanArt())hidePrintedDemo(c,id);
     int color=accent(id);
     if(id==7){
       // The original GT mockup prints a fictional "78 km/h" here.
