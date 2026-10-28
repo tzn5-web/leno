@@ -223,8 +223,7 @@ final class SkinEngine {
       artist=host.mediaPackage.isEmpty()?"Apasă aici pentru lista de playere":"Control MediaSession / Play";
     }
     panel(c,x+23,y+77,130,128,0xff412030,12);
-    text(c,"YT",x+59,y+145,45,Color.WHITE,true);
-    text(c,"MUSIC",x+52,y+176,19,Color.WHITE,true);
+    text(c,"MEDIA",x+44,y+154,26,Color.WHITE,true);
     text(c,shorten(song,27),x+174,y+124,26,Color.WHITE,true);
     text(c,shorten(artist,35),x+174,y+163,17,0xffa9b9ce,false);
     line(c,x+178,y+178,x+w-20,y+178,0xff405266,4);
@@ -435,8 +434,8 @@ final class SkinEngine {
       colour(Color.WHITE);p.setFilterBitmap(true);
       c.drawBitmap(cover,null,new Rect(823,130,943,272),p);
     }else{
-      centered(c,"YT",883,202,42,ice,true);
-      centered(c,"MUSIC",883,231,17,ice,true);
+      // Do not draw a YouTube logo if Morphe, Spotify or another player is selected.
+      centered(c,"MEDIA",883,211,23,ice,true);
     }
     String song="",performer="";
     if(controller!=null&&controller.getMetadata()!=null){
@@ -647,7 +646,7 @@ final class SkinEngine {
       colour(Color.WHITE);p.setFilterBitmap(true);
       c.drawBitmap(art,null,new Rect(x+18,y+59,x+18+cover,y+59+cover),p);
     }else{
-      centered(c,"YT",x+18+cover/2f,y+116,35,Color.WHITE,true);
+      centered(c,"MEDIA",x+18+cover/2f,y+116,22,Color.WHITE,true);
     }
     int textX=x+cover+32;
     text(c,shorten(title,Math.max(8,(w-cover-45)/15)),textX,y+111,21,Color.WHITE,true);
