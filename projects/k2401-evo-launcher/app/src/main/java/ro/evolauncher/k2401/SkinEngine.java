@@ -427,15 +427,15 @@ final class SkinEngine {
     drawArt(c,0);
     final int crimson=0xfffa304d,azure=0xff30cfff,ice=0xffedf6ff;
     // Repaint only the obsolete labels / clock from the original render.
-    panel(c,2,4,308,46,0xf009121e,11);
+    panel(c,2,4,308,46,0xff09121e,11);
     text(c,"EVO DIGITAL DASH",19,36,24,ice,true);
-    panel(c,352,86,236,87,0xf0081421,17);
+    panel(c,352,86,236,87,0xff081421,17);
     text(c,time(),373,130,43,ice,true);
     text(c,shorten(date(),27),373,159,16,0xffcddde9,false);
 
     // The mockup has "0 km/h" without a vehicle-speed PID. Do not make it
     // appear live: replace just its centre with a real connection indicator.
-    panel(c,379,246,169,155,0xf0081420,17);
+    panel(c,379,246,169,155,0xff081420,17);
     text(c,"ECU / ELM327",393,281,17,0xffa7bcd1,true);
     ObdReader.Reading data=host.obd==null?ObdReader.Reading.empty():host.obd.current();
     text(c,data.live?"CONECTAT":"N/A",393,333,27,data.live?0xff5af5ba:ice,true);
@@ -443,13 +443,13 @@ final class SkinEngine {
 
     // Main round gauges. Semi-opaque black under the *dynamic* arcs hides
     // baked-in readings and keeps the original tachometer-like placement.
-    colour(0xf207111e);c.drawCircle(240,328,108,p);c.drawCircle(658,328,108,p);
+    colour(0xff07111e);c.drawCircle(240,328,108,p);c.drawCircle(658,328,108,p);
     gauge(c,240,323,98,"RPM",val(data.rpm,0),"rpm",data.rpm,0,8000,crimson,1);
     gauge(c,658,323,98,"TEMP APĂ",val(data.coolantC,0),"°C",
       data.coolantC,40,120,azure,2);
 
     // Media panel exactly within the right-hand rectangular music location.
-    panel(c,799,74,466,362,0xee08121e,15);
+    panel(c,799,74,466,362,0xff08121e,15);
     stroke(c,799,74,466,362,crimson,15);
     text(c,shorten(host.mediaName,25),822,108,22,ice,true);
     MediaController controller=host.media;
@@ -499,7 +499,7 @@ final class SkinEngine {
     text(c,"K2401 • "+NAMES[0],416,698,16,0xffb5c8d9,true);
 
     // Small functional bottom dock instead of a 620x310 HUD obscuring the car.
-    panel(c,5,630,389,88,0xe60a1320,14);
+    panel(c,5,630,389,88,0xff0a1320,14);
     stroke(c,5,630,389,88,0xffa72a43,14);
     String[] shortcuts={"APLICAȚII","SKINURI","HARTĂ"};
     String[] icons={"▦","◈","➤"};
@@ -512,7 +512,7 @@ final class SkinEngine {
   }
   private void compactDigitalFuelTrim(Canvas c,int x,int y,int w,int h,
                                       String name,float reading,int accent){
-    panel(c,x,y,w,h,0xf0081421,16);
+    panel(c,x,y,w,h,0xff081421,16);
     stroke(c,x,y,w,h,accent,16);
     text(c,name,x+19,y+44,23,iceForFuelTrim(),true);
     String value=val(reading,1);
