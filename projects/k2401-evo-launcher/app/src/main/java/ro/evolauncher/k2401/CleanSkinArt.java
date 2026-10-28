@@ -154,7 +154,11 @@ final class CleanSkinArt {
 
     // Individual scene cleanup; do not leave the original demo gear/clock
     // or printed application tabs between real native interactive widgets.
-    if(id==0)round(c,379,398,171,72,0xff081420,0);
+    if(id==0){
+      round(c,379,398,171,72,0xff081420,0);
+      // Static "P A R" illustrated gear letters have no real CAN/gear PID.
+      round(c,132,94,105,69,0xff081420,0);
+    }
     if(id==15)round(c,505,55,295,203,0xff08121e,0);
     if(id==19){
       round(c,390,55,890,71,0xff08121e,0);
