@@ -415,4 +415,47 @@ PY
 # Keep three photographed vehicle scenes visible below native LIVE RPM.
 python3 projects/k2401-evo-launcher/scripts/verify-scene-visibility.py
 python3 projects/k2401-evo-launcher/scripts/verify-theme2-photo.py
+# The 22nd design is an independent UHD skin. Screenshot its actual Android
+# Canvas and check BOTH configurable-slot gestures (one tap / long hold).
+adb shell am force-stop "$APP"
+adb shell am start -W -n "$APP/.MainActivity" --ei k2401_skin_preview_ci 21 >/dev/null
+sleep 2
+adb shell pidof "$APP" >/dev/null
+adb shell screencap -p /sdcard/k2401-ultra-uhd.png
+adb pull /sdcard/k2401-ultra-uhd.png "$OUT/k2401-ultra-uhd.png" >/dev/null
+python3 - <<'PY'
+from PIL import Image,ImageStat
+from pathlib import Path
+im=Image.open(Path("projects/k2401-evo-launcher/screenshots/k2401-ultra-uhd.png")).convert("RGB")
+assert im.size==(1280,720),im.size
+assert sum(ImageStat.Stat(im).var)/3>100,"UHD skin unexpectedly blank/solid"
+print("K2401_ULTRA_APPROVED_NATIVE_SCREENSHOT=PASS")
+PY
+# First blank + opens installed-application chooser instead of launching.
+adb shell input tap 459 646
+sleep 1
+adb shell uiautomator dump /sdcard/k2401-ultra-tap.xml >/dev/null
+adb pull /sdcard/k2401-ultra-tap.xml "$OUT/k2401-ultra-tap-ui.xml" >/dev/null
+python3 - <<'PY'
+import xml.etree.ElementTree as ET
+nodes=ET.parse("projects/k2401-evo-launcher/screenshots/k2401-ultra-tap-ui.xml").findall(".//node")
+assert any("Aplicația 1" in n.attrib.get("text","") for n in nodes),"TAP_PLUS_PICKER_MISSING"
+print("K2401_ULTRA_PLUS_SINGLE_TAP_PICKER=PASS")
+PY
+adb shell input keyevent 4
+sleep 1
+# Android ADB same-point swipe injects down/move/up lasting 850 ms, proving
+# the 550ms long-press path opens the replacement chooser.
+adb shell input swipe 459 646 459 646 850
+sleep 1
+adb shell uiautomator dump /sdcard/k2401-ultra-hold.xml >/dev/null
+adb pull /sdcard/k2401-ultra-hold.xml "$OUT/k2401-ultra-hold-ui.xml" >/dev/null
+python3 - <<'PY'
+import xml.etree.ElementTree as ET
+nodes=ET.parse("projects/k2401-evo-launcher/screenshots/k2401-ultra-hold-ui.xml").findall(".//node")
+assert any("Aplicația 1" in n.attrib.get("text","") for n in nodes),"LONG_PRESS_REPLACE_PICKER_MISSING"
+print("K2401_ULTRA_LONG_PRESS_REPLACE=PASS")
+PY
+adb shell input keyevent 4
+echo 'K2401_22ND_UHD_SKIN_AND_SIX_USER_SLOTS=PASS'
 echo "SIX_SCREEN_EMULATOR_SMOKE=PASS; RESOLUTION=1280x720; RESTART=PASS"
