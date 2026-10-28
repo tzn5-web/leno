@@ -10,8 +10,8 @@ android {
    applicationId parallelInstall ? 'ro.evolauncher.k2401.ultra' : 'ro.evolauncher.k2401'
    minSdk 26
    targetSdk 28
-   versionCode 112
-   versionName parallelInstall ? '1.0.112-ultra-parallel' : '1.0.112-ultra-no-duplicates'
+   versionCode 113
+   versionName parallelInstall ? '1.0.113-cinematic-parallel' : '1.0.113-cinematic-trio'
    manifestPlaceholders = [MAPS_API_KEY: googleMapsApiKey, APP_LABEL: (parallelInstall ? 'EVO Ultra (Test)' : 'EVO Launcher')]
    buildConfigField 'boolean', 'GOOGLE_MAPS_CONFIGURED', googleMapsApiKey.isEmpty() ? 'false' : 'true'
  }
@@ -58,3 +58,15 @@ dependencies {
    inputs.file file("${rootProject.projectDir}/scripts/models/FSRCNN_x2.pb.base64")
  }
  tasks.named('preBuild') { dependsOn tasks.named('generateUhdSkins') }
+
+ // 3 cinematic HUD wallpapers at exactly 3840x2160. Reuses the original 21
+ // clean photographs and generates NO raster telemetry, menus or fake clocks.
+ tasks.register('generateCinematic4k', Exec) {
+   dependsOn tasks.named('generateUhdSkins')
+   workingDir rootProject.projectDir
+   commandLine 'python3', "${rootProject.projectDir}/scripts/generate-cinematic-4k.py"
+   inputs.file file("${rootProject.projectDir}/scripts/generate-cinematic-4k.py")
+   inputs.files fileTree('src/main/assets/skins/clean') { include 'skin_??.webp' }
+   outputs.dir file('src/main/assets/skins/cinematic')
+ }
+ tasks.named('preBuild') { dependsOn tasks.named('generateCinematic4k') }
