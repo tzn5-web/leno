@@ -36,6 +36,15 @@ print("K2401_ULTRA_OPAQUE_TIME_DATE_AIR_PANEL=PASS")
 print("K2401_ULTRA_TOP_RIGHT_CLOCK_FINAL_LAYER=PASS")
 assert 'ultra_app_slot_' in source and 'getLaunchIntentForPackage(pkg)' in source
 assert 'postDelayed(longPressJob,550)' in source
+assert 'final int[] ys={73,171,269,367,465,563};' in source
+assert 'rect(c,0,0,102,720,0,0xff070f1c)' in source
+assert 'Math.min(5,i)' not in source and 'for(int i=0;i<7;i++)' not in source
+assert 'if(idx==4){host.showInstalledApps();return true;}' in source
+assert 'rect(c,113,12,1152,148,17,0xff071321)' in source
+assert 'center(c,"ECU N/A"' not in source
+print("K2401_ULTRA_NO_DUPLICATE_RAIL_ICONS=PASS")
+print("K2401_ULTRA_NO_STALE_MUSIC_BLEED=PASS")
+print("K2401_ULTRA_NO_TRIM_NA_OVERLAP=PASS")
 print("K2401_ULTRA_UHD_SNAPSHOT=PASS; AMBIENT_NA_WHEN_UNAVAILABLE=PASS")
 PY
 # A sustained tap on the first slot must present the real app chooser.
