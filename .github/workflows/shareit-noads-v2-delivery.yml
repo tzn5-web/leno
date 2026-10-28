@@ -1,0 +1,63 @@
+name: SHAREit NoAds v2 - encrypted user delivery from Azure
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/shareit-noads-v2-delivery.yml']
+  workflow_dispatch:
+permissions: {id-token: write, contents: read}
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Validate Azure output before encrypted short-lived handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 0700 /tmp/shareitv2
+          export AZURE_STORAGE_KEY="$(az storage account keys list -g rg-chatgpt-azure -n tzn5androidartifacts26 --query '[0].value' -o tsv)"
+          echo "::add-mask::$AZURE_STORAGE_KEY"
+          az storage blob download --account-name tzn5androidartifacts26 --container-name apks-private \
+             --name output/SHAREit_6.27.58_NoAds_v2_ARM64.apk \
+             --file /tmp/shareitv2/SHAREit-NoAds-v2.apk --overwrite --only-show-errors
+          az storage blob download --account-name tzn5androidartifacts26 --container-name apks-private \
+             --name output/SHAREit_6.27.58_NoAds_v2_AUDIT.json \
+             --file /tmp/shareitv2/audit.json --overwrite --only-show-errors
+          python3 - <<'PY'
+          import hashlib,json,zipfile
+          p='/tmp/shareitv2/SHAREit-NoAds-v2.apk'
+          j=json.load(open('/tmp/shareitv2/audit.json'))
+          assert hashlib.file_digest(open(p,'rb'),'sha256').hexdigest()==j['sha256']
+          assert j['method_entrypoints_disabled']>=30
+          with zipfile.ZipFile(p) as z: assert z.testzip() is None
+          print('AZURE_V2_OUTPUT_VERIFIED',j['bytes'],j['sha256'],j['method_entrypoints_disabled'])
+          PY
+          openssl rand -base64 39 >/tmp/shareitv2/password.txt
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 150000 \
+             -pass file:/tmp/shareitv2/password.txt \
+             -in /tmp/shareitv2/SHAREit-NoAds-v2.apk \
+             -out /tmp/shareitv2/SHAREit-NoAds-v2.apk.enc
+          openssl pkeyutl -encrypt -pubin \
+             -inkey infra/azure-dev-vm/shareit-noads/delivery_v2_public.pem \
+             -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 \
+             -in /tmp/shareitv2/password.txt -out /tmp/shareitv2/password.rsa
+          shred -u /tmp/shareitv2/password.txt /tmp/shareitv2/SHAREit-NoAds-v2.apk
+          echo 'PRIVATE_ENCRYPTED_V2_ARTIFACT_PREPARED=PASS'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shareit-noads-v2-encrypted
+          path: |
+            /tmp/shareitv2/SHAREit-NoAds-v2.apk.enc
+            /tmp/shareitv2/password.rsa
+            /tmp/shareitv2/audit.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+      - if: always()
+        run: az logout || true
