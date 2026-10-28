@@ -101,8 +101,8 @@ final class LauncherSettings extends ScrollView {
     sub("Skinul implicit este EVO DIGITAL DASH. Schimbă-l oricând; toate păstrează telemetria ECU și playerul real.");
     LinearLayout skinButtons=row();
     button(skinButtons,"VEZI ȘI ALEGE SKIN",()->((MainActivity)host).showSkinPicker());
-    button(skinButtons,"IMPORTĂ ALTE IMAGINI (OPȚIONAL)",()->((MainActivity)host).chooseSkinPack());
-    sub("Toate cele 21 de skinuri ORIGINALE sunt incluse direct în APK, offline, la 1280×720. Nu trebuie descărcat sau importat niciun ZIP. Poți importa opțional alt pachet pentru personalizare.");
+    // Originals are bundled in this APK; no ZIP import is required.
+    sub("Cele 21 de skinuri ORIGINALE sunt incluse direct în APK, offline, la 1280×720. Alege, previzualizează și aplică orice skin. Nu se importă niciun fișier.");
     LinearLayout appsButtons=row();
     button(appsButtons,"APLICAȚII INSTALATE",()->((MainActivity)host).showInstalledApps());
     sub("Fundalul, culorile, ceasul si luminozitatea se salveaza automat, inclusiv dupa repornire.");
