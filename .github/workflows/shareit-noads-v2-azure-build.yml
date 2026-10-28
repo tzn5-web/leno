@@ -1,0 +1,78 @@
+name: SHAREit NoAds v2 - patch ad SDK code and sign on Azure
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/shareit-noads-v2-azure-build.yml']
+  workflow_dispatch:
+permissions: {id-token: write, contents: read}
+concurrency: {group: azure-shareit-v2-build, cancel-in-progress: false}
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 36
+    env:
+      ACCOUNT: tzn5androidartifacts26
+      GROUP: rg-chatgpt-azure
+      CONTAINER: apks-private
+      VM: android-dev-linux
+      INPUT: output/SHAREit_6.27.58_NoAds_SINGLE_ARM64.apk
+      OUTPUT: output/SHAREit_6.27.58_NoAds_v2_ARM64.apk
+      REPORT: output/SHAREit_6.27.58_NoAds_v2_AUDIT.json
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate patch and guest build files
+        shell: bash
+        run: |
+          set -eu
+          python3 -m py_compile infra/azure-dev-vm/shareit-noads/disable_ad_rendering.py
+          sh -n infra/azure-dev-vm/shareit-noads/build_v2_on_vm.sh
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Build private APK on existing Azure VM
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="$(az vm show -g "$GROUP" -n "$VM" --query tags.managedBy -o tsv)"
+          test "$TAG" = github-azure-android-dev
+          export AZURE_STORAGE_KEY="$(az storage account keys list -g "$GROUP" -n "$ACCOUNT" --query '[0].value' -o tsv)"
+          echo "::add-mask::$AZURE_STORAGE_KEY"
+          az storage blob exists --account-name "$ACCOUNT" --container-name "$CONTAINER" --name "$INPUT" --query exists -o tsv | grep -qi true
+          EXPIRE="$(date -u -d '+2 hours' +%Y-%m-%dT%H:%MZ)"
+          INSAS="$(az storage blob generate-sas -c "$CONTAINER" -n "$INPUT" --account-name "$ACCOUNT" --permissions r --expiry "$EXPIRE" --https-only -o tsv)"
+          OUTSAS="$(az storage blob generate-sas -c "$CONTAINER" -n "$OUTPUT" --account-name "$ACCOUNT" --permissions cw --expiry "$EXPIRE" --https-only -o tsv)"
+          REPSAS="$(az storage blob generate-sas -c "$CONTAINER" -n "$REPORT" --account-name "$ACCOUNT" --permissions cw --expiry "$EXPIRE" --https-only -o tsv)"
+          echo "::add-mask::$INSAS"; echo "::add-mask::$OUTSAS"; echo "::add-mask::$REPSAS"
+          INURL="https://${ACCOUNT}.blob.core.windows.net/${CONTAINER}/${INPUT}?${INSAS}"
+          OUTURL="https://${ACCOUNT}.blob.core.windows.net/${CONTAINER}/${OUTPUT}?${OUTSAS}"
+          REPURL="https://${ACCOUNT}.blob.core.windows.net/${CONTAINER}/${REPORT}?${REPSAS}"
+          ROOT="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/infra/azure-dev-vm/shareit-noads"
+          az vm start -g "$GROUP" -n "$VM" -o none
+          echo 'AZURE_VM_STARTED_FOR_AD_SDK_PATCH=YES'
+          REMOTE="set -eu
+          umask 077
+          install -d -m 0700 /var/lib/shareit-noads/v2
+          cd /var/lib/shareit-noads/v2
+          curl -fsSL --retry 3 '$INURL' -o original.apk
+          curl -fsSL --retry 3 '$ROOT/disable_ad_rendering.py' -o disable_ad_rendering.py
+          curl -fsSL --retry 3 '$ROOT/build_v2_on_vm.sh' -o build_v2_on_vm.sh
+          sh build_v2_on_vm.sh
+          curl -fsSL --retry 3 -X PUT -H 'x-ms-blob-type: BlockBlob' --data-binary @SHAREit_6.27.58_NoAds_v2_ARM64.apk '$OUTURL' >/dev/null
+          curl -fsSL --retry 3 -X PUT -H 'x-ms-blob-type: BlockBlob' --data-binary @v2_audit.json '$REPURL' >/dev/null
+          echo AZURE_SHAREIT_V2_PRIVATE_OUTPUT_SAVED=PASS"
+          MSG="$(az vm run-command invoke -g "$GROUP" -n "$VM" --command-id RunShellScript --scripts "$REMOTE" --query 'value[0].message' -o tsv)"
+          echo "$MSG" | tail -c 3900
+          echo "$MSG" | grep -q 'AZURE_SHAREIT_V2_PRIVATE_OUTPUT_SAVED=PASS'
+      - name: Always deallocate Azure VM (control free trial spending)
+        if: always()
+        shell: bash
+        run: |
+          TAG="$(az vm show -g "$GROUP" -n "$VM" --query tags.managedBy -o tsv 2>/dev/null || true)"
+          if [[ "$TAG" = github-azure-android-dev ]]; then
+            az vm deallocate -g "$GROUP" -n "$VM" -o none
+            echo "AZURE_VM_DEALLOCATED=PASS"
+          fi
+      - if: always()
+        run: az logout || true
