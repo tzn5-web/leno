@@ -105,7 +105,7 @@ final class SkinEngine {
     if(atlas!=null&&!atlas.isRecycled())atlas.recycle();
     atlas=null;
     BitmapFactory.Options options=new BitmapFactory.Options();
-    options.inPreferredConfig=Bitmap.Config.RGB_565;
+    options.inPreferredConfig=Bitmap.Config.ARGB_8888;
     // The official 21 designs always come from the APK assets.
     try(InputStream stream=host.getAssets().open("skins/atlas.webp")){
       atlas=BitmapFactory.decodeStream(stream,null,options);
@@ -124,7 +124,7 @@ final class SkinEngine {
     try(InputStream stream=host.getAssets().open(
       String.format(Locale.US,"skins/skin_%02d.webp",id))){
       BitmapFactory.Options opts=new BitmapFactory.Options();
-      opts.inPreferredConfig=Bitmap.Config.RGB_565;
+      opts.inPreferredConfig=Bitmap.Config.ARGB_8888;
       fullArt=BitmapFactory.decodeStream(stream,null,opts);
     }catch(IOException|RuntimeException ignored){}
     if(fullArt==null){
@@ -132,7 +132,7 @@ final class SkinEngine {
       File image=root==null?null:new File(root,String.format(Locale.US,"skin_%02d.webp",id));
       if(image!=null&&image.isFile()){
         BitmapFactory.Options opts=new BitmapFactory.Options();
-        opts.inPreferredConfig=Bitmap.Config.RGB_565;
+        opts.inPreferredConfig=Bitmap.Config.ARGB_8888;
         fullArt=BitmapFactory.decodeFile(image.getAbsolutePath(),opts);
       }
     }
@@ -399,9 +399,8 @@ final class SkinEngine {
     drawArt(c,0);
     drawNativeStatusBar(c,0);
     final int crimson=0xfffa304d,azure=0xff30cfff,ice=0xffedf6ff;
-    // Repaint only the obsolete labels / clock from the original render.
-    panel(c,2,4,308,46,0xff09121e,11);
-    text(c,"EVO DIGITAL DASH",19,36,24,ice,true);
+    // The shared native status bar above already renders the EVO DIGITAL DASH
+    // title once. Do not add another opaque title card over the first skin.
     panel(c,352,86,236,87,0xff081421,17);
     text(c,time(),373,130,43,ice,true);
     text(c,shorten(date(),27),373,159,16,0xffcddde9,false);
@@ -864,7 +863,7 @@ final class SkinEngine {
     // Live ECU values remain live; unavailable values are labelled N/A.
     Bitmap fullPreview=null;
     try{
-      fullPreview=Bitmap.createBitmap(1280,720,Bitmap.Config.RGB_565);
+      fullPreview=Bitmap.createBitmap(1280,720,Bitmap.Config.ARGB_8888);
       int previous=selected;selected=which;
       try{draw(new Canvas(fullPreview));}
       finally{selected=previous;}
