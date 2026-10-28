@@ -73,6 +73,7 @@ final class SkinEngine {
     0xffe52b51,0xff33b6ea,0xffee334d
   };
   private final MainActivity host;
+  private final ThemeNativePanels nativePanels;
   private final SharedPreferences prefs;
   private final Paint p=new Paint(3);
   private Bitmap atlas;
@@ -88,6 +89,7 @@ final class SkinEngine {
 
   SkinEngine(MainActivity activity){
     host=activity;
+    nativePanels=new ThemeNativePanels(activity);
     prefs=host.getSharedPreferences(PREFS,Context.MODE_PRIVATE);
     selected=clamp(prefs.getInt(KEY,0));
     loadAtlas();
@@ -688,27 +690,16 @@ final class SkinEngine {
   }
 
   void draw(Canvas c){
-    int id=selected,accent=COLORS[id],style=STYLES[id];
+    // EVO Digital Dash has its own bespoke left/right interactive cockpit.
+    // The remaining twenty models use layouts aligned to the *individual*
+    // source artwork, rather than one generic four-gauge card on the right.
+    int id=selected;
     if(id==0){drawEvoDigitalDashNative(c);return;}
-    drawPhotoSkin(c,id,accent);return;
-
     drawArt(c,id);
-    // Source mockups had baked numbers ("4. EVO DIGITAL DASH", "22:36").
-    // Draw the real selected skin index and live time on top of those examples.
-    panel(c,18,9,604,58,0xee07101c,11);
-    stroke(c,18,9,604,58,accent,11);
-    text(c,String.format(Locale.US,"%02d / 21",id+1),35,48,23,accent,true);
-    text(c,shorten(NAMES[id],30),156,48,27,Color.WHITE,true);
-    // Scrims replace baked/fake numbers and transport labels in source image.
-    renderTime(c,accent,style);
-    if(id==0)drawDigitalDashFastGauges(c,accent);
-    renderMusic(c,accent,style);
-    stats(c,accent,style);
-    strip(c,accent);
-    sideRail(c,accent);
-    text(c,shorten(NAMES[id],30),410,700,18,Color.WHITE,true);
+    nativePanels.draw(c,id);
   }
   boolean touch(float x,float y){
+    if(selected>0&&nativePanels.touch(x,y))return true;
     if(selected==0&&x>=799&&x<=1265&&y>=74&&y<=436){
       if(y>=302){
         host.mediaAction(x<995?0:x<1092?1:2);
