@@ -22,7 +22,15 @@ public final class MainActivity extends Activity {
       startActivity(new Intent(this,SafeModeActivity.class));finish();return;
     }
     getWindow().getDecorView().setSystemUiVisibility(5894|View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);mediaPackage=getSharedPreferences("evo_launcher_prefs",MODE_PRIVATE).getString("evo_media_package","");
-   mediaName=labelForMedia(mediaPackage);launcherSettings=new LauncherSettings(this,()->{if(view!=null)view.invalidate();});view=new Dashboard();obd=new ObdReader(this,()->runOnUiThread(()->{if(view!=null)view.invalidate();}));skins=new SkinEngine(this);installedApps=new AppsDrawer(this);stage=new android.widget.FrameLayout(this);stage.addView(view,new android.widget.FrameLayout.LayoutParams(-1,-1));
+   mediaName=labelForMedia(mediaPackage);launcherSettings=new LauncherSettings(this,()->{if(view!=null)view.invalidate();});view=new Dashboard();obd=new ObdReader(this,()->runOnUiThread(()->{if(view!=null)view.invalidate();}));skins=new SkinEngine(this);
+   // Debug-only test harness: CI can capture all 21 actual rendering paths.
+   // Release builds NEVER accept a skin override from outside the app.
+   if(BuildConfig.DEBUG&&getIntent()!=null&&
+      getIntent().hasExtra("k2401_skin_preview_ci")){
+     int preview=getIntent().getIntExtra("k2401_skin_preview_ci",-1);
+     if(preview>=0&&preview<SkinEngine.COUNT)skins.select(preview);
+   }
+   installedApps=new AppsDrawer(this);stage=new android.widget.FrameLayout(this);stage.addView(view,new android.widget.FrameLayout.LayoutParams(-1,-1));
    // Do not allow an OEM-only map renderer failure to prevent all launcher UI.
    // A pending map boot after a process crash automatically disables only map.
    SharedPreferences mapRecovery=getSharedPreferences("evo_startup_recovery",MODE_PRIVATE);
