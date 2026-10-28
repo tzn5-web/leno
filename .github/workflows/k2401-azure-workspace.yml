@@ -39,9 +39,10 @@ jobs:
       - name: Verify VM is deallocated and existing Blob account is private
         run: |
           set -euo pipefail
-          STATE="$(az vm get-instance-view -g "$RESOURCE_GROUP" -n "$VM_NAME" \
-            --query "statuses[?starts_with(code, 'PowerState/')].code | [0]" -o tsv)"
-          test "$STATE" = PowerState/deallocated || {
+          STATE="$(az vm show -g "$RESOURCE_GROUP" -n "$VM_NAME" -d --query 'powerState' -o tsv)"
+          # The Azure CLI can return either UI display text or a REST state code.
+          # Never proceed if neither explicitly says the VM is deallocated.
+          test "$STATE" = "VM deallocated" || test "$STATE" = "PowerState/deallocated" || {
             echo "::error::VM not deallocated: $STATE"; exit 2;
           }
           PUBLIC="$(az storage account show -g "$RESOURCE_GROUP" -n "$STORAGE_ACCOUNT" \
