@@ -83,7 +83,7 @@ final class SkinEngine {
   private boolean fullArtIsClean=false;
   private AlertDialog galleryDialog;
   private int selected;
-  private final Rect mediaRect=new Rect(860,74,1265,436);
+  private final Rect mediaRect=new Rect(860,74,1265,412);
   private final Rect statsRect=new Rect(860,462,1266,689);
   private final Rect appRect=new Rect(13,630,197,714);
   private final Rect skinRect=new Rect(201,630,385,714);
@@ -475,14 +475,14 @@ final class SkinEngine {
 
     // Main round gauges. Semi-opaque black under the *dynamic* arcs hides
     // baked-in readings and keeps the original tachometer-like placement.
-    colour(0xff07111e);c.drawCircle(298,300,130,p);c.drawCircle(735,305,116,p);
-    gauge(c,298,300,122,"RPM",val(data.rpm,0),"rpm",data.rpm,0,8000,crimson,1);
-    gauge(c,735,305,107,"TEMP APĂ",val(data.coolantC,0),"°C",
+    colour(0xff07111e);c.drawCircle(298,300,144,p);c.drawCircle(735,305,127,p);
+    gauge(c,298,300,136,"RPM",val(data.rpm,0),"rpm",data.rpm,0,8000,crimson,1);
+    gauge(c,735,305,117,"TEMP APĂ",val(data.coolantC,0),"°C",
       data.coolantC,40,120,azure,2);
 
     // Media panel exactly within the right-hand rectangular music location.
-    panel(c,860,74,405,362,0xff08121e,15);
-    stroke(c,860,74,405,362,crimson,15);
+    panel(c,860,74,405,338,0xff08121e,15);
+    stroke(c,860,74,405,338,crimson,15);
     text(c,shorten(host.mediaName,22),882,108,22,ice,true);
     MediaController controller=host.media;
     Bitmap cover=null;
@@ -521,13 +521,13 @@ final class SkinEngine {
     MediaVectorIcons.draw(c,1040,363,0,ice);
     MediaVectorIcons.draw(c,1124,363,playing?3:1,ice);
     MediaVectorIcons.draw(c,1211,363,2,ice);
-    text(c,controller==null?"MEDIA OFFLINE":"MEDIA LIVE",882,417,13,
+    text(c,controller==null?"MEDIA OFFLINE":"MEDIA LIVE",882,398,13,
       controller==null?0xffacbacb:0xff5af5ba,true);
 
     // The two rectangular live fuel-trim instruments correspond to the two
     // cards in the original lower right, not a duplicate four-dial panel.
-    compactDigitalFuelTrim(c,860,462,194,226,"STFT B1",data.stft,azure);
-    compactDigitalFuelTrim(c,1066,462,199,226,"LTFT B1",data.ltft,crimson);
+    compactDigitalFuelTrim(c,860,426,194,205,"STFT B1",data.stft,azure);
+    compactDigitalFuelTrim(c,1066,426,199,205,"LTFT B1",data.ltft,crimson);
     text(c,"K2401 • "+NAMES[0],590,698,16,0xffb5c8d9,true);
 
     // Small functional bottom dock instead of a 620x310 HUD obscuring the car.
@@ -550,13 +550,13 @@ final class SkinEngine {
     String value=val(reading,1);
     text(c,value,x+19,y+118,52,iceForFuelTrim(),true);
     text(c,"%",x+w-33,y+116,19,accent,true);
-    line(c,x+17,y+154,x+w-17,y+154,0xff344457,4);
+    line(c,x+17,y+h-64,x+w-17,y+h-64,0xff344457,4);
     if(Float.isFinite(reading)){
       float ratio=clipped(reading,-25,25);
-      line(c,x+17,y+154,x+17+(w-34)*ratio,y+154,accent,5);
+      line(c,x+17,y+h-64,x+17+(w-34)*ratio,y+h-64,accent,5);
     }
     text(c,Float.isFinite(reading)?"ECU • LIVE":"ECU • N/A",
-      x+19,y+196,16,Float.isFinite(reading)?0xff70dbbd:0xffa8b6c8,true);
+      x+19,y+h-21,16,Float.isFinite(reading)?0xff70dbbd:0xffa8b6c8,true);
   }
   private int iceForFuelTrim(){return Color.WHITE;}
 
