@@ -506,13 +506,24 @@ public final class MainActivity extends Activity {
    String shorten(String s){return s.length()>28?s.substring(0,27)+"…":s;}
    void music(Canvas c,int x,int y,int w,int h){
        r(c,x,y,w,h,0xd4171f2b,16);outline(c,x,y,w,h,0xff712638);dot(c,x+29,y+29,15,red);t(c,"▶",x+20,y+36,18,white);t(c,shorten(mediaName),x+55,y+36,22,white);t(c,"EVO MEDIA",x+w-153,y+37,18,red);
-       r(c,x+18,y+70,167,h-131,0xff7f182d,10);Bitmap art=null;if(media!=null&&media.getMetadata()!=null){art=media.getMetadata().getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);if(art==null)art=media.getMetadata().getBitmap(MediaMetadata.METADATA_KEY_ART);if(art==null)art=media.getMetadata().getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON);}if(art!=null){p.setColor(white);p.setStyle(Paint.Style.FILL);c.drawBitmap(art,null,new Rect(x+20,y+72,x+183,y+h-63),p);}else{t(c,"YT",x+73,y+158,42,white);t(c,"MUSIC",x+51,y+194,22,white);}
+       r(c,x+18,y+70,167,h-131,0xff7f182d,10);Bitmap art=null;if(media!=null&&media.getMetadata()!=null){art=media.getMetadata().getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);if(art==null)art=media.getMetadata().getBitmap(MediaMetadata.METADATA_KEY_ART);if(art==null)art=media.getMetadata().getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON);}if(art!=null){p.setColor(white);p.setStyle(Paint.Style.FILL);c.drawBitmap(art,null,new Rect(x+20,y+72,x+183,y+h-63),p);}else{
+         // Generic native media-note artwork, never a false YouTube logo.
+         // Actual selected player is already named in the header above.
+         p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(7f);
+         p.setStrokeCap(Paint.Cap.ROUND);p.setColor(white);
+         c.drawLine(x+95,y+123,x+95,y+179,p);
+         c.drawLine(x+95,y+123,x+135,y+113,p);
+         c.drawLine(x+135,y+113,x+135,y+168,p);
+         p.setStyle(Paint.Style.FILL);
+         dot(c,x+83,y+180,11,white);
+         dot(c,x+123,y+169,11,white);
+       }
        String title=musicText(true),artist=musicText(false);
        if(title.isEmpty()){title=mediaPackage.isEmpty()?"Selectează playerul":"Fără redare activă";artist=mediaPackage.isEmpty()?"Atinge panoul pentru a alege Vanced":"Permite MediaSession / pornește redarea";}
        t(c,shorten(title),x+205,y+126,27,white);t(c,shorten(artist),x+205,y+160,19,muted);
        r(c,x+205,y+186,w-225,5,0xff455065,3);long duration=media!=null&&media.getMetadata()!=null?media.getMetadata().getLong(MediaMetadata.METADATA_KEY_DURATION):0;long pos=media!=null&&media.getPlaybackState()!=null?media.getPlaybackState().getPosition():0;if(media!=null&&media.getPlaybackState()!=null&&media.getPlaybackState().getState()==PlaybackState.STATE_PLAYING){long updated=media.getPlaybackState().getLastPositionUpdateTime();if(updated>0){long delta=Math.max(0,SystemClock.elapsedRealtime()-updated);pos+=(long)(delta*media.getPlaybackState().getPlaybackSpeed());}}if(duration>0&&pos>=0){float ratio=Math.max(0,Math.min(1,(float)pos/duration));r(c,x+205,y+186,(w-225)*ratio,5,red,3);}
        t(c,media!=null?"MediaSession activă • control în panou":"Atinge titlul pentru player / setări media",x+205,y+214,15,muted);
-       t(c,"◀◀",x+247,y+h-36,27,white);dot(c,x+390,y+h-46,28,red);boolean musicPlaying=media!=null&&media.getPlaybackState()!=null&&media.getPlaybackState().getState()==PlaybackState.STATE_PLAYING;t(c,musicPlaying?"Ⅱ":"▶",x+376,y+h-34,27,white);t(c,"▶▶",x+493,y+h-36,27,white);
+       boolean musicPlaying=media!=null&&media.getPlaybackState()!=null&&media.getPlaybackState().getState()==PlaybackState.STATE_PLAYING;MediaVectorIcons.draw(c,x+277,y+h-46,0,white);dot(c,x+390,y+h-46,28,red);MediaVectorIcons.draw(c,x+390,y+h-46,musicPlaying?3:1,white);MediaVectorIcons.draw(c,x+513,y+h-46,2,white);
    }
    String formatObd(float value){return Float.isFinite(value)?String.format(Locale.US,"%.1f",value):"N/A";}
    void gauges(Canvas c,int x,int y,int w,int h){
