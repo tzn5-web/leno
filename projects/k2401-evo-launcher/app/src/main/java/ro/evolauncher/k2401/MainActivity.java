@@ -79,7 +79,7 @@ public final class MainActivity extends Activity {
     super.onWindowFocusChanged(focused);
     // Android 10 OEMs can restore the top status bar after another Activity
     // closes. Reapply native immersive fullscreen only for EVO ULTRA NEON.
-    if(focused&&skins!=null&&skins.selection()==21){
+    if(focused&&skins!=null&&skins.selection()>=21){
       getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
       getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN);
       getWindow().getDecorView().setSystemUiVisibility(
@@ -586,7 +586,7 @@ public final class MainActivity extends Activity {
    public boolean onTouchEvent(MotionEvent e){
        // Premium cockpit: distinguish a single tap from a 550 ms hold.
        // Other 21 layouts keep their existing tap semantics unchanged.
-       if(page==0&&skins!=null&&skins.selection()==21){
+       if(page==0&&skins!=null&&skins.selection()>=21){
          float ux=e.getX()*1280f/getWidth(),uy=e.getY()*720f/getHeight();
          switch(e.getActionMasked()){
            case MotionEvent.ACTION_DOWN: skins.ultraTouchDown(ux,uy);return true;
