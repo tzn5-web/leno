@@ -4,7 +4,7 @@ No screenshot UI, printed fake PIDs, apps, status text or stock car replacements
 are permitted into the native dashboard background. Source assets are immutable.
 """
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFilter, ImageEnhance
+from PIL import Image, ImageDraw, ImageFilter, ImageEnhance, ImageOps
 import hashlib, math, os, base64, tempfile
 
 # Small, locally pinned Apache-2.0 FSRCNN_x2 model. Only photographic
@@ -195,6 +195,25 @@ def main():
             atmosphere=atmosphere.filter(ImageFilter.GaussianBlur(83))
             atmosphere=ImageEnhance.Brightness(atmosphere).enhance(0.52)
             result=Image.blend(result,atmosphere,0.62)
+            if i==0:
+                # The approved Digital Dash has an uninterrupted rear-road
+                # photograph behind both real gauges, not a hard small 4:3
+                # photo card. Paint an atmospheric extension from the SAME
+                # source-locked original roadway. Heavy blur guarantees that
+                # printed gear/scale remnants never become visible again.
+                road=ImageOps.fit(src.crop(ROI[0]).convert("RGB"),
+                                  (1532,1300),method=Image.Resampling.LANCZOS,
+                                  centering=(0.5,0.64))
+                road=road.filter(ImageFilter.GaussianBlur(48))
+                road=ImageEnhance.Contrast(road).enhance(1.18)
+                road=ImageEnhance.Color(road).enhance(1.30)
+                road=ImageEnhance.Brightness(road).enhance(0.82)
+                fade=Image.new("L",road.size,0)
+                ImageDraw.Draw(fade).rounded_rectangle(
+                    (86,72,road.width-86,road.height-72),
+                    radius=160,fill=222)
+                fade=fade.filter(ImageFilter.GaussianBlur(100))
+                result.paste(road,(188,130),fade)
             if ROI[i] is not None:
                 scene(result,src,ROI[i],PLACEMENT[i],i)
         target=OUT/("skin_%02d.webp"%i)
