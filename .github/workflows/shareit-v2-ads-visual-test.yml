@@ -1,0 +1,81 @@
+name: SHAREit NoAds v2 - verify actual home ads on Android 16
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/shareit-v2-ads-visual-test.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  android16_arm_native_bridge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v3
+        with:
+          client-id: 50a5c260-15a0-4aa0-9e02-5f0ad5c23df9
+          tenant-id: 779623db-ec2e-495b-9828-85d42baa77ee
+          subscription-id: 0ac7a514-32b3-47bf-bf89-e17906b1cc86
+      - name: Test ART-verified sort-safe patched SHAREit APK and split baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          export AZURE_STORAGE_KEY="$(az storage account keys list -g rg-chatgpt-azure -n tzn5androidartifacts26 --query '[0].value' -o tsv)"
+          mkdir -p /tmp/shareit-emu/splits
+          az storage blob download --account-name tzn5androidartifacts26 --container-name apks-private \
+            --name output/SHAREit_6.27.58_NoAds_v2_ARM64.apk --file /tmp/shareit-emu/merged.apk --overwrite --only-show-errors
+          az storage blob download --account-name tzn5androidartifacts26 --container-name apks-private \
+            --name output/SHAREit_6.27.58_NoAds_SPLITS.apks --file /tmp/shareit-emu/splits.apks --overwrite --only-show-errors
+          az storage blob download --account-name tzn5androidartifacts26 --container-name apks-private \
+            --name output/SHAREit_6.27.58_NoAds_v2_AUDIT.json --file /tmp/shareit-emu/audit.json --overwrite --only-show-errors
+          python3 - <<'PY'
+          import hashlib,zipfile,json,os
+          w='/tmp/shareit-emu/'
+          j=json.load(open(w+'audit.json'))
+          assert hashlib.file_digest(open(w+'merged.apk','rb'),'sha256').hexdigest()==j['sha256']
+          with zipfile.ZipFile(w+'splits.apks') as z:
+              for n in z.namelist():
+                  assert n.endswith('.apk') and '/' not in n
+                  z.extract(n,w+'splits')
+          print('APK_FROM_AZURE_VALIDATED_FOR_ANDROID_EMULATOR=PASS')
+          PY
+      - name: Enable hardware-accelerated Android x86_64 VM on GitHub runner
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+      - name: Inspect actual SHAREit home with screenshots and ad logs on emulator
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_4
+          cores: 2
+          ram-size: 3072M
+          emulator-boot-timeout: 900
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash .github/scripts/shareit_ads_visual_probe.sh
+      - name: Capture actual home screenshots and ad log evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shareit-v2-android16-actual-home-ads
+          path: |
+            /tmp/shareit-ads-visual/home.png
+            /tmp/shareit-ads-visual/home-scrolled.png
+            /tmp/shareit-ads-visual/home.xml
+            /tmp/shareit-ads-visual/ad-logcat.txt
+            /tmp/shareit-ads-visual/foreground-activity.txt
+            /tmp/shareit-ads-visual/foreground-attempts.txt
+            /tmp/shareit-ads-visual/storage-appops.txt
+            /tmp/shareit-ads-visual/activity-start.txt
+            /tmp/shareit-ads-visual/install.txt
+          if-no-files-found: warn
+          retention-days: 1
+      - if: always()
+        run: az logout || true
