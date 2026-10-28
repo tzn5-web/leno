@@ -362,4 +362,5 @@ PY
 # This is image evidence from the actual Android 10 emulator, not concept art.
 # Keep three photographed vehicle scenes visible below native LIVE RPM.
 python3 projects/k2401-evo-launcher/scripts/verify-scene-visibility.py
+python3 projects/k2401-evo-launcher/scripts/verify-theme2-photo.py
 echo "SIX_SCREEN_EMULATOR_SMOKE=PASS; RESOLUTION=1280x720; RESTART=PASS"
