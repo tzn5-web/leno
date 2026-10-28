@@ -19,6 +19,14 @@ public final class ObdPidCodecCheck {
     eq(0x0C,"7E8 04 41 0C 1A F8\r>",1726f);
     eq(0x05,"41 05 7D",85f);
     eq(0x05,"410500",-40f);
+    eq(0x46,"41 46 37",15f);
+    eq(0x46,"7E8 03 41 46 1E",-10f);
+    eq(0x46,"414650",40f);
+    eq(0x46,"414600",-40f);
+    missing(0x46,"0146\\rNO DATA\\r>");
+    missing(0x46,"0146\\r41 46");
+    missing(0x46,"41 46 FF");
+    missing(0x46,"41 05 64");
     missing(0x0C,"NO DATA\r>");
     missing(0x0C,"010C\rSTOPPED\r>");
     missing(0x0C,"010C\r?");
@@ -26,6 +34,6 @@ public final class ObdPidCodecCheck {
     missing(0x0C,"410C1A");
     missing(0x07,"UNABLE TO CONNECT");
     missing(0x03,"410305");
-    System.out.println("K2401_OBD_MODE01_PARSER=PASS; FOUR_REAL_SENSOR_FORMULAS_AND_NO_DATA_VALIDATED");
+    System.out.println("K2401_OBD_MODE01_PARSER=PASS; FIVE_REAL_SENSOR_FORMULAS_AND_NO_DATA_VALIDATED");
   }
 }
