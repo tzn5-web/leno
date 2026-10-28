@@ -239,7 +239,9 @@ final class ThemeNativePanels {
       p.setColor(Color.WHITE);p.setStyle(Paint.Style.FILL);
       c.drawBitmap(art,null,box,p);
     }else{
-      middle(c,"YT",box.centerX(),box.centerY()+12,Math.min(35,artwork*.38f),WHITE);
+      // Generic media placeholder: never claim YouTube artwork for another player.
+      middle(c,"MEDIA",box.centerX(),box.centerY()+7,
+        Math.min(23,Math.max(14,artwork*.18f)),WHITE);
     }
     int right=x+artwork+28;
     text(c,crop(title,Math.max(12,(w-artwork-40)/13)),right,y+92,
