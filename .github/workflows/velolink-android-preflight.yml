@@ -1,0 +1,42 @@
+name: VeloLink Offline - Android compile and unit preflight
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/velolink-android-preflight.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Static test PC script
+        run: python3 -m py_compile projects/velolink-offline/pc/velolink_pc.py
+      - name: Compile Android app
+        working-directory: projects/velolink-offline
+        run: gradle --no-daemon :app:assembleDebug --stacktrace
+      - name: Verify resulting APK and publish test build
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=projects/velolink-offline/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" | tail -1
+          mkdir -p dist
+          cp "$APK" dist/VeloLink-Offline-v0.1.0-PREFLIGHT.apk
+          echo 'VELOLINK_QR_RECEIVER_SENDER_COMPILE=PASS'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VeloLink-Android-preflight
+          path: dist/*.apk
+          if-no-files-found: error
+          retention-days: 7
