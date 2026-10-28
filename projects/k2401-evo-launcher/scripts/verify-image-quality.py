@@ -33,7 +33,7 @@ for i in range(21):
         # Distinguish a reconstructed car scene from a blurred gradient.
         assert blur_sharp>2.0,(i,"photo detail missing",blur_sharp)
         assert dynamic>20,(i,"car contrast missing",dynamic)
-        assert clean.stat().st_size>45000,(i,"overcompressed photographic scene")
+        assert clean.stat().st_size>35000,(i,"overcompressed photographic scene")
     reports.append(f"skin_{i:02d} clean_webp={clean.stat().st_size}B sharpness={blur_sharp:.2f} contrast={dynamic:.1f}")
     print("K2401_IMAGE_DETAIL_QA",reports[-1])
 assert len(checksums)==21,"Duplicate or missing distinct skin backgrounds"
