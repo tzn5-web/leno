@@ -125,6 +125,27 @@ final class CleanSkinArt {
   }
 
   /**
+   * The three already-functional Digital Dash footer actions must use
+   * the same native vector style as the left rail. Font glyphs ▦/◈/➤
+   * depend on OEM fallback fonts and looked blurred on K2401 Android 10.
+   * This draws artwork only; SkinEngine.touch retains the original targets.
+   */
+  void shortcutIcon(Canvas c,int slot,float x,float y,int color){
+    if(slot==0){icon(c,4,x,y,color);return;} // real installed apps
+    if(slot==2){icon(c,2,x,y,color);return;} // separate map page
+    // A small geometric skin-picker diamond rather than a font symbol.
+    solid(color);paint.setStyle(Paint.Style.STROKE);
+    paint.setStrokeJoin(Paint.Join.ROUND);
+    paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeWidth(3.1f);
+    Path diamond=new Path();
+    diamond.moveTo(x,y-14);diamond.lineTo(x+14,y);
+    diamond.lineTo(x,y+14);diamond.lineTo(x-14,y);diamond.close();
+    c.drawPath(diamond,paint);
+    c.drawLine(x-6,y,x+6,y,paint);
+    c.drawLine(x,y-6,x,y+6,paint);
+    paint.setStyle(Paint.Style.FILL);
+  }
+  /**
    * The entire bitmap is deliberately NEVER stretched onto the screen:
    * its font-sized artifacts were the root cause of unreadable fake values.
    * Photo details remain at approximately native source dimensions.
