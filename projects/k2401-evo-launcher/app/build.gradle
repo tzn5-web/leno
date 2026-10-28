@@ -12,7 +12,7 @@ android {
    targetSdk 28
    versionCode 110
    versionName parallelInstall ? '1.0.110-ultra-parallel' : '1.0.110-ultra-install-fix'
-   manifestPlaceholders = [MAPS_API_KEY: googleMapsApiKey]
+   manifestPlaceholders = [MAPS_API_KEY: googleMapsApiKey, APP_LABEL: (parallelInstall ? 'EVO Ultra (Test)' : 'EVO Launcher')]
    buildConfigField 'boolean', 'GOOGLE_MAPS_CONFIGURED', googleMapsApiKey.isEmpty() ? 'false' : 'true'
  }
  signingConfigs {
