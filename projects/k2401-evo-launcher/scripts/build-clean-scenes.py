@@ -13,7 +13,7 @@ W,H=2560,1440
 # Individually audited safe car/road regions of the 21 ORIGINAL EVO designs.
 # No car image on the three app-centric skins; native widgets draw actual apps.
 ROI=[
-(220,471,685,693),(305,65,770,333),(212,348,535,533),
+(260,471,625,693),(305,65,770,333),(212,348,535,533),
 (125,75,619,377),(325,55,797,352),None,(321,105,770,393),
 (580,150,829,352),(446,93,787,370),(402,191,814,428),
 (326,105,656,480),(352,95,846,409),(175,213,636,510),
