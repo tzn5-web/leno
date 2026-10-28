@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/k2401-azure-workspace.yml'
       - 'projects/k2401-evo-launcher/scripts/azure-k2401-workspace.sh'
+      - 'projects/k2401-evo-launcher/scripts/emulator-smoke.sh'
   workflow_dispatch:
 permissions:
   contents: read
@@ -27,6 +28,7 @@ jobs:
         run: |
           set -euo pipefail
           bash -n projects/k2401-evo-launcher/scripts/azure-k2401-workspace.sh
+          bash -n projects/k2401-evo-launcher/scripts/emulator-smoke.sh
           test -f projects/k2401-evo-launcher/scripts/models/FSRCNN_x2.pb.base64
           test -f projects/k2401-evo-launcher/scripts/verify-native-layout.py
           echo 'K2401_ORIGINAL_SOURCE_PRECHECK=PASS'
@@ -100,6 +102,30 @@ jobs:
               --query '{name:name,size:properties.contentLength}' -o json
           done
           echo 'K2401_PRIVATE_AZURE_ASSETS_AND_DEBUG_BUILD=PASS'
+      - name: Retrieve Azure emulator screenshots and diagnostics for independent quality audit
+        if: always() && env.K2401_START_ATTEMPTED == 'true'
+        shell: bash
+        run: |
+          mkdir -p azure-emulator-evidence
+          KEY="$(az storage account keys list -g "$RESOURCE_GROUP" -n "$STORAGE_ACCOUNT" --query '[0].value' -o tsv 2>/dev/null || true)"
+          if [[ -z "$KEY" ]]; then echo "K2401_AZURE_EMULATOR_DIAGNOSTICS_UNAVAILABLE=NO_STORAGE_KEY"; exit 0; fi
+          echo "::add-mask::$KEY"
+          PREFIX="frozen-${GITHUB_SHA:0:12}"
+          if az storage blob download -c "$STORAGE_CONTAINER" \
+            -n "$PREFIX/k2401-azure-emulator-21-screens.tar.gz" \
+            --account-name "$STORAGE_ACCOUNT" --account-key "$KEY" \
+            -f azure-emulator-evidence/21-screens.tar.gz --overwrite true -o none 2>/dev/null; then
+              tar xzf azure-emulator-evidence/21-screens.tar.gz -C azure-emulator-evidence
+              echo "K2401_AZURE_ACTUAL_EMULATOR_EVIDENCE_DOWNLOADED=PASS"
+          else echo "K2401_AZURE_EMULATOR_DIAGNOSTICS_NOT_YET_AVAILABLE"; fi
+      - name: Publish Azure native Android emulator evidence for every build
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k2401-azure-actual-android10-screens
+          path: azure-emulator-evidence/
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Publish audit report only, not installable APK
         if: always()
         uses: actions/upload-artifact@v4
