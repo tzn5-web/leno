@@ -398,9 +398,10 @@ final class ThemeNativePanels {
   }
   void draw(Canvas c,int id){
     lastStyle=id;
-    // CleanSkinArt already removed every baked-in mockup label and sample PID.
-    // Do not paint old opaque demo-masking patches across clean vehicle art.
+    // Keep the approved full scene but erase its unsupported printed demo
+    // telemetry/weather outside the genuine native widget rectangles.
     layout=profile(id);
+    hidePrintedDemo(c,id);
     int color=accent(id);
     clock(c,layout.clock,color);
     if(layout.apps!=null)apps(c,layout.apps);
