@@ -55,16 +55,14 @@ def render():
     image[...,1] *= .95
     image[...,2] *= 1.06+0.11*(xx>.55) # cyan shadows
     out=Image.fromarray(np.uint8(np.clip(image,0,255)),"RGB")
-    # Add only abstract light rays/road motion; never copy HUD content.
+    # Atmosphere is deliberately limited to the outer *road* corners.
+    # Do not paint neon diagonals across the real Lancer bodywork.
     glow=Image.new("RGBA",(W,H))
     g=ImageDraw.Draw(glow,"RGBA")
-    g.line([(1190,790),(280,1435)],fill=(239,41,81,76),width=18)
-    g.line([(1370,790),(2190,1435)],fill=(25,181,255,73),width=18)
-    g.line([(1180,820),(430,1435)],fill=(255,61,120,46),width=11)
-    g.line([(1410,820),(2080,1435)],fill=(29,208,255,47),width=11)
-    soft=glow.filter(ImageFilter.GaussianBlur(38))
-    out=Image.alpha_composite(out.convert("RGBA"),soft)
-    out=Image.alpha_composite(out,glow).convert("RGB")
+    g.ellipse((-650,1100,640,2150),fill=(236,32,91,62))
+    g.ellipse((1930,1120,3120,2260),fill=(35,165,255,55))
+    glow=glow.filter(ImageFilter.GaussianBlur(160))
+    out=Image.alpha_composite(out.convert("RGBA"),glow).convert("RGB")
     out=out.filter(ImageFilter.UnsharpMask(radius=1.3,percent=118,threshold=4))
     assert out.size==(W,H)
     return out
