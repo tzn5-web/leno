@@ -3,6 +3,16 @@ set -euo pipefail
 APP="ro.evolauncher.k2401"
 OUT="projects/k2401-evo-launcher/screenshots"
 mkdir -p "$OUT"
+smoke_failure(){
+  local code=$?
+  trap - ERR
+  echo "K2401_EMULATOR_SMOKE=FAIL rc=$code" >&2
+  adb logcat -d -t 650 > "$OUT/failure-logcat.txt" 2>&1 || true
+  adb shell dumpsys activity activities > "$OUT/failure-activities.txt" 2>&1 || true
+  adb shell dumpsys meminfo "$APP" > "$OUT/failure-meminfo.txt" 2>&1 || true
+  exit "$code"
+}
+trap smoke_failure ERR
 adb shell wm density 160
 adb shell settings put system accelerometer_rotation 0
 adb install -r projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.apk
@@ -91,8 +101,24 @@ capture() {
   local name="$1" y="$2"
   # Re-enter the real launcher before every screen; external Android apps can
   # steal focus after app-picker interactions on the emulator.
-  adb shell am force-stop "$APP"
-  adb shell am start -W -n "$APP/.MainActivity" >/dev/null
+  # Intermittent Android 10 emulator ADB disconnects must be retried,
+  # but a genuine activity crash must still FAIL with logcat and meminfo.
+  local ready=0
+  for retry in 1 2 3; do
+    if timeout 20s adb wait-for-device >/dev/null 2>&1 &&
+       adb shell am force-stop "$APP" >/dev/null 2>&1 &&
+       adb shell am start -W -n "$APP/.MainActivity" >/dev/null 2>&1; then
+      ready=1
+      break
+    fi
+    echo "K2401_ADB_RECONNECT_ATTEMPT=$retry"
+    adb start-server >/dev/null 2>&1 || true
+    sleep 3
+  done
+  if [[ "$ready" != 1 ]]; then
+    echo "K2401_NATIVE_HOME_NOT_RESTARTING=FAIL" >&2
+    return 1
+  fi
   sleep 2
   if [[ "$name" != home ]]; then
     adb shell input tap 45 35
