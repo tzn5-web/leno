@@ -5,7 +5,42 @@ are permitted into the native dashboard background. Source assets are immutable.
 """
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageEnhance
-import hashlib, math
+import hashlib, math, os, base64, tempfile
+
+# Small, locally pinned Apache-2.0 FSRCNN_x2 model. Only photographic
+# Mitsubishi crops are enhanced; no fake UI/PID text can be regenerated.
+_SR_ENGINE=None
+_SR_INITIALIZED=False
+
+def superresolve_vehicle(photo):
+    global _SR_ENGINE,_SR_INITIALIZED
+    if not _SR_INITIALIZED:
+        _SR_INITIALIZED=True
+        try:
+            import cv2
+            import numpy as np
+            location=Path(__file__).resolve().parent/"models/FSRCNN_x2.pb.base64"
+            raw=base64.b64decode(location.read_text().strip(),validate=True)
+            if len(raw)<35000:raise ValueError("FSRCNN model truncated")
+            with tempfile.NamedTemporaryFile(suffix=".pb") as tmp:
+                tmp.write(raw);tmp.flush()
+                engine=cv2.dnn_superres.DnnSuperResImpl_create()
+                engine.readModel(tmp.name)
+                engine.setModel("fsrcnn",2)
+                _SR_ENGINE=engine
+            print("K2401_NATIVE_SCENE_FSR2X=ENABLED")
+        except Exception as exc:
+            print("K2401_NATIVE_SCENE_FSR2X=FAILED",repr(exc))
+            if os.environ.get("K2401_REQUIRE_SR")=="YES":raise
+    if _SR_ENGINE is None:return photo
+    import cv2
+    import numpy as np
+    bgr=cv2.cvtColor(np.asarray(photo),cv2.COLOR_RGB2BGR)
+    result=_SR_ENGINE.upsample(bgr)
+    if result.shape[0]!=photo.height*2 or result.shape[1]!=photo.width*2:
+        raise RuntimeError("SR output dimensions unexpected")
+    return Image.fromarray(cv2.cvtColor(result,cv2.COLOR_BGR2RGB))
+
 
 ROOT=Path(__file__).resolve().parents[1]/"app/src/main/assets/skins"
 OUT=ROOT/"clean"
@@ -69,7 +104,7 @@ def base(i):
     return image
 
 def scene(canvas,source,roi,dest,theme):
-    car=source.crop(roi).convert("RGB")
+    car=superresolve_vehicle(source.crop(roi).convert("RGB"))
     x1,y1,x2,y2=(p*2 for p in dest)
     width,height=x2-x1,y2-y1
     # Keep all wheels/body proportions native; user-approved car imagery only.
