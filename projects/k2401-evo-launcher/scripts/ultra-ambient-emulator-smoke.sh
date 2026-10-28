@@ -21,7 +21,19 @@ assert struct.unpack(">II",img[16:24])==(1280,720)
 assert len(img)>70000,"UHD cockpit is blank"
 source=pathlib.Path("projects/k2401-evo-launcher/app/src/main/java/ro/evolauncher/k2401/UltraCockpitTheme.java").read_text()
 assert 'Float.isFinite(obd.ambientC)' in source
-assert '"EXT: N/A"' in source
+assert '"N/A"' in source and 'String exterior=Float.isFinite(obd.ambientC)' in source
+assert 'rect(c,448,170,455,94,15,0xff071526)' in source, "Date wallpaper ghost not completely masked"
+assert 'drawTopStatus(c); // STATUS CLOCK MUST ALWAYS BE THE FINAL PAINT PASS' in source
+assert source.count('Settings.Global.getInt(host.getContentResolver(),"wifi_on"') == 1
+from PIL import Image
+with Image.open(shot).convert("RGB") as screen:
+    # Fully opaque HUD must remain dark where art contained 2025/22:34/7°C.
+    # Sample only flat non-text pixels inside the 3-column panel.
+    for point in ((454,182),(553,178),(899,180),(573,258),(751,259)):
+        color=screen.getpixel(point)
+        assert max(color)<150,(point,color,"Stale background leaked into HUD")
+print("K2401_ULTRA_OPAQUE_TIME_DATE_AIR_PANEL=PASS")
+print("K2401_ULTRA_TOP_RIGHT_CLOCK_FINAL_LAYER=PASS")
 assert 'ultra_app_slot_' in source and 'getLaunchIntentForPackage(pkg)' in source
 assert 'postDelayed(longPressJob,550)' in source
 print("K2401_ULTRA_UHD_SNAPSHOT=PASS; AMBIENT_NA_WHEN_UNAVAILABLE=PASS")
