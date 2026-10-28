@@ -546,6 +546,12 @@ final class SkinEngine {
     text(c,shorten(NAMES[id],30),410,700,18,Color.WHITE,true);
   }
   boolean touch(float x,float y){
+    if(selected==0&&x>=799&&x<=1265&&y>=74&&y<=436){
+      if(y>=302){
+        host.mediaAction(x<995?0:x<1092?1:2);
+      }else host.choosePlayer();
+      return true;
+    }
     // The App Center and App Launcher backgrounds include decorative example
     // icons. Touching that area opens the REAL installed-app search drawer.
     if(selected==0&&x>100&&x<629&&y>220&&y<573){
