@@ -126,8 +126,8 @@ final class UltraCockpitTheme {
       center(c,heading,cx,cy-(large?54:23),large?19:16,0xff90d8f4,true);
       center(c,value,cx,cy+(large?13:18),large?54:36,WHITE,true);
       center(c,unit,cx,cy+(large?46:39),large?19:14,0xffc0d7e6,false);
-      if(!Float.isFinite(current))
-        center(c,"ECU N/A",cx,cy+radius*.55f,12,0xff93a7ba,false);
+      // The numeric value already reads N/A: avoid a second caption
+      // overlapping "%" below the small STFT/LTFT dials.
       return;
     }
     color(0xf807101d);c.drawCircle(cx,cy,radius-20,p);
@@ -145,8 +145,7 @@ final class UltraCockpitTheme {
     center(c,heading,cx,cy-(large?54:23),large?19:16,0xff90d8f4,true);
     center(c,value,cx,cy+(large?13:18),large?54:36,WHITE,true);
     center(c,unit,cx,cy+(large?46:39),large?19:14,0xffc0d7e6,false);
-    if(!Float.isFinite(current))
-      center(c,"ECU N/A",cx,cy+radius*.65f,12,0xff93a7ba,false);
+    // N/A is shown only once at dial centre when its PID is unavailable.
   }
   private void drawBackdrop(Canvas c){
     // The EXACT user-approved screenshot is embedded in the signed APK.
@@ -186,21 +185,25 @@ final class UltraCockpitTheme {
     line(c,93,693,312,693,RED,1.5f);line(c,1267,693,1045,693,CYAN,1.5f);
   }
   private void drawRail(Canvas c){
-    rect(c,0,0,87,720,0,0xf9060e1c);
-    final int[] ys={73,171,269,367,465,563,661};
-    for(int i=0;i<7;i++){
+    // Cover the FULL printed icon rail of the approved image: its original
+    // icons otherwise peep out at x=87..101 beside the interactive ones.
+    rect(c,0,0,102,720,0,0xff070f1c);
+    final int[] ys={73,171,269,367,465,563};
+    for(int i=0;i<6;i++){
       final int a=i==0?RED:0xffd9edff;
       if(i==0)rect(c,5,23,77,93,8,0xff261c32);
       // Same native vector navigation graphics as other K2401 skins.
-      NavVectorIcons.draw(c,Math.min(5,i),44,ys[i],a);
-      if(i==0)line(c,86,32,86,118,RED,3);
+      NavVectorIcons.draw(c,i,44,ys[i],a);
+      if(i==0)line(c,101,32,101,118,RED,3);
     }
   }
   private void drawMusic(Canvas c){
     // Completely opaque media surface prevents obsolete album/clock/BT pixels
     // printed into the approved concept art from bleeding through live values.
-    rect(c,113,12,1152,128,17,0xff071321);
-    stroke(c,113,12,1152,128,17,0xff235887,2);
+    // Extend past the image's printed song/progress baseline (y≈147).
+    // The previous 140px panel left a 20px strip of old text exposed.
+    rect(c,113,12,1152,148,17,0xff071321);
+    stroke(c,113,12,1152,148,17,0xff235887,2);
     MediaController m=host.media;
     String song="",artist="";
     Bitmap cover=null;
@@ -409,12 +412,13 @@ final class UltraCockpitTheme {
   boolean touch(float x,float y){
     int slot=slotAt(x,y);
     if(slot>=0){openSlot(slot);return true;}
-    if(x<=87){
+    if(x<=102){
       int idx=Math.round((y-73f)/98f);
-      if(idx>=0&&idx<7&&Math.abs(y-(73+idx*98))<45){
-        if(idx==1||idx==6){host.showInstalledApps();return true;}
-        int[] pages={0,4,2,1,3,5,4};
-        host.page=pages[idx];
+      if(idx>=0&&idx<6&&Math.abs(y-(73+idx*98))<45){
+        // Exactly six native targets: Home, Music, Navigation, Car, Apps,
+        // Settings. No duplicated Settings gear and no wrong Apps route.
+        if(idx==4){host.showInstalledApps();return true;}
+        host.page=idx;
         if(host.view!=null)host.view.invalidate();
         host.placeMap();return true;
       }
