@@ -42,8 +42,31 @@ with ZipFile("projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.
 print("K2401_A1_02_A3_DIFFERENT_NATIVE_SCREENSHOTS=PASS")
 print("K2401_A1_02_A3_4K_ART_IN_APK=PASS")
 PY
-# The most recently selected theme is 24 A3. Shortcut position #1 is
-# native and persistent, not a hardcoded screenshot or a seventh button.
+# Slot #1 may already be configured by the previous Ultra cockpit test.
+# Press-and-hold MUST show the actual app chooser in either case.
+adb shell am start -W -n "$APP/.MainActivity" --ei k2401_skin_preview_ci 24 >/dev/null
+sleep 1
+adb shell input swipe 459 644 459 644 850
+sleep 1
+adb shell uiautomator dump /sdcard/cinematic-hold.xml >/dev/null
+adb pull /sdcard/cinematic-hold.xml "$OUT/cinematic-hold.xml" >/dev/null
+python3 - <<'PY'
+import xml.etree.ElementTree as E
+names=[n.get("text","") for n in E.parse("projects/k2401-evo-launcher/screenshots/cinematic-hold.xml").findall(".//node")]
+assert any("Aplicația 1" in v for v in names),names
+assert any("Golește acest slot" in v for v in names),names
+print("K2401_CINEMATIC_SHORTCUT_LONG_PRESS_REPLACE=PASS")
+PY
+# Clear the slot *through native UI*, not adb pm clear, so shared user
+# preferences for other slots and all 22 old skins stay untouched.
+python3 - <<'PY'
+import xml.etree.ElementTree as E, re,subprocess
+nodes=E.parse("projects/k2401-evo-launcher/screenshots/cinematic-hold.xml").findall(".//node")
+n=next(x for x in nodes if "Golește acest slot" in x.get("text",""))
+a,b,c,d=map(int,re.findall(r"\d+",n.get("bounds","")))
+subprocess.check_call(["adb","shell","input","tap",str((a+c)//2),str((b+d)//2)])
+PY
+sleep 1
 adb shell input tap 459 644
 sleep 1
 adb shell uiautomator dump /sdcard/cinematic-picker.xml >/dev/null
@@ -52,18 +75,6 @@ python3 - <<'PY'
 import xml.etree.ElementTree as E
 names=[n.get("text","") for n in E.parse("projects/k2401-evo-launcher/screenshots/cinematic-picker.xml").findall(".//node")]
 assert any("Aplicația 1" in v for v in names),names
-print("K2401_CINEMATIC_SHORTCUT_TAP_PICKER=PASS")
-PY
-adb shell input keyevent BACK
-sleep 1
-adb shell input swipe 459 644 459 644 800
-sleep 1
-adb shell uiautomator dump /sdcard/cinematic-hold.xml >/dev/null
-adb pull /sdcard/cinematic-hold.xml "$OUT/cinematic-hold.xml" >/dev/null
-python3 - <<'PY'
-import xml.etree.ElementTree as E
-texts=[n.get("text","") for n in E.parse("projects/k2401-evo-launcher/screenshots/cinematic-hold.xml").findall(".//node")]
-assert any("Aplicația 1" in v for v in texts),texts
-print("K2401_CINEMATIC_SHORTCUT_LONG_PRESS_PICKER=PASS")
+print("K2401_CINEMATIC_EMPTY_PLUS_SINGLE_TAP_PICKER=PASS")
 PY
 echo 'K2401_A1_02_A3_CINEMATIC_4K_EMULATOR=PASS'
