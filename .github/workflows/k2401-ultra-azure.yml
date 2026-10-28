@@ -66,10 +66,16 @@ jobs:
             cp -a /tmp/k2401-android-tools/cmdline-tools/. /opt/android-sdk/cmdline-tools/latest/
             SDKMANAGER=/opt/android-sdk/cmdline-tools/latest/bin/sdkmanager
           fi
-          export ANDROID_HOME="$(dirname "$(dirname "$(dirname "$SDKMANAGER")")")"
+          # sdkmanager is <SDK_ROOT>/cmdline-tools/<version>/bin/sdkmanager.
+          # Four dirname levels are required; three incorrectly targets
+          # <SDK_ROOT>/cmdline-tools and silently misplaces licenses.
+          export ANDROID_HOME="$(dirname "$(dirname "$(dirname "$(dirname "$SDKMANAGER")")")")"
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
-          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
-          "$SDKMANAGER" 'platforms;android-35' 'build-tools;35.0.0' >/dev/null
+          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" \
+            'platforms;android-35' 'build-tools;34.0.0' 'build-tools;35.0.0' >/dev/null
+          test -d "$ANDROID_HOME/licenses"
+          echo "AZURE_ANDROID_SDK_ROOT_CORRECT=$ANDROID_HOME"
           if ! command -v gradle >/dev/null; then
             INSTALLED="$(find /opt /home -type f -path '*/gradle*/bin/gradle' -print -quit 2>/dev/null || true)"
             if [[ -n "$INSTALLED" ]]; then
