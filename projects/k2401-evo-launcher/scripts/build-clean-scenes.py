@@ -198,7 +198,7 @@ def main():
             if ROI[i] is not None:
                 scene(result,src,ROI[i],PLACEMENT[i],i)
         target=OUT/("skin_%02d.webp"%i)
-        result.save(target,"WEBP",quality=92,method=6)
+        # Preserve reconstructed edges and gradients; 92 caused visible softening\n        # of Lancer taillights and gauge-adjacent road details on Android 10.\n        result.save(target,"WEBP",quality=97,method=6)
         with Image.open(target) as check:
             assert check.size==(2560,1440)
         assert hashlib.sha256(original.read_bytes()).digest()==before
