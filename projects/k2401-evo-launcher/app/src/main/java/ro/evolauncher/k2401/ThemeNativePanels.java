@@ -282,7 +282,8 @@ final class ThemeNativePanels {
     fill(c,area,0xff08111e,color,Math.min(15,Math.max(6,h/8)));
     String num=!valid?"N/A":idx==0||idx==3?
       String.format(Locale.US,"%.0f",v):String.format(Locale.US,"%+.1f",v);
-    // RPM is painted only inside its dedicated native rectangle.\n    if(h<135||w<150||preferred==4||preferred==5){
+    // RPM is painted only inside its dedicated native rectangle.
+    if(h<135||w<150||preferred==4||preferred==5){
       text(c,labels[idx],x+11,y+Math.min(26,h*.34f),Math.min(17,Math.max(12,h*.17f)),color,true);
       text(c,num,x+13,y+Math.min(69,h*.67f),Math.min(37,Math.max(20,h*.34f)),WHITE,true);
       text(c,units[idx],x+w-46,y+h-15,Math.min(15,Math.max(11,h*.16f)),MUTED,false);
