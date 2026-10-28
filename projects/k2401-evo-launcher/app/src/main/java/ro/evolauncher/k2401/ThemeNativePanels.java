@@ -354,8 +354,43 @@ final class ThemeNativePanels {
     middle(c,"SKINURI",skin.centerX(),701,14,WHITE);
     middle(c,"APLICAȚII",app.centerX(),701,14,WHITE);
   }
+  private void hidePrintedDemo(Canvas c,int id){
+    // The supplied original photographs include baked-in weather and sensor
+    // values. These are NOT live. Mask only the unsupported example cards,
+    // leaving the vehicle photograph and genuine Android/ELM overlays intact.
+    Rect demo=null;
+    switch(id){
+      case 3:demo=rect(657,197,137,174);break; // 14°C mock card
+      case 4:demo=rect(101,241,220,176);break; // 14°C mock card
+      case 6:demo=rect(17,232,180,132);break; // 12°C mock card
+      case 8:demo=rect(21,237,188,128);break; // 12°C mock card
+      case 11:demo=rect(75,236,190,145);break; // 12°C mock card
+      case 12:demo=rect(449,67,223,162);break; // sunset weather mock
+      case 14:demo=rect(550,68,172,186);break; // 12°C mock card
+      case 16:demo=rect(368,64,150,164);break; // showroom weather mock
+      case 17:demo=rect(356,63,162,150);break; // 12°C mock card
+    }
+    if(demo!=null){
+      fill(c,demo,0xff0a1421,0xff3d5067,11);
+      text(c,"MITSUBISHI",demo.left+12,demo.top+28,16,WHITE,true);
+      text(c,"EVO LAUNCHER",demo.left+12,demo.top+56,13,MUTED,false);
+    }
+    if(id==10){
+      // Concept illustration advertises 14.1 V; this ELM poller does not
+      // read the voltage PID, therefore displaying 14.1 V would be false.
+      fill(c,rect(38,471,191,118),0xff0a1421,0xff415469,10);
+      text(c,"OBD-II",53,518,19,WHITE,true);
+      text(c,"Numai date ECU",53,548,14,MUTED,false);
+    }
+    if(id==15){
+      // The mockup bottom strip has LTFT, 87°C and 14.1 V examples
+      // underneath our real widgets. Remove every printed value first.
+      fill(c,rect(424,479,840,215),0xff08111e,0,12);
+    }
+  }
   void draw(Canvas c,int id){
     lastStyle=id;
+    hidePrintedDemo(c,id);
     layout=profile(id);
     int color=accent(id);
     clock(c,layout.clock,color);
