@@ -809,6 +809,7 @@ final class SkinEngine {
       int slot=Math.round((y-72f)/97f);
       if(slot<0||slot>5)return false;
       if(Math.abs(y-(72+97*slot))>43)return false;
+      if(slot==4){host.showInstalledApps();return true;}
       host.page=slot;
       if(host.view!=null)host.view.invalidate();
       host.placeMap();
