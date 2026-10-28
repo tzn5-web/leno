@@ -2,7 +2,9 @@ name: VeloLink Offline - Android compile and unit preflight
 on:
   push:
     branches: [main]
-    paths: ['.github/workflows/velolink-android-preflight.yml']
+    paths:
+      - '.github/workflows/velolink-android-preflight.yml'
+      - 'projects/velolink-offline/**'
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
