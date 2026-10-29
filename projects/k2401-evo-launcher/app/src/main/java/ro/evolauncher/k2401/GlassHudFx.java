@@ -91,7 +91,7 @@ final class GlassHudFx {
   static void glassPanel(Canvas c,float x,float y,float w,float h,float radius){
     reset(WHITE);
     p.setShader(new LinearGradient(x,y,x+w*.38f,y+h,
-      new int[]{0xc514181e,0x9c1c232b,0xb0080b10},
+      new int[]{0x9e14181e,0x681c232b,0x86080b10},
       new float[]{0f,.45f,1f},Shader.TileMode.CLAMP));
     c.drawRoundRect(x,y,x+w,y+h,radius,radius,p);p.setShader(null);
     reset(0x98b9c0c9);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1.5f);
@@ -102,14 +102,35 @@ final class GlassHudFx {
     // Separate red corner glints are optical trim, not buttons.
     stroke(c,x+radius,y+1,x+Math.min(w*.27f,115),y+1,0x8de24d54,1.5f);
     stroke(c,x+w-Math.min(w*.18f,65),y+h-1,x+w-radius,y+h-1,0x60e24d54,1.2f);
+    // Thin specular highlights on separate surfaces: glass, not a solid card.
+    stroke(c,x+radius+5,y+5,x+Math.min(w*.45f,180),y+5,0x6ce8edf3,.85f);
+    stroke(c,x+7,y+radius+7,x+7,y+Math.min(h*.52f,140),0x47e5ebf1,.85f);
+    stroke(c,x+w-7,y+h-Math.min(h*.32f,92),x+w-7,y+h-radius-5,
+      0x3ed94751,.8f);
   }
   static void dial(Canvas c,float cx,float cy,float radius,float value,
                    float min,float max){
+    // Optical halo OUTSIDE the dial's graduation ring. It cannot cut ticks.
+    reset(WHITE);
+    p.setShader(new RadialGradient(cx,cy,radius+18,
+      new int[]{0x00121720,0x0bced4dc,0x30d44751,0x00d44751},
+      new float[]{0f,.76f,.91f,1f},Shader.TileMode.CLAMP));
+    c.drawCircle(cx,cy,radius+18,p);p.setShader(null);
+    // Less opaque glass reveals the actual 4K car scene beneath each gauge.
     reset(WHITE);
     p.setShader(new RadialGradient(cx,cy,radius,
-      new int[]{0xb0080b11,0x9510151c,0x50070a0f},
+      new int[]{0x91080b11,0x7110151c,0x4b070a0f},
       new float[]{0f,.67f,1f},Shader.TileMode.CLAMP));
     c.drawCircle(cx,cy,radius-8,p);p.setShader(null);
+    // Outer bezel glints are decorative, never fake sensor progress.
+    reset(0x62e7edf2);p.setStyle(Paint.Style.STROKE);
+    p.setStrokeWidth(radius>100?1.6f:1.1f);
+    c.drawArc(cx-radius-4,cy-radius-4,cx+radius+4,cy+radius+4,
+      203,106,false,p);
+    reset(0x68d9414b);p.setStyle(Paint.Style.STROKE);
+    p.setStrokeWidth(radius>100?2.3f:1.4f);
+    c.drawArc(cx-radius-6,cy-radius-6,cx+radius+6,cy+radius+6,
+      315,31,false,p);
     reset(SILVER);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(radius>100?5.5f:3.5f);
     p.setShader(new LinearGradient(cx-radius,cy-radius,cx+radius,cy+radius,
       new int[]{0xfff1f2f3,0xff5e6873,0xffd8dce1,0xff58616b,0xfff0f0f0},
