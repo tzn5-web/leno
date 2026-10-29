@@ -42,7 +42,7 @@ adb shell rm /data/local/tmp/k2401-install-probe.xml
 adb shell cat "$PREF" | grep -Fq "KEEP_USER_DATA_ON_UPDATE"
 adb install -r "$NEW"
 adb shell pm path "$PKG" | grep -q '^package:'
-adb shell dumpsys package "$PKG" | grep -m1 -F 'versionCode=124' >/dev/null
+adb shell dumpsys package "$PKG" | grep -F 'versionCode=124' >/dev/null
 adb shell cat "$PREF" | grep -Fq "KEEP_USER_DATA_ON_UPDATE" || {
   echo "::error::User data was lost during same-package signed update"
   exit 18
