@@ -117,7 +117,7 @@ jobs:
           echo 'AZURE_EXACT_APPROVED_A1_02_A3_SOURCE_GATE=PASS'
           grep -Fq 'rect(c,448,170,455,94,15,0xff071526)' "$BASE/UltraCockpitTheme.java"
           grep -Fq 'drawTopStatus(c); // STATUS CLOCK MUST ALWAYS BE THE FINAL PAINT PASS' "$BASE/UltraCockpitTheme.java"
-          grep -Fq 'versionCode 117' projects/k2401-evo-launcher/app/build.gradle
+          grep -Fq 'versionCode 118' projects/k2401-evo-launcher/app/build.gradle
           grep -Fq 'CinematicTrioTheme' "$BASE/SkinEngine.java"
           test -s "$BASE/CinematicTrioTheme.java"
           echo 'AZURE_A1_02_A3_NATIVE_CINEMATIC_THEME=PASS'
