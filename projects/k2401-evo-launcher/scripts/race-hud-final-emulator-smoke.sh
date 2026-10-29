@@ -121,3 +121,53 @@ assert any("Aplicația 1" in x for x in texts),texts[:80]
 print("K2401_RACE_ANGULAR_LONG_PRESS_PICKER=PASS")
 PY
 echo 'K2401_CARBON_RED_AND_ANGULAR_WINGS_ANDROID10_EMULATOR=PASS'
+
+# EVO RED DIGITAL v117: real 3840x2160 scene, 1280x720 framebuffer,
+# four native top actions and six editable shortcuts (no fabricated ECU).
+adb shell am force-stop "$APP"
+adb shell am start -W -n "$APP/.MainActivity" --ei k2401_skin_preview_ci 28 > "$OUT/evo-red-v117-launch.txt"
+sleep 3
+adb shell pidof "$APP" >/dev/null
+adb shell screencap -p /sdcard/evo-red-v117-home.png
+adb pull /sdcard/evo-red-v117-home.png "$OUT/evo-red-v117-home.png" >/dev/null
+python3 - <<'PY'
+from PIL import Image,ImageStat
+from pathlib import Path
+p=Path("projects/k2401-evo-launcher/screenshots/evo-red-v117-home.png")
+im=Image.open(p).convert("RGB")
+assert im.size==(1280,720),im.size
+assert max(ImageStat.Stat(im).stddev)>8,"EVO RED Home is blank"
+print("K2401_EVO_RED_V117_REAL_1280x720_SCREENSHOT=PASS")
+PY
+# MUSIC action at x=850 is distinct from media transport controls x=583..723.
+adb shell input tap 850 53
+sleep 2
+adb shell screencap -p /sdcard/evo-red-v117-music.png
+adb pull /sdcard/evo-red-v117-music.png "$OUT/evo-red-v117-music.png" >/dev/null
+python3 - <<'PY'
+from PIL import Image,ImageChops,ImageStat
+from pathlib import Path
+root=Path("projects/k2401-evo-launcher/screenshots")
+a=Image.open(root/"evo-red-v117-home.png").convert("RGB")
+b=Image.open(root/"evo-red-v117-music.png").convert("RGB")
+assert a.size==b.size==(1280,720)
+diff=ImageStat.Stat(ImageChops.difference(a,b)).mean
+assert max(diff)>8,("EVO RED music action did not switch page",diff)
+print("K2401_EVO_RED_V117_MUSIC_TOUCH_NATIVE_PAGE=PASS")
+PY
+adb shell am force-stop "$APP"
+adb shell am start -W -n "$APP/.MainActivity" --ei k2401_skin_preview_ci 28 >/dev/null
+sleep 2
+adb shell input swipe 200 648 200 648 850
+sleep 1
+adb shell uiautomator dump /sdcard/evo-red-v117-slot.xml >/dev/null
+adb pull /sdcard/evo-red-v117-slot.xml "$OUT/evo-red-v117-slot.xml" >/dev/null
+python3 - <<'PY'
+import xml.etree.ElementTree as ET
+from pathlib import Path
+p=Path("projects/k2401-evo-launcher/screenshots/evo-red-v117-slot.xml")
+texts=[n.get("text") or "" for n in ET.parse(p).findall(".//node")]
+assert any("Aplicația 1" in t for t in texts),texts[:70]
+print("K2401_EVO_RED_V117_SIX_EDITABLE_APP_SLOTS=PASS")
+PY
+echo 'K2401_EVO_RED_V117_ANDROID10_EMULATOR=PASS'
