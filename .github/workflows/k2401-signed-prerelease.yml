@@ -224,7 +224,7 @@ jobs:
         shell: bash
         run: |
           python3 - <<'PY'
-          import io,zipfile
+          import io,zipfile,json,hashlib
           from PIL import Image
           apk="projects/k2401-evo-launcher/app/build/outputs/apk/release/app-release.apk"
           with zipfile.ZipFile(apk) as z:
@@ -241,13 +241,22 @@ jobs:
             assert approved in z.namelist(), "Approved UHD wallpaper missing from signed APK"
             with Image.open(io.BytesIO(z.read(approved))) as image:
               assert image.size==(2560,1440), image.size
-            for i in range(3):
+            manifest=json.loads(z.read("assets/skins/cinematic/cinematic-4k-manifest.json"))
+            assert [r["skin"] for r in manifest]==["A1","02","A3"]
+            for i,entry in enumerate(manifest):
+              approved_name=f"assets/skins/cinematic/approved-{entry['skin']}.webp"
               name=f"assets/skins/cinematic/scene_{i}_4k.webp"
+              assert approved_name in z.namelist(), "Missing exact user-approved source: "+approved_name
               assert name in z.namelist(), "Missing cinematic 4K photo: "+name
+              assert entry["source_sha256"]==hashlib.sha256(z.read(approved_name)).hexdigest()
+              with Image.open(io.BytesIO(z.read(approved_name))) as image:
+                assert image.size==(1672,941),(approved_name,image.size)
               with Image.open(io.BytesIO(z.read(name))) as image:
                 assert image.size==(3840,2160),(name,image.size)
+              assert entry["cleaned_baked_HUD"] and entry["cleaned_baked_shortcuts"]
           print("K2401_21_APPROVED_ORIGINALS_AND_CLEAN_BACKGROUNDS_SIGNED=PASS")
           print("K2401_THREE_3840X2160_CINEMATIC_SCENES_SIGNED=PASS")
+          print("K2401_EXACT_APPROVED_NEW_A1_02_A3_IMAGES_SIGNED=PASS")
           print("K2401_22ND_APPROVED_UHD_ASSET_SIGNED=PASS")
           PY
       - name: Verify Android 10 APK signature and persistent certificate
@@ -301,7 +310,7 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging \
             K2401-EVO-ULTRA-INSTALL-SEPARAT.apk | grep -Fq "package: name='ro.evolauncher.k2401.ultra'"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging \
-            K2401-EVO-ULTRA-INSTALL-SEPARAT.apk | grep -Fq "versionCode='118'"
+            K2401-EVO-ULTRA-INSTALL-SEPARAT.apk | grep -Fq "versionCode='119'"
           # Recreate the exact original production APK, never accidentally
           # publish the parallel APK as an in-place update.
           cp K2401-EVO-UPDATE-SIGNED.apk "$APK"
@@ -350,7 +359,7 @@ jobs:
           if gh release create "$TAG" "$ASSET" K2401-EVO-ULTRA-INSTALL-SEPARAT.apk k2401-signed-prerelease-report.txt \
             --target "$GITHUB_SHA" --prerelease --latest=false \
             --title "K2401 EVO Android 10 signed prerelease ($TAG)" \
-            --notes "v118: native Setup Apps Navi Music beside the player; A1 two vertical and two half dials, 02 two circular and two half dials, A3 four polygonal circular gauges; no fake telemetry; Android 10 signed install and emulator tested. Android 10 signed emulator install tested. Update without uninstalling; test actual head-unit separately."; then
+            --notes "v119: THREE exact user-approved A1/02/A3 source images; cleaned 3840x2160 backdrop, no frozen player/clock/OBD/app text, four functional Setup/Apps/Navi/Music buttons beside player, six configurable installed-app shortcuts, native OBD/MediaSession, Android 10 signed tests. Android 10 signed emulator install tested. Update without uninstalling; test actual head-unit separately."; then
             echo "DIRECT_APK_URL=https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$ASSET" >> "$GITHUB_STEP_SUMMARY"
             echo 'K2401_DIRECT_APK_GITHUB_RELEASE=PASS'
           else
