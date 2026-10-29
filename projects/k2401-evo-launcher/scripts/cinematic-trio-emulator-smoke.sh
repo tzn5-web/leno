@@ -82,7 +82,9 @@ with ZipFile("projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.
         displayed=shots[22+k]
         onscreen_error=float(np.mean(np.abs(
             np.asarray(displayed.crop(focus),dtype=np.int16)-got)))
-        assert onscreen_error<49,(m["skin"],"Vehicle covered by native HUD",onscreen_error)
+        # The user rejected the old bright-blue appearance. Neutral graphite
+        # grading deliberately differs from the archived approved source.
+        assert onscreen_error<125,(m["skin"],"Original subject no longer recognizable",onscreen_error)
         # Printed demo music and six sample app logos were removed from both
         # wallpaper strips. Android draws true MediaSession / installed apps.
         top=(400,20,880,120)
@@ -95,18 +97,19 @@ with ZipFile("projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.
             bitmap.crop(bottom),dtype=np.int16))))
         assert top_difference>8,(m["skin"],"Static music/clock art leaked",top_difference)
         assert bottom_difference>8,(m["skin"],"Static application art leaked",bottom_difference)
-        print("K2401_EXACT_APPROVED_IMAGE_IN_4K_APK=PASS",
+        print("K2401_ORIGINAL_SOURCE_PRESERVED_GLASS_RESTYLE=PASS",
               m["skin"],round(car_error,1),round(onscreen_error,1))
         print("K2401_NO_BAKED_MEDIA_OR_SHORTCUTS=PASS",m["skin"])
 java=Path("projects/k2401-evo-launcher/app/src/main/java/ro/evolauncher/k2401/CinematicTrioTheme.java").read_text()
-assert "color(edge);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(16)" in java
-assert "color(0xff5f819e);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1.5f)" in java
-assert 'new int[]{0xd6040d1b,0x92040d1b,0x00040d1b}' in java
+assert 'GlassHudFx.dial(c,cx,cy,r,live,0f,1f)' in java
+assert 'GlassHudFx.glassPanel(c,x,y,w,h,radius)' in java
+assert 'desaturated.setSaturation(.08f)' in java
+assert 'new int[]{0xe8080a0e,0x98080a0e,0x00080a0e}' in java
+assert 'new int[]{0x00080a0e,0x98080a0e,0xe8080a0e}' in java
 assert 'c.drawRect(0,0,1280,146,p)' not in java
-assert 'color(0xff081626);c.drawCircle(cx,cy,r-12,p)' in java
+assert 'c.drawRect(0,554,1280,720,p)' not in java
 assert '"x1000 rpm",r.rpm/8000f,line);' in java
 assert 'p.setTextAlign(Paint.Align.RIGHT)' in java
-assert 'new int[]{0x00040d1b,0x7c040d1b,0xe0040d1b}' in java
 assert 'c.drawRect(0,554,1280,720,p)' not in java
 assert 'vertical(c,27,162,160,427,"RPM"' in java
 assert 'vertical(c,1093,162,160,427,"TEMP APĂ"' in java
@@ -139,7 +142,7 @@ assert "host.showInstalledApps();return true;" in java
 print("K2401_FOUR_HEADER_QUICK_ACTIONS_AND_TOUCH_MAPPING=PASS")
 print("K2401_FOUR_OBD_APPROVED_GAUGE_GEOMETRY_A1_02_A3=PASS")
 print("K2401_ZERO_GHOST_APP_CLOCK_MUSIC_OVERLAP=PASS")
-print("K2401_02_GAUGE_ARC_NEVER_SOLID_DISK=PASS")
+print("K2401_02_GLASS_GAUGE_NEVER_SOLID_DISK=PASS")
 print("K2401_A1_02_A3_DIFFERENT_NATIVE_SCREENSHOTS=PASS")
 print("K2401_A1_02_A3_4K_ART_IN_APK=PASS")
 PY
