@@ -21,11 +21,15 @@ race=(source/"RaceHudFinalTheme.java").read_text()
 ultra=(source/"UltraCockpitTheme.java").read_text()
 cinematic=(source/"CinematicTrioTheme.java").read_text()
 fx=(source/"GlassHudFx.java").read_text()
-assert "GlassHudFx.dial" in race and "GlassHudFx.dial" in ultra
-assert "GlassHudFx.dial" in cinematic and "GlassHudFx.glassPanel" in fx
-assert "GlassHudFx.backdrop(c,21)" in ultra
+assert "GlassHudFx.dial" in race and "GlassHudFx.dial" in cinematic
+assert "GlassHudFx.glassPanel" in fx
+# Skin 21 is the user's ALREADY APPROVED blue-neon theme: only its
+# circular masking defect may change. Never silently recolor/rebuild it.
+assert "GlassHudFx.backdrop(c,21)" not in ultra
+assert 'ultra-neon-2560x1440.webp' in ultra
+assert "maskRadius=radius*.61f" in ultra
+assert "new RadialGradient(cx,cy,maskRadius" in ultra
 assert "GlassHudFx.backdrop(c,27)" in race
-assert "no duplicate top-right clock" in ultra
 assert "Float.isFinite(value)" in fx and "Float.isFinite(fraction)" in cinematic
 assert "selected_skin_v2" in (source/"SkinEngine.java").read_text()
 release=base/"app/build/outputs/apk/release/app-release.apk"
@@ -60,7 +64,11 @@ for skin in range(21,29):
             if r>95 and r>g*1.35 and r>b*1.16:red+=1
             total+=1
     blue_fraction=blue/max(1,total)
-    assert blue_fraction<.10,(skin,"blue/cyan still dominates glass HUD",blue_fraction)
+    # The user explicitly asked to KEEP the original blue palette of skin 21.
+    # The restrained graphite/red grading applies ONLY to newly redesigned
+    # skins 22..28, not to the fifth photograph.
+    if skin!=21:
+        assert blue_fraction<.10,(skin,"blue/cyan still dominates glass HUD",blue_fraction)
     # Real native gauges must contain legible bright vector labels.
     left,right={
         21:((135,280,420,490),(900,280,1190,490)),
