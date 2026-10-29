@@ -170,8 +170,16 @@ capture() {
     return 1
   fi
   sleep 2
+  # MainActivity deliberately remembers its last native page across process
+  # restarts. On Apps/Settings the rail has a different vertical layout than
+  # the Home skin. Normalize to Home first: x45,y90 is inside the Home
+  # touch target on BOTH rail layouts. Otherwise 'capture settings 557'
+  # silently re-selects Apps (its non-Home slot at y~535), causing the
+  # misleading MISSING_NATIVE_SETTING=WALLPAPER emulator failure.
+  adb shell input tap 45 90
+  sleep 1
   if [[ "$name" != home ]]; then
-    # Selected theme 02 has its own six exact native vector targets:
+    # Once Home is visible, these are its six native touch targets:
     # Home 72 / Music 169 / Navigation 266 / Car 363 / Apps 460 / Settings 557.
     adb shell input tap 45 "$y"
   fi
