@@ -10,8 +10,8 @@ android {
    applicationId parallelInstall ? 'ro.evolauncher.k2401.ultra' : 'ro.evolauncher.k2401'
    minSdk 26
    targetSdk 28
-   versionCode 121
-   versionName parallelInstall ? '1.0.121-race-two-variants-parallel' : '1.0.121-race-carbon-and-wings'
+   versionCode 122
+   versionName parallelInstall ? '1.0.122-v117-evo-red-uhd-parallel' : '1.0.122-v117-evo-red-uhd'
    manifestPlaceholders = [MAPS_API_KEY: googleMapsApiKey, APP_LABEL: (parallelInstall ? 'EVO Ultra (Test)' : 'EVO Launcher')]
    buildConfigField 'boolean', 'GOOGLE_MAPS_CONFIGURED', googleMapsApiKey.isEmpty() ? 'false' : 'true'
  }
@@ -75,3 +75,13 @@ dependencies {
    outputs.dir file('src/main/assets/skins/cinematic')
  }
  tasks.named('preBuild') { dependsOn tasks.named('generateCinematic4k') }
+
+ // Original 4K EVO RED cinematic scene is produced deterministically during
+ // CI, not stretched from the 1280x720 user preview. Live HUD is native Canvas.
+ tasks.register('generateEvoRed4k', Exec) {
+   workingDir rootProject.projectDir
+   commandLine 'python3', "${rootProject.projectDir}/scripts/generate-evo-red-4k.py"
+   inputs.file file("${rootProject.projectDir}/scripts/generate-evo-red-4k.py")
+   outputs.file file('src/main/assets/skins/approved/evo-red-scene-3840x2160.webp')
+ }
+ tasks.named('preBuild') { dependsOn tasks.named('generateEvoRed4k') }
