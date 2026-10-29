@@ -99,7 +99,7 @@ jobs:
           force-avd-creation: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -skin 720x1280
           disable-animations: true
-          script: bash projects/k2401-evo-launcher/scripts/emulator-smoke.sh && bash projects/k2401-evo-launcher/scripts/ultra-ambient-emulator-smoke.sh && bash projects/k2401-evo-launcher/scripts/cinematic-trio-emulator-smoke.sh
+          script: bash projects/k2401-evo-launcher/scripts/emulator-smoke.sh && bash projects/k2401-evo-launcher/scripts/ultra-ambient-emulator-smoke.sh && bash projects/k2401-evo-launcher/scripts/cinematic-trio-emulator-smoke.sh && bash projects/k2401-evo-launcher/scripts/race-hud-final-emulator-smoke.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
