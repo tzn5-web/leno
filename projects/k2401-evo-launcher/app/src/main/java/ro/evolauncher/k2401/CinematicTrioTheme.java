@@ -134,6 +134,35 @@ final class CinematicTrioTheme {
     // Label is descriptive only, never a duplicate clock or status icon.
     text(c,id==22?"A1":id==23?"02":"A3",1191,77,18,BLUE,true,false);
   }
+  // Four fixed controls beside the native media panel, with explicit hitboxes.
+  // Each control navigates to an EXISTING functional page. No rendered or
+  // baked art labels: their glyphs and captions are native and scalable.
+  private static final int QUICK_X=13, QUICK_Y=18, QUICK_W=56, QUICK_GAP=6, QUICK_H=76;
+  private static final int[] QUICK_ICON={5,4,2,1};
+  private static final String[] QUICK_TEXT={"SETUP","APPS","NAVI","MUZICĂ"};
+  private void quickNavigation(Canvas c,int edge){
+    for(int i=0;i<4;i++){
+      int x=QUICK_X+i*(QUICK_W+QUICK_GAP);
+      panel(c,x,QUICK_Y,QUICK_W,QUICK_H,9,0xff081725,edge);
+      NavVectorIcons.draw(c,QUICK_ICON[i],x+28,QUICK_Y+28,BLUE);
+      text(c,QUICK_TEXT[i],x+28,QUICK_Y+64,i==3?10:11,WHITE,true,true);
+    }
+  }
+  private boolean quickNavigationTouch(float x,float y){
+    if(y<QUICK_Y||y>QUICK_Y+QUICK_H)return false;
+    for(int i=0;i<4;i++){
+      int left=QUICK_X+i*(QUICK_W+QUICK_GAP);
+      if(x>=left&&x<=left+QUICK_W){
+        if(i==1){host.showInstalledApps();return true;}
+        int destination=i==0?5:i==2?2:1;
+        host.page=destination;
+        if(host.view!=null)host.view.invalidate();
+        host.placeMap();
+        return true;
+      }
+    }
+    return false;
+  }
   private void music(Canvas c,int line){
     panel(c,261,12,484,88,12,0xff081725,line);
     MediaController m=host.media;
@@ -262,11 +291,13 @@ final class CinematicTrioTheme {
     }
     music(c,line);
     bar(c,id,line);
+    quickNavigation(c,line);
     // Exactly six live application shortcuts. All are click/hold-driven and
     // persisted under the original same app's SharedPreferences.
     personalApps.drawUserSlots(c);
   }
   boolean touch(float x,float y){
+    if(quickNavigationTouch(x,y))return true;
     if(y<=110&&x>=261&&x<=747){
       if(x<593)host.choosePlayer();
       else host.mediaAction(x<642?0:x<697?1:2);
