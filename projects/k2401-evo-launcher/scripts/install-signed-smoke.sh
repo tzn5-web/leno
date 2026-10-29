@@ -16,15 +16,24 @@ adb shell am force-stop "$MAIN" >/dev/null 2>&1 || true
 # Installed same-cert official production APK, not debug emulator artifact.
 adb install -r "$NORMAL"
 adb shell pm path "$MAIN" | grep -q '^package:'
+# Grant runtime location BEFORE first launch: otherwise the system permission
+# dialog remains in front of the signed skin screenshot despite later grants.
+adb shell pm grant "$MAIN" android.permission.ACCESS_FINE_LOCATION || true
+adb shell pm grant "$MAIN" android.permission.ACCESS_COARSE_LOCATION || true
 adb shell am start -W -n "$MAIN/ro.evolauncher.k2401.MainActivity"
 adb shell pidof "$MAIN" >/dev/null
 echo "K2401_SIGNED_FRESH_INSTALL_ON_ANDROID10=PASS"
 # A fresh APK and another package must both work at the same time.
 adb install -r "$PARALLEL"
 adb shell pm path "$ALT" | grep -q '^package:'
+adb shell pm grant "$ALT" android.permission.ACCESS_FINE_LOCATION || true
+adb shell pm grant "$ALT" android.permission.ACCESS_COARSE_LOCATION || true
 adb shell am start -W -n "$ALT/ro.evolauncher.k2401.MainActivity"
 adb shell pidof "$ALT" >/dev/null
 echo "K2401_PARALLEL_SIDE_BY_SIDE_WITH_SIGNED=PASS"
+adb shell am force-stop "$ALT" >/dev/null
+# Prevent the parallel package's first-run activity/dialog from covering
+# the genuine production skin under test.
 # Real screenshots of ALL redesigned skins from the KEY-VAULT-SIGNED APK,
 # not mockups or an unsigned local renderer. No car ECU/hardware is accessed.
 adb shell pm grant "$MAIN" android.permission.ACCESS_FINE_LOCATION || true
@@ -77,7 +86,12 @@ print(f"K2401_SIGNED_RELEASE_ACTUAL_PERSISTED_SKIN={skin} PASS")
 PY
   adb shell am start -W -n "$MAIN/ro.evolauncher.k2401.MainActivity" >/dev/null
   sleep 3
-  adb shell pidof "$MAIN" >/dev/null
+  if ! adb shell pidof "$MAIN" >/dev/null; then
+    echo "::error::Signed production app did not remain running on skin $skin"
+    adb shell dumpsys activity activities | tail -65 || true
+    adb shell logcat -d -t 350 | grep -Ei 'FATAL EXCEPTION|AndroidRuntime|ro.evolauncher.k2401|SecurityException|XmlPullParser' | tail -70 || true
+    exit 9
+  fi
   if adb shell dumpsys window windows | grep -Eiq 'mCurrentFocus=.*(permissioncontroller|packageinstaller)'; then
     echo "::error::System dialog obscures signed skin $skin"
     exit 8
