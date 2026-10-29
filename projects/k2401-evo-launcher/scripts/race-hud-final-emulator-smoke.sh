@@ -170,4 +170,28 @@ texts=[n.get("text") or "" for n in ET.parse(p).findall(".//node")]
 assert any("Aplicația 1" in t for t in texts),texts[:70]
 print("K2401_EVO_RED_V117_SIX_EDITABLE_APP_SLOTS=PASS")
 PY
-echo 'K2401_EVO_RED_V117_ANDROID10_EMULATOR=PASS'
+echo 'K2401_EVO_RED_V118_ANDROID10_EMULATOR=PASS'
+
+# Skin 27 used to display a blank, opaque pretend map rectangle. It must now
+# render a distinct live Android Canvas glass projection without fake telemetry.
+adb shell am force-stop "$APP"
+adb shell am start -W -n "$APP/.MainActivity" --ei k2401_skin_preview_ci 27 > "$OUT/holo-glass-launch.txt"
+sleep 3
+adb shell pidof "$APP" >/dev/null
+adb shell screencap -p /sdcard/holo-glass-27.png
+adb pull /sdcard/holo-glass-27.png "$OUT/holo-glass-27.png" >/dev/null
+python3 - <<'PY'
+from pathlib import Path
+from PIL import Image,ImageStat
+root=Path("projects/k2401-evo-launcher")
+src=(root/"app/src/main/java/ro/evolauncher/k2401/RaceHudFinalTheme.java").read_text()
+fx=(root/"app/src/main/java/ro/evolauncher/k2401/GlassHudFx.java").read_text()
+pic=Image.open(root/"screenshots/holo-glass-27.png").convert("RGB")
+assert pic.size==(1280,720)
+centre=pic.crop((478,264,802,440))
+assert max(ImageStat.Stat(centre).stddev)>8,"Holographic center is blank"
+assert "GlassHudFx.backdrop(c,27)" in src
+assert "if(!holo)" in src
+assert "Float.isFinite(value)" in fx
+print("K2401_HOLOGRAPHIC_NATIVE_GLASS_27_ANDROID10=PASS")
+PY
