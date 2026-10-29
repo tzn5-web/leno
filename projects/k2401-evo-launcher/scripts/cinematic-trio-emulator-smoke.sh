@@ -110,16 +110,16 @@ assert 'new int[]{0x00040d1b,0x7c040d1b,0xe0040d1b}' in java
 assert 'c.drawRect(0,554,1280,720,p)' not in java
 assert 'vertical(c,27,162,160,427,"RPM"' in java
 assert 'vertical(c,1093,162,160,427,"TEMP APĂ"' in java
-assert 'halfGauge(c,515,522,90,"STFT"' in java
-assert 'halfGauge(c,765,522,90,"LTFT"' in java
+assert 'halfGauge(c,418,520,90,"STFT"' in java
+assert 'halfGauge(c,862,520,90,"LTFT"' in java
 assert 'circle(c,155,382,148,"RPM"' in java
 assert 'circle(c,1125,382,148,"TEMP APĂ"' in java
 assert 'halfGauge(c,527,516,85,"STFT"' in java
 assert 'halfGauge(c,753,516,85,"LTFT"' in java
-assert 'framedCircle(c,160,291,124,"RPM"' in java
-assert 'framedCircle(c,160,508,86,"STFT"' in java
-assert 'framedCircle(c,1120,291,124,"TEMP APĂ"' in java
-assert 'framedCircle(c,1120,508,86,"LTFT"' in java
+assert 'framedCircle(c,160,258,124,"RPM"' in java
+assert 'framedCircle(c,160,470,86,"STFT"' in java
+assert 'framedCircle(c,1120,258,124,"TEMP APĂ"' in java
+assert 'framedCircle(c,1120,470,86,"LTFT"' in java
 assert 'panel(c,261,12,484,88,12,0xff081725,line)' in java
 app_java=Path("projects/k2401-evo-launcher/app/src/main/java/ro/evolauncher/k2401/UltraCockpitTheme.java").read_text()
 assert 'return isCinematicTrio()?278:SLOT_X;' in app_java
