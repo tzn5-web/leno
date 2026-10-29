@@ -25,7 +25,8 @@ import java.util.Locale;
  * OSM map as a fallback. It is NOT a pretend Google Maps screenshot.
  */
 final class RaceHudFinalTheme {
-  static final int ID=25;
+  static final int ID=25, ANGULAR_ID=26;
+  // ID 25 preserves approved circular Carbon Red; ID 26 uses separate angular wings.
   static final int MAP_X=432,MAP_Y=196,MAP_W=416,MAP_H=291;
   private static final int WHITE=0xfff5f7fc, SILVER=0xffa9b5c3,
       RED=0xffea2845, LIT=0xfff85d64, DARK=0xff06090f;
@@ -118,6 +119,51 @@ final class RaceHudFinalTheme {
     label(c,value,cx,cy+22,52,WHITE,true,true);
     label(c,units,cx,cy+51,15,SILVER,false,true);
   }
+
+  /**
+   * The independent Alamy-angular-WINGS-inspired variant: entirely native
+   * scalable metallic wings, never a stock image or a second round dial skin.
+   * Render only four verified PIDs. The middle map remains a real Android View.
+   */
+  private void angularGauge(Canvas c,boolean right,String title,
+                            String value,String unit,float raw,float min,float max){
+    int outer=right?1258:22;
+    c.save();
+    c.translate(outer,0);
+    if(right)c.scale(-1,1);
+    Path shell=new Path();
+    shell.moveTo(22,196);shell.lineTo(292,196);shell.lineTo(368,231);
+    shell.lineTo(374,432);shell.lineTo(290,475);shell.lineTo(24,475);
+    shell.lineTo(0,425);shell.lineTo(0,241);shell.close();
+    fill(0xf3070d16);c.drawPath(shell,p);
+    fill(WHITE);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(3.3f);
+    c.drawPath(shell,p);p.setStyle(Paint.Style.FILL);
+    // Layered, asymmetric sculptural crescents taken from the structure of
+    // the reference, not the licensed photographic source.
+    segment(c,9,246,70,202,WHITE,11);
+    segment(c,71,203,277,203,SILVER,4);
+    segment(c,9,422,66,462,RED,8);
+    segment(c,66,462,288,462,SILVER,3);
+    segment(c,319,254,361,278,RED,4);
+    segment(c,319,419,361,390,WHITE,3);
+    for(int tick=0;tick<9;tick++){
+      int y=257+tick*17;
+      segment(c,325,y,343-(tick%3==0?0:7),y,0xffb8c6d6,1.8f);
+    }
+    c.restore();
+    int center=right?1086:194;
+    label(c,title,center,272,22,WHITE,true,true);
+    label(c,value,center,344,55,WHITE,true,true);
+    label(c,unit,center,375,17,SILVER,false,true);
+    int x=right?917:57;
+    fill(0xff344150);c.drawRoundRect(x,406,x+309,426,7,7,p);
+    if(Float.isFinite(raw)){
+      float normalized=Math.max(0f,Math.min(1f,(raw-min)/(max-min)));
+      fill(RED);c.drawRoundRect(x,406,x+309*normalized,426,7,7,p);
+    }
+    label(c,"0",x,446,13,SILVER,false,false);
+    label(c,right?"130°C":"8000",x+267,446,13,SILVER,false,false);
+  }
   private void trim(Canvas c,int x,String title,float value){
     plate(c,x,516,215,76,0xffb0becb,0xee080e18);
     label(c,title,x+22,539,16,SILVER,true,false);
@@ -182,7 +228,7 @@ final class RaceHudFinalTheme {
     }catch(RuntimeException ignored){}
     label(c,"BT",1168,40,18,bt?WHITE:0xff606a78,true,false);
     label(c,"Wi-Fi",1204,40,16,wifi?WHITE:0xff606a78,true,false);
-    label(c,"FINAL",1183,69,13,RED,true,false);
+    label(c,host.skins!=null&&host.skins.selection()==ANGULAR_ID?"WINGS":"FINAL",1183,69,13,RED,true,false);
   }
   void draw(Canvas c){
     wings(c);
@@ -190,11 +236,19 @@ final class RaceHudFinalTheme {
     plate(c,423,187,434,310,WHITE,0xff0d1118);
     fill(0xff111a23);c.drawRect(MAP_X,MAP_Y,MAP_X+MAP_W,MAP_Y+MAP_H,p);
     ObdReader.Reading r=host.obd==null?ObdReader.Reading.empty():host.obd.current();
-    gauge(c,208,347,"RPM",
-      Float.isFinite(r.rpm)?number(r.rpm/1000f,1,false):"N/A",
-      "x1000 rpm",r.rpm,0,8000);
-    gauge(c,1072,347,"TEMP APĂ",number(r.coolantC,0,false),
-      "°C",r.coolantC,40,130);
+    if(host.skins!=null&&host.skins.selection()==ANGULAR_ID){
+      angularGauge(c,false,"RPM",
+        Float.isFinite(r.rpm)?number(r.rpm/1000f,1,false):"N/A",
+        "x1000 rpm",r.rpm,0,8000);
+      angularGauge(c,true,"TEMP APĂ",number(r.coolantC,0,false),
+        "°C",r.coolantC,40,130);
+    }else{
+      gauge(c,208,347,"RPM",
+        Float.isFinite(r.rpm)?number(r.rpm/1000f,1,false):"N/A",
+        "x1000 rpm",r.rpm,0,8000);
+      gauge(c,1072,347,"TEMP APĂ",number(r.coolantC,0,false),
+        "°C",r.coolantC,40,130);
+    }
     trim(c,423,"STFT",r.stft);
     trim(c,642,"LTFT",r.ltft);
     top(c);
