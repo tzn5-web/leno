@@ -25,7 +25,7 @@ import java.util.Locale;
  * OSM map as a fallback. It is NOT a pretend Google Maps screenshot.
  */
 final class RaceHudFinalTheme {
-  static final int ID=25, ANGULAR_ID=26, HOLO_ID=27;
+  static final int ID=25, ANGULAR_ID=26, HOLO_ID=27, EVO_RED_ID=28;
   // ID 25 preserves approved circular Carbon Red; ID 26 uses separate angular wings.
   static final int MAP_X=432,MAP_Y=196,MAP_W=416,MAP_H=291;
   private static final int WHITE=0xfff5f7fc, SILVER=0xffa9b5c3,
@@ -228,7 +228,7 @@ final class RaceHudFinalTheme {
     }catch(RuntimeException ignored){}
     label(c,"BT",1168,40,18,bt?WHITE:0xff606a78,true,false);
     label(c,"Wi-Fi",1204,40,16,wifi?WHITE:0xff606a78,true,false);
-    label(c,host.skins!=null&&host.skins.selection()==HOLO_ID?"HOLO":host.skins.selection()==ANGULAR_ID?"WINGS":"FINAL",1183,69,13,RED,true,false);
+    label(c,host.skins!=null&&host.skins.selection()==EVO_RED_ID?"EVO RED":host.skins.selection()==HOLO_ID?"HOLO":host.skins.selection()==ANGULAR_ID?"WINGS":"FINAL",1183,69,13,RED,true,false);
   }
   private void holoBackground(Canvas c){
     c.drawColor(0xff05080e);
@@ -247,7 +247,32 @@ final class RaceHudFinalTheme {
     segment(c,385,109,895,109,RED,2);
     plate(c,416,180,448,322,0xffd5dce5,0xff101721);
   }
+  private void approvedRed(Canvas c){
+    c.drawColor(0xff040508);
+    fill(0xff0b0d12);c.drawRect(0,0,1280,720,p);
+    for(int i=0;i<2;i++){
+      int x=i==0?0:970;
+      fill(0xff12141b);c.drawRect(x,111,x+310,583,p);
+      segment(c,x,130,x+310,130,RED,3);
+      segment(c,x,576,x+310,576,RED,3);
+    }
+    // Four live OBD instruments only: no fabricated speed, voltage or climate.
+    ObdReader.Reading r=host.obd==null?ObdReader.Reading.empty():host.obd.current();
+    gauge(c,218,348,"RPM",number(r.rpm,0,false),"rpm",r.rpm,0,8000);
+    gauge(c,1062,348,"TEMP APĂ",number(r.coolantC,0,false),"°C",r.coolantC,40,130);
+    trim(c,423,"STFT",r.stft);
+    trim(c,642,"LTFT",r.ltft);
+    // Middle display remains free of invented telemetry or decorative app tiles.
+    plate(c,432,211,416,292,0xffa9b5c3,0xff080b10);
+    label(c,"MITSUBISHI",640,330,20,SILVER,true,true);
+    label(c,"EVOLUTION",640,365,33,WHITE,true,true);
+    segment(c,482,393,798,393,RED,3);
+    // Native editable shortcuts are rendered by the existing slot engine.
+    top(c);
+    slots.drawUserSlots(c);
+  }
   void draw(Canvas c){
+    if(host.skins!=null&&host.skins.selection()==EVO_RED_ID){approvedRed(c);return;}
     boolean holo=host.skins!=null&&host.skins.selection()==HOLO_ID;
     if(holo)holoBackground(c);else wings(c);
     // This unobstructed rectangle is occupied by the ACTUAL interactive map.
