@@ -46,7 +46,7 @@ ultra=(root/"app/src/main/java/ro/evolauncher/k2401/UltraCockpitTheme.java").rea
 pic=Image.open(root/"screenshots/race-hud-final.png").convert("RGB")
 assert pic.size==(1280,720)
 assert max(ImageStat.Stat(pic).stddev)>15,"Blank home dashboard"
-assert 'static final int ID=25' in src and 'RACE HUD • FINAL ALB-ROȘU' in skins
+assert 'static final int ID=25' in src and 'RACE HUD • CARBON GLASS RED' in skins
 assert 'raceHud.draw(c)' in skins
 assert 'RaceHudFinalTheme.ID' in ultra
 assert 'boolean shown=page==2||raceHome;' in main
@@ -114,7 +114,7 @@ assert visual_delta>5.0,("Circular and angular themes look the same",visual_delt
 assert 'static final int ID=25, ANGULAR_ID=26, HOLO_ID=27, EVO_RED_ID=28;' in src
 assert 'angularGauge(c,false,"RPM"' in src
 assert 'angularGauge(c,true,"TEMP APĂ"' in src
-assert 'RACE HUD • ANGULAR WINGS ALB-ROȘU' in skin
+assert 'RACE HUD • ANGULAR SILVER RED' in skin
 assert 'RaceHudFinalTheme.ANGULAR_ID' in main
 assert 'RaceHudFinalTheme.ANGULAR_ID' in ultra
 assert 'slots.drawUserSlots(c)' in src
