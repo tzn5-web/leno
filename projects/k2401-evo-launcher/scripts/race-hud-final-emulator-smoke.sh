@@ -43,7 +43,7 @@ for bad in ('PRNDS','BATTERY','VOLT','BOOST','FUEL','3400 rpm','Str. Principală
 nodes=ET.parse(root/"screenshots/race-hud-tree.xml").findall(".//node")
 labels=[(n.get("text") or "") for n in nodes]
 # LiveMapPanel is an Android VIEW above the dashboard, never a flat texture.
-assert any("HARTĂ INTEGRATĂ" in t or "HARTĂ TEMPORAR" in t for t in labels),labels[:70]
+assert any("GPS • POZIȚIE REALĂ" in t or "HARTĂ INTEGRATĂ" in t or "HARTĂ TEMPORAR" in t for t in labels),labels[:70]
 assert any("CAUTA LOC" in t for t in labels),labels[:70]
 print("K2401_RACE_HUD_REAL_CENTER_INTERACTIVE_MAP=PASS")
 print("K2401_RACE_HUD_FOUR_REAL_ECU_PIDS=PASS")
@@ -101,7 +101,7 @@ assert 'RaceHudFinalTheme.ANGULAR_ID' in ultra
 assert 'slots.drawUserSlots(c)' in src
 words=[n.attrib.get("text","") for n in ET.parse(
   root/"screenshots/race-hud-angular-tree.xml").findall(".//node")]
-assert any("HARTĂ INTEGRATĂ" in w or "HARTĂ TEMPORAR" in w for w in words),words[:60]
+assert any("GPS • POZIȚIE REALĂ" in w or "HARTĂ INTEGRATĂ" in w or "HARTĂ TEMPORAR" in w for w in words),words[:60]
 assert any("CAUTA LOC" in w for w in words),words[:60]
 print("K2401_SECOND_RACE_HUD_ANGULAR_REAL_MAP=PASS")
 print("K2401_TWO_DISTINCT_RACE_HUD_NATIVE_LAYOUTS=PASS",round(visual_delta,2))
