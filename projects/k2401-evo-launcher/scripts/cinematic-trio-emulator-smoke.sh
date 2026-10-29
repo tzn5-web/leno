@@ -121,6 +121,11 @@ assert 'framedCircle(c,160,508,86,"STFT"' in java
 assert 'framedCircle(c,1120,291,124,"TEMP APĂ"' in java
 assert 'framedCircle(c,1120,508,86,"LTFT"' in java
 assert 'panel(c,261,12,484,88,12,0xff081725,line)' in java
+app_java=Path("projects/k2401-evo-launcher/app/src/main/java/ro/evolauncher/k2401/UltraCockpitTheme.java").read_text()
+assert 'return isCinematicTrio()?278:SLOT_X;' in app_java
+assert 'return isCinematicTrio()?108:SLOT_W;' in app_java
+assert 'return isCinematicTrio()?94:SLOT_H;' in app_java
+print("K2401_SIX_WIDE_CINEMATIC_APP_TILES_AND_TOUCH=PASS")
 assert 'panel(c,767,8,276,94,13,0xff081725,line)' in java
 assert 'private static final int QUICK_X=13, QUICK_Y=18, QUICK_W=56, QUICK_GAP=6, QUICK_H=76;' in java
 assert 'private static final int[] QUICK_ICON={5,4,2,1};' in java
@@ -140,7 +145,7 @@ PY
 # Press-and-hold MUST show the actual app chooser in either case.
 adb shell am start -W -n "$APP/.MainActivity" --ei k2401_skin_preview_ci 24 >/dev/null
 sleep 1
-adb shell input swipe 459 644 459 644 850
+adb shell input swipe 332 649 332 649 850
 sleep 1
 adb shell uiautomator dump /sdcard/cinematic-hold.xml >/dev/null
 adb pull /sdcard/cinematic-hold.xml "$OUT/cinematic-hold.xml" >/dev/null
@@ -161,7 +166,7 @@ a,b,c,d=map(int,re.findall(r"\d+",n.get("bounds","")))
 subprocess.check_call(["adb","shell","input","tap",str((a+c)//2),str((b+d)//2)])
 PY
 sleep 1
-adb shell input tap 459 644
+adb shell input tap 332 649
 sleep 1
 adb shell uiautomator dump /sdcard/cinematic-picker.xml >/dev/null
 adb pull /sdcard/cinematic-picker.xml "$OUT/cinematic-picker.xml" >/dev/null
