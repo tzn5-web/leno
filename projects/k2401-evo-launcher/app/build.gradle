@@ -1,7 +1,8 @@
 plugins { id 'com.android.application' }
 def googleMapsApiKey = (System.getenv('K2401_MAPS_API_KEY') ?: '').trim()
-// The parallel package installs alongside an older K2401 with a different
-// certificate, with no uninstall/data loss. CI builds both via Azure Key Vault.
+// Standard APK: one fresh-install/update artifact (same applicationId and signer).
+// Android decides whether to install it or replace an existing signed version.
+// Optional parallel test APK has its own applicationId and cannot update MAIN.
 def parallelInstall = 'YES'.equalsIgnoreCase(System.getenv('K2401_PARALLEL_APK') ?: '')
 android {
  namespace 'ro.evolauncher.k2401'
@@ -10,8 +11,8 @@ android {
    applicationId parallelInstall ? 'ro.evolauncher.k2401.ultra' : 'ro.evolauncher.k2401'
    minSdk 26
    targetSdk 28
-   versionCode 123
-   versionName parallelInstall ? '1.0.123-v118-glass-hud-parallel' : '1.0.123-v118-glass-hud'
+   versionCode 124
+   versionName parallelInstall ? '1.0.124-v119-universal-parallel' : '1.0.124-v119-universal'
    manifestPlaceholders = [MAPS_API_KEY: googleMapsApiKey, APP_LABEL: (parallelInstall ? 'EVO Ultra (Test)' : 'EVO Launcher')]
    buildConfigField 'boolean', 'GOOGLE_MAPS_CONFIGURED', googleMapsApiKey.isEmpty() ? 'false' : 'true'
  }
