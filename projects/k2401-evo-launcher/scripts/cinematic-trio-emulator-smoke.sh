@@ -104,7 +104,7 @@ assert "color(0xff5f819e);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1.5f)"
 assert 'new int[]{0xd6040d1b,0x92040d1b,0x00040d1b}' in java
 assert 'c.drawRect(0,0,1280,146,p)' not in java
 assert 'color(0xff081626);c.drawCircle(cx,cy,r-12,p)' in java
-assert '"x1000 rpm",line);' in java
+assert '"x1000 rpm",r.rpm/8000f,line);' in java
 assert 'p.setTextAlign(Paint.Align.RIGHT)' in java
 assert 'new int[]{0x00040d1b,0x7c040d1b,0xe0040d1b}' in java
 assert 'c.drawRect(0,554,1280,720,p)' not in java
