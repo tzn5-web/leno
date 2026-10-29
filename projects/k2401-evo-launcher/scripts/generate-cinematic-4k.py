@@ -150,10 +150,17 @@ for i,(label,filename) in enumerate(SOURCES):
         cw,ch=ax2-ax1,ay2-ay1
         subject=im.crop((ax1,ay1,ax2,ay2)).convert('RGBA')
         matte=Image.new('L',(cw,ch),0)
-        ImageDraw.Draw(matte).rounded_rectangle(
-          (int(cw*.07),int(ch*.10),int(cw*.93),int(ch*.90)),
-          radius=max(45,int(ch*.24)),fill=255)
-        matte=matte.filter(ImageFilter.GaussianBlur(max(32,int(ch*.075))))
+        # A rounded rectangular mask left a visible *photo tile* around the
+        # car in Android 10. Trace the real roof/bonnet/bumper silhouette
+        # instead: no fake frame or unrelated city background is projected.
+        silhouette=[
+          (.02,.57),(.08,.40),(.18,.25),(.29,.16),(.48,.11),
+          (.66,.14),(.80,.26),(.89,.40),(.98,.51),(.99,.71),
+          (.94,.86),(.75,.92),(.18,.92),(.05,.81)
+        ]
+        ImageDraw.Draw(matte).polygon(
+          [(int(cw*x),int(ch*y)) for x,y in silhouette],fill=255)
+        matte=matte.filter(ImageFilter.GaussianBlur(max(22,int(ch*.028))))
         photo=Image.new('RGBA',(W,H),(0,0,0,0))
         photo.paste(subject,(ax1,ay1),matte)
         overlay=ROOT/'hologram-mitsubishi-3840x2160.webp'
