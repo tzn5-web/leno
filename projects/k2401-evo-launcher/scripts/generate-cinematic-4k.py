@@ -139,6 +139,28 @@ for i,(label,filename) in enumerate(SOURCES):
     im=im.filter(ImageFilter.UnsharpMask(radius=1.10,percent=72,threshold=2))
     dst=ROOT/f'scene_{i}_4k.webp'
     im.save(dst,format='WEBP',quality=92,method=6)
+    if label=='A3':
+        # An alpha-only, source-locked 4K Mitsubishi photo layer for the
+        # separate Holographic 3D and EVO RED HUDs. Unlike the old flat
+        # vector car, this has real reflections and perspective. Everything
+        # outside the actual car is transparent, not a frozen gauge tile.
+        x1,y1,x2,y2=boxes[label]
+        ax1=round(x1*W/1672);ay1=round(y1*H/941)
+        ax2=round(x2*W/1672);ay2=round(y2*H/941)
+        cw,ch=ax2-ax1,ay2-ay1
+        subject=im.crop((ax1,ay1,ax2,ay2)).convert('RGBA')
+        matte=Image.new('L',(cw,ch),0)
+        ImageDraw.Draw(matte).rounded_rectangle(
+          (int(cw*.07),int(ch*.10),int(cw*.93),int(ch*.90)),
+          radius=max(45,int(ch*.24)),fill=255)
+        matte=matte.filter(ImageFilter.GaussianBlur(max(32,int(ch*.075))))
+        photo=Image.new('RGBA',(W,H),(0,0,0,0))
+        photo.paste(subject,(ax1,ay1),matte)
+        overlay=ROOT/'hologram-mitsubishi-3840x2160.webp'
+        photo.save(overlay,format='WEBP',quality=94,method=6)
+        with Image.open(overlay) as check:
+            assert check.size==(W,H) and check.mode=='RGBA'
+        print('K2401_TRANSPARENT_SOURCE_CAR_HOLOGRAM=PASS',overlay)
     with Image.open(dst) as v:
         assert v.size==(3840,2160)
     sha=hashlib.sha256(dst.read_bytes()).hexdigest()
