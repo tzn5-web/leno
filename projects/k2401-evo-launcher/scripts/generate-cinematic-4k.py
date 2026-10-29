@@ -49,10 +49,25 @@ for i,(label,filename) in enumerate(SOURCES):
     im=wipe_region(im,(0,0,1672,211),top,blur=16)
     # The six real installed-app buttons are rendered from PackageManager.
     # Clear ONLY the source screenshot's static, nonfunctional icons first.
-    road=im.crop((480,673,1192,741)).resize((1672,242),Image.Resampling.BICUBIC)
-    road=road.filter(ImageFilter.GaussianBlur(8))
+    # A mirrored reflection of the ACTUAL CAR, not a blurred crop of sample
+    # OBD numbers. The earlier lower band leaked ghost '-25', '%', '+25'.
+    reflection_crop={
+      'A1':(640,470,1040,605),
+      '02':(620,460,1052,582),
+      'A3':(610,520,1050,670),
+    }[label]
+    road=im.crop(reflection_crop).transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+    road=road.resize((1672,242),Image.Resampling.BICUBIC)
+    road=road.filter(ImageFilter.GaussianBlur(11))
+    road=ImageEnhance.Brightness(road).enhance(.60)
+    # Fine non-semantic neon streaks add floor depth, with NO frozen labels.
+    floor_pen=ImageDraw.Draw(road)
+    for k in range(-11,12):
+        x=836+k*78
+        floor_pen.line((836,0,x,241),
+             fill=((5,57,95) if k%2==0 else (28,18,63)),width=3)
     floor=im.copy();floor.paste(road,(0,699))
-    im=wipe_region(im,(0,710,1672,941),floor,blur=20)
+    im=wipe_region(im,(0,684,1672,941),floor,blur=13)
     # Mask illustrative digits in gauge centre faces, retaining the source's
     # decorative neon rims. Real ECU numbers are rendered on opaque native
     # gauge faces, avoiding duplicate or falsely frozen values.
@@ -60,7 +75,7 @@ for i,(label,filename) in enumerate(SOURCES):
     masks=Image.new('L',im.size,0)
     pen=ImageDraw.Draw(masks)
     for cx,cy,rx,ry in MASK_TEXT[label]:
-        pen.ellipse((cx-rx,cy-ry,cx+rx,cy+ry),fill=245)
+        pen.ellipse((cx-rx,cy-ry,cx+rx,cy+ry),fill=255)
     masks=masks.filter(ImageFilter.GaussianBlur(radius=13))
     im=Image.composite(face,im,masks)
     im=im.resize((W,H),Image.Resampling.LANCZOS)
