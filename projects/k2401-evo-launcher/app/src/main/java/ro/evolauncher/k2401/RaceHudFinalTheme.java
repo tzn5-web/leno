@@ -289,9 +289,9 @@ final class RaceHudFinalTheme {
         cx+(float)Math.cos(angle)*outer,cy+(float)Math.sin(angle)*outer,
         i>31?RED:WHITE,i%5==0?2.2f:1.1f);
     }
-    fill(0xff11141b);c.drawCircle(cx,cy,radius-61,p);
+    fill(0xff11141b);c.drawCircle(cx,cy,radius-(major?61:32),p);
     fill(0xff2c3039);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2f);
-    c.drawCircle(cx,cy,radius-63,p);p.setStyle(Paint.Style.FILL);
+    c.drawCircle(cx,cy,radius-(major?63:34),p);p.setStyle(Paint.Style.FILL);
     if(major){
       label(c,value,cx,cy+14,57,WHITE,true,true);
       label(c,title,cx,cy+55,22,WHITE,true,true);
