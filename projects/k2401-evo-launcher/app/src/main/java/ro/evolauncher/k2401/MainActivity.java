@@ -133,8 +133,11 @@ public final class MainActivity extends Activity {
   }
   void placeMap(){
     if(stage==null||launcherSettings==null||shortcutDock==null)return;
-    // Never show OSM on Home; only a deliberate click on HARTĂ opens page 2.
-    boolean shown=page==2;
+    // The approved Race HUD FINAL embeds the SAME real Google/OSM MapView
+    // on Home; every old skin keeps its existing page-2-only map behavior.
+    boolean raceHome=page==0&&skins!=null&&
+      skins.selection()==RaceHudFinalTheme.ID;
+    boolean shown=page==2||raceHome;
     if(liveMap!=null)liveMap.setVisibility(shown?View.VISIBLE:View.GONE);
     if(mapRecoveryPlaceholder!=null)mapRecoveryPlaceholder.setVisibility(shown?View.VISIBLE:View.GONE);
     // Photograph-based Home uses its own Apps button; never cover the artwork.
@@ -145,9 +148,13 @@ public final class MainActivity extends Activity {
     if(w<=0||h<=0)return;
     float sx=w/1280f,sy=h/720f;
     if(shown){
+      int px=raceHome?RaceHudFinalTheme.MAP_X:158;
+      int py=raceHome?RaceHudFinalTheme.MAP_Y:169;
+      int pw=raceHome?RaceHudFinalTheme.MAP_W:1052;
+      int ph=raceHome?RaceHudFinalTheme.MAP_H:527;
       android.widget.FrameLayout.LayoutParams mp=new android.widget.FrameLayout.LayoutParams(
-        Math.round(1052*sx),Math.round(527*sy));
-      mp.leftMargin=Math.round(158*sx);mp.topMargin=Math.round(169*sy);
+        Math.round(pw*sx),Math.round(ph*sy));
+      mp.leftMargin=Math.round(px*sx);mp.topMargin=Math.round(py*sy);
       if(liveMap!=null)liveMap.setLayoutParams(mp);
       if(mapRecoveryPlaceholder!=null)mapRecoveryPlaceholder.setLayoutParams(mp);
     }
