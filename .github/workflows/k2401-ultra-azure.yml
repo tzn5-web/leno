@@ -119,11 +119,15 @@ jobs:
           echo 'AZURE_EXACT_APPROVED_A1_02_A3_SOURCE_GATE=PASS'
           grep -Fq 'rect(c,448,170,455,94,15,0xff071526)' "$BASE/UltraCockpitTheme.java"
           grep -Fq 'drawTopStatus(c); // STATUS CLOCK MUST ALWAYS BE THE FINAL PAINT PASS' "$BASE/UltraCockpitTheme.java"
-          grep -Fq 'versionCode 119' projects/k2401-evo-launcher/app/build.gradle
+          grep -Fq 'versionCode 120' projects/k2401-evo-launcher/app/build.gradle
           for src in approved-A1.webp approved-02.webp approved-A3.webp; do
             test -s "projects/k2401-evo-launcher/app/src/main/assets/skins/cinematic/$src"
           done
           grep -Fq 'quickNavigation(c,line);' "$BASE/CinematicTrioTheme.java"
+          grep -Fq 'raceHud.draw(c)' "$BASE/SkinEngine.java"
+          grep -Fq 'boolean shown=page==2||raceHome;' "$BASE/MainActivity.java"
+          test -s "$BASE/RaceHudFinalTheme.java"
+          echo 'AZURE_RACE_HUD_REAL_HOME_MAP_AND_6_APPS=PASS'
           grep -Fq 'K2401_EXACT_THREE_APPROVED_SOURCE_IMAGES=PASS' \
             projects/k2401-evo-launcher/scripts/generate-cinematic-4k.py
           echo 'AZURE_APPROVED_3_CINEMATIC_SOURCE_ART_AND_4_TABS=PASS'
