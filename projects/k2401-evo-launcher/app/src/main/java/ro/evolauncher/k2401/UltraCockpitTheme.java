@@ -13,6 +13,7 @@ import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.Rect;
+import android.graphics.RadialGradient;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.Typeface;
@@ -136,7 +137,17 @@ final class UltraCockpitTheme {
                      boolean large){
     // Opaque dynamic centre hides static artwork, preventing sample numbers.
     if(approvedWallpaper!=null){
-      color(0xff06101c);c.drawCircle(cx,cy,radius*(large?.66f:.67f),p);
+      // Feather only the artwork's stale printed values. The former opaque
+      // 0.66-radius circle had a hard edge through the original metallic
+      // dial's inner graduation marks (seen on the physical K2401 screen).
+      // The fade is fully transparent before the actual scale/tick ring.
+      color(0xff06101c);
+      float maskRadius=radius*.61f;
+      p.setShader(new RadialGradient(cx,cy,maskRadius,
+          new int[]{0xff06101c,0xff06101c,0x0006101c},
+          new float[]{0f,.75f,1f},Shader.TileMode.CLAMP));
+      c.drawCircle(cx,cy,maskRadius,p);
+      p.setShader(null);
       // Art's original outer chrome/neon ring is decoration only.
       // A separate INNER arc displays actual ECU progress.
       neon(c,cx,cy,radius-(large?29f:16f),minimum,maximum,current,mainColour);
