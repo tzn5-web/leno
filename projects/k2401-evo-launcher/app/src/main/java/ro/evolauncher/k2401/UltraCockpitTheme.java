@@ -148,9 +148,19 @@ final class UltraCockpitTheme {
           new float[]{0f,.75f,1f},Shader.TileMode.CLAMP));
       c.drawCircle(cx,cy,maskRadius,p);
       p.setShader(null);
-      // Art's original outer chrome/neon ring is decoration only.
-      // A separate INNER arc displays actual ECU progress.
-      neon(c,cx,cy,radius-(large?29f:16f),minimum,maximum,current,mainColour);
+      // PHOTO #5 ROOT CAUSE: the former always-visible INNER grey arc at
+      // radius-29 crossed the original printed 0..8 / 50..130 graduations.
+      // Never draw a second ring through the scale. Keep the exact artwork.
+      // Only a FINITE real ECU reading adds a narrow progress highlight
+      // aligned with the OUTER decorative rim, outside the printed numbers.
+      if(Float.isFinite(current)){
+        float rim=radius-(large?6f:4f);
+        color(mainColour);p.setStyle(Paint.Style.STROKE);
+        p.setStrokeCap(Paint.Cap.ROUND);p.setStrokeWidth(large?4f:3f);
+        c.drawArc(cx-rim,cy-rim,cx+rim,cy+rim,
+          133,273*ratio(current,minimum,maximum),false,p);
+        p.setStyle(Paint.Style.FILL);
+      }
       center(c,heading,cx,cy-(large?54:23),large?19:16,0xff90d8f4,true);
       center(c,value,cx,cy+(large?13:18),large?54:36,WHITE,true);
       center(c,unit,cx,cy+(large?46:39),large?19:14,0xffc0d7e6,false);
