@@ -359,7 +359,7 @@ jobs:
           target: google_apis
           arch: x86_64
           force-avd-creation: true
-          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -skin 720x1280
           disable-animations: true
           script: bash projects/k2401-evo-launcher/scripts/install-signed-smoke.sh
       - name: Upload signed APK for head-unit testing without Azure VM
