@@ -7,6 +7,25 @@ OUT=projects/k2401-evo-launcher/screenshots
 mkdir -p "$OUT"
 adb shell wm size 1280x720
 adb shell wm density 160
+# Earlier emulator smoke tests intentionally exercise crash recovery and
+# repeatedly force-stop the launcher. Re-enable the REAL map through its
+# existing native recovery action before testing skins 25/26, otherwise the
+# previous map_disabled preference yields a false-negative placeholder.
+# This affects ONLY the disposable emulator, never the physical head unit.
+adb shell am start -W -n "$APP/.SafeModeActivity" >/dev/null
+sleep 1
+adb shell uiautomator dump /sdcard/k2401-race-retry-map.xml >/dev/null
+adb pull /sdcard/k2401-race-retry-map.xml "$OUT/race-retry-map-ui.xml" >/dev/null
+python3 - <<'PY'
+import re,subprocess,xml.etree.ElementTree as ET
+nodes=ET.parse("projects/k2401-evo-launcher/screenshots/race-retry-map-ui.xml").findall(".//node")
+button=next(n for n in nodes if "Reîncearcă harta la următoarea pornire" in n.attrib.get("text",""))
+x1,y1,x2,y2=map(int,re.findall(r"[0-9]+",button.attrib["bounds"]))
+subprocess.check_call(["adb","shell","input","tap",str((x1+x2)//2),str((y1+y2)//2)])
+PY
+sleep 3
+adb shell pidof "$APP" >/dev/null
+echo 'K2401_RACE_HUD_REAL_MAP_RECOVERY_RESET=PASS'
 adb shell am force-stop "$APP"
 adb shell am start -W -n "$APP/.MainActivity" --ei k2401_skin_preview_ci 25 > "$OUT/race-hud-launch.txt"
 sleep 3
