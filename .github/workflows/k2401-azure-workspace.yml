@@ -1,11 +1,8 @@
 name: K2401 Azure Linux VM - immutable 21 UHD assets and audited Android build
+# Azure VM is billable. Never start it automatically for every UI/script
+# iteration; the K2401 signed and emulator tests use GitHub-hosted runners.
+# Azure VM tests are opt-in only via explicit workflow_dispatch.
 on:
-  push:
-    branches: [feature/k2401-evo-launcher]
-    paths:
-      - '.github/workflows/k2401-azure-workspace.yml'
-      - 'projects/k2401-evo-launcher/scripts/azure-k2401-workspace.sh'
-      - 'projects/k2401-evo-launcher/scripts/emulator-smoke.sh'
   workflow_dispatch:
 permissions:
   contents: read
