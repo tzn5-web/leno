@@ -93,8 +93,11 @@ with ZipFile("projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.
         removed=float(np.mean(np.abs(src_side-clean_side)))
         assert removed>25,(m["skin"],"Fake source gauge still baked into scene",removed)
         displayed=shots[22+k]
-        onscreen_error=float(np.mean(np.abs(
-            np.asarray(displayed.crop(focus),dtype=np.int16)-got)))
+        # Compare like-for-like luminance arrays. The signed screenshot
+        # is RGB (H,W,3), whereas the source-car structural target is
+        # grayscale (H,W); subtracting them raised a NumPy shape error.
+        on_luma=np.asarray(displayed.crop(focus).convert("L"),dtype=np.float32)
+        onscreen_error=float(np.mean(np.abs(on_luma-got)))
         # The user rejected the old bright-blue appearance. Neutral graphite
         # grading deliberately differs from the archived approved source.
         assert onscreen_error<125,(m["skin"],"Original subject no longer recognizable",onscreen_error)
