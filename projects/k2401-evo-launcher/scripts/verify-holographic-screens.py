@@ -22,7 +22,7 @@ ultra=(source/"UltraCockpitTheme.java").read_text()
 cinematic=(source/"CinematicTrioTheme.java").read_text()
 fx=(source/"GlassHudFx.java").read_text()
 assert "GlassHudFx.dial" in race and "GlassHudFx.dial" in cinematic
-assert "GlassHudFx.glassPanel" in fx
+assert "static void glassPanel(" in fx  # verify declaration, not a self-qualified call
 # User photo 5: preserve original blue-neon Ultra; repair only dial mask.
 assert "GlassHudFx.backdrop(c,21)" not in ultra
 assert "ultra-neon-2560x1440.webp" in ultra

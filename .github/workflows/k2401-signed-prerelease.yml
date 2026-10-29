@@ -366,6 +366,16 @@ jobs:
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -skin 720x1280
           disable-animations: true
           script: bash projects/k2401-evo-launcher/scripts/install-signed-smoke.sh
+      # A failed emulator visual gate must never publish an unverified APK.
+      # Preserve only screenshots so a failed gate can be diagnosed.
+      - name: Preserve Android 10 HUD screenshots on failed visual verification
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: K2401-HUD-FAILED-VISUAL-DIAGNOSTICS
+          path: k2401-glass-hud-signed-screens/
+          if-no-files-found: warn
+          retention-days: 7
       - name: Upload signed APK for head-unit testing without Azure VM
         uses: actions/upload-artifact@v4
         with:
