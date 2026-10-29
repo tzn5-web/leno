@@ -67,6 +67,8 @@ with tempfile.TemporaryDirectory() as temp:
     adb("shell","cp",tmp,path)
     adb("shell","chown",f"{uid}:{uid}",path)
     adb("shell","chmod","600",path)
+    # Preserve the Android app-data SELinux label after an emulator-only copy.
+    adb("shell","restorecon",path)
     adb("shell","rm",tmp)
     confirm=adb("shell","cat",path).stdout
     saved=ET.fromstring(confirm).find("./int[@name='selected_skin_v2']")
