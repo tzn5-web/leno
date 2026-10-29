@@ -3,6 +3,8 @@ package ro.evolauncher.k2401;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
+import android.graphics.ColorMatrix;
+import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
@@ -34,8 +36,8 @@ import java.util.Locale;
  */
 final class CinematicTrioTheme {
   static final int FIRST=22, LAST=24;
-  private static final int BLUE=0xff42ddff, ICE=0xffc8f8ff, WHITE=0xfff5faff;
-  private static final int DARK=0xff07101c, LT=0xff98b1c5;
+  private static final int BLUE=0xffd94751, ICE=0xffd8dce0, WHITE=0xfff4f0ee;
+  private static final int DARK=0xff080a0e, LT=0xffaeb6bf;
   private final MainActivity host;
   private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
   private final UltraCockpitTheme personalApps;
@@ -61,10 +63,7 @@ final class CinematicTrioTheme {
   }
   private void color(int c){p.setShader(null);p.setColor(c);p.setStrokeWidth(1);p.setStyle(Paint.Style.FILL);}
   private void panel(Canvas c,float x,float y,float w,float h,float radius,int fill,int line){
-    color(fill);c.drawRoundRect(x,y,x+w,y+h,radius,radius,p);
-    color(line);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2);
-    c.drawRoundRect(x+1,y+1,x+w-1,y+h-1,radius,radius,p);
-    p.setStyle(Paint.Style.FILL);
+    GlassHudFx.glassPanel(c,x,y,w,h,radius);
   }
   private void text(Canvas c,String s,float x,float y,float size,int col,boolean bold,boolean centre){
     color(col);p.setTextSize(size);p.setTypeface(Typeface.create("sans-serif",bold?Typeface.BOLD:Typeface.NORMAL));
@@ -81,15 +80,17 @@ final class CinematicTrioTheme {
   private static float cap(float f){return Math.max(0f,Math.min(1f,f));}
   private void background(Canvas c,int id){
     int i=id-FIRST;
-    color(DARK);c.drawColor(DARK);
+    GlassHudFx.backdrop(c,id);
     Bitmap im=scenes[i];
     if(im!=null&&!im.isRecycled()){
-      color(Color.WHITE);p.setFilterBitmap(true);
+      // Preserve original 4K assets but remove the harsh cyan/blue dominance.
+      // Art remains behind real live Canvas HUD controls, never their source.
+      ColorMatrix desaturated=new ColorMatrix();
+      desaturated.setSaturation(.08f);
+      color(Color.WHITE);p.setFilterBitmap(true);p.setAlpha(112);
+      p.setColorFilter(new ColorMatrixColorFilter(desaturated));
       c.drawBitmap(im,null,new Rect(0,0,1280,720),p);
-    }else{
-      // Only a backup if an Android OEM decoder fails. Never draw fake data.
-      color(0xff0a1b32);p.setShader(new LinearGradient(0,0,0,720,
-        0xff0a1830,0xff030811,Shader.TileMode.CLAMP));c.drawRect(0,0,1280,720,p);p.setShader(null);
+      p.setColorFilter(null);p.setAlpha(255);
     }
     // Scene art is CLEAN: it contains no pre-painted music/date/gauges/apps.
     // Earlier versions incorrectly overpainted solid black 146px TOP and
@@ -98,16 +99,16 @@ final class CinematicTrioTheme {
     // Soft scene scrims improve readability without erasing the 4K environment.
     color(Color.WHITE);
     p.setShader(new LinearGradient(0,0,0,160,
-      new int[]{0xd6040d1b,0x92040d1b,0x00040d1b},
+      new int[]{0xe8080a0e,0x98080a0e,0x00080a0e},
       new float[]{0f,.52f,1f},Shader.TileMode.CLAMP));
     c.drawRect(0,0,1280,160,p);p.setShader(null);
     color(Color.WHITE);
     p.setShader(new LinearGradient(0,520,0,720,
-      new int[]{0x00040d1b,0x7c040d1b,0xe0040d1b},
+      new int[]{0x00080a0e,0x98080a0e,0xe8080a0e},
       new float[]{0f,.53f,1f},Shader.TileMode.CLAMP));
     c.drawRect(0,520,1280,720,p);p.setShader(null);
-    color(0x38061223);c.drawRect(0,130,18,610,p);
-    color(0x38061223);c.drawRect(1262,130,1280,610,p);
+    color(0x3809090c);c.drawRect(0,130,18,610,p);
+    color(0x3809090c);c.drawRect(1262,130,1280,610,p);
   }
   private void bar(Canvas c,int id,int line){
     // Only ONE clock/date + one exterior temperature: always drawn over opaque
@@ -180,7 +181,7 @@ final class CinematicTrioTheme {
     if(cover!=null&&!cover.isRecycled()){
       color(WHITE);c.drawBitmap(cover,null,new Rect(272,22,333,82),p);
     }else{
-      panel(c,272,21,62,62,9,0xff102c4c,line);
+      panel(c,272,21,62,62,9,0x8813171e,line);
       text(c,"♪",302,64,37,BLUE,true,true);
     }
     if(artist==null||artist.isEmpty())artist="Alege playerul";
@@ -202,7 +203,7 @@ final class CinematicTrioTheme {
     text(c,key,x+w/2f,y+43,18,ICE,true,true);
     text(c,value,x+w/2f,y+96,38,WHITE,true,true);
     text(c,unit,x+w/2f,y+119,15,LT,false,true);
-    color(0xff1a344a);c.drawRoundRect(x+w/2f-28,y+150,x+w/2f+28,y+h-25,6,6,p);
+    color(0x66535b64);c.drawRoundRect(x+w/2f-28,y+150,x+w/2f+28,y+h-25,6,6,p);
     if(Float.isFinite(fraction)){
       int bottom=y+h-27;
       int top=y+152;
@@ -212,12 +213,12 @@ final class CinematicTrioTheme {
     }
     for(int t=0;t<=6;t++){
       int yy=y+153+(h-180)*t/6;
-      color(0xff5e8fa6);c.drawRect(x+w/2f+35,yy,x+w/2f+46,yy+2,p);
+      color(0xff9fa9b4);c.drawRect(x+w/2f+35,yy,x+w/2f+46,yy+2,p);
     }
   }
   private void boxGauge(Canvas c,int x,int y,int w,int h,String label,String value,
                         String unit,int edge){
-    panel(c,x,y,w,h,11,0xf6071929,edge);
+    panel(c,x,y,w,h,11,0xa010141b,edge);
     text(c,label,x+15,y+27,15,ICE,true,false);
     text(c,value,x+15,y+65,32,WHITE,true,false);
     // Right-aligned unit stays INSIDE the card, even for "x1000 rpm".
@@ -227,23 +228,10 @@ final class CinematicTrioTheme {
     p.setTextAlign(Paint.Align.LEFT);
   }
   private void circle(Canvas c,float cx,float cy,float r,String key,String value,
-                      String unit,float fraction,int edge){
-    color(0xff081626);c.drawCircle(cx,cy,r-12,p); // opaque: no old sample-gauge ghosts
-    color(0xff294259);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(15);
-    c.drawArc(cx-r,cy-r,cx+r,cy+r,132,276,false,p);
-    if(Float.isFinite(fraction)){
-      color(edge);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(16);
-      c.drawArc(cx-r,cy-r,cx+r,cy+r,132,276*cap(fraction),false,p);
-    }
-    // Always render a THIN neon ring, never a filled pie/disk.
-    color(0xff5f819e);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1.5f);
-    c.drawCircle(cx,cy,r-19,p);p.setStyle(Paint.Style.FILL);
-    for(int k=0;k<=12;k++){
-      double angle=Math.toRadians(132.0+276.0*k/12);
-      float xa=cx+(r-25)*(float)Math.cos(angle),ya=cy+(r-25)*(float)Math.sin(angle);
-      float xb=cx+(r-11)*(float)Math.cos(angle),yb=cy+(r-11)*(float)Math.sin(angle);
-      color(0xff9acde7);p.setStrokeWidth(2);c.drawLine(xa,ya,xb,yb,p);
-    }
+                       String unit,float fraction,int edge){
+    // The only illuminated arc represents a finite live ECU reading.
+    float live=Float.isFinite(fraction)?fraction:Float.NaN;
+    GlassHudFx.dial(c,cx,cy,r,live,0f,1f);
     text(c,key,cx,cy-46,19,ICE,true,true);
     text(c,value,cx,cy+18,53,WHITE,true,true);
     text(c,unit,cx,cy+52,17,LT,false,true);
@@ -252,9 +240,9 @@ final class CinematicTrioTheme {
   // the car, NOT two additional vertical pods or full-size dials.
   private void halfGauge(Canvas c,float cx,float cy,float radius,String label,
                          String value,float fraction,int edge){
-    color(0xd9081929);
+    color(0x9b10151c);
     c.drawRoundRect(cx-radius,cy-radius*.80f,cx+radius,cy+radius*.69f,20,20,p);
-    color(0xff26455f);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(8);
+    color(0x997e8995);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(8);
     c.drawArc(cx-radius,cy-radius,cx+radius,cy+radius,181,178,false,p);
     if(Float.isFinite(fraction)){
       color(edge);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(9);
@@ -272,7 +260,7 @@ final class CinematicTrioTheme {
   // entirely vector drawn; only actual OBD readings appear in the interior.
   private void framedCircle(Canvas c,float x,float y,float radius,
                             String key,String value,String unit,float fraction,int edge){
-    color(0xff1a5988);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2.5f);
+    color(0xffb7c0ca);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2.5f);
     Path shape=new Path();
     for(int i=0;i<8;i++){
       double a=Math.PI*2*(i/8.0)-Math.PI/8;
@@ -285,7 +273,7 @@ final class CinematicTrioTheme {
   }
   void draw(Canvas c,int id){
     if(id<FIRST||id>LAST)return;
-    int line=id==24?0xff78d7fa:0xff20bafc;
+    int line=id==24?0xffc7cbd0:0xffd94751;
     background(c,id);
     if(id==22){
       // A1 (cyber-tunnel): TWO towering side columns; STFT and LTFT are
@@ -296,11 +284,11 @@ final class CinematicTrioTheme {
         Float.isFinite(r.rpm)?String.format(Locale.US,"%.1f",r.rpm/1000f):"N/A",
         "x1000 rpm",r.rpm/8000f,line,0xff071b2f);
       vertical(c,1093,162,160,427,"TEMP APĂ",degrees(r.coolantC),
-        "",(r.coolantC-40)/90f,0xff5cceff,0xff071b2f);
+        "",(r.coolantC-40)/90f,0xffadb8c4,0xff071b2f);
       halfGauge(c,418,520,90,"STFT",labelValue(r.stft,true),
-        (r.stft+25f)/50f,0xff36d9ff);
+        (r.stft+25f)/50f,0xffd94751);
       halfGauge(c,862,520,90,"LTFT",labelValue(r.ltft,true),
-        (r.ltft+25f)/50f,0xffea458b);
+        (r.ltft+25f)/50f,0xffadb8c4);
     }else if(id==23){
       // 02: premium mountain hologram: two LARGE outer round dials and two
       // SMALL half arcs across the bottom. Car remains clear in the middle.
@@ -309,11 +297,11 @@ final class CinematicTrioTheme {
         String.format(Locale.US,"%.1f",r.rpm/1000f):"N/A","x1000 rpm",
         r.rpm/8000f,line);
       circle(c,1125,382,148,"TEMP APĂ",degrees(r.coolantC),"",
-        (r.coolantC-40f)/90f,0xff54dcff);
+        (r.coolantC-40f)/90f,0xffadb8c4);
       halfGauge(c,527,516,85,"STFT",labelValue(r.stft,true),
-        (r.stft+25f)/50f,0xff39ceff);
+        (r.stft+25f)/50f,0xffd94751);
       halfGauge(c,753,516,85,"LTFT",labelValue(r.ltft,true),
-        (r.ltft+25f)/50f,0xfffe5284);
+        (r.ltft+25f)/50f,0xffadb8c4);
     }else{
       // A3: FOUR round hexagonal native dials around the luminous showroom:
       // RPM/STFT on left, coolant/LTFT on right. No rectangular text-only
@@ -323,11 +311,11 @@ final class CinematicTrioTheme {
         String.format(Locale.US,"%.1f",r.rpm/1000f):"N/A",
         "x1000 rpm",r.rpm/8000f,line);
       framedCircle(c,160,470,86,"STFT",labelValue(r.stft,true),
-        "%",(r.stft+25f)/50f,0xff47d0ff);
+        "%",(r.stft+25f)/50f,0xffd94751);
       framedCircle(c,1120,258,124,"TEMP APĂ",degrees(r.coolantC),"",
-        (r.coolantC-40f)/90f,0xff54dcff);
+        (r.coolantC-40f)/90f,0xffadb8c4);
       framedCircle(c,1120,470,86,"LTFT",labelValue(r.ltft,true),
-        "%",(r.ltft+25f)/50f,0xfffa598f);
+        "%",(r.ltft+25f)/50f,0xffadb8c4);
     }
     music(c,line);
     bar(c,id,line);
