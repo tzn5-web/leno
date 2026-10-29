@@ -105,6 +105,14 @@ assert 'circle(c,371,382,78,"STFT"' in java
 assert 'circle(c,909,382,78,"LTFT"' in java
 assert 'panel(c,261,12,484,88,12,0xff081725,line)' in java
 assert 'panel(c,767,8,276,94,13,0xff081725,line)' in java
+assert 'private static final int QUICK_X=13, QUICK_Y=18, QUICK_W=56, QUICK_GAP=6, QUICK_H=76;' in java
+assert 'private static final int[] QUICK_ICON={5,4,2,1};' in java
+assert 'private static final String[] QUICK_TEXT={"SETUP","APPS","NAVI","MUZICĂ"};' in java
+assert 'if(quickNavigationTouch(x,y))return true;' in java
+assert 'quickNavigation(c,line);' in java
+assert "host.page=destination;" in java
+assert "host.showInstalledApps();return true;" in java
+print("K2401_FOUR_HEADER_QUICK_ACTIONS_AND_TOUCH_MAPPING=PASS")
 print("K2401_FOUR_OBD_APPROVED_GAUGE_GEOMETRY=PASS")
 print("K2401_ZERO_GHOST_APP_CLOCK_MUSIC_OVERLAP=PASS")
 print("K2401_02_GAUGE_ARC_NEVER_SOLID_DISK=PASS")
@@ -145,5 +153,34 @@ import xml.etree.ElementTree as E
 names=[n.get("text","") for n in E.parse("projects/k2401-evo-launcher/screenshots/cinematic-picker.xml").findall(".//node")]
 assert any("Aplicația 1" in v for v in names),names
 print("K2401_CINEMATIC_EMPTY_PLUS_SINGLE_TAP_PICKER=PASS")
+PY
+# Confirm every header shortcut reaches its native page in the REAL
+# emulator (not merely static text assertions). Compare main Canvas pixels.
+python3 - <<'PY'
+from PIL import Image,ImageChops,ImageStat
+from pathlib import Path
+import subprocess,time
+folder=Path("projects/k2401-evo-launcher/screenshots")
+APP="ro.evolauncher.k2401"
+routes=[("SETUP",41,5),("APPS",103,4),("NAVI",165,2),("MUSIC",227,1)]
+for label,x,target in routes:
+    subprocess.run(["adb","shell","am","force-stop",APP],check=True,stdout=subprocess.DEVNULL)
+    subprocess.run(["adb","shell","am","start","-W","-n",APP+"/.MainActivity",
+                    "--ei","k2401_skin_preview_ci","24"],check=True,stdout=subprocess.DEVNULL)
+    time.sleep(1.3)
+    def shot(file):
+        subprocess.run(["adb","shell","screencap","-p","/sdcard/"+file],check=True)
+        subprocess.run(["adb","pull","/sdcard/"+file,str(folder/file)],check=True,stdout=subprocess.DEVNULL)
+        return Image.open(folder/file).convert("RGB")
+    before=shot("quick-"+label+"-before.png")
+    subprocess.run(["adb","shell","input","tap",str(x),"54"],check=True)
+    time.sleep(1.4)
+    after=shot("quick-"+label+"-after.png")
+    assert after.size==(1280,720)
+    diff=ImageChops.difference(before.crop((260,130,1040,560)),
+                               after.crop((260,130,1040,560)))
+    change=sum(ImageStat.Stat(diff).mean)/3
+    assert change>5.0,(label,"Quick action did not open its native page",change)
+    print("K2401_QUICK_NAV_REAL_TAP=PASS",label,"page",target,"pixel_delta",round(change,2))
 PY
 echo 'K2401_A1_02_A3_CINEMATIC_4K_EMULATOR=PASS'
