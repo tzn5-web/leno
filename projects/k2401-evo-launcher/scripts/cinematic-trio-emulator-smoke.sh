@@ -122,9 +122,11 @@ assert 'framedCircle(c,1120,258,124,"TEMP APĂ"' in java
 assert 'framedCircle(c,1120,470,86,"LTFT"' in java
 assert 'panel(c,261,12,484,88,12,0xff081725,line)' in java
 app_java=Path("projects/k2401-evo-launcher/app/src/main/java/ro/evolauncher/k2401/UltraCockpitTheme.java").read_text()
-assert 'return isCinematicTrio()?278:SLOT_X;' in app_java
-assert 'return isCinematicTrio()?108:SLOT_W;' in app_java
-assert 'return isCinematicTrio()?94:SLOT_H;' in app_java
+assert 'isCinematicTrio()?278:SLOT_X;' in app_java
+assert 'isCinematicTrio()?108:SLOT_W;' in app_java
+assert 'isCinematicTrio()?94:SLOT_H;' in app_java
+assert 'isEvoRed()?120:isCinematicTrio()?278:SLOT_X;' in app_java
+assert 'isEvoRed()?155:isCinematicTrio()?108:SLOT_W;' in app_java
 print("K2401_SIX_WIDE_CINEMATIC_APP_TILES_AND_TOUCH=PASS")
 assert 'panel(c,767,8,276,94,13,0xff081725,line)' in java
 assert 'private static final int QUICK_X=13, QUICK_Y=18, QUICK_W=56, QUICK_GAP=6, QUICK_H=76;' in java
