@@ -188,6 +188,24 @@ capture() {
   adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' >> "$OUT/foreground-checks.txt" || true
   adb shell screencap -p "/sdcard/$name.png"
   adb pull "/sdcard/$name.png" "$OUT/$name.png"
+  if [[ "$name" == home ]]; then
+    # A prior real emulator frame was 890880 identical grey pixels despite
+    # a resumed MainActivity. Do not certify a blank launch as a valid Home.
+    # 4K decoding on slow K2401-class devices can require several frames.
+    for frame in 1 2 3 4 5 6; do
+      if python3 -c 'from PIL import Image,ImageStat; import sys; im=Image.open(sys.argv[1]).convert("L"); assert ImageStat.Stat(im).var[0]>150, "HOME_SOLID_GREY_OR_BLANK"' "$OUT/home.png"; then
+        echo "K2401_HOME_NONBLANK_FIRST_RENDER=PASS attempt=$frame"
+        break
+      fi
+      if [[ "$frame" == 6 ]]; then
+        echo "K2401_HOME_NONBLANK_FIRST_RENDER=FAIL" >&2
+        return 1
+      fi
+      sleep 2
+      adb shell screencap -p /sdcard/home.png
+      adb pull /sdcard/home.png "$OUT/home.png" >/dev/null
+    done
+  fi
 }
 capture home 120
 # New Home contains 21 theme concepts, not an embedded map.
