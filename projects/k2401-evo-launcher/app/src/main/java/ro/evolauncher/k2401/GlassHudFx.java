@@ -81,12 +81,25 @@ final class GlassHudFx {
     stroke(c,0,108,1280,108,0x64c6cbd1,1.1f);
     stroke(c,400,112,880,112,0x6bd9414b,1.6f);
     stroke(c,188,707,1092,707,0x3baeb5be,1f);
-    if(variant==21||variant==27){
-      // Recessed 3D glass pedestal on the two dedicated holographic themes.
-      // No mock map or fake ECU values are rendered.
-      glassPanel(c,424,194,432,304,18);
-      projection(c);
+    if(variant==27){
+      // A floating vehicle must not sit inside a flat rectangular photo tile.
+      hologramPedestal(c);
     }
+  }
+  static void hologramPedestal(Canvas c){
+    // Optical base under the REAL alpha-cutout Mitsubishi, not a fake map.
+    reset(WHITE);
+    p.setShader(new RadialGradient(640,430,240,
+      new int[]{0x36d2d9e0,0x1cd9414b,0x00000000},
+      new float[]{0f,.62f,1f},Shader.TileMode.CLAMP));
+    c.drawOval(425,389,855,479,p);p.setShader(null);
+    for(int i=0;i<5;i++){
+      float y=445+i*6f;
+      stroke(c,466+i*10,y,814-i*10,y,
+        i%2==0?0x46d7dde3:0x36d9414b,1.1f);
+    }
+    stroke(c,482,465,798,465,0x75e0e4e8,1.2f);
+    stroke(c,526,474,754,474,0x59d9414b,1.1f);
   }
   static void glassPanel(Canvas c,float x,float y,float w,float h,float radius){
     reset(WHITE);
