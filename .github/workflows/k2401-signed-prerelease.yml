@@ -341,16 +341,42 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging \
             K2401-EVO-ULTRA-INSTALL-SEPARAT.apk | grep -Fq "package: name='ro.evolauncher.k2401.ultra'"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging \
-            K2401-EVO-ULTRA-INSTALL-SEPARAT.apk | grep -Fq "versionCode='123'"
+            K2401-EVO-ULTRA-INSTALL-SEPARAT.apk | grep -Fq "versionCode='124'"
           # Recreate the exact original production APK, never accidentally
           # publish the parallel APK as an in-place update.
           cp K2401-EVO-UPDATE-SIGNED.apk "$APK"
+          # The DEFAULT download is exactly the original signed production APK.
+          # Android's PackageInstaller selects fresh install or in-place update.
+          cp "$APK" K2401-EVO-UNIVERSAL-v119.apk
+          cmp -s "$APK" K2401-EVO-UNIVERSAL-v119.apk
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" |
             grep -Fq "package: name='ro.evolauncher.k2401'"
           # Distinct build-time debug certificate lets the emulator reproduce
           # users' INSTALL_FAILED_UPDATE_INCOMPATIBLE without touching real data.
           K2401_REQUIRE_SR=YES gradle --no-daemon -p projects/k2401-evo-launcher :app:assembleDebug
           echo 'K2401_SIGNED_PARALLEL_INSTALL_PACKAGE=PASS'
+      - name: Fetch previous signed v118 for universal install test
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          DIR=/tmp/k2401-universal-baseline
+          mkdir -p "$DIR"
+          gh release download k2401-evo-e5f6cf780011 --repo "$GITHUB_REPOSITORY" \
+            --pattern 'K2401-EVO-Android10-SIGNED.apk' --dir "$DIR"
+          OLD="$DIR/K2401-EVO-Android10-SIGNED.apk"
+          test -s "$OLD"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$OLD" | \
+            grep -Fq "package: name='ro.evolauncher.k2401'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$OLD" | \
+            grep -Fq "versionCode='123'"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify \
+            --min-sdk-version 29 --print-certs "$OLD" | \
+            grep -Fq "Signer #1 certificate SHA-256 digest: $EXPECTED_CERT_SHA256"
+          test -s K2401-EVO-UNIVERSAL-v119.apk
+          cmp -s K2401-EVO-UNIVERSAL-v119.apk K2401-EVO-UPDATE-SIGNED.apk
+          echo "K2401_PREVIOUS_RELEASE_AND_NEW_UNIVERSAL_IDENTITY=PASS"
       - name: Enable KVM for signed installation emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -365,7 +391,7 @@ jobs:
           force-avd-creation: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -skin 720x1280
           disable-animations: true
-          script: bash projects/k2401-evo-launcher/scripts/install-signed-smoke.sh
+          script: bash projects/k2401-evo-launcher/scripts/verify-universal-install.sh && bash projects/k2401-evo-launcher/scripts/install-signed-smoke.sh
       # A failed emulator visual gate must never publish an unverified APK.
       # Preserve only screenshots so a failed gate can be diagnosed.
       - name: Preserve Android 10 HUD screenshots on failed visual verification
@@ -376,6 +402,11 @@ jobs:
           path: k2401-glass-hud-signed-screens/
           if-no-files-found: warn
           retention-days: 7
+      - name: Record verified universal fresh-install and upgrade checks
+        run: |
+          echo "ONE_APK_FRESH_INSTALL_OR_UPDATE=PASS" >> k2401-signed-prerelease-report.txt
+          echo "SAME_APP_ID_AND_SIGNER_PRESERVES_DATA_ON_UPDATE=PASS" >> k2401-signed-prerelease-report.txt
+          echo "UNINSTALL_REINSTALL_CLEARS_APP_DATA_BY_ANDROID_DESIGN=EXPECTED" >> k2401-signed-prerelease-report.txt
       - name: Upload signed APK for head-unit testing without Azure VM
         uses: actions/upload-artifact@v4
         with:
@@ -383,6 +414,7 @@ jobs:
           path: |
             ${{ env.APK }}
             K2401-EVO-UPDATE-SIGNED.apk
+            K2401-EVO-UNIVERSAL-v119.apk
             K2401-EVO-ULTRA-INSTALL-SEPARAT.apk
             k2401-signed-prerelease-report.txt
             k2401-evo-red-v118-emulator.png
@@ -401,15 +433,15 @@ jobs:
           test -s "$ASSET"
           zip -q -r K2401-GLASS-HUD-21-28-SIGNED-SCREENSHOTS.zip k2401-glass-hud-signed-screens
           test -s K2401-GLASS-HUD-21-28-SIGNED-SCREENSHOTS.zip
-          if gh release create "$TAG" "$ASSET" K2401-EVO-ULTRA-INSTALL-SEPARAT.apk \
+          if gh release create "$TAG" "$ASSET" K2401-EVO-UNIVERSAL-v119.apk K2401-EVO-ULTRA-INSTALL-SEPARAT.apk \
             k2401-signed-prerelease-report.txt \
             K2401-GLASS-HUD-21-28-SIGNED-SCREENSHOTS.zip \
             k2401-glass-hud-signed-screens/K2401-HOLOGRAPHIC-21-28-ANDROID10.jpg \
             k2401-glass-hud-signed-screens/holographic-audit.json \
             --target "$GITHUB_SHA" --prerelease --latest=false \
-            --title "K2401 EVO Android 10 v118 glass HUD ($TAG)" \
-            --notes "v118 (versionCode 123): preserves all 21 original skins (IDs 0-20) AND the user's blue-neon Ultra skin 21, repairing only its inner grey ring crossing the gauge graduations; redesigns opt-in skins 22-28 in graphite/silver/fine-red translucent glass HUD. Includes original 3840x2160 cinematic assets, four genuine ECU PIDs, live MediaSession, real date/time, OBD ambient or N/A, six editable shortcuts and native actions. Eight DISTINCT signed Android 10 screenshots are verified by actual persisted skin selection on a disposable emulator; pixel audit and original frames are attached for human review. Visual fidelity to the user's photos and physical K2401/ELM327 behavior are NOT verified. No Azure VM used."; then
-            echo "DIRECT_APK_URL=https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$ASSET" >> "$GITHUB_STEP_SUMMARY"
+            --title "K2401 EVO Android 10 v119 universal install + glass HUD ($TAG)" \
+            --notes "v119 (versionCode 124): one production APK installs from zero or updates the same package in place preserving data, with same permanent Key Vault signing certificate. Clean reinstall after uninstall restores built-in skins but cannot restore deleted private settings.  preserves all 21 original skins (IDs 0-20) AND the user's blue-neon Ultra skin 21, repairing only its inner grey ring crossing the gauge graduations; redesigns opt-in skins 22-28 in graphite/silver/fine-red translucent glass HUD. Includes original 3840x2160 cinematic assets, four genuine ECU PIDs, live MediaSession, real date/time, OBD ambient or N/A, six editable shortcuts and native actions. Eight DISTINCT signed Android 10 screenshots are verified by actual persisted skin selection on a disposable emulator; pixel audit and original frames are attached for human review. Visual fidelity to the user's photos and physical K2401/ELM327 behavior are NOT verified. No Azure VM used."; then
+            echo "UNIVERSAL_APK_URL=https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/K2401-EVO-UNIVERSAL-v119.apk" >> "$GITHUB_STEP_SUMMARY"
             echo 'K2401_DIRECT_APK_GITHUB_RELEASE=PASS'
           else
             # Some GitHub App / workflow installations deny release creation
