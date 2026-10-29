@@ -296,8 +296,10 @@ final class RaceHudFinalTheme {
       c.drawColor(0xff05070c);
       fill(0xff11151c);c.drawRect(445,212,835,420,p);
     }
-    // Central 3D art sits BEHIND a restrained translucent projection pane.
+    // Original 4K carbon-metal scene remains under a real layered glass
+    // projection; no flat car outline is promoted as a live ECU value.
     GlassHudFx.glassPanel(c,438,214,404,228,16);
+    GlassHudFx.projection(c);
     // The scenic layer has no baked HUD, speed, media or ECU readings.
     ObdReader.Reading r=host.obd==null?ObdReader.Reading.empty():host.obd.current();
     evoRing(c,228,344,196,"RPM",number(r.rpm,0,false),"rpm",r.rpm,0,8000,true);
