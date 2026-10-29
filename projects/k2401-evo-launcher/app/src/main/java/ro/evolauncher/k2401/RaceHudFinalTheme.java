@@ -37,6 +37,7 @@ final class RaceHudFinalTheme {
   private final MainActivity host;
   private final UltraCockpitTheme slots;
   private final Bitmap evoRedScene;
+  private final Bitmap holoPhoto;
   private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
   RaceHudFinalTheme(MainActivity activity,UltraCockpitTheme userSlots){
     host=activity;slots=userSlots;
@@ -48,6 +49,29 @@ final class RaceHudFinalTheme {
       scene=BitmapFactory.decodeStream(source,null,opts);
     }catch(IOException|RuntimeException ignored){}
     evoRedScene=scene;
+    Bitmap car=null;
+    try(InputStream source=host.getAssets().open(
+        "skins/cinematic/hologram-mitsubishi-3840x2160.webp")){
+      BitmapFactory.Options opts=new BitmapFactory.Options();
+      opts.inPreferredConfig=Bitmap.Config.ARGB_8888;
+      opts.inSampleSize=2; // 4K source, economical full-screen photo layer
+      car=BitmapFactory.decodeStream(source,null,opts);
+    }catch(IOException|RuntimeException ignored){}
+    holoPhoto=car;
+  }
+  void dispose(){
+    if(evoRedScene!=null&&!evoRedScene.isRecycled())evoRedScene.recycle();
+    if(holoPhoto!=null&&!holoPhoto.isRecycled())holoPhoto.recycle();
+  }
+  private void drawHologramPhoto(Canvas c,int alpha){
+    if(holoPhoto==null||holoPhoto.isRecycled())return;
+    fill(WHITE);
+    p.setAlpha(alpha);
+    p.setFilterBitmap(true);
+    // Only a transparent cutout of the user-approved Mitsubishi appears.
+    // No source screenshot rings, frozen values or static application tiles.
+    c.drawBitmap(holoPhoto,null,new Rect(0,0,1280,720),p);
+    p.setAlpha(255);
   }
   private void fill(int color){p.setShader(null);p.setColor(color);
     p.setStyle(Paint.Style.FILL);p.setStrokeWidth(1);}
@@ -300,6 +324,7 @@ final class RaceHudFinalTheme {
     // projection; no flat car outline is promoted as a live ECU value.
     GlassHudFx.glassPanel(c,438,214,404,228,16);
     GlassHudFx.projection(c);
+    drawHologramPhoto(c,206);
     // The scenic layer has no baked HUD, speed, media or ECU readings.
     ObdReader.Reading r=host.obd==null?ObdReader.Reading.empty():host.obd.current();
     evoRing(c,228,344,196,"RPM",number(r.rpm,0,false),"rpm",r.rpm,0,8000,true);
@@ -313,7 +338,8 @@ final class RaceHudFinalTheme {
   void draw(Canvas c){
     if(host.skins!=null&&host.skins.selection()==EVO_RED_ID){approvedRed(c);return;}
     boolean holo=host.skins!=null&&host.skins.selection()==HOLO_ID;
-    if(holo)holoBackground(c);else wings(c);
+    if(holo){holoBackground(c);drawHologramPhoto(c,222);}
+    else wings(c);
     // Only skins 25/26 reserve this surface for the ACTUAL interactive map.
     // Skin 27 has a native 3D holographic projection, not a blank fake map.
     if(!holo){
