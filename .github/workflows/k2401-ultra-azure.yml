@@ -126,7 +126,11 @@ jobs:
           grep -Fq 'quickNavigation(c,line);' "$BASE/CinematicTrioTheme.java"
           grep -Fq 'raceHud.draw(c)' "$BASE/SkinEngine.java"
           grep -Fq 'boolean shown=page==2||raceHome;' "$BASE/MainActivity.java"
+          grep -Fq 'RaceHudFinalTheme.MAP_W' "$BASE/MainActivity.java"
+          grep -Fq 'slots.drawUserSlots(c)' "$BASE/RaceHudFinalTheme.java"
+          grep -Fq 'private static final int[]' "$BASE/CinematicTrioTheme.java"
           test -s "$BASE/RaceHudFinalTheme.java"
+          # Source must compile, not just pass superficial string-based gates.
           echo 'AZURE_RACE_HUD_REAL_HOME_MAP_AND_6_APPS=PASS'
           grep -Fq 'K2401_EXACT_THREE_APPROVED_SOURCE_IMAGES=PASS' \
             projects/k2401-evo-launcher/scripts/generate-cinematic-4k.py
