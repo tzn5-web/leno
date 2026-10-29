@@ -1,5 +1,7 @@
 package ro.evolauncher.k2401;
 
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
@@ -12,6 +14,8 @@ import android.media.MediaMetadata;
 import android.media.session.MediaController;
 import android.media.session.PlaybackState;
 import android.provider.Settings;
+import java.io.IOException;
+import java.io.InputStream;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
@@ -32,9 +36,18 @@ final class RaceHudFinalTheme {
       RED=0xffea2845, LIT=0xfff85d64, DARK=0xff06090f;
   private final MainActivity host;
   private final UltraCockpitTheme slots;
+  private final Bitmap evoRedScene;
   private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
   RaceHudFinalTheme(MainActivity activity,UltraCockpitTheme userSlots){
     host=activity;slots=userSlots;
+    Bitmap scene=null;
+    try(InputStream source=host.getAssets().open("skins/approved/evo-red-scene-3840x2160.webp")){
+      BitmapFactory.Options opts=new BitmapFactory.Options();
+      opts.inPreferredConfig=Bitmap.Config.RGB_565;
+      opts.inSampleSize=2;
+      scene=BitmapFactory.decodeStream(source,null,opts);
+    }catch(IOException|RuntimeException ignored){}
+    evoRedScene=scene;
   }
   private void fill(int color){p.setShader(null);p.setColor(color);
     p.setStyle(Paint.Style.FILL);p.setStrokeWidth(1);}
@@ -247,29 +260,101 @@ final class RaceHudFinalTheme {
     segment(c,385,109,895,109,RED,2);
     plate(c,416,180,448,322,0xffd5dce5,0xff101721);
   }
-  private void approvedRed(Canvas c){
-    c.drawColor(0xff040508);
-    fill(0xff0b0d12);c.drawRect(0,0,1280,720,p);
-    for(int i=0;i<2;i++){
-      int x=i==0?0:970;
-      fill(0xff12141b);c.drawRect(x,111,x+310,583,p);
-      segment(c,x,130,x+310,130,RED,3);
-      segment(c,x,576,x+310,576,RED,3);
+  private void evoRing(Canvas c,int cx,int cy,int radius,String title,
+      String value,String unit,float raw,float min,float max,boolean major){
+    fill(0xff07080c);c.drawCircle(cx,cy,radius-16,p);
+    fill(SILVER);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(8f);
+    p.setShader(new LinearGradient(cx-radius,cy-radius,cx+radius,cy+radius,
+      new int[]{0xffe4e8ed,0xff414751,0xffd2d7df,0xff292f39,0xffd7dce3},
+      null,Shader.TileMode.CLAMP));
+    c.drawCircle(cx,cy,radius,p);p.setShader(null);
+    fill(0xff272a31);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(9f);
+    c.drawCircle(cx,cy,radius-10,p);
+    fill(0xffb4b8c0);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2f);
+    c.drawCircle(cx,cy,radius-25,p);
+    fill(0xff32090f);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(12f);
+    c.drawArc(cx-radius+20,cy-radius+20,cx+radius-20,cy+radius-20,
+      135,270,false,p);
+    if(Float.isFinite(raw)){
+      float ratio=Math.max(0f,Math.min(1f,(raw-min)/(max-min)));
+      fill(RED);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(11f);
+      c.drawArc(cx-radius+20,cy-radius+20,cx+radius-20,cy+radius-20,
+        135,270f*ratio,false,p);
     }
-    // Four live OBD instruments only: no fabricated speed, voltage or climate.
+    p.setStyle(Paint.Style.FILL);
+    for(int i=0;i<=40;i++){
+      double angle=Math.toRadians(135+i*270d/40d);
+      float outer=radius-30f,inner=outer-(i%5==0?15f:7f);
+      segment(c,cx+(float)Math.cos(angle)*inner,cy+(float)Math.sin(angle)*inner,
+        cx+(float)Math.cos(angle)*outer,cy+(float)Math.sin(angle)*outer,
+        i>31?RED:WHITE,i%5==0?2.2f:1.1f);
+    }
+    fill(0xff11141b);c.drawCircle(cx,cy,radius-61,p);
+    fill(0xff2c3039);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2f);
+    c.drawCircle(cx,cy,radius-63,p);p.setStyle(Paint.Style.FILL);
+    if(major){
+      label(c,value,cx,cy+14,57,WHITE,true,true);
+      label(c,title,cx,cy+55,22,WHITE,true,true);
+      label(c,unit,cx,cy+79,16,SILVER,false,true);
+    }else{
+      label(c,value,cx,cy+9,27,WHITE,true,true);
+      label(c,unit,cx,cy+30,13,SILVER,false,true);
+      label(c,title,cx,cy+radius+21,17,WHITE,true,true);
+    }
+  }
+  private void approvedTop(Canvas c){
+    plate(c,8,5,1264,89,0xff7f8793,0xee07090d);
+    MediaController media=host.media;
+    String song="Nicio redare",artist="";
+    Bitmap album=null;
+    if(media!=null&&media.getMetadata()!=null){
+      MediaMetadata meta=media.getMetadata();
+      CharSequence title=meta.getText(MediaMetadata.METADATA_KEY_TITLE);
+      CharSequence name=meta.getText(MediaMetadata.METADATA_KEY_ARTIST);
+      if(title!=null&&!title.toString().trim().isEmpty())song=title.toString();
+      if(name!=null)artist=name.toString();
+      album=meta.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
+      if(album==null)album=meta.getBitmap(MediaMetadata.METADATA_KEY_ART);
+    }
+    if(album!=null&&!album.isRecycled()){
+      fill(WHITE);c.drawBitmap(album,null,new Rect(240,17,298,78),p);
+    }else{
+      plate(c,240,17,58,61,RED,0xff11151c);
+      label(c,"♪",269,58,34,WHITE,true,true);
+    }
+    label(c,shorten(song,23),312,43,19,WHITE,true,false);
+    if(!artist.isEmpty())label(c,shorten(artist,27),312,69,14,SILVER,false,false);
+    boolean playing=media!=null&&media.getPlaybackState()!=null&&
+      media.getPlaybackState().getState()==PlaybackState.STATE_PLAYING;
+    MediaVectorIcons.draw(c,583,49,0,WHITE);
+    MediaVectorIcons.draw(c,653,49,playing?3:1,RED);
+    MediaVectorIcons.draw(c,723,49,2,WHITE);
+    segment(c,315,80,526,80,RED,2);
+    Date now=new Date();
+    label(c,new SimpleDateFormat("EEE, d MMM yyyy",new Locale("ro","RO")).format(now),
+      640,122,18,SILVER,false,true);
+    label(c,new SimpleDateFormat("HH:mm",Locale.getDefault()).format(now),
+      640,166,45,WHITE,true,true);
     ObdReader.Reading r=host.obd==null?ObdReader.Reading.empty():host.obd.current();
-    gauge(c,218,348,"RPM",number(r.rpm,0,false),"rpm",r.rpm,0,8000);
-    gauge(c,1062,348,"TEMP APĂ",number(r.coolantC,0,false),"°C",r.coolantC,40,130);
-    trim(c,423,"STFT",r.stft);
-    trim(c,642,"LTFT",r.ltft);
-    // Middle display remains free of invented telemetry or decorative app tiles.
-    plate(c,432,211,416,292,0xffa9b5c3,0xff080b10);
-    label(c,"MITSUBISHI",640,330,20,SILVER,true,true);
-    label(c,"EVOLUTION",640,365,33,WHITE,true,true);
-    segment(c,482,393,798,393,RED,3);
-    // Native editable shortcuts are rendered by the existing slot engine.
-    top(c);
+    label(c,"EXT "+(Float.isFinite(r.ambientC)?number(r.ambientC,0,false)+"°C":"N/A"),
+      640,192,17,WHITE,false,true);
+  }
+  private void approvedRed(Canvas c){
+    if(evoRedScene!=null&&!evoRedScene.isRecycled()){
+      fill(WHITE);c.drawBitmap(evoRedScene,null,new Rect(0,0,1280,720),p);
+    }else{
+      c.drawColor(0xff05070c);
+      fill(0xff11151c);c.drawRect(445,212,835,420,p);
+    }
+    // The scenic layer has no baked HUD, speed, media or ECU readings.
+    ObdReader.Reading r=host.obd==null?ObdReader.Reading.empty():host.obd.current();
+    evoRing(c,228,344,196,"RPM",number(r.rpm,0,false),"rpm",r.rpm,0,8000,true);
+    evoRing(c,1052,344,196,"TEMP APĂ",number(r.coolantC,0,false),
+      "°C",r.coolantC,40,130,true);
+    evoRing(c,537,476,77,"STFT",number(r.stft,1,true),"%",r.stft,-25,25,false);
+    evoRing(c,743,476,77,"LTFT",number(r.ltft,1,true),"%",r.ltft,-25,25,false);
     slots.drawUserSlots(c);
+    approvedTop(c);
   }
   void draw(Canvas c){
     if(host.skins!=null&&host.skins.selection()==EVO_RED_ID){approvedRed(c);return;}
@@ -298,6 +383,18 @@ final class RaceHudFinalTheme {
     slots.drawUserSlots(c);
   }
   boolean touch(float x,float y){
+    if(host.skins!=null&&host.skins.selection()==EVO_RED_ID){
+      if(y<=96){
+        if(x>=230&&x<550){host.choosePlayer();return true;}
+        if(x>=550&&x<618){host.mediaAction(0);return true;}
+        if(x>=618&&x<689){host.mediaAction(1);return true;}
+        if(x>=689&&x<760){host.mediaAction(2);return true;}
+      }
+      if(y>=145&&y<=545&&(x<436||x>844)){
+        host.showObdStatus();return true;
+      }
+      return false;
+    }
     if(y>=11&&y<=88){
       if(x>=212&&x<285){host.page=5;}
       else if(x>=292&&x<365){host.showInstalledApps();return true;}
