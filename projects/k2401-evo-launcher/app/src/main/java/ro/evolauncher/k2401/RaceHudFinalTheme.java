@@ -130,7 +130,7 @@ final class RaceHudFinalTheme {
   }
   private static String shorten(String s,int max){
     if(s==null)return "";
-    return s.length()<=max?s.substring(0,max-1)+"…";
+    return s.length()<=max?s:s.substring(0,max-1)+"…";
   }
   private void top(Canvas c){
     plate(c,9,8,193,85,SILVER,0xff070b11);
