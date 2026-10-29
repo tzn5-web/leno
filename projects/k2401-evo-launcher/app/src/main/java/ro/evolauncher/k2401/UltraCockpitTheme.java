@@ -55,11 +55,14 @@ final class UltraCockpitTheme {
       ||id==RaceHudFinalTheme.ID||id==RaceHudFinalTheme.ANGULAR_ID
       ||id==RaceHudFinalTheme.EVO_RED_ID;
   }
-  private int sx(){return isCinematicTrio()?278:SLOT_X;}
-  private int sy(){return isCinematicTrio()?603:SLOT_Y;}
-  private int sw(){return isCinematicTrio()?108:SLOT_W;}
-  private int sh(){return isCinematicTrio()?94:SLOT_H;}
-  private int sg(){return isCinematicTrio()?16:SLOT_GAP;}
+  private boolean isEvoRed(){
+    return host.skins!=null&&host.skins.selection()==RaceHudFinalTheme.EVO_RED_ID;
+  }
+  private int sx(){return isEvoRed()?120:isCinematicTrio()?278:SLOT_X;}
+  private int sy(){return isEvoRed()?603:isCinematicTrio()?603:SLOT_Y;}
+  private int sw(){return isEvoRed()?155:isCinematicTrio()?108:SLOT_W;}
+  private int sh(){return isEvoRed()?94:isCinematicTrio()?94:SLOT_H;}
+  private int sg(){return isEvoRed()?22:isCinematicTrio()?16:SLOT_GAP;}
   private final MainActivity host;
   private final SharedPreferences prefs;
   private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
