@@ -27,6 +27,12 @@ adb install -r projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug
 # runs even with -no-snapshot. Reset only this emulator's test application,
 # never the physical user's K2401 device or any connected handset.
 adb shell pm clear "$APP" >/dev/null
+# Android 10 can present a translucent system HOME chooser on the first
+# screenshot (observed as a completely grey 1280x720 frame). Set the
+# disposable emulator's default HOME explicitly; never change the user's
+# real head-unit launcher or clear its data.
+adb shell cmd package set-home-activity --user 0 "$APP/.MainActivity" >/dev/null
+echo "K2401_EMULATOR_DEFAULT_HOME_ASSIGNED=PASS"
 echo "K2401_EMULATOR_ISOLATED_FIRST_INSTALL=PASS"
 # Real devices request location permission at runtime; emulator smoke tests
 # grant it explicitly to avoid a permission dialog obscuring the six screens.
