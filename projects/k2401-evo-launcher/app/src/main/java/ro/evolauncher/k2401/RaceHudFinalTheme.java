@@ -25,7 +25,7 @@ import java.util.Locale;
  * OSM map as a fallback. It is NOT a pretend Google Maps screenshot.
  */
 final class RaceHudFinalTheme {
-  static final int ID=25, ANGULAR_ID=26;
+  static final int ID=25, ANGULAR_ID=26, HOLO_ID=27;
   // ID 25 preserves approved circular Carbon Red; ID 26 uses separate angular wings.
   static final int MAP_X=432,MAP_Y=196,MAP_W=416,MAP_H=291;
   private static final int WHITE=0xfff5f7fc, SILVER=0xffa9b5c3,
@@ -228,10 +228,28 @@ final class RaceHudFinalTheme {
     }catch(RuntimeException ignored){}
     label(c,"BT",1168,40,18,bt?WHITE:0xff606a78,true,false);
     label(c,"Wi-Fi",1204,40,16,wifi?WHITE:0xff606a78,true,false);
-    label(c,host.skins!=null&&host.skins.selection()==ANGULAR_ID?"WINGS":"FINAL",1183,69,13,RED,true,false);
+    label(c,host.skins!=null&&host.skins.selection()==HOLO_ID?"HOLO":host.skins.selection()==ANGULAR_ID?"WINGS":"FINAL",1183,69,13,RED,true,false);
+  }
+  private void holoBackground(Canvas c){
+    c.drawColor(0xff05080e);
+    fill(0xff0b111a);c.drawRect(0,0,1280,720,p);
+    for(int side=0;side<2;side++){
+      float cx=side==0?192:1088;
+      fill(0xffaebac9);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2.4f);
+      c.drawCircle(cx,348,176,p);
+      fill(0xffed304a);p.setStrokeWidth(5f);
+      c.drawArc(cx-184,164,cx+184,532,205,125,false,p);
+      fill(0xff667788);p.setStrokeWidth(1.2f);
+      c.drawCircle(cx,348,143,p);
+      p.setStyle(Paint.Style.FILL);
+    }
+    segment(c,0,100,1280,100,0xffd4dce5,2);
+    segment(c,385,109,895,109,RED,2);
+    plate(c,416,180,448,322,0xffd5dce5,0xff101721);
   }
   void draw(Canvas c){
-    wings(c);
+    boolean holo=host.skins!=null&&host.skins.selection()==HOLO_ID;
+    if(holo)holoBackground(c);else wings(c);
     // This unobstructed rectangle is occupied by the ACTUAL interactive map.
     plate(c,423,187,434,310,WHITE,0xff0d1118);
     fill(0xff111a23);c.drawRect(MAP_X,MAP_Y,MAP_X+MAP_W,MAP_Y+MAP_H,p);
