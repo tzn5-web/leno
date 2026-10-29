@@ -46,7 +46,7 @@ final class UltraCockpitTheme {
   private static final int WHITE=0xffecf7ff, CYAN=0xff27d5ff, RED=0xffff315c;
   private static final int BG=0xff050b16;
   private static final int SLOT_COUNT=6;
-  private static final int SLOT_X=427,SLOT_Y=609,SLOT_W=67,SLOT_H=71,SLOT_GAP=7;
+  private static final int SLOT_X=310,SLOT_Y=603,SLOT_W=100,SLOT_H=88,SLOT_GAP=12;
   // Only A1/02/A3: six wider shortcut tiles matching approved 16:9 footer.
   // Original ULTRA and 21 legacy themes preserve their existing positions.
   private boolean isCinematicTrio(){
@@ -317,7 +317,7 @@ final class UltraCockpitTheme {
   }
   private void drawSlots(Canvas c){
     int w=sw(),h=sh(),spacing=sg(),y=sy();
-    boolean wide=isCinematicTrio();
+    boolean wide=isCinematicTrio()||(host.skins!=null&&host.skins.selection()==21);
     for(int i=0;i<SLOT_COUNT;i++){
       int x=sx()+i*(w+spacing);
       // The user's original blue-neon ULTRA skin (index 21) must remain
@@ -339,13 +339,14 @@ final class UltraCockpitTheme {
         catch(PackageManager.NameNotFoundException ex){slots[i]="";center(c,"+",x+w/2f,y+(wide?60:46),wide?42:36,WHITE,true);continue;}
       }
       Drawable icon=icons[i];
-      icon.setBounds(x+(wide?32:17),y+8,x+w-(wide?32:17),y+(wide?58:41));
+      int iconInset=(host.skins!=null&&host.skins.selection()==21)?22:(wide?32:17);
+      icon.setBounds(x+iconInset,y+8,x+w-iconInset,y+(wide?58:41));
       icon.draw(c);
       String appName=pkg;
       try{appName=String.valueOf(host.getPackageManager().getApplicationLabel(
         host.getPackageManager().getApplicationInfo(pkg,0)));}
       catch(PackageManager.NameNotFoundException ignored){}
-      center(c,trimmed(appName,wide?13:9),x+w/2f,y+(wide?81:61),wide?13:9,0xffd0e5f5,true);
+      center(c,trimmed(appName,wide?13:8),x+w/2f,y+(wide?81:61),wide?15:12,WHITE,true);
     }
   }
   void draw(Canvas c){
