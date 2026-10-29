@@ -22,25 +22,26 @@ assert len(img)>70000,"UHD cockpit is blank"
 source=pathlib.Path("projects/k2401-evo-launcher/app/src/main/java/ro/evolauncher/k2401/UltraCockpitTheme.java").read_text()
 assert 'Float.isFinite(obd.ambientC)' in source
 assert '"N/A"' in source and 'String exterior=Float.isFinite(obd.ambientC)' in source
-assert 'rect(c,448,170,455,94,15,0xff071526)' in source, "Date wallpaper ghost not completely masked"
+assert 'GlassHudFx.glassPanel(c,454,170,411,94,15)' in source, "Native translucent date panel missing"
 assert 'drawTopStatus(c); // STATUS CLOCK MUST ALWAYS BE THE FINAL PAINT PASS' in source
 assert source.count('Settings.Global.getInt(host.getContentResolver(),"wifi_on"') == 1
 from PIL import Image
 with Image.open(shot).convert("RGB") as screen:
-    # Fully opaque HUD must remain dark where art contained 2025/22:34/7°C.
-    # Sample only flat non-text pixels inside the 3-column panel.
-    for point in ((454,182),(553,178),(899,180),(573,258),(751,259)):
+    # A glass panel remains legible over a deliberately dark clean scene.
+    for point in ((457,180),(553,178),(861,180),(573,258),(751,259)):
         color=screen.getpixel(point)
         assert max(color)<150,(point,color,"Stale background leaked into HUD")
-print("K2401_ULTRA_OPAQUE_TIME_DATE_AIR_PANEL=PASS")
-print("K2401_ULTRA_TOP_RIGHT_CLOCK_FINAL_LAYER=PASS")
+print("K2401_ULTRA_TRANSLUCENT_DATE_PANEL=PASS")
+assert source.count('new SimpleDateFormat("HH:mm",Locale.getDefault()).format(now)')==1
+assert 'no duplicate top-right clock' in source
+print("K2401_ULTRA_SINGLE_LIVE_CLOCK=PASS")
 assert 'ultra_app_slot_' in source and 'getLaunchIntentForPackage(pkg)' in source
 assert 'postDelayed(longPressJob,550)' in source
 assert 'final int[] ys={73,171,269,367,465,563};' in source
-assert 'rect(c,0,0,102,720,0,0xff070f1c)' in source
+assert 'rect(c,0,0,102,720,0,0xff090b10)' in source
 assert 'Math.min(5,i)' not in source and 'for(int i=0;i<7;i++)' not in source
 assert 'if(idx==4){host.showInstalledApps();return true;}' in source
-assert 'rect(c,113,12,1152,148,17,0xff071321)' in source
+assert 'GlassHudFx.glassPanel(c,113,12,1152,148,17)' in source
 assert 'center(c,"ECU N/A"' not in source
 print("K2401_ULTRA_NO_DUPLICATE_RAIL_ICONS=PASS")
 print("K2401_ULTRA_NO_STALE_MUSIC_BLEED=PASS")
@@ -110,8 +111,8 @@ texts=[n.attrib.get("text","") for n in
 assert any("Aplicația 1" in t for t in texts),"Long press cannot replace the selected app"
 print("K2401_ULTRA_LONG_PRESS_REPLACE_EXISTING_APP=PASS")
 PY
-# Exercise focus loss/restore. The live top-right clock must remain visible
-# when a native Android dialog closes (previously reported disappearing).
+# Exercise focus loss/restore. The single central clock must remain visible
+# when a native Android dialog closes (no duplicate top-right clock).
 adb shell input keyevent BACK
 sleep 2
 adb shell screencap -p /sdcard/k2401-ultra-after-dialog.png
@@ -121,11 +122,10 @@ from PIL import Image
 from pathlib import Path
 pic=Image.open(Path("projects/k2401-evo-launcher/screenshots/k2401-ultra-after-dialog.png")).convert("RGB")
 assert pic.size==(1280,720)
-# The status surface is solid and only the native foreground clock is light.
-# An empty/dismissed time group has nearly no pixels over 155 in this region.
-area=pic.crop((1065,66,1251,110))
+# The native central clock remains visible over the glass date panel.
+area=pic.crop((595,185,730,251))
 bright=sum(1 for r,g,b in area.getdata() if min(r,g,b)>150)
-assert bright>105,f"Clock in top-right vanished after dialog; bright={bright}"
-print("K2401_ULTRA_TOP_RIGHT_CLOCK_SURVIVES_DIALOG=PASS")
+assert bright>105,f"Single central clock vanished after dialog; bright={bright}"
+print("K2401_ULTRA_SINGLE_CLOCK_SURVIVES_DIALOG=PASS")
 PY
 echo "K2401_ULTRA_TEMPERATURE_AND_SIX_SLOTS_SMOKE=PASS"
