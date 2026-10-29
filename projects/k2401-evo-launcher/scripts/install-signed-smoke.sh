@@ -29,13 +29,57 @@ echo "K2401_PARALLEL_SIDE_BY_SIDE_WITH_SIGNED=PASS"
 # not mockups or an unsigned local renderer. No car ECU/hardware is accessed.
 adb shell pm grant "$MAIN" android.permission.ACCESS_FINE_LOCATION || true
 adb shell pm grant "$MAIN" android.permission.ACCESS_COARSE_LOCATION || true
+# Release intentionally ignores the debug-only k2401_skin_preview_ci intent.
+# The old test passed that ignored extra and captured the SAME skin 8 times.
+# Use ROOT ONLY ON THIS DISPOSABLE GOOGLE_APIS EMULATOR to set the genuine
+# persisted skin preference between signed-production launches. Never use
+# these commands on a user's head unit, phone or car.
+adb root >/dev/null
+adb wait-for-device
+test "$(adb shell id -u | tr -d '\r')" = "0" || {
+  echo "::error::Disposable Android emulator is not rootable; refusing fake multi-skin PASS"
+  exit 7
+}
 mkdir -p k2401-glass-hud-signed-screens
 for skin in 21 22 23 24 25 26 27 28; do
-  adb shell am force-stop "$MAIN" >/dev/null
-  adb shell am start -W -n "$MAIN/ro.evolauncher.k2401.MainActivity" \
-    --ei k2401_skin_preview_ci "$skin" >/dev/null
-  sleep 2
+  python3 - "$skin" <<'PY'
+import subprocess,sys,tempfile,xml.etree.ElementTree as ET
+from pathlib import Path
+app="ro.evolauncher.k2401"
+skin=int(sys.argv[1])
+path=f"/data/user/0/{app}/shared_prefs/evo_launcher_prefs.xml"
+def adb(*args,check=True):
+    return subprocess.run(["adb",*args],check=check,capture_output=True,text=True)
+adb("shell","am","force-stop",app)
+read=adb("shell","cat",path,check=False)
+root=ET.fromstring(read.stdout) if read.returncode==0 and read.stdout.strip() else ET.Element("map")
+for element in list(root):
+    if element.attrib.get("name")=="selected_skin_v2":
+        root.remove(element)
+ET.SubElement(root,"int",name="selected_skin_v2",value=str(skin))
+with tempfile.TemporaryDirectory() as temp:
+    local=Path(temp)/"evo_launcher_prefs.xml"
+    ET.ElementTree(root).write(local,encoding="utf-8",xml_declaration=True)
+    tmp=f"/data/local/tmp/k2401-ci-skin-{skin}.xml"
+    adb("push",str(local),tmp)
+    uid=adb("shell","stat","-c","%u",f"/data/user/0/{app}").stdout.strip()
+    assert uid.isdigit(),uid
+    adb("shell","cp",tmp,path)
+    adb("shell","chown",f"{uid}:{uid}",path)
+    adb("shell","chmod","600",path)
+    adb("shell","rm",tmp)
+    confirm=adb("shell","cat",path).stdout
+    saved=ET.fromstring(confirm).find("./int[@name='selected_skin_v2']")
+    assert saved is not None and saved.get("value")==str(skin),(skin,confirm)
+print(f"K2401_SIGNED_RELEASE_ACTUAL_PERSISTED_SKIN={skin} PASS")
+PY
+  adb shell am start -W -n "$MAIN/ro.evolauncher.k2401.MainActivity" >/dev/null
+  sleep 3
   adb shell pidof "$MAIN" >/dev/null
+  if adb shell dumpsys window windows | grep -Eiq 'mCurrentFocus=.*(permissioncontroller|packageinstaller)'; then
+    echo "::error::System dialog obscures signed skin $skin"
+    exit 8
+  fi
   adb shell screencap -p "/sdcard/k2401-glass-$skin.png"
   adb pull "/sdcard/k2401-glass-$skin.png" \
     "k2401-glass-hud-signed-screens/skin-$skin.png" >/dev/null
