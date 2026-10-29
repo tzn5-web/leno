@@ -133,3 +133,11 @@ for forbidden in ('ECU / ELM327','"ABS"','"Airbag"','"Doors"','"2530"','"87"'):
 assert 'if(selected==1)return touchCinematicTwo(x,y);' in ENGINE
 assert 'if(slot==4){host.showInstalledApps();return true;}' in ENGINE, 'Cinematic theme 2 Apps icon must refresh real app drawer'
 print("K2401_SKIN02_NATIVE_LIVE_RENDER_NO_ECU_ABS_DOORS=PASS")
+
+# The gallery contains 21 original skins plus 8 optional HUD themes.
+# The physical-device screenshot caught an obsolete "21 DESIGNURI" label
+# despite the extra skins actually being present in the signed APK.
+SETTINGS=(ROOT/"app/src/main/java/ro/evolauncher/k2401/LauncherSettings.java").read_text()
+assert '29 DESIGNURI (21 ORIGINALE + 8 HUD)' in SETTINGS, "Settings undercounts installed themes"
+assert '21 de skinuri originale + 8 teme HUD suplimentare' in SETTINGS
+print("K2401_SETTINGS_29_SKIN_GALLERY_COUNT=PASS")
