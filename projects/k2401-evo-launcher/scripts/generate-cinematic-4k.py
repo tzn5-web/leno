@@ -78,7 +78,41 @@ for i,(label,filename) in enumerate(SOURCES):
         pen.ellipse((cx-rx,cy-ry,cx+rx,cy+ry),fill=255)
     masks=masks.filter(ImageFilter.GaussianBlur(radius=13))
     im=Image.composite(face,im,masks)
+    cleaned_photo=im
     im=im.resize((W,H),Image.Resampling.LANCZOS)
+    # Apply the bundled pinned FSRCNN x2 model ONLY to the user-approved
+    # Mitsubishi car region, not OBD text or mocked UI. It improves fine grille
+    # and headlight edges at 4K without regenerating fake speed/RPM digits.
+    # CI requires this super-resolution path; local builds can fall back to
+    # high-quality Lanczos when OpenCV's contrib module is unavailable.
+    enhanced=False
+    try:
+        import runpy, os
+        super_res=runpy.run_path(str(Path(__file__).with_name("build-clean-scenes.py")),
+                                 run_name="k2401_photo_sr")["superresolve_vehicle"]
+        boxes={
+          'A1':(518,236,1150,565),
+          '02':(500,245,1166,575),
+          'A3':(530,319,1150,665),
+        }
+        x1,y1,x2,y2=boxes[label]
+        patch=super_res(cleaned_photo.crop((x1,y1,x2,y2)))
+        enhanced=(patch.width==2*(x2-x1))
+        if enhanced:
+            ax1=round(x1*W/1672);ay1=round(y1*H/941)
+            aw=round((x2-x1)*W/1672);ah=round((y2-y1)*H/941)
+            patch=patch.resize((aw,ah),Image.Resampling.LANCZOS)
+            xx_mask=Image.new('L',(aw,ah),0)
+            ImageDraw.Draw(xx_mask).rounded_rectangle(
+               (max(10,aw//16),max(10,ah//12),
+                aw-max(10,aw//16),ah-max(10,ah//12)),
+               radius=max(20,min(aw,ah)//8),fill=255)
+            xx_mask=xx_mask.filter(ImageFilter.GaussianBlur(max(10,aw//40)))
+            im.paste(patch,(ax1,ay1),xx_mask)
+    except Exception:
+        if os.environ.get('K2401_REQUIRE_SR')=='YES':raise
+    if os.environ.get('K2401_REQUIRE_SR')=='YES':
+        assert enhanced,(label,'Super resolution of approved car not applied')
     im=ImageEnhance.Contrast(im).enhance(1.035)
     im=im.filter(ImageFilter.UnsharpMask(radius=1.10,percent=72,threshold=2))
     dst=ROOT/f'scene_{i}_4k.webp'
@@ -89,6 +123,7 @@ for i,(label,filename) in enumerate(SOURCES):
     report.append(dict(skin=label,source=filename,source_sha256=source_sha,
                        source_pixels=[1672,941],output_pixels=[W,H],
                        cleaned_baked_HUD=True,cleaned_baked_shortcuts=True,
+                       vehicle_fs_rcnn_2x=enhanced,
                        name=dst.name,sha256=sha,bytes=dst.stat().st_size))
     print('4K_APPROVED_SCENE=PASS',label,dst.name,sha)
 assert len({x['sha256'] for x in report})==3
