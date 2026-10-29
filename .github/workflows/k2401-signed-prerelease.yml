@@ -404,9 +404,11 @@ jobs:
           retention-days: 7
       - name: Record verified universal fresh-install and upgrade checks
         run: |
-          echo "ONE_APK_FRESH_INSTALL_OR_UPDATE=PASS" >> k2401-signed-prerelease-report.txt
-          echo "SAME_APP_ID_AND_SIGNER_PRESERVES_DATA_ON_UPDATE=PASS" >> k2401-signed-prerelease-report.txt
-          echo "UNINSTALL_REINSTALL_CLEARS_APP_DATA_BY_ANDROID_DESIGN=EXPECTED" >> k2401-signed-prerelease-report.txt
+          {
+            echo "ONE_APK_FRESH_INSTALL_OR_UPDATE=PASS"
+            echo "SAME_APP_ID_AND_SIGNER_PRESERVES_DATA_ON_UPDATE=PASS"
+            echo "UNINSTALL_REINSTALL_CLEARS_APP_DATA_BY_ANDROID_DESIGN=EXPECTED"
+          } >> k2401-signed-prerelease-report.txt
       - name: Upload signed APK for head-unit testing without Azure VM
         uses: actions/upload-artifact@v4
         with:
@@ -440,7 +442,7 @@ jobs:
             k2401-glass-hud-signed-screens/holographic-audit.json \
             --target "$GITHUB_SHA" --prerelease --latest=false \
             --title "K2401 EVO Android 10 v119 universal install + glass HUD ($TAG)" \
-            --notes "v119 (versionCode 124): one production APK installs from zero or updates the same package in place preserving data, with same permanent Key Vault signing certificate. Clean reinstall after uninstall restores built-in skins but cannot restore deleted private settings.  preserves all 21 original skins (IDs 0-20) AND the user's blue-neon Ultra skin 21, repairing only its inner grey ring crossing the gauge graduations; redesigns opt-in skins 22-28 in graphite/silver/fine-red translucent glass HUD. Includes original 3840x2160 cinematic assets, four genuine ECU PIDs, live MediaSession, real date/time, OBD ambient or N/A, six editable shortcuts and native actions. Eight DISTINCT signed Android 10 screenshots are verified by actual persisted skin selection on a disposable emulator; pixel audit and original frames are attached for human review. Visual fidelity to the user's photos and physical K2401/ELM327 behavior are NOT verified. No Azure VM used."; then
+            --notes "v119 (versionCode 124): one production APK installs from zero or updates the same package in place preserving data, with same permanent Key Vault signing certificate. Clean reinstall after uninstall restores built-in skins but cannot restore deleted private settings. Preserves all 21 original skins (IDs 0-20) AND the user's blue-neon Ultra skin 21, repairing only its inner grey ring crossing the gauge graduations; redesigns opt-in skins 22-28 in graphite/silver/fine-red translucent glass HUD. Includes original 3840x2160 cinematic assets, four genuine ECU PIDs, live MediaSession, real date/time, OBD ambient or N/A, six editable shortcuts and native actions. Eight DISTINCT signed Android 10 screenshots are verified by actual persisted skin selection on a disposable emulator; pixel audit and original frames are attached for human review. Visual fidelity to the user's photos and physical K2401/ELM327 behavior are NOT verified. No Azure VM used."; then
             echo "UNIVERSAL_APK_URL=https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/K2401-EVO-UNIVERSAL-v119.apk" >> "$GITHUB_STEP_SUMMARY"
             echo 'K2401_DIRECT_APK_GITHUB_RELEASE=PASS'
           else
