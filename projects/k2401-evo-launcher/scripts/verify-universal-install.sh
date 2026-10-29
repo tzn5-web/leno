@@ -2,6 +2,8 @@
 # Verify ONE real signed K2401 release APK supports both Android install flows.
 # Disposable GitHub Android 10 emulator ONLY; never run on the car/head unit.
 set -euo pipefail
+trap 'rc=$?; echo "::error::Universal install gate stopped at line $LINENO (exit $rc): $BASH_COMMAND" >&2' ERR
+echo "K2401_UNIVERSAL_INSTALL_GATE=START"
 PKG="ro.evolauncher.k2401"
 OLD="${K2401_OLD_SIGNED_APK:-/tmp/k2401-universal-baseline/K2401-EVO-Android10-SIGNED.apk}"
 NEW="${K2401_NEW_SIGNED_APK:-K2401-EVO-UPDATE-SIGNED.apk}"
