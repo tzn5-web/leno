@@ -59,8 +59,9 @@ final class GlassHudFx {
     stroke(c,0,108,1280,108,0x64c6cbd1,1.1f);
     stroke(c,400,112,880,112,0x6bd9414b,1.6f);
     stroke(c,188,707,1092,707,0x3baeb5be,1f);
-    if(variant==27){
-      // Recessed glass pedestal for the holographic projection, no mock map.
+    if(variant==21||variant==27){
+      // Recessed 3D glass pedestal on the two dedicated holographic themes.
+      // No mock map or fake ECU values are rendered.
       glassPanel(c,424,194,432,304,18);
       projection(c);
     }
