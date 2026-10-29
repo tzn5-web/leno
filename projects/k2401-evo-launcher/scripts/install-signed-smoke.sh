@@ -60,16 +60,16 @@ if adb shell dumpsys window windows | grep -Eiq 'mCurrentFocus=.*(permissioncont
   echo "::error::System permission dialog obscures the EVO RED screenshot"
   exit 5
 fi
-adb shell screencap -p /sdcard/k2401-evo-red-v117.png
-adb pull /sdcard/k2401-evo-red-v117.png k2401-evo-red-v117-emulator.png >/dev/null
+adb shell screencap -p /sdcard/k2401-evo-red-v118.png
+adb pull /sdcard/k2401-evo-red-v118.png k2401-evo-red-v118-emulator.png >/dev/null
 python3 - <<'PY'
 from PIL import Image,ImageStat
-im=Image.open("k2401-evo-red-v117-emulator.png").convert("RGB")
+im=Image.open("k2401-evo-red-v118-emulator.png").convert("RGB")
 # Same -skin 720x1280 as the passing K2401 debug emulator workflow.
 assert im.size==(1280,720),im.size
 stat=ImageStat.Stat(im)
 assert max(stat.stddev)>8,("Blank or nearly blank HUD",stat.stddev)
-print("K2401_EVO_RED_V117_EMULATOR_SCREENSHOT=PASS actual_frame=",im.size)
+print("K2401_EVO_RED_V118_EMULATOR_SCREENSHOT=PASS actual_frame=",im.size)
 PY
 set +e
 bad="$(adb install -r "$NORMAL" 2>&1)"
