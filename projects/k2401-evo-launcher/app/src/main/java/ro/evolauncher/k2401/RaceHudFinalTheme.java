@@ -60,21 +60,11 @@ final class RaceHudFinalTheme {
     c.drawText(str,x,y,p);p.setTextAlign(Paint.Align.LEFT);
   }
   private void plate(Canvas c,float x,float y,float w,float h,int edge,int background){
-    Path path=new Path();
-    path.moveTo(x+13,y);path.lineTo(x+w-16,y);path.lineTo(x+w,y+15);
-    path.lineTo(x+w,y+h-11);path.lineTo(x+w-14,y+h);
-    path.lineTo(x+12,y+h);path.lineTo(x,y+h-12);path.lineTo(x,y+12);
-    path.close();fill(background);c.drawPath(path,p);
-    fill(edge);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1.7f);
-    c.drawPath(path,p);p.setStyle(Paint.Style.FILL);
+    // Transparent native glass; no opaque flat rectangular HUD plates.
+    GlassHudFx.glassPanel(c,x,y,w,h,Math.min(13f,h*.18f));
   }
   private void wings(Canvas c){
-    c.drawColor(DARK);
-    fill(WHITE);
-    p.setShader(new LinearGradient(0,0,1280,720,
-      new int[]{0xff060a12,0xff111822,0xff06070b},
-      new float[]{0f,.45f,1f},Shader.TileMode.CLAMP));
-    c.drawRect(0,0,1280,720,p);p.setShader(null);
+    GlassHudFx.backdrop(c,26);
     for(int side=0;side<2;side++){
       c.save();
       if(side==1){c.translate(1280,0);c.scale(-1,1);}
@@ -105,25 +95,7 @@ final class RaceHudFinalTheme {
   }
   private void arc(Canvas c,float cx,float cy,float radius,float value,
       float min,float max,int edge){
-    fill(0xff111923);c.drawCircle(cx,cy,radius-10,p);
-    fill(0xffe8edf5);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(4);
-    c.drawArc(cx-radius,cy-radius,cx+radius,cy+radius,133,273,false,p);
-    fill(0xff394452);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(18);
-    c.drawArc(cx-radius+9,cy-radius+9,cx+radius-9,cy+radius-9,134,270,false,p);
-    if(Float.isFinite(value)){
-      float frac=Math.max(0,Math.min(1,(value-min)/(max-min)));
-      fill(edge);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(18);
-      c.drawArc(cx-radius+9,cy-radius+9,cx+radius-9,cy+radius-9,
-        134,270*frac,false,p);
-    }
-    p.setStyle(Paint.Style.FILL);
-    for(int t=0;t<=12;t++){
-      double a=Math.toRadians(134+t*270/12.);
-      float r1=radius-4,r2=radius-20;
-      segment(c,cx+(float)Math.cos(a)*r1,cy+(float)Math.sin(a)*r1,
-        cx+(float)Math.cos(a)*r2,cy+(float)Math.sin(a)*r2,
-        t>=9?RED:WHITE,t%3==0?2.4f:1);
-    }
+    GlassHudFx.dial(c,cx,cy,radius,value,min,max);
   }
   private void gauge(Canvas c,int cx,int cy,String title,String value,String units,
       float sensor,float min,float max){
@@ -148,7 +120,7 @@ final class RaceHudFinalTheme {
     shell.moveTo(22,196);shell.lineTo(292,196);shell.lineTo(368,231);
     shell.lineTo(374,432);shell.lineTo(290,475);shell.lineTo(24,475);
     shell.lineTo(0,425);shell.lineTo(0,241);shell.close();
-    fill(0xf3070d16);c.drawPath(shell,p);
+    fill(0x9b10151b);c.drawPath(shell,p);
     fill(WHITE);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(3.3f);
     c.drawPath(shell,p);p.setStyle(Paint.Style.FILL);
     // Layered, asymmetric sculptural crescents taken from the structure of
@@ -169,7 +141,7 @@ final class RaceHudFinalTheme {
     label(c,value,center,344,55,WHITE,true,true);
     label(c,unit,center,375,17,SILVER,false,true);
     int x=right?917:57;
-    fill(0xff344150);c.drawRoundRect(x,406,x+309,426,7,7,p);
+    fill(0x6b525e6b);c.drawRoundRect(x,406,x+309,426,7,7,p);
     if(Float.isFinite(raw)){
       float normalized=Math.max(0f,Math.min(1f,(raw-min)/(max-min)));
       fill(RED);c.drawRoundRect(x,406,x+309*normalized,426,7,7,p);
@@ -244,54 +216,11 @@ final class RaceHudFinalTheme {
     label(c,host.skins!=null&&host.skins.selection()==EVO_RED_ID?"EVO RED":host.skins.selection()==HOLO_ID?"HOLO":host.skins.selection()==ANGULAR_ID?"WINGS":"FINAL",1183,69,13,RED,true,false);
   }
   private void holoBackground(Canvas c){
-    c.drawColor(0xff05080e);
-    fill(0xff0b111a);c.drawRect(0,0,1280,720,p);
-    for(int side=0;side<2;side++){
-      float cx=side==0?192:1088;
-      fill(0xffaebac9);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2.4f);
-      c.drawCircle(cx,348,176,p);
-      fill(0xffed304a);p.setStrokeWidth(5f);
-      c.drawArc(cx-184,164,cx+184,532,205,125,false,p);
-      fill(0xff667788);p.setStrokeWidth(1.2f);
-      c.drawCircle(cx,348,143,p);
-      p.setStyle(Paint.Style.FILL);
-    }
-    segment(c,0,100,1280,100,0xffd4dce5,2);
-    segment(c,385,109,895,109,RED,2);
-    plate(c,416,180,448,322,0xffd5dce5,0xff101721);
+    GlassHudFx.backdrop(c,27); // 3D projection is decorative, not a fake map.
   }
   private void evoRing(Canvas c,int cx,int cy,int radius,String title,
-      String value,String unit,float raw,float min,float max,boolean major){
-    fill(0xff07080c);c.drawCircle(cx,cy,radius-16,p);
-    fill(SILVER);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(8f);
-    p.setShader(new LinearGradient(cx-radius,cy-radius,cx+radius,cy+radius,
-      new int[]{0xffe4e8ed,0xff414751,0xffd2d7df,0xff292f39,0xffd7dce3},
-      null,Shader.TileMode.CLAMP));
-    c.drawCircle(cx,cy,radius,p);p.setShader(null);
-    fill(0xff272a31);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(9f);
-    c.drawCircle(cx,cy,radius-10,p);
-    fill(0xffb4b8c0);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2f);
-    c.drawCircle(cx,cy,radius-25,p);
-    fill(0xff32090f);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(12f);
-    c.drawArc(cx-radius+20,cy-radius+20,cx+radius-20,cy+radius-20,
-      135,270,false,p);
-    if(Float.isFinite(raw)){
-      float ratio=Math.max(0f,Math.min(1f,(raw-min)/(max-min)));
-      fill(RED);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(11f);
-      c.drawArc(cx-radius+20,cy-radius+20,cx+radius-20,cy+radius-20,
-        135,270f*ratio,false,p);
-    }
-    p.setStyle(Paint.Style.FILL);
-    for(int i=0;i<=40;i++){
-      double angle=Math.toRadians(135+i*270d/40d);
-      float outer=radius-30f,inner=outer-(i%5==0?15f:7f);
-      segment(c,cx+(float)Math.cos(angle)*inner,cy+(float)Math.sin(angle)*inner,
-        cx+(float)Math.cos(angle)*outer,cy+(float)Math.sin(angle)*outer,
-        i>31?RED:WHITE,i%5==0?2.2f:1.1f);
-    }
-    fill(0xff11141b);c.drawCircle(cx,cy,radius-(major?61:32),p);
-    fill(0xff2c3039);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2f);
-    c.drawCircle(cx,cy,radius-(major?63:34),p);p.setStyle(Paint.Style.FILL);
+       String value,String unit,float raw,float min,float max,boolean major){
+    GlassHudFx.dial(c,cx,cy,radius,raw,min,max);
     if(major){
       label(c,value,cx,cy+14,57,WHITE,true,true);
       label(c,title,cx,cy+55,22,WHITE,true,true);
@@ -304,6 +233,10 @@ final class RaceHudFinalTheme {
   }
   private void approvedTop(Canvas c){
     plate(c,8,5,1264,89,0xff7f8793,0xee07090d);
+    GlassHudFx.glassPanel(c,12,10,97,76,11);
+    GlassHudFx.glassPanel(c,114,10,92,76,11);
+    GlassHudFx.glassPanel(c,811,10,98,76,11);
+    GlassHudFx.glassPanel(c,1158,10,106,76,11);
     // Only real controls and one real connection-status group; no fake tiles.
     NavVectorIcons.draw(c,4,62,39,RED);
     label(c,"APPS",62,74,14,WHITE,true,true);
@@ -363,6 +296,8 @@ final class RaceHudFinalTheme {
       c.drawColor(0xff05070c);
       fill(0xff11151c);c.drawRect(445,212,835,420,p);
     }
+    // Central 3D art sits BEHIND a restrained translucent projection pane.
+    GlassHudFx.glassPanel(c,438,214,404,228,16);
     // The scenic layer has no baked HUD, speed, media or ECU readings.
     ObdReader.Reading r=host.obd==null?ObdReader.Reading.empty():host.obd.current();
     evoRing(c,228,344,196,"RPM",number(r.rpm,0,false),"rpm",r.rpm,0,8000,true);
@@ -377,9 +312,12 @@ final class RaceHudFinalTheme {
     if(host.skins!=null&&host.skins.selection()==EVO_RED_ID){approvedRed(c);return;}
     boolean holo=host.skins!=null&&host.skins.selection()==HOLO_ID;
     if(holo)holoBackground(c);else wings(c);
-    // This unobstructed rectangle is occupied by the ACTUAL interactive map.
-    plate(c,423,187,434,310,WHITE,0xff0d1118);
-    fill(0xff111a23);c.drawRect(MAP_X,MAP_Y,MAP_X+MAP_W,MAP_Y+MAP_H,p);
+    // Only skins 25/26 reserve this surface for the ACTUAL interactive map.
+    // Skin 27 has a native 3D holographic projection, not a blank fake map.
+    if(!holo){
+      plate(c,423,187,434,310,WHITE,0xff0d1118);
+      fill(0xff111a23);c.drawRect(MAP_X,MAP_Y,MAP_X+MAP_W,MAP_Y+MAP_H,p);
+    }
     ObdReader.Reading r=host.obd==null?ObdReader.Reading.empty():host.obd.current();
     if(host.skins!=null&&host.skins.selection()==ANGULAR_ID){
       angularGauge(c,false,"RPM",
