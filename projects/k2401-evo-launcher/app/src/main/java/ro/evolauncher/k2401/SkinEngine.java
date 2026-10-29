@@ -58,7 +58,7 @@ final class SkinEngine {
     "LANCER HERO","DIGITAL COCKPIT","TECH GRID",
     "GAUGES FOCUS","LANCER SHOWROOM","MINIMAL SPORT",
     "CAR STATUS","APP LAUNCHER","PERFORMANCE",
-    "EVO GLASS GRAPHITE UHD",
+    "EVO ULTRA NEON UHD",
     "A1 • HOLOGRAPHIC SILVER 4K",
     "02 • GLASS RACE GRAPHITE 4K",
     "A3 • METALLIC GLASS 4K",
@@ -1052,7 +1052,7 @@ final class SkinEngine {
       list.addView(entry,new LinearLayout.LayoutParams(-1,dp(146)));
       entry.setOnClickListener(v->previewDialog(index));
     }
-    galleryDialog=new AlertDialog.Builder(host).setTitle("Skinuri EVO • "+COUNT+" modele • 21 originale + 6 teme noi")
+    galleryDialog=new AlertDialog.Builder(host).setTitle("Skinuri EVO • "+COUNT+" modele • 21 originale + 8 teme noi")
       .setView(scroll).setNegativeButton("Închide",null).create();
     galleryDialog.show();
   }
