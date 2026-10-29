@@ -46,6 +46,18 @@ final class UltraCockpitTheme {
   private static final int BG=0xff050b16;
   private static final int SLOT_COUNT=6;
   private static final int SLOT_X=427,SLOT_Y=609,SLOT_W=67,SLOT_H=71,SLOT_GAP=7;
+  // Only A1/02/A3: six wider shortcut tiles matching approved 16:9 footer.
+  // Original ULTRA and 21 legacy themes preserve their existing positions.
+  private boolean isCinematicTrio(){
+    if(host.skins==null)return false;
+    int id=host.skins.selection();
+    return id>=CinematicTrioTheme.FIRST&&id<=CinematicTrioTheme.LAST;
+  }
+  private int sx(){return isCinematicTrio()?278:SLOT_X;}
+  private int sy(){return isCinematicTrio()?603:SLOT_Y;}
+  private int sw(){return isCinematicTrio()?108:SLOT_W;}
+  private int sh(){return isCinematicTrio()?94:SLOT_H;}
+  private int sg(){return isCinematicTrio()?16:SLOT_GAP;}
   private final MainActivity host;
   private final SharedPreferences prefs;
   private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
@@ -288,27 +300,29 @@ final class UltraCockpitTheme {
       1073,94,40,WHITE,true);
   }
   private void drawSlots(Canvas c){
+    int w=sw(),h=sh(),spacing=sg(),y=sy();
+    boolean wide=isCinematicTrio();
     for(int i=0;i<SLOT_COUNT;i++){
-      int x=SLOT_X+i*(SLOT_W+SLOT_GAP),y=SLOT_Y;
-      rect(c,x,y,SLOT_W,SLOT_H,12,0xed0c1931);
-      stroke(c,x,y,SLOT_W,SLOT_H,12,i%2==0?CYAN:RED,1.7f);
+      int x=sx()+i*(w+spacing);
+      rect(c,x,y,w,h,12,0xf5091729);
+      stroke(c,x,y,w,h,12,i%2==0?CYAN:RED,1.7f);
       String pkg=slots[i];
       if(pkg==null||pkg.isEmpty()){
-        center(c,"+",x+SLOT_W/2f,y+46,36,WHITE,true);
+        center(c,"+",x+w/2f,y+(wide?60:46),wide?42:36,WHITE,true);
         continue;
       }
       if(icons[i]==null){
         try{icons[i]=host.getPackageManager().getApplicationIcon(pkg);}
-        catch(PackageManager.NameNotFoundException ex){slots[i]="";center(c,"+",x+SLOT_W/2f,y+46,36,WHITE,true);continue;}
+        catch(PackageManager.NameNotFoundException ex){slots[i]="";center(c,"+",x+w/2f,y+(wide?60:46),wide?42:36,WHITE,true);continue;}
       }
       Drawable icon=icons[i];
-      icon.setBounds(x+17,y+8,x+SLOT_W-17,y+41);
+      icon.setBounds(x+(wide?32:17),y+8,x+w-(wide?32:17),y+(wide?58:41));
       icon.draw(c);
       String appName=pkg;
       try{appName=String.valueOf(host.getPackageManager().getApplicationLabel(
         host.getPackageManager().getApplicationInfo(pkg,0)));}
       catch(PackageManager.NameNotFoundException ignored){}
-      center(c,trimmed(appName,9),x+SLOT_W/2f,y+61,9,0xffd0e5f5,true);
+      center(c,trimmed(appName,wide?13:9),x+w/2f,y+(wide?81:61),wide?13:9,0xffd0e5f5,true);
     }
   }
   void draw(Canvas c){
@@ -326,10 +340,11 @@ final class UltraCockpitTheme {
     drawTopStatus(c); // STATUS CLOCK MUST ALWAYS BE THE FINAL PAINT PASS
   }
   private int slotAt(float x,float y){
-    if(y<SLOT_Y||y>SLOT_Y+SLOT_H)return -1;
+    int top=sy(),w=sw(),gap=sg();
+    if(y<top||y>top+sh())return -1;
     for(int i=0;i<SLOT_COUNT;i++){
-      int xx=SLOT_X+i*(SLOT_W+SLOT_GAP);
-      if(x>=xx&&x<=xx+SLOT_W)return i;
+      int xx=sx()+i*(w+gap);
+      if(x>=xx&&x<=xx+w)return i;
     }
     return -1;
   }
