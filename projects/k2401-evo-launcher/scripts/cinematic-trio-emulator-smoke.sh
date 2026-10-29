@@ -75,10 +75,23 @@ with ZipFile("projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.
         focus=(490,230,790,415)
         expected=approved.resize((1280,720),Image.Resampling.LANCZOS)
         bitmap=scene.resize((1280,720),Image.Resampling.LANCZOS)
-        exp=np.asarray(expected.crop(focus),dtype=np.int16)
-        got=np.asarray(bitmap.crop(focus),dtype=np.int16)
-        car_error=float(np.mean(np.abs(exp-got)))
-        assert car_error<30,(m["skin"],"Wrong approved car",car_error)
+        # Graphite/silver tint deliberately changes RGB. Verify the
+        # APPROVED Mitsubishi's original structural edges, not its old blue
+        # hue; otherwise the previous test incentivized retaining fake HUD.
+        exp=np.asarray(expected.crop(focus).convert("L"),dtype=np.float32)
+        got=np.asarray(bitmap.crop(focus).convert("L"),dtype=np.float32)
+        gx=np.diff(exp,axis=1).ravel();gy=np.diff(got,axis=1).ravel()
+        correlation=float(np.corrcoef(gx,gy)[0,1])
+        assert np.isfinite(correlation) and correlation>.35,(
+            m["skin"],"Original Mitsubishi subject was replaced",correlation)
+        # Side source artwork contains fully baked gauge rings and digits.
+        # These MUST NOT survive in the new clean wallpaper beneath native
+        # translucent real-OBD gauges.
+        side=(35,185,365,550)
+        src_side=np.asarray(expected.crop(side),dtype=np.int16)
+        clean_side=np.asarray(bitmap.crop(side),dtype=np.int16)
+        removed=float(np.mean(np.abs(src_side-clean_side)))
+        assert removed>25,(m["skin"],"Fake source gauge still baked into scene",removed)
         displayed=shots[22+k]
         onscreen_error=float(np.mean(np.abs(
             np.asarray(displayed.crop(focus),dtype=np.int16)-got)))
@@ -98,7 +111,7 @@ with ZipFile("projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.
         assert top_difference>8,(m["skin"],"Static music/clock art leaked",top_difference)
         assert bottom_difference>8,(m["skin"],"Static application art leaked",bottom_difference)
         print("K2401_ORIGINAL_SOURCE_PRESERVED_GLASS_RESTYLE=PASS",
-              m["skin"],round(car_error,1),round(onscreen_error,1))
+              m["skin"],round(correlation,3),round(onscreen_error,1))
         print("K2401_NO_BAKED_MEDIA_OR_SHORTCUTS=PASS",m["skin"])
 java=Path("projects/k2401-evo-launcher/app/src/main/java/ro/evolauncher/k2401/CinematicTrioTheme.java").read_text()
 assert 'GlassHudFx.dial(c,cx,cy,r,live,0f,1f)' in java
