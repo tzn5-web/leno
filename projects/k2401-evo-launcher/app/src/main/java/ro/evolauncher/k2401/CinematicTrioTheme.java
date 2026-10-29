@@ -241,9 +241,15 @@ final class CinematicTrioTheme {
   // the car, NOT two additional vertical pods or full-size dials.
   private void halfGauge(Canvas c,float cx,float cy,float radius,String label,
                          String value,float fraction,int edge){
-    color(0x9b10151c);
-    c.drawRoundRect(cx-radius,cy-radius*.80f,cx+radius,cy+radius*.69f,20,20,p);
-    color(0x997e8995);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(8);
+    // Multi-layer glass fuel-trim pod: transparent surface, recessed
+    // graphite track and a sharp silver highlight. No fake filled arc when
+    // the real ECU PID is unavailable.
+    GlassHudFx.glassPanel(c,cx-radius,cy-radius*.80f,
+      radius*2f,radius*1.49f,20);
+    color(0x4a606a76);p.setStyle(Paint.Style.STROKE);
+    p.setStrokeWidth(13);
+    c.drawArc(cx-radius,cy-radius,cx+radius,cy+radius,181,178,false,p);
+    color(0xacc4cbd3);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(3.2f);
     c.drawArc(cx-radius,cy-radius,cx+radius,cy+radius,181,178,false,p);
     if(Float.isFinite(fraction)){
       color(edge);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(9);
