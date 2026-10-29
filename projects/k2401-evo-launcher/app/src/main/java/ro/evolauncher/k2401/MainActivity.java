@@ -136,7 +136,8 @@ public final class MainActivity extends Activity {
     // The approved Race HUD FINAL embeds the SAME real Google/OSM MapView
     // on Home; every old skin keeps its existing page-2-only map behavior.
     boolean raceHome=page==0&&skins!=null&&
-      skins.selection()==RaceHudFinalTheme.ID;
+      (skins.selection()==RaceHudFinalTheme.ID||
+       skins.selection()==RaceHudFinalTheme.ANGULAR_ID);
     boolean shown=page==2||raceHome;
     if(liveMap!=null)liveMap.setVisibility(shown?View.VISIBLE:View.GONE);
     if(mapRecoveryPlaceholder!=null)mapRecoveryPlaceholder.setVisibility(shown?View.VISIBLE:View.GONE);
