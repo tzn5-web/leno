@@ -304,6 +304,20 @@ final class RaceHudFinalTheme {
   }
   private void approvedTop(Canvas c){
     plate(c,8,5,1264,89,0xff7f8793,0xee07090d);
+    // Only real controls and one real connection-status group; no fake tiles.
+    NavVectorIcons.draw(c,4,62,39,RED);
+    label(c,"APPS",62,74,14,WHITE,true,true);
+    NavVectorIcons.draw(c,2,160,39,WHITE);
+    label(c,"NAVI",160,74,14,WHITE,true,true);
+    boolean bt=false,wifi=false;
+    try{
+      bt=Settings.Global.getInt(host.getContentResolver(),"bluetooth_on",0)!=0;
+      wifi=Settings.Global.getInt(host.getContentResolver(),"wifi_on",0)!=0;
+    }catch(RuntimeException ignored){}
+    label(c,"BT",975,51,17,bt?WHITE:0xff717882,true,false);
+    label(c,"Wi-Fi",1030,51,17,wifi?WHITE:0xff717882,true,false);
+    NavVectorIcons.draw(c,5,1218,39,RED);
+    label(c,"SETUP",1218,74,14,WHITE,true,true);
     MediaController media=host.media;
     String song="Nicio redare",artist="";
     Bitmap album=null;
@@ -385,6 +399,9 @@ final class RaceHudFinalTheme {
   boolean touch(float x,float y){
     if(host.skins!=null&&host.skins.selection()==EVO_RED_ID){
       if(y<=96){
+        if(x>=10&&x<112){host.showInstalledApps();return true;}
+        if(x>=116&&x<210){host.page=2;host.placeMap();if(host.view!=null)host.view.invalidate();return true;}
+        if(x>=1156&&x<=1270){host.page=5;host.placeMap();if(host.view!=null)host.view.invalidate();return true;}
         if(x>=230&&x<550){host.choosePlayer();return true;}
         if(x>=550&&x<618){host.mediaAction(0);return true;}
         if(x>=618&&x<689){host.mediaAction(1);return true;}
