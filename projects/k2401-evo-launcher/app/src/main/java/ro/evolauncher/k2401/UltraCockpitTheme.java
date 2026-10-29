@@ -52,7 +52,8 @@ final class UltraCockpitTheme {
     if(host.skins==null)return false;
     int id=host.skins.selection();
     return (id>=CinematicTrioTheme.FIRST&&id<=CinematicTrioTheme.LAST)
-      ||id==RaceHudFinalTheme.ID||id==RaceHudFinalTheme.ANGULAR_ID;
+      ||id==RaceHudFinalTheme.ID||id==RaceHudFinalTheme.ANGULAR_ID
+      ||id==RaceHudFinalTheme.EVO_RED_ID;
   }
   private int sx(){return isCinematicTrio()?278:SLOT_X;}
   private int sy(){return isCinematicTrio()?603:SLOT_Y;}
@@ -306,7 +307,8 @@ final class UltraCockpitTheme {
     for(int i=0;i<SLOT_COUNT;i++){
       int x=sx()+i*(w+spacing);
       rect(c,x,y,w,h,12,0xf5091729);
-      stroke(c,x,y,w,h,12,i%2==0?CYAN:RED,1.7f);
+      stroke(c,x,y,w,h,12,host.skins!=null&&host.skins.selection()==RaceHudFinalTheme.EVO_RED_ID?
+        (i==0?RED:0xffb5bbc5):(i%2==0?CYAN:RED),1.7f);
       String pkg=slots[i];
       if(pkg==null||pkg.isEmpty()){
         center(c,"+",x+w/2f,y+(wide?60:46),wide?42:36,WHITE,true);
