@@ -92,7 +92,7 @@ assert a.size==b.size==(1280,720)
 diff=ImageChops.difference(a.crop((21,190,400,492)),b.crop((21,190,400,492)))
 visual_delta=sum(ImageStat.Stat(diff).mean)/3
 assert visual_delta>5.0,("Circular and angular themes look the same",visual_delta)
-assert 'static final int ID=25, ANGULAR_ID=26;' in src
+assert 'static final int ID=25, ANGULAR_ID=26, HOLO_ID=27, EVO_RED_ID=28;' in src
 assert 'angularGauge(c,false,"RPM"' in src
 assert 'angularGauge(c,true,"TEMP APĂ"' in src
 assert 'RACE HUD • ANGULAR WINGS ALB-ROȘU' in skin
