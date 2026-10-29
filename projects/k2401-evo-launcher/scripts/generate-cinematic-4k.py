@@ -7,11 +7,11 @@ ship that screenshot as the entire live UI. Remove the baked top/media and
 bottom/app panels and obscure fake numeric centers. Native Android Canvas
 provides live music/status/sensor gauges/apps on top of these layers.
 
-Original image-generation source is 1672x941; 3840x2160 output is enhanced
-resampling, not an assertion that the camera/renderer produced native 4K.
+Original source is 1672x941; the 4K output combines original-car FSRCNN
+super-resolution with resolution-independent graphite/red background art.
 """
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFilter, ImageEnhance
+from PIL import Image, ImageDraw, ImageFilter, ImageEnhance, ImageOps
 import hashlib, json
 
 ROOT=Path(__file__).resolve().parents[1]/'app/src/main/assets/skins/cinematic'
@@ -39,45 +39,63 @@ for i,(label,filename) in enumerate(SOURCES):
         original=original.convert('RGB')
     assert original.size==(1672,941), (filename,original.size)
     source_sha=hashlib.sha256(raw.read_bytes()).hexdigest()
-    im=original.copy()
-    # The HUD row is repainted by native Android. Sampling only the scene
-    # centre prevents the album, static time, fake WiFi, static gauges at the
-    # sides, and mock player labels from leaking into dynamic UI.
-    ceiling=im.crop((350,165,1322,285)).resize((1672,225),Image.Resampling.BICUBIC)
-    ceiling=ceiling.filter(ImageFilter.GaussianBlur(5))
-    top=im.copy();top.paste(ceiling,(0,0))
-    im=wipe_region(im,(0,0,1672,211),top,blur=16)
-    # The six real installed-app buttons are rendered from PackageManager.
-    # Clear ONLY the source screenshot's static, nonfunctional icons first.
-    # A mirrored reflection of the ACTUAL CAR, not a blurred crop of sample
-    # OBD numbers. The earlier lower band leaked ghost '-25', '%', '+25'.
-    reflection_crop={
-      'A1':(640,470,1040,605),
-      '02':(620,460,1052,582),
-      'A3':(610,520,1050,670),
-    }[label]
-    road=im.crop(reflection_crop).transpose(Image.Transpose.FLIP_TOP_BOTTOM)
-    road=road.resize((1672,242),Image.Resampling.BICUBIC)
-    road=road.filter(ImageFilter.GaussianBlur(11))
-    road=ImageEnhance.Brightness(road).enhance(.60)
-    # Fine non-semantic neon streaks add floor depth, with NO frozen labels.
-    floor_pen=ImageDraw.Draw(road)
-    for k in range(-11,12):
-        x=836+k*78
-        floor_pen.line((836,0,x,241),
-             fill=((5,57,95) if k%2==0 else (28,18,63)),width=3)
-    floor=im.copy();floor.paste(road,(0,699))
-    im=wipe_region(im,(0,684,1672,941),floor,blur=13)
-    # Mask illustrative digits in gauge centre faces, retaining the source's
-    # decorative neon rims. Real ECU numbers are rendered on opaque native
-    # gauge faces, avoiding duplicate or falsely frozen values.
-    face=Image.new('RGB',im.size,(5,16,31))
-    masks=Image.new('L',im.size,0)
-    pen=ImageDraw.Draw(masks)
-    for cx,cy,rx,ry in MASK_TEXT[label]:
-        pen.ellipse((cx-rx,cy-ry,cx+rx,cy+ry),fill=255)
-    masks=masks.filter(ImageFilter.GaussianBlur(radius=13))
-    im=Image.composite(face,im,masks)
+    # Build a genuinely CLEAN scene, not the approved concept screenshot
+    # with its baked gauge rims left underneath native Android gauges.
+    # Source photographs remain immutable; only their Mitsubishi subject is
+    # extracted and placed over a graphite/red 4K-capable environment.
+    # Original 1672x941 coordinates preserve the car's exact perspective.
+    boxes={
+      'A1':(518,236,1150,565),
+      '02':(500,245,1166,575),
+      'A3':(530,319,1150,665),
+    }
+    im=Image.new('RGB',original.size)
+    pen=ImageDraw.Draw(im)
+    for yy in range(original.height):
+        t=yy/(original.height-1)
+        light=(1-abs(2*t-1))**1.7
+        pen.line((0,yy,original.width,yy),
+          fill=(round(7+11*light),round(9+12*light),round(13+15*light)))
+    # Environmental lighting uses a strongly defocused copy of the approved
+    # scene. Baked digits, app logos and dial rings cannot survive this blur.
+    atmosphere=original.filter(ImageFilter.GaussianBlur(82))
+    atmosphere=ImageEnhance.Color(atmosphere).enhance(.05)
+    atmosphere=ImageEnhance.Brightness(atmosphere).enhance(.23)
+    im=Image.blend(im,atmosphere,.32)
+    # Native-looking silver/red rails and perspective depth, not faux tiles.
+    pen=ImageDraw.Draw(im)
+    for side in (0,1):
+        mirror=lambda x:x if side==0 else original.width-x
+        pen.line([(mirror(0),178),(mirror(112),215),(mirror(210),215)],
+                 fill=(106,114,123),width=3)
+        pen.line([(mirror(0),188),(mirror(118),227),(mirror(212),227)],
+                 fill=(142,42,52),width=2)
+        pen.line([(mirror(0),774),(mirror(195),724),(mirror(310),724)],
+                 fill=(100,110,120),width=3)
+        pen.line([(mirror(0),784),(mirror(195),736),(mirror(310),736)],
+                 fill=(144,38,51),width=2)
+    for k in range(-10,11):
+        pen.line([(836,620),(836+k*85,940)],
+                 fill=(40,44,50) if k%2 else (62,32,39),width=2)
+    for row in range(1,8):
+        y=620+int((row/7)**2*319)
+        pen.line([(225,y),(1447,y)],fill=(35+row*3,36+row*2,42+row*2),width=2)
+    # Keep only the ORIGINAL vehicle: no source instrument pods, mock
+    # navigation, frozen time, static apps or invented ECU values.
+    x1,y1,x2,y2=boxes[label]
+    subject=original.crop((x1,y1,x2,y2))
+    silver=ImageOps.colorize(ImageOps.grayscale(subject),
+                             black=(3,6,10),white=(195,205,214))
+    subject=Image.blend(silver,subject,.17)
+    subject=ImageEnhance.Contrast(subject).enhance(1.25)
+    subject=ImageEnhance.Brightness(subject).enhance(1.03)
+    ww,hh=subject.size
+    feather=Image.new('L',(ww,hh),0)
+    ImageDraw.Draw(feather).rounded_rectangle(
+      (int(ww*.11),int(hh*.15),int(ww*.89),int(hh*.85)),
+      radius=max(25,int(hh*.22)),fill=255)
+    feather=feather.filter(ImageFilter.GaussianBlur(max(17,int(hh*.085))))
+    im.paste(subject,(x1,y1),feather)
     cleaned_photo=im
     im=im.resize((W,H),Image.Resampling.LANCZOS)
     # Apply the bundled pinned FSRCNN x2 model ONLY to the user-approved
