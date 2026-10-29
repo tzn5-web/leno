@@ -29,6 +29,7 @@ assert "ultra-neon-2560x1440.webp" in ultra
 assert "maskRadius=radius*.61f" in ultra
 assert "new RadialGradient(cx,cy,maskRadius" in ultra
 assert "GlassHudFx.backdrop(c,27)" in race
+assert "drawHologramPhoto(c,222)" in race and "drawHologramPhoto(c,206)" in race
 assert "Float.isFinite(value)" in fx and "Float.isFinite(fraction)" in cinematic
 assert "selected_skin_v2" in (source/"SkinEngine.java").read_text()
 release=base/"app/build/outputs/apk/release/app-release.apk"
@@ -38,6 +39,12 @@ with zipfile.ZipFile(release) as z:
     assert asset in z.namelist()
     with Image.open(io.BytesIO(z.read(asset))) as im:
         assert im.size==(3840,2160),im.size
+    holo="assets/skins/cinematic/hologram-mitsubishi-3840x2160.webp"
+    assert holo in z.namelist(),"Transparent Mitsubishi 4K photo layer missing"
+    with Image.open(io.BytesIO(z.read(holo))) as im:
+        assert im.size==(3840,2160) and im.mode=="RGBA"
+        assert im.getchannel("A").getextrema()[0]==0, "Fake opaque HUD photo layer"
+        assert im.getchannel("A").getextrema()[1]>150, "Hologram photo invisible"
     for i in range(21):
         assert f"assets/skins/skin_{i:02d}.webp" in z.namelist()
 print("K2401_GLASS_HUD_SIGNED_TRUE_4K_AND_21_LEGACY_SKINS=PASS")
