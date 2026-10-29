@@ -248,46 +248,86 @@ final class CinematicTrioTheme {
     text(c,value,cx,cy+18,53,WHITE,true,true);
     text(c,unit,cx,cy+52,17,LT,false,true);
   }
+  // Approved A1 and 02 have semi-circular fuel-trim gauges at the foot of
+  // the car, NOT two additional vertical pods or full-size dials.
+  private void halfGauge(Canvas c,float cx,float cy,float radius,String label,
+                         String value,float fraction,int edge){
+    color(0xd9081929);
+    c.drawRoundRect(cx-radius,cy-radius*.80f,cx+radius,cy+radius*.69f,20,20,p);
+    color(0xff26455f);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(8);
+    c.drawArc(cx-radius,cy-radius,cx+radius,cy+radius,181,178,false,p);
+    if(Float.isFinite(fraction)){
+      color(edge);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(9);
+      c.drawArc(cx-radius,cy-radius,cx+radius,cy+radius,
+        181,178*cap(fraction),false,p);
+    }
+    p.setStyle(Paint.Style.FILL);
+    text(c,label,cx,cy-15,16,ICE,true,true);
+    text(c,value,cx,cy+23,35,WHITE,true,true);
+    text(c,"%",cx,cy+43,15,LT,false,true);
+    text(c,"-25",cx-radius+10,cy+51,12,LT,false,false);
+    text(c,"+25",cx+radius-24,cy+51,12,LT,false,false);
+  }
+  // Polygonal metal bezel fits the approved A3 side dial profile. It is
+  // entirely vector drawn; only actual OBD readings appear in the interior.
+  private void framedCircle(Canvas c,float x,float y,float radius,
+                            String key,String value,String unit,float fraction,int edge){
+    color(0xff1a5988);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2.5f);
+    Path shape=new Path();
+    for(int i=0;i<8;i++){
+      double a=Math.PI*2*(i/8.0)-Math.PI/8;
+      float px=x+(radius+10)*(float)Math.cos(a);
+      float py=y+(radius+10)*(float)Math.sin(a);
+      if(i==0)shape.moveTo(px,py);else shape.lineTo(px,py);
+    }
+    shape.close();c.drawPath(shape,p);p.setStyle(Paint.Style.FILL);
+    circle(c,x,y,radius,key,value,unit,fraction,edge);
+  }
   void draw(Canvas c,int id){
     if(id<FIRST||id>LAST)return;
     int line=id==24?0xff78d7fa:0xff20bafc;
     background(c,id);
     if(id==22){
-      // The approved A1 tall holographic readouts flanking the front-view car.
+      // A1 (cyber-tunnel): TWO towering side columns; STFT and LTFT are
+      // smaller half-moon gauges BELOW the centre car. The source screenshot
+      // never becomes a fake data layer.
       ObdReader.Reading r=host.obd==null?ObdReader.Reading.empty():host.obd.current();
-      // Four tall, nonoverlapping holographic meters like approved A1:
-      // RPM / STFT / LTFT / TEMP APĂ. NO VOLT/BOOST placeholders.
-      vertical(c,25,159,153,387,"RPM",
+      vertical(c,27,162,160,427,"RPM",
         Float.isFinite(r.rpm)?String.format(Locale.US,"%.1f",r.rpm/1000f):"N/A",
         "x1000 rpm",r.rpm/8000f,line,0xff071b2f);
-      vertical(c,217,159,149,387,"STFT",labelValue(r.stft,true),
-        "%",(r.stft+25f)/50f,line,0xff071b2f);
-      vertical(c,917,159,149,387,"LTFT",labelValue(r.ltft,true),
-        "%",(r.ltft+25f)/50f,0xff55ceff,0xff071b2f);
-      vertical(c,1105,159,153,387,"TEMP APĂ",degrees(r.coolantC),
-        "",(r.coolantC-40)/90f,0xffa85cff,0xff071b2f);
+      vertical(c,1093,162,160,427,"TEMP APĂ",degrees(r.coolantC),
+        "",(r.coolantC-40)/90f,0xff5cceff,0xff071b2f);
+      halfGauge(c,515,522,90,"STFT",labelValue(r.stft,true),
+        (r.stft+25f)/50f,0xff36d9ff);
+      halfGauge(c,765,522,90,"LTFT",labelValue(r.ltft,true),
+        (r.ltft+25f)/50f,0xffea458b);
     }else if(id==23){
-      // 02: two circular blue holographic main gauges, small fuel trims
-      // below the actual vehicle photo, NOT the same geometry as A1.
+      // 02: premium mountain hologram: two LARGE outer round dials and two
+      // SMALL half arcs across the bottom. Car remains clear in the middle.
       ObdReader.Reading r=host.obd==null?ObdReader.Reading.empty():host.obd.current();
-      // Approved 02 geometry: 2 LARGE + 2 SMALL concentric circles.
-      // The four native gauges never cover the central holographic vehicle.
-      circle(c,160,352,126,"RPM",Float.isFinite(r.rpm)?
-        String.format(Locale.US,"%.1f",r.rpm/1000f):"N/A","x1000 rpm",r.rpm/8000f,line);
-      circle(c,371,382,78,"STFT",labelValue(r.stft,true),
-        "%",(r.stft+25f)/50f,0xff47d0ff);
-      circle(c,909,382,78,"LTFT",labelValue(r.ltft,true),
-        "%",(r.ltft+25f)/50f,0xff45d5ff);
-      circle(c,1120,352,126,"TEMP APĂ",degrees(r.coolantC),"",
+      circle(c,155,382,148,"RPM",Float.isFinite(r.rpm)?
+        String.format(Locale.US,"%.1f",r.rpm/1000f):"N/A","x1000 rpm",
+        r.rpm/8000f,line);
+      circle(c,1125,382,148,"TEMP APĂ",degrees(r.coolantC),"",
         (r.coolantC-40f)/90f,0xff54dcff);
+      halfGauge(c,527,516,85,"STFT",labelValue(r.stft,true),
+        (r.stft+25f)/50f,0xff39ceff);
+      halfGauge(c,753,516,85,"LTFT",labelValue(r.ltft,true),
+        (r.ltft+25f)/50f,0xfffe5284);
     }else{
-      // A3: glass showroom, compact rectangular instrument cards on sides.
+      // A3: FOUR round hexagonal native dials around the luminous showroom:
+      // RPM/STFT on left, coolant/LTFT on right. No rectangular text-only
+      // placeholders and no oil/boost/voltage invented indicators.
       ObdReader.Reading r=host.obd==null?ObdReader.Reading.empty():host.obd.current();
-      boxGauge(c,25,230,210,98,"RPM",Float.isFinite(r.rpm)?
-        String.format(Locale.US,"%.1f",r.rpm/1000f):"N/A","x1000 rpm",line);
-      boxGauge(c,25,349,210,98,"STFT",labelValue(r.stft,true),"%",line);
-      boxGauge(c,1045,230,210,98,"TEMP APĂ",degrees(r.coolantC),"",line);
-      boxGauge(c,1045,349,210,98,"LTFT",labelValue(r.ltft,true),"%",line);
+      framedCircle(c,160,291,124,"RPM",Float.isFinite(r.rpm)?
+        String.format(Locale.US,"%.1f",r.rpm/1000f):"N/A",
+        "x1000 rpm",r.rpm/8000f,line);
+      framedCircle(c,160,508,86,"STFT",labelValue(r.stft,true),
+        "%",(r.stft+25f)/50f,0xff47d0ff);
+      framedCircle(c,1120,291,124,"TEMP APĂ",degrees(r.coolantC),"",
+        (r.coolantC-40f)/90f,0xff54dcff);
+      framedCircle(c,1120,508,86,"LTFT",labelValue(r.ltft,true),
+        "%",(r.ltft+25f)/50f,0xfffa598f);
     }
     music(c,line);
     bar(c,id,line);
