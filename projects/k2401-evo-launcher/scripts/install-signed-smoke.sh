@@ -11,6 +11,7 @@ DEBUG="$BASE/app/build/outputs/apk/debug/app-debug.apk"
 test -s "$NORMAL" && test -s "$PARALLEL" && test -s "$DEBUG"
 adb shell wm size 1280x720
 adb shell wm density 160
+adb shell settings put system accelerometer_rotation 0
 adb shell am force-stop "$MAIN" >/dev/null 2>&1 || true
 # Installed same-cert official production APK, not debug emulator artifact.
 adb install -r "$NORMAL"
@@ -47,9 +48,8 @@ adb pull /sdcard/k2401-evo-red-v117.png k2401-evo-red-v117-emulator.png >/dev/nu
 python3 - <<'PY'
 from PIL import Image,ImageStat
 im=Image.open("k2401-evo-red-v117-emulator.png").convert("RGB")
-# GitHub's default AVD can expose a 640x720 framebuffer despite wm size.
-# Verify the actual frame instead of asserting a synthetic screenshot size.
-assert im.width>=600 and im.height>=600,im.size
+# Same -skin 720x1280 as the passing K2401 debug emulator workflow.
+assert im.size==(1280,720),im.size
 stat=ImageStat.Stat(im)
 assert max(stat.stddev)>8,("Blank or nearly blank HUD",stat.stddev)
 print("K2401_EVO_RED_V117_EMULATOR_SCREENSHOT=PASS actual_frame=",im.size)
