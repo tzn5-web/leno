@@ -25,6 +25,23 @@ adb shell pm path "$ALT" | grep -q '^package:'
 adb shell am start -W -n "$ALT/ro.evolauncher.k2401.MainActivity"
 adb shell pidof "$ALT" >/dev/null
 echo "K2401_PARALLEL_SIDE_BY_SIDE_WITH_SIGNED=PASS"
+# Real screenshots of ALL redesigned skins from the KEY-VAULT-SIGNED APK,
+# not mockups or an unsigned local renderer. No car ECU/hardware is accessed.
+adb shell pm grant "$MAIN" android.permission.ACCESS_FINE_LOCATION || true
+adb shell pm grant "$MAIN" android.permission.ACCESS_COARSE_LOCATION || true
+mkdir -p k2401-glass-hud-signed-screens
+for skin in 21 22 23 24 25 26 27 28; do
+  adb shell am force-stop "$MAIN" >/dev/null
+  adb shell am start -W -n "$MAIN/ro.evolauncher.k2401.MainActivity" \
+    --ei k2401_skin_preview_ci "$skin" >/dev/null
+  sleep 2
+  adb shell pidof "$MAIN" >/dev/null
+  adb shell screencap -p "/sdcard/k2401-glass-$skin.png"
+  adb pull "/sdcard/k2401-glass-$skin.png" \
+    "k2401-glass-hud-signed-screens/skin-$skin.png" >/dev/null
+done
+python3 projects/k2401-evo-launcher/scripts/verify-holographic-screens.py \
+  k2401-glass-hud-signed-screens
 # Reproduce common OEM "App not installed": old app installed with a
 # different certificate. Remove ONLY on this throwaway test emulator.
 adb shell pm uninstall "$MAIN" >/dev/null
