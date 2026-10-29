@@ -43,8 +43,8 @@ import java.util.Locale;
  * Tap launches, press-and-hold 550 ms changes any slot.
  */
 final class UltraCockpitTheme {
-  private static final int WHITE=0xfff0efed, CYAN=0xffb7c1cb, RED=0xffd9424e;
-  private static final int BG=0xff080a0e;
+  private static final int WHITE=0xffecf7ff, CYAN=0xff27d5ff, RED=0xffff315c;
+  private static final int BG=0xff050b16;
   private static final int SLOT_COUNT=6;
   private static final int SLOT_X=427,SLOT_Y=609,SLOT_W=67,SLOT_H=71,SLOT_GAP=7;
   // Only A1/02/A3: six wider shortcut tiles matching approved 16:9 footer.
@@ -135,14 +135,6 @@ final class UltraCockpitTheme {
   private void gauge(Canvas c,float cx,float cy,float radius,String heading,String value,
                      String unit,float current,float minimum,float maximum,int mainColour,
                      boolean large){
-    // Glass HUD renders real readings on translucent native vector dials.
-    if(host.skins!=null&&host.skins.selection()==21){
-      GlassHudFx.dial(c,cx,cy,radius,current,minimum,maximum);
-      center(c,heading,cx,cy-(large?54:23),large?19:16,WHITE,true);
-      center(c,value,cx,cy+(large?13:18),large?54:36,WHITE,true);
-      center(c,unit,cx,cy+(large?46:39),large?19:14,CYAN,false);
-      return;
-    }
     // Opaque dynamic centre hides static artwork, preventing sample numbers.
     if(approvedWallpaper!=null){
       // Feather only the artwork's stale printed values. The former opaque
@@ -184,10 +176,7 @@ final class UltraCockpitTheme {
     // N/A is shown only once at dial centre when its PID is unavailable.
   }
   private void drawBackdrop(Canvas c){
-    if(host.skins!=null&&host.skins.selection()==21){
-      GlassHudFx.backdrop(c,21);return;
-    }
-    // The original source screenshot remains embedded for archival compatibility.
+    // The EXACT user-approved screenshot is embedded in the signed APK.
     // The printed sample data on it is covered below by native live widgets.
     if(approvedWallpaper!=null&&!approvedWallpaper.isRecycled()){
       color(Color.WHITE);p.setFilterBitmap(true);
@@ -226,7 +215,7 @@ final class UltraCockpitTheme {
   private void drawRail(Canvas c){
     // Cover the FULL printed icon rail of the approved image: its original
     // icons otherwise peep out at x=87..101 beside the interactive ones.
-    rect(c,0,0,102,720,0,0xff090b10);
+    rect(c,0,0,102,720,0,0xff070f1c);
     final int[] ys={73,171,269,367,465,563};
     for(int i=0;i<6;i++){
       final int a=i==0?RED:0xffd9edff;
@@ -241,7 +230,8 @@ final class UltraCockpitTheme {
     // printed into the approved concept art from bleeding through live values.
     // Extend past the image's printed song/progress baseline (y≈147).
     // The previous 140px panel left a 20px strip of old text exposed.
-    GlassHudFx.glassPanel(c,113,12,1152,148,17);
+    rect(c,113,12,1152,148,17,0xff071321);
+    stroke(c,113,12,1152,148,17,0xff235887,2);
     MediaController m=host.media;
     String song="",artist="";
     Bitmap cover=null;
@@ -254,7 +244,7 @@ final class UltraCockpitTheme {
       cover=md.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
       if(cover==null)cover=md.getBitmap(MediaMetadata.METADATA_KEY_ART);
     }
-    GlassHudFx.glassPanel(c,270,23,73,75,7);
+    rect(c,270,23,73,75,7,0xff113452);
     if(cover!=null){
       color(WHITE);p.setFilterBitmap(true);
       c.drawBitmap(cover,null,new Rect(272,25,341,96),p);
@@ -272,7 +262,8 @@ final class UltraCockpitTheme {
     boolean playing=m!=null&&m.getPlaybackState()!=null&&
       m.getPlaybackState().getState()==PlaybackState.STATE_PLAYING;
     MediaVectorIcons.draw(c,785,76,0,WHITE);
-    GlassHudFx.glassPanel(c,827,30,75,75,37);
+    rect(c,827,30,75,75,37,0xff0f375b);
+    stroke(c,827,30,75,75,37,CYAN,2);
     MediaVectorIcons.draw(c,865,69,playing?3:1,WHITE);
     MediaVectorIcons.draw(c,950,76,2,WHITE);
     // Status icons and the live upper-right clock are painted last by
@@ -285,7 +276,8 @@ final class UltraCockpitTheme {
    * This 3-column panel is fully opaque and clips NONE of the live labels.
    */
   private void drawTime(Canvas c){
-    GlassHudFx.glassPanel(c,454,170,411,94,15);
+    rect(c,448,170,455,94,15,0xff071526);
+    stroke(c,448,170,455,94,15,0xff24638a,1.8f);
     line(c,572,184,572,248,0xff234563,1.2f);
     line(c,755,184,755,248,0xff234563,1.2f);
     Date now=new Date();
@@ -309,7 +301,8 @@ final class UltraCockpitTheme {
    * Read Android system toggle state only; never initialize the OEM BT stack.
    */
   private void drawTopStatus(Canvas c){
-    GlassHudFx.glassPanel(c,1030,28,227,92,12);
+    rect(c,1030,28,227,92,12,0xff081523);
+    stroke(c,1030,28,227,92,12,0xff27557b,1.5f);
     boolean bt=false,wifi=false;
     try{
       bt=Settings.Global.getInt(host.getContentResolver(),"bluetooth_on",0)!=0;
@@ -319,14 +312,23 @@ final class UltraCockpitTheme {
     }
     label(c,"BT",1050,52,15,bt?CYAN:0xff73869b,true);
     label(c,"Wi-Fi",1101,52,15,wifi?CYAN:0xff73869b,true);
-    // The single live clock is in drawTime(); no duplicate top-right clock.
+    label(c,new SimpleDateFormat("HH:mm",Locale.getDefault()).format(new Date()),
+      1073,94,40,WHITE,true);
   }
   private void drawSlots(Canvas c){
     int w=sw(),h=sh(),spacing=sg(),y=sy();
     boolean wide=isCinematicTrio();
     for(int i=0;i<SLOT_COUNT;i++){
       int x=sx()+i*(w+spacing);
-      GlassHudFx.glassPanel(c,x,y,w,h,12);
+      // The user's original blue-neon ULTRA skin (index 21) must remain
+      // pixel-for-pixel unchanged except the dial masking repair.
+      // Other newly introduced skins reuse these slots with glass styling.
+      if(isCinematicTrio()){
+        GlassHudFx.glassPanel(c,x,y,w,h,12);
+      }else{
+        rect(c,x,y,w,h,12,0xf5091729);
+        stroke(c,x,y,w,h,12,i%2==0?CYAN:RED,1.7f);
+      }
       String pkg=slots[i];
       if(pkg==null||pkg.isEmpty()){
         center(c,"+",x+w/2f,y+(wide?60:46),wide?42:36,WHITE,true);
