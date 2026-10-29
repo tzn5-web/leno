@@ -1050,7 +1050,7 @@ final class SkinEngine {
       list.addView(entry,new LinearLayout.LayoutParams(-1,dp(146)));
       entry.setOnClickListener(v->previewDialog(index));
     }
-    galleryDialog=new AlertDialog.Builder(host).setTitle("Skinuri EVO • 22 modele • 21 originale + EVO ULTRA NEON UHD")
+    galleryDialog=new AlertDialog.Builder(host).setTitle("Skinuri EVO • "+COUNT+" modele • 21 originale + 6 teme noi")
       .setView(scroll).setNegativeButton("Închide",null).create();
     galleryDialog.show();
   }
