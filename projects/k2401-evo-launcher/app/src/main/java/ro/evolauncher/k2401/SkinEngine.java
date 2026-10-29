@@ -62,7 +62,8 @@ final class SkinEngine {
     "A1 • HOLOGRAPHIC VERTICAL 4K",
     "02 • HOLOGRAPHIC BLUE 4K",
     "A3 • GLASS SHOWROOM 4K",
-    "RACE HUD • FINAL ALB-ROȘU"
+    "RACE HUD • FINAL ALB-ROȘU",
+    "RACE HUD • ANGULAR WINGS ALB-ROȘU"
   };
   // Variants correspond to concept-sheet crops in /assets/skins/atlas.webp.
   static final int COUNT=NAMES.length;
@@ -847,7 +848,7 @@ final class SkinEngine {
   void draw(Canvas c){
     // Independent 22nd UHD cockpit; original 21 themes remain unchanged.
     if(selected==21){ultra.draw(c);return;}
-    if(selected==RaceHudFinalTheme.ID){raceHud.draw(c);return;}
+    if(selected==RaceHudFinalTheme.ID||selected==RaceHudFinalTheme.ANGULAR_ID){raceHud.draw(c);return;}
     if(selected>=CinematicTrioTheme.FIRST&&selected<=CinematicTrioTheme.LAST){trio.draw(c,selected);return;}
     // EVO Digital Dash has its own bespoke left/right interactive cockpit.
     // The remaining twenty models use layouts aligned to the *individual*
@@ -864,7 +865,7 @@ final class SkinEngine {
   void ultraTouchCancel(){ultra.cancel();}
   boolean ultraTouchUp(float x,float y){
     if(selected==21)return ultra.up(x,y);
-    if(selected==RaceHudFinalTheme.ID)
+    if(selected==RaceHudFinalTheme.ID||selected==RaceHudFinalTheme.ANGULAR_ID)
       return ultra.upSlotOnly(x,y)||raceHud.touch(x,y);
     if(selected>=CinematicTrioTheme.FIRST&&selected<=CinematicTrioTheme.LAST)
       return ultra.upSlotOnly(x,y)||trio.touch(x,y);
@@ -872,7 +873,7 @@ final class SkinEngine {
   }
   boolean touch(float x,float y){
     if(selected==21)return ultra.touch(x,y);
-    if(selected==RaceHudFinalTheme.ID)return raceHud.touch(x,y);
+    if(selected==RaceHudFinalTheme.ID||selected==RaceHudFinalTheme.ANGULAR_ID)return raceHud.touch(x,y);
     if(selected>=CinematicTrioTheme.FIRST&&selected<=CinematicTrioTheme.LAST)
       return trio.touch(x,y);
     if(selected==1)return touchCinematicTwo(x,y);
