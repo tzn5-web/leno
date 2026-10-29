@@ -8,6 +8,11 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+# Do not waste GitHub-hosted emulator minutes on obsolete commits while the
+# visual repair is iterated. Only the latest branch revision is meaningful.
+concurrency:
+  group: k2401-evo-android10-emulator-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   android:
     runs-on: ubuntu-24.04
