@@ -34,6 +34,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate Cloud Shell OIDC bootstrap syntax
         run: bash -n projects/k2401-evo-launcher/scripts/bootstrap-azure-oidc.sh
+      - name: Parse universal fresh-install and upgrade test without executing
+        run: bash -n projects/k2401-evo-launcher/scripts/verify-universal-install.sh
       - name: Install actionlint
         run: |
           set -euo pipefail
@@ -41,5 +43,5 @@ jobs:
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Validate Azure and emulator workflow YAML
         run: |
-          actionlint -color .github/workflows/k2401-azure-emulator.yml .github/workflows/k2401-evo-launcher.yml .github/workflows/k2401-azure-static-check.yml
+          actionlint -color .github/workflows/k2401-azure-emulator.yml .github/workflows/k2401-evo-launcher.yml .github/workflows/k2401-azure-static-check.yml .github/workflows/k2401-signed-prerelease.yml
           echo 'WORKFLOW_STATIC_VALIDATION=PASS'
