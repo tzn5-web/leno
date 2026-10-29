@@ -297,9 +297,9 @@ final class CinematicTrioTheme {
         "x1000 rpm",r.rpm/8000f,line,0xff071b2f);
       vertical(c,1093,162,160,427,"TEMP APĂ",degrees(r.coolantC),
         "",(r.coolantC-40)/90f,0xff5cceff,0xff071b2f);
-      halfGauge(c,515,522,90,"STFT",labelValue(r.stft,true),
+      halfGauge(c,418,520,90,"STFT",labelValue(r.stft,true),
         (r.stft+25f)/50f,0xff36d9ff);
-      halfGauge(c,765,522,90,"LTFT",labelValue(r.ltft,true),
+      halfGauge(c,862,520,90,"LTFT",labelValue(r.ltft,true),
         (r.ltft+25f)/50f,0xffea458b);
     }else if(id==23){
       // 02: premium mountain hologram: two LARGE outer round dials and two
@@ -319,14 +319,14 @@ final class CinematicTrioTheme {
       // RPM/STFT on left, coolant/LTFT on right. No rectangular text-only
       // placeholders and no oil/boost/voltage invented indicators.
       ObdReader.Reading r=host.obd==null?ObdReader.Reading.empty():host.obd.current();
-      framedCircle(c,160,291,124,"RPM",Float.isFinite(r.rpm)?
+      framedCircle(c,160,258,124,"RPM",Float.isFinite(r.rpm)?
         String.format(Locale.US,"%.1f",r.rpm/1000f):"N/A",
         "x1000 rpm",r.rpm/8000f,line);
-      framedCircle(c,160,508,86,"STFT",labelValue(r.stft,true),
+      framedCircle(c,160,470,86,"STFT",labelValue(r.stft,true),
         "%",(r.stft+25f)/50f,0xff47d0ff);
-      framedCircle(c,1120,291,124,"TEMP APĂ",degrees(r.coolantC),"",
+      framedCircle(c,1120,258,124,"TEMP APĂ",degrees(r.coolantC),"",
         (r.coolantC-40f)/90f,0xff54dcff);
-      framedCircle(c,1120,508,86,"LTFT",labelValue(r.ltft,true),
+      framedCircle(c,1120,470,86,"LTFT",labelValue(r.ltft,true),
         "%",(r.ltft+25f)/50f,0xfffa598f);
     }
     music(c,line);
