@@ -320,10 +320,10 @@ final class RaceHudFinalTheme {
       c.drawColor(0xff05070c);
       fill(0xff11151c);c.drawRect(445,212,835,420,p);
     }
-    // Original 4K carbon-metal scene remains under a real layered glass
-    // projection; no flat car outline is promoted as a live ECU value.
-    GlassHudFx.glassPanel(c,438,214,404,228,16);
-    GlassHudFx.projection(c);
+    // Real alpha-cutout Mitsubishi floats over an optical pedestal.
+    // Do not hide it inside the old opaque rectangular photo-card or draw
+    // a second schematic vehicle over the approved photographic subject.
+    GlassHudFx.hologramPedestal(c);
     drawHologramPhoto(c,206);
     // The scenic layer has no baked HUD, speed, media or ECU readings.
     ObdReader.Reading r=host.obd==null?ObdReader.Reading.empty():host.obd.current();
