@@ -202,6 +202,7 @@ final class SkinEngine {
   void release(){
     ultra.release();
     trio.dispose();
+    raceHud.dispose();
     if(atlas!=null&&!atlas.isRecycled()){atlas.recycle();atlas=null;}
     if(fullArt!=null&&!fullArt.isRecycled()){fullArt.recycle();fullArt=null;}
   }
