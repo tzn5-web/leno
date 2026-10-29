@@ -91,15 +91,23 @@ final class CinematicTrioTheme {
       color(0xff0a1b32);p.setShader(new LinearGradient(0,0,0,720,
         0xff0a1830,0xff030811,Shader.TileMode.CLAMP));c.drawRect(0,0,1280,720,p);p.setShader(null);
     }
-    // Vary lighting without overprinting the imported photographic artwork.
-    // APPROVED reference is a visual screenshot and contains sample player
-    // words/app icons. Full opacity is mandatory: no phantom second clock,
-    // duplicated app, fake ECU data or album covers can show through.
-    // Original vehicle/mountain hologram stays fully visible between bars.
-    color(0xff040d1b);c.drawRect(0,0,1280,146,p);
-    color(0xff040d1b);c.drawRect(0,554,1280,720,p);
-    color(0x65061223);c.drawRect(0,146,22,554,p);
-    color(0x65061223);c.drawRect(1258,146,1280,554,p);
+    // Scene art is CLEAN: it contains no pre-painted music/date/gauges/apps.
+    // Earlier versions incorrectly overpainted solid black 146px TOP and
+    // 166px BOTTOM bands, hiding almost HALF of the approved cinematic scene.
+    // Preserve a continuous photographic field beneath the opaque native cards.
+    // Soft scene scrims improve readability without erasing the 4K environment.
+    color(Color.WHITE);
+    p.setShader(new LinearGradient(0,0,0,160,
+      new int[]{0xd6040d1b,0x92040d1b,0x00040d1b},
+      new float[]{0f,.52f,1f},Shader.TileMode.CLAMP));
+    c.drawRect(0,0,1280,160,p);p.setShader(null);
+    color(Color.WHITE);
+    p.setShader(new LinearGradient(0,520,0,720,
+      new int[]{0x00040d1b,0x7c040d1b,0xe0040d1b},
+      new float[]{0f,.53f,1f},Shader.TileMode.CLAMP));
+    c.drawRect(0,520,1280,720,p);p.setShader(null);
+    color(0x38061223);c.drawRect(0,130,18,610,p);
+    color(0x38061223);c.drawRect(1262,130,1280,610,p);
   }
   private void bar(Canvas c,int id,int line){
     // Only ONE clock/date + one exterior temperature: always drawn over opaque
