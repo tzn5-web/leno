@@ -59,14 +59,18 @@ dependencies {
  }
  tasks.named('preBuild') { dependsOn tasks.named('generateUhdSkins') }
 
- // 3 cinematic HUD wallpapers at exactly 3840x2160. Reuses the original 21
- // clean photographs and generates NO raster telemetry, menus or fake clocks.
+ // 3 cinematic HUD wallpapers at exactly 3840x2160 from the three NEW approved
+ // user-generated artworks. Baked UI is cleared before native live overlays.
  tasks.register('generateCinematic4k', Exec) {
    dependsOn tasks.named('generateUhdSkins')
    workingDir rootProject.projectDir
    commandLine 'python3', "${rootProject.projectDir}/scripts/generate-cinematic-4k.py"
    inputs.file file("${rootProject.projectDir}/scripts/generate-cinematic-4k.py")
-   inputs.file file("src/main/assets/skins/cinematic/approved-trio-reference.webp")
+   inputs.files files(
+     'src/main/assets/skins/cinematic/approved-A1.webp',
+     'src/main/assets/skins/cinematic/approved-02.webp',
+     'src/main/assets/skins/cinematic/approved-A3.webp'
+   )
    inputs.files fileTree('src/main/assets/skins/clean') { include 'skin_??.webp' }
    outputs.dir file('src/main/assets/skins/cinematic')
  }
