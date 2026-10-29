@@ -67,3 +67,57 @@ assert any("Aplica" in w or "Caut" in w for w in words),words[:90]
 print("K2401_RACE_HUD_APPS_BUTTON_OPENS_NATIVE_DRAWER=PASS")
 PY
 echo 'K2401_RACE_HUD_FINAL_ANDROID10_EMULATOR=PASS'
+# New independent angular-wing skin 26: verify actual selection and screenshot
+# without replacing or modifying approved circular skin 25 or user's settings.
+adb shell am force-stop "$APP"
+adb shell am start -W -n "$APP/.MainActivity" --ei k2401_skin_preview_ci 26 > "$OUT/race-hud-angular-launch.txt"
+sleep 3
+adb shell pidof "$APP" >/dev/null
+adb shell screencap -p /sdcard/race-hud-angular.png
+adb pull /sdcard/race-hud-angular.png "$OUT/race-hud-angular.png" >/dev/null
+adb shell uiautomator dump /sdcard/race-hud-angular-tree.xml >/dev/null
+adb pull /sdcard/race-hud-angular-tree.xml "$OUT/race-hud-angular-tree.xml" >/dev/null
+python3 - <<'PY'
+from pathlib import Path
+from PIL import Image,ImageChops,ImageStat
+import xml.etree.ElementTree as ET
+root=Path("projects/k2401-evo-launcher")
+src=(root/"app/src/main/java/ro/evolauncher/k2401/RaceHudFinalTheme.java").read_text()
+skin=(root/"app/src/main/java/ro/evolauncher/k2401/SkinEngine.java").read_text()
+main=(root/"app/src/main/java/ro/evolauncher/k2401/MainActivity.java").read_text()
+ultra=(root/"app/src/main/java/ro/evolauncher/k2401/UltraCockpitTheme.java").read_text()
+a=Image.open(root/"screenshots/race-hud-final.png").convert("RGB")
+b=Image.open(root/"screenshots/race-hud-angular.png").convert("RGB")
+assert a.size==b.size==(1280,720)
+diff=ImageChops.difference(a.crop((21,190,400,492)),b.crop((21,190,400,492)))
+visual_delta=sum(ImageStat.Stat(diff).mean)/3
+assert visual_delta>5.0,("Circular and angular themes look the same",visual_delta)
+assert 'static final int ID=25, ANGULAR_ID=26;' in src
+assert 'angularGauge(c,false,"RPM"' in src
+assert 'angularGauge(c,true,"TEMP APĂ"' in src
+assert 'RACE HUD • ANGULAR WINGS ALB-ROȘU' in skin
+assert 'RaceHudFinalTheme.ANGULAR_ID' in main
+assert 'RaceHudFinalTheme.ANGULAR_ID' in ultra
+assert 'slots.drawUserSlots(c)' in src
+words=[n.attrib.get("text","") for n in ET.parse(
+  root/"screenshots/race-hud-angular-tree.xml").findall(".//node")]
+assert any("HARTĂ INTEGRATĂ" in w or "HARTĂ TEMPORAR" in w for w in words),words[:60]
+assert any("CAUTA LOC" in w for w in words),words[:60]
+print("K2401_SECOND_RACE_HUD_ANGULAR_REAL_MAP=PASS")
+print("K2401_TWO_DISTINCT_RACE_HUD_NATIVE_LAYOUTS=PASS",round(visual_delta,2))
+print("K2401_ANGULAR_WINGS_4_REAL_OBD_PIDS_6_APPS=PASS")
+PY
+# Long-hold personal app slot on angular home must activate Android chooser.
+adb shell input swipe 332 648 332 648 850
+sleep 1
+adb shell uiautomator dump /sdcard/race-angular-picker.xml >/dev/null
+adb pull /sdcard/race-angular-picker.xml "$OUT/race-angular-picker.xml" >/dev/null
+python3 - <<'PY'
+import xml.etree.ElementTree as ET
+from pathlib import Path
+p=Path("projects/k2401-evo-launcher/screenshots/race-angular-picker.xml")
+texts=[n.attrib.get("text","") for n in ET.parse(p).findall(".//node")]
+assert any("Aplicația 1" in x for x in texts),texts[:80]
+print("K2401_RACE_ANGULAR_LONG_PRESS_PICKER=PASS")
+PY
+echo 'K2401_CARBON_RED_AND_ANGULAR_WINGS_ANDROID10_EMULATOR=PASS'
