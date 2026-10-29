@@ -52,7 +52,7 @@ final class UltraCockpitTheme {
     if(host.skins==null)return false;
     int id=host.skins.selection();
     return (id>=CinematicTrioTheme.FIRST&&id<=CinematicTrioTheme.LAST)
-      ||id==RaceHudFinalTheme.ID;
+      ||id==RaceHudFinalTheme.ID||id==RaceHudFinalTheme.ANGULAR_ID;
   }
   private int sx(){return isCinematicTrio()?278:SLOT_X;}
   private int sy(){return isCinematicTrio()?603:SLOT_Y;}
