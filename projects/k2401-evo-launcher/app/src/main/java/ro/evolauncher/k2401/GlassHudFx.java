@@ -38,6 +38,28 @@ final class GlassHudFx {
       new int[]{0x2a9a3942,0x107a2933,0x00000000},
       new float[]{0f,.54f,1f},Shader.TileMode.CLAMP));
     c.drawRect(0,0,1280,720,p);p.setShader(null);
+    // Layered, faint red holographic lens halos behind the live dials.
+    // These are lighting, never synthetic telemetry or opaque gauge plates.
+    for(int side=0;side<2;side++){
+      float gx=side==0?215:1065;
+      reset(WHITE);
+      p.setShader(new RadialGradient(gx,367,265,
+        new int[]{0x2ad74650,0x126c202a,0x00000000},
+        new float[]{0f,.55f,1f},Shader.TileMode.CLAMP));
+      c.drawCircle(gx,367,265,p);p.setShader(null);
+    }
+    // Perspective floor lattice: subtle parallax/depth without a fake map.
+    for(int i=-7;i<=7;i++){
+      stroke(c,640,459,640+i*93,706,
+        i%2==0?0x35c4c9ce:0x28d9414b,1.1f);
+    }
+    for(int row=0;row<6;row++){
+      float t=(row+1)/6f;
+      float y=460+235*t*t;
+      float half=80+560*t;
+      stroke(c,640-half,y,640+half,y,
+        row%2==0?0x3bc2c7ce:0x2cd9414b,1.0f+1.2f*t);
+    }
     // Carbon weave, drawn as real vectors; scales cleanly to 3840x2160.
     for(int y=115;y<690;y+=11){
       for(int x=0;x<1280;x+=23){
@@ -120,24 +142,90 @@ final class GlassHudFx {
     }
   }
   static void projection(Canvas c){
-    // Purely abstract metallic vehicle-inspired wireframe; no fictional data,
-    // baked lettering, navigation map, or duplicate app controls.
-    Path outline=new Path();
-    outline.moveTo(490,378);outline.lineTo(508,345);outline.lineTo(547,334);
-    outline.lineTo(571,305);outline.lineTo(612,290);outline.lineTo(668,290);
-    outline.lineTo(709,305);outline.lineTo(734,334);outline.lineTo(773,345);
-    outline.lineTo(790,378);outline.lineTo(776,407);outline.lineTo(504,407);
-    outline.close();
-    reset(0x22272c33);c.drawPath(outline,p);
-    reset(0x9bb7c0c8);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2f);
-    c.drawPath(outline,p);
-    stroke(c,571,305,709,305,0x9bc5cbd1,1.7f);
-    stroke(c,547,334,734,334,0x80c5cbd1,1.3f);
-    stroke(c,507,375,773,375,0x7fd9414b,2.5f);
-    stroke(c,523,399,758,399,0x83b9bec5,1.7f);
-    stroke(c,520,383,550,383,0x9bda4b56,4f);
-    stroke(c,730,383,760,383,0x9bda4b56,4f);
-    stroke(c,640,270,640,429,0x27d7dbe0,1f);
-    stroke(c,469,420,811,420,0x45a9b4bf,1f);
-  }
-}
+    // Original, layered 3D holographic vehicle sculpture: actual transparent
+    // surfaces, roof perspective, wheel volumes, specular metal and floor
+    // reflection. Pure decoration, never fake ECU/door/AC readings.
+    reset(WHITE);
+    p.setShader(new RadialGradient(640,411,206,
+      new int[]{0x37d9414b,0x13d4d9df,0x00000000},
+      new float[]{0f,.52f,1f},Shader.TileMode.CLAMP));
+    c.drawOval(454,378,826,472,p);p.setShader(null);
+    for(int i=-5;i<=5;i++){
+      stroke(c,640,410,640+i*35,476,0x38b8c1cb,1.0f);
+    }
+    for(int i=0;i<4;i++){
+      float y=420+i*i*5.2f;
+      stroke(c,470+i*6,y,810-i*6,y,
+        i%2==0?0x58c7cdd4:0x45d9414b,1.1f);
+    }
+    // Body: translucent metallic 3D volume, not a flat outline.
+    Path body=new Path();
+    body.moveTo(495,367);body.lineTo(510,337);body.lineTo(548,328);
+    body.lineTo(570,303);body.lineTo(596,285);body.lineTo(684,285);
+    body.lineTo(710,303);body.lineTo(732,328);body.lineTo(770,337);
+    body.lineTo(785,367);body.lineTo(776,408);body.lineTo(504,408);
+    body.close();
+    reset(WHITE);
+    p.setShader(new LinearGradient(495,292,785,414,
+      new int[]{0x9c303943,0x85202831,0xa50a0d12,0x6b454e58},
+      new float[]{0f,.3f,.7f,1f},Shader.TileMode.CLAMP));
+    c.drawPath(body,p);p.setShader(null);
+    reset(0x8ae3e7eb);p.setStyle(Paint.Style.STROKE);
+    p.setStrokeWidth(2.3f);c.drawPath(body,p);
+    // Roof and glazing float above the rear deck in real perspective.
+    Path roof=new Path();
+    roof.moveTo(574,305);roof.lineTo(604,289);roof.lineTo(676,289);
+    roof.lineTo(706,305);roof.lineTo(722,334);roof.lineTo(558,334);
+    roof.close();
+    reset(WHITE);
+    p.setShader(new LinearGradient(568,290,711,340,
+      new int[]{0x687b8997,0x4c222c36,0x9a0b1118},
+      new float[]{0f,.42f,1f},Shader.TileMode.CLAMP));
+    c.drawPath(roof,p);p.setShader(null);
+    reset(0xb6d5dce2);p.setStyle(Paint.Style.STROKE);
+    p.setStrokeWidth(1.8f);c.drawPath(roof,p);
+    stroke(c,640,291,640,332,0x5ccbd2d9,1.0f);
+    stroke(c,560,336,721,336,0x82c6cbd1,1.5f);
+    // Angled side panels make the vehicle read as a floating 3D volume.
+    Path left=new Path();
+    left.moveTo(510,337);left.lineTo(548,329);left.lineTo(558,335);
+    left.lineTo(544,386);left.lineTo(502,397);left.close();
+    reset(0x65717c87);c.drawPath(left,p);
+    Path right=new Path();
+    right.moveTo(770,337);right.lineTo(732,329);right.lineTo(722,335);
+    right.lineTo(736,386);right.lineTo(778,397);right.close();
+    reset(0x50545e69);c.drawPath(right,p);
+    stroke(c,548,329,544,386,0x8bdae0e5,1.5f);
+    stroke(c,732,329,736,386,0x8bdae0e5,1.5f);
+    // Realistic wheel recesses and metallic rims (no fabricated readings).
+    for(int wheel=0;wheel<2;wheel++){
+      float x=wheel==0?535:745;
+      reset(0xc1080a0e);c.drawOval(x-22,382,x+22,424,p);
+      reset(0xa9c8cfd6);p.setStyle(Paint.Style.STROKE);
+      p.setStrokeWidth(2.0f);c.drawOval(x-17,386,x+17,418,p);
+      reset(0x6c727e89);c.drawCircle(x,402,5,p);
+    }
+    // Three-stage rear deck and active-looking but DECORATIVE taillights.
+    stroke(c,546,361,734,361,0x8be6eaee,1.6f);
+    stroke(c,515,387,765,387,0x95b9c3cc,1.5f);
+    stroke(c,531,405,749,405,0x88dce1e6,2f);
+    stroke(c,554,397,726,397,0x70d9414b,2.2f);
+    for(int side=0;side<2;side++){
+      float x=side==0?525:755;
+      stroke(c,x-18,376,x+18,376,0x4bd9414b,9f);
+      stroke(c,x-18,376,x+18,376,0xe4f25a63,3.7f);
+    }
+    // Double specular highlights and a restrained red underglow.
+    stroke(c,506,351,550,339,0x8de9edf1,1.3f);
+    stroke(c,730,339,774,351,0x8de9edf1,1.3f);
+    stroke(c,521,415,759,415,0x79d9414b,1.7f);
+    stroke(c,492,432,788,432,0x43e1e5e9,1.1f);
+    for(int i=0;i<5;i++){
+      float y=439+i*6;
+      stroke(c,540+i*13,y,740-i*13,y,0x22d9414b,1.0f);
+    }
+    // Vertical holographic registration beams stay inside the central panel.
+    stroke(c,473,279,473,430,0x2bcdd3da,1f);
+    stroke(c,807,279,807,430,0x2bcdd3da,1f);
+    stroke(c,640,265,640,437,0x23e1e4e8,1f);
+  }}
