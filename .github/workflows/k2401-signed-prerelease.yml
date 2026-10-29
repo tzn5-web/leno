@@ -283,6 +283,10 @@ jobs:
           assert "EVO_RED_ID=28" in race
           assert "selected==RaceHudFinalTheme.EVO_RED_ID" in engine
           assert "id==RaceHudFinalTheme.EVO_RED_ID" in slots
+          assert 'label(c,"MUZICĂ",850,74' in race, "EVO RED native music control missing"
+          assert 'if(x>=815&&x<923){host.page=1;' in race, "EVO RED music touch target missing"
+          for title in ('"APPS"','"NAVI"','"MUZICĂ"','"SETUP"'):
+            assert title in race, ("Missing native header action",title)
           assert "K2401_PARALLEL_APK" in Path("projects/k2401-evo-launcher/app/build.gradle").read_text()
           print("K2401_EVO_RED_V117_4K_LIVE_HUD_CONTRACT=PASS")
           PY

@@ -309,6 +309,9 @@ final class RaceHudFinalTheme {
     label(c,"APPS",62,74,14,WHITE,true,true);
     NavVectorIcons.draw(c,2,160,39,WHITE);
     label(c,"NAVI",160,74,14,WHITE,true,true);
+    // Native music action stays clear of MediaSession and connection status.
+    NavVectorIcons.draw(c,1,850,39,WHITE);
+    label(c,"MUZICĂ",850,74,12,WHITE,true,true);
     boolean bt=false,wifi=false;
     try{
       bt=Settings.Global.getInt(host.getContentResolver(),"bluetooth_on",0)!=0;
@@ -401,6 +404,7 @@ final class RaceHudFinalTheme {
       if(y<=96){
         if(x>=10&&x<112){host.showInstalledApps();return true;}
         if(x>=116&&x<210){host.page=2;host.placeMap();if(host.view!=null)host.view.invalidate();return true;}
+        if(x>=815&&x<923){host.page=1;host.placeMap();if(host.view!=null)host.view.invalidate();return true;}
         if(x>=1156&&x<=1270){host.page=5;host.placeMap();if(host.view!=null)host.view.invalidate();return true;}
         if(x>=230&&x<550){host.choosePlayer();return true;}
         if(x>=550&&x<618){host.mediaAction(0);return true;}
