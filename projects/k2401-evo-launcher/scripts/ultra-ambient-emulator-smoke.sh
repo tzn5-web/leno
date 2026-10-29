@@ -37,7 +37,32 @@ assert 'new SimpleDateFormat("HH:mm",Locale.getDefault()).format(new Date())' in
 assert 'maskRadius=radius*.61f' in source
 assert 'new RadialGradient(cx,cy,maskRadius' in source
 assert 'GlassHudFx.backdrop(c,21)' not in source
+assert 'neon(c,cx,cy,radius-(large?29f:16f)' not in source
 print("K2401_ULTRA_ORIGINAL_NEON_PALETTE_AND_DIAL_MASK=PASS")
+# Pixel-level regression for the user's photo #5. The old grey inner arc
+# physically crossed original numeric/tick artwork at 78-88% dial radius.
+# Compare actual Android 10 framebuffer to embedded original UHD artwork,
+# excluding the dynamic center mask and any legitimate OUTER progress arc.
+import io,zipfile,math
+from PIL import Image
+apk=pathlib.Path("projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.apk")
+with zipfile.ZipFile(apk) as archive:
+    raw=archive.read("assets/skins/approved/ultra-neon-2560x1440.webp")
+wallpaper=Image.open(io.BytesIO(raw)).convert("RGB").resize((1280,720),Image.Resampling.BILINEAR)
+screen=Image.open(shot).convert("RGB")
+for cx,cy,radius in ((282,380,165),(1047,380,164),(551,492,79),(773,492,79)):
+    lower=(radius*.78)**2;upper=(radius*.88)**2
+    difference=total=0
+    for yy in range(max(0,int(cy-radius)),min(720,int(cy+radius)),2):
+        for xx in range(max(0,int(cx-radius)),min(1280,int(cx+radius)),2):
+            distance=(xx-cx)**2+(yy-cy)**2
+            if lower<=distance<=upper:
+                a=screen.getpixel((xx,yy));b=wallpaper.getpixel((xx,yy))
+                difference+=sum(abs(a[i]-b[i]) for i in range(3))
+                total+=3
+    mean=difference/max(1,total)
+    assert mean<10,(cx,cy,"An opaque inner circle still cuts the original gauge scale",mean)
+    print("K2401_ULTRA_ORIGINAL_TICK_LINES_CONTINUOUS=PASS",cx,cy,round(mean,2))
 assert 'ultra_app_slot_' in source and 'getLaunchIntentForPackage(pkg)' in source
 assert 'postDelayed(longPressJob,550)' in source
 assert 'final int[] ys={73,171,269,367,465,563};' in source
