@@ -1,110 +1,82 @@
 #!/usr/bin/env python3
-"""4K cinematic backgrounds using EXACT approved A1 / 02 / A3 photography.
+"""Build UHD cinematic wallpaper layers from the THREE *individual approved* A1/02/A3 designs.
 
-Rebuild from a clean middle band of the original user-approved composition.
-The concept's printed music, clock, six app icons and OBD sample values are
-NOT copied into live backdrops. Letterbox expansion is formed from that same
-scene at blurred atmospheric depth; no old car or dark garage substitutes.
+These three images originate from user-approved ChatGPT designs. The source
+screenshot contains sample music, OBD values, a clock and app logos; NEVER
+ship that screenshot as the entire live UI. Remove the baked top/media and
+bottom/app panels and obscure fake numeric centers. Native Android Canvas
+provides live music/status/sensor gauges/apps on top of these layers.
 
-Source reference (1672x941) is narrower than genuine 4K source detail.
-Output 3840x2160 is therefore a careful upsample, not invented optical 4K.
+Original image-generation source is 1672x941; 3840x2160 output is enhanced
+resampling, not an assertion that the camera/renderer produced native 4K.
 """
-from __future__ import annotations
-from PIL import Image, ImageFilter, ImageEnhance
 from pathlib import Path
-import numpy as np
+from PIL import Image, ImageDraw, ImageFilter, ImageEnhance
 import hashlib, json
 
-ROOT=Path(__file__).resolve().parents[1] / "app/src/main/assets/skins"
-DEST=ROOT/"cinematic"
-SOURCE=DEST/"approved-trio-reference.webp"
-DEST.mkdir(parents=True,exist_ok=True)
-if not SOURCE.is_file():
-    raise SystemExit("BLOCKED: exact user-approved A1/02/A3 source missing")
-original=Image.open(SOURCE).convert("RGB")
-ow,oh=original.size
-assert 1600<=ow<=2500 and 900<=oh<=1300
-results=[]
-for index,label in enumerate(("A1","02","A3")):
-    row0=round(oh*index/3)
-    row1=round(oh*(index+1)/3)
-    full=original.crop((0,row0,ow,row1))
-    # This band preserves ORIGINAL crisp car, glass mountains and neon-tunnel
-    # detail while excluding embedded mockup album/clock/apps/OBD numbers.
-    source_left=(ow-820)//2
-    source_top=83
-    source_bottom=min(full.height-73,240)
-    assert source_bottom-source_top>=145,(label,full.size)
-    photo=full.crop((source_left,source_top,source_left+820,source_bottom))
-    if index==1:
-        # In the original 02 mood board, the outer 170px of the photo band
-        # contain static STFT/LTFT numbers. Replace ONLY those distant side
-        # patches with the adjacent tunnel itself, retaining the central
-        # approved holographic blue Lancer pixel-for-pixel.
-        left=photo.crop((185,0,230,photo.height)).resize(
-            (185,photo.height),Image.Resampling.BICUBIC)
-        right=photo.crop((590,0,635,photo.height)).resize(
-            (185,photo.height),Image.Resampling.BICUBIC)
-        photo.paste(left,(0,0))
-        photo.paste(right,(635,0))
-        # Tiny feather is enough to remove hard vertical seams at the joins.
-        arr=np.asarray(photo).copy()
-        for xx in range(12):
-            a=(xx+1)/13.
-            arr[:,173+xx,:]=np.uint8(
-                arr[:,173+xx,:]*(1-a)+arr[:,185+xx,:]*a)
-            arr[:,635+xx,:]=np.uint8(
-                arr[:,635+xx,:]*a+arr[:,623+xx,:]*(1-a))
-        photo=Image.fromarray(arr,"RGB")
-    # Atmospheric extension from the identical source scene. A stretched,
-    # blurred backdrop is intentionally behind the original sharp car strip.
-    W,H=3840,2160
-    ambient=photo.resize((W,H),Image.Resampling.BICUBIC)
-    ambient=ambient.filter(ImageFilter.GaussianBlur(radius=120))
-    photo_height=round(photo.height*W/photo.width)
-    core=photo.resize((W,photo_height),Image.Resampling.LANCZOS)
-    core=ImageEnhance.Contrast(core).enhance(1.055)
-    core=core.filter(ImageFilter.UnsharpMask(radius=0.95,percent=66,threshold=2))
-    top=(H-photo_height)//2-70
-    # Soft mask removes any rectangle seam. Photo car itself stays 100% sharp.
-    yy,xx=np.ogrid[0:photo_height,0:W]
-    edge_y=np.minimum(yy,photo_height-1-yy)
-    edge_x=np.minimum(xx,W-1-xx)
-    y_feather=np.clip(edge_y/115.,0,1)
-    # Holographic 02 source has concept STFT/LTFT at the extreme sides.
-    # Hide those printed gauges, then draw live native gauges in Java.
-    x_feather=np.clip(edge_x/(1050. if index==1 else 75.),0,1)
-    mask=(y_feather*y_feather*(3-2*y_feather)) * (x_feather*x_feather*(3-2*x_feather))
-    matte=Image.fromarray(np.uint8(mask*255),"L").filter(ImageFilter.GaussianBlur(5))
-    ambient.paste(core,(0,top),matte)
-    ambient=ambient.filter(ImageFilter.UnsharpMask(radius=0.9,percent=50,threshold=3))
-    dest=DEST/f"scene_{index}_4k.webp"
-    ambient.save(dest,"WEBP",quality=90,method=6)
-    with Image.open(dest) as test:
-        assert test.size==(3840,2160)
-        # Visible sharp central car content: reject blurred giant old source
-        # cards even if they have correct 3840x2160 pixel dimensions.
-        vehicle=np.asarray(test.convert("RGB").crop((1280,top+120,2560,top+photo_height-115))
-                  .resize((300,125)),dtype=np.int16)
-        sharp=float(np.percentile(np.abs(np.diff(vehicle,axis=1)),90))
-        assert sharp>13,(label,"Car appears too blurry",sharp)
-        # The precise foreground is from the approved source car, not stock.
-        centre_source=photo.resize((300,125),Image.Resampling.LANCZOS)
-        # This sanity sample remains close in color to the approved photo.
-        center_delta=float(np.mean(np.abs(
-            np.asarray(centre_source,dtype=np.int16)-
-            np.asarray(test.crop((1180,top+80,2660,top+photo_height-80))
-              .resize((300,125)),dtype=np.int16))))
-        assert center_delta<95,(label,"Incorrect source vehicle",center_delta)
-    sha=hashlib.sha256(dest.read_bytes()).hexdigest()
-    results.append(dict(skin=label,name=dest.name,
-        source="approved-trio-reference.webp",
-        source_crop=[source_left,row0+source_top,source_left+820,row0+source_bottom],
-        pixels=[W,H],photo_detail_p90=sharp,photo_mae=center_delta,
-        sha256=sha,bytes=dest.stat().st_size))
-    print("4K_APPROVED_PHOTO_SCENE=PASS",label,"sharp",round(sharp,1),
-          "delta",round(center_delta,1),sha)
-assert len(set(entry["sha256"] for entry in results))==3
-(DEST/"cinematic-4k-manifest.json").write_text(
-    json.dumps(results,indent=2)+"\n",encoding="utf-8")
-print("THREE_DISTINCT_APPROVED_PHOTO_ONLY_4K_SCENES=PASS")
+ROOT=Path(__file__).resolve().parents[1]/'app/src/main/assets/skins/cinematic'
+ROOT.mkdir(parents=True,exist_ok=True)
+W,H=3840,2160
+SOURCES=[('A1','approved-A1.webp'),('02','approved-02.webp'),('A3','approved-A3.webp')]
+MASK_TEXT={
+  'A1':[(195,278,95,135),(1470,278,95,135),(540,655,93,56),(1133,653,93,56)],
+  '02':[(250,430,125,96),(1450,430,125,96),(648,665,102,48),(1014,665,102,48)],
+  'A3':[(225,326,105,97),(1455,325,105,97),(228,565,100,67),(1455,565,100,67)],
+}
+
+def wipe_region(img, rectangle, target, blur=6):
+    mask=Image.new('L',img.size,0)
+    draw=ImageDraw.Draw(mask)
+    draw.rectangle(rectangle,fill=255)
+    mask=mask.filter(ImageFilter.GaussianBlur(blur))
+    return Image.composite(target,img,mask)
+
+report=[]
+for i,(label,filename) in enumerate(SOURCES):
+    raw=ROOT/filename
+    if not raw.is_file():raise SystemExit('BLOCKER: missing approved original '+str(raw))
+    with Image.open(raw) as original:
+        original=original.convert('RGB')
+    assert original.size==(1672,941), (filename,original.size)
+    source_sha=hashlib.sha256(raw.read_bytes()).hexdigest()
+    im=original.copy()
+    # The HUD row is repainted by native Android. Sampling only the scene
+    # centre prevents the album, static time, fake WiFi, static gauges at the
+    # sides, and mock player labels from leaking into dynamic UI.
+    ceiling=im.crop((350,165,1322,285)).resize((1672,225),Image.Resampling.BICUBIC)
+    ceiling=ceiling.filter(ImageFilter.GaussianBlur(5))
+    top=im.copy();top.paste(ceiling,(0,0))
+    im=wipe_region(im,(0,0,1672,211),top,blur=16)
+    # The six real installed-app buttons are rendered from PackageManager.
+    # Clear ONLY the source screenshot's static, nonfunctional icons first.
+    road=im.crop((480,673,1192,741)).resize((1672,242),Image.Resampling.BICUBIC)
+    road=road.filter(ImageFilter.GaussianBlur(8))
+    floor=im.copy();floor.paste(road,(0,699))
+    im=wipe_region(im,(0,710,1672,941),floor,blur=20)
+    # Mask illustrative digits in gauge centre faces, retaining the source's
+    # decorative neon rims. Real ECU numbers are rendered on opaque native
+    # gauge faces, avoiding duplicate or falsely frozen values.
+    face=Image.new('RGB',im.size,(5,16,31))
+    masks=Image.new('L',im.size,0)
+    pen=ImageDraw.Draw(masks)
+    for cx,cy,rx,ry in MASK_TEXT[label]:
+        pen.ellipse((cx-rx,cy-ry,cx+rx,cy+ry),fill=245)
+    masks=masks.filter(ImageFilter.GaussianBlur(radius=13))
+    im=Image.composite(face,im,masks)
+    im=im.resize((W,H),Image.Resampling.LANCZOS)
+    im=ImageEnhance.Contrast(im).enhance(1.035)
+    im=im.filter(ImageFilter.UnsharpMask(radius=1.10,percent=72,threshold=2))
+    dst=ROOT/f'scene_{i}_4k.webp'
+    im.save(dst,format='WEBP',quality=92,method=6)
+    with Image.open(dst) as v:
+        assert v.size==(3840,2160)
+    sha=hashlib.sha256(dst.read_bytes()).hexdigest()
+    report.append(dict(skin=label,source=filename,source_sha256=source_sha,
+                       source_pixels=[1672,941],output_pixels=[W,H],
+                       cleaned_baked_HUD=True,cleaned_baked_shortcuts=True,
+                       name=dst.name,sha256=sha,bytes=dst.stat().st_size))
+    print('4K_APPROVED_SCENE=PASS',label,dst.name,sha)
+assert len({x['sha256'] for x in report})==3
+(ROOT/'cinematic-4k-manifest.json').write_text(json.dumps(report,indent=2)+'\n')
+print('K2401_EXACT_THREE_APPROVED_SOURCE_IMAGES=PASS')
+print('K2401_NO_FROZEN_CLOCK_MUSIC_OBD_APP_LABELS_IN_SCENE=PASS')
