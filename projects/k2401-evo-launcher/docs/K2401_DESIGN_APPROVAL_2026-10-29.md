@@ -20,6 +20,6 @@ The same user also says "dar vreau si ce am cerut". This retains the earlier req
 - Deliver independent, labeled previews. Actual APK completion requires Azure compilation, signed in-place update installation on Android 10, emulator screenshots and tapping/long-press regression tests on the final commit; report any visual mismatch. Never equate mockups with finished APKs.
 
 ## Current implementation status
-**Black/Red Race HUD:** visual design APPROVED by user, full native APK implementation NOT YET VERIFIED.
-**Angular-Wings Race HUD:** outstanding independent design request, NOT YET APPROVED as matching user's reference.
+**Black/Red Race HUD:** visual design APPROVED by user, native vector implementation registered as skin 25, awaiting final build, emulator/physical visual acceptance. Do not claim pixel-identical rendering of the AI mockup.
+**Angular-Wings Race HUD:** distinct native vector implementation now registered as skin 26, **not yet visually approved** as matching the Alamy-inspired reference; awaiting final build/emulator and user review. No licensed Alamy pixels are shipped.
 No GitHub CI, signed artifact, map integration or physical head-unit status should be inferred from this approval document.
