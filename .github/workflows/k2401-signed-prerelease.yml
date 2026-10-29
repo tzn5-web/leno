@@ -310,7 +310,7 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging \
             K2401-EVO-ULTRA-INSTALL-SEPARAT.apk | grep -Fq "package: name='ro.evolauncher.k2401.ultra'"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging \
-            K2401-EVO-ULTRA-INSTALL-SEPARAT.apk | grep -Fq "versionCode='119'"
+            K2401-EVO-ULTRA-INSTALL-SEPARAT.apk | grep -Fq "versionCode='120'"
           # Recreate the exact original production APK, never accidentally
           # publish the parallel APK as an in-place update.
           cp K2401-EVO-UPDATE-SIGNED.apk "$APK"
