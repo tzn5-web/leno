@@ -28,11 +28,20 @@ echo "K2401_PARALLEL_SIDE_BY_SIDE_WITH_SIGNED=PASS"
 # different certificate. Remove ONLY on this throwaway test emulator.
 adb shell pm uninstall "$MAIN" >/dev/null
 adb install "$DEBUG"
+# The first-run Android location dialog must not obscure the HUD screenshot.
+# These are test-emulator grants only; no permissions are changed on the car.
+adb shell pm grant "$MAIN" android.permission.ACCESS_FINE_LOCATION || true
+adb shell pm grant "$MAIN" android.permission.ACCESS_COARSE_LOCATION || true
+adb shell pm grant "$MAIN" android.permission.ACCESS_BACKGROUND_LOCATION || true
 # Exercise the actual EVO RED native renderer at the head-unit resolution.
 adb shell am start -W -n "$MAIN/ro.evolauncher.k2401.MainActivity" \
   --ei k2401_skin_preview_ci 28
 sleep 5
 adb shell pidof "$MAIN" >/dev/null
+if adb shell dumpsys window windows | grep -Eiq 'mCurrentFocus=.*(permissioncontroller|packageinstaller)'; then
+  echo "::error::System permission dialog obscures the EVO RED screenshot"
+  exit 5
+fi
 adb shell screencap -p /sdcard/k2401-evo-red-v117.png
 adb pull /sdcard/k2401-evo-red-v117.png k2401-evo-red-v117-emulator.png >/dev/null
 python3 - <<'PY'
