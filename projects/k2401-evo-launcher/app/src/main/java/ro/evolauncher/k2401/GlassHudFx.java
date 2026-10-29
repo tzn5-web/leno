@@ -115,6 +115,18 @@ final class GlassHudFx {
       new int[]{0xfff1f2f3,0xff5e6873,0xffd8dce1,0xff58616b,0xfff0f0f0},
       null,Shader.TileMode.CLAMP));
     c.drawCircle(cx,cy,radius-2,p);p.setShader(null);
+    // Fixed optical highlights on the OUTER metallic bezel are decoration,
+    // not invented ECU progress. They never intersect the live tick ring.
+    reset(0x8cdb4854);p.setStyle(Paint.Style.STROKE);
+    p.setStrokeCap(Paint.Cap.ROUND);
+    p.setStrokeWidth(radius>100?5.5f:3.4f);
+    c.drawArc(cx-radius+5,cy-radius+5,cx+radius-5,cy+radius-5,
+      307,38,false,p);
+    reset(0x9adce2e8);p.setStyle(Paint.Style.STROKE);
+    p.setStrokeCap(Paint.Cap.ROUND);
+    p.setStrokeWidth(radius>100?4f:2.5f);
+    c.drawArc(cx-radius+5,cy-radius+5,cx+radius-5,cy+radius-5,
+      127,53,false,p);
     reset(0x7c929ba6);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1.1f);
     c.drawCircle(cx,cy,radius-15,p);
     reset(0x55343c46);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(radius>100?10:6);
