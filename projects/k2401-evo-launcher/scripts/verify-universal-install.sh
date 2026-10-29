@@ -14,17 +14,17 @@ test "$(adb shell getprop ro.kernel.qemu | tr -d '\r')" = "1" || {
   echo "::error::Universal install verification may run on a disposable emulator only"
   exit 17
 }
-"$AAPT" dump badging "$OLD" | grep -Fq "package: name='$PKG'"
-"$AAPT" dump badging "$NEW" | grep -Fq "package: name='$PKG'"
-"$AAPT" dump badging "$OLD" | grep -Fq "versionCode='123'"
-"$AAPT" dump badging "$NEW" | grep -Fq "versionCode='124'"
+"$AAPT" dump badging "$OLD" | grep -F "package: name='$PKG'" >/dev/null
+"$AAPT" dump badging "$NEW" | grep -F "package: name='$PKG'" >/dev/null
+"$AAPT" dump badging "$OLD" | grep -F "versionCode='123'" >/dev/null
+"$AAPT" dump badging "$NEW" | grep -F "versionCode='124'" >/dev/null
 adb root >/dev/null
 adb wait-for-device
 test "$(adb shell id -u | tr -d '\r')" = "0"
 # Scenario A: device already has previous official v118 -> install v119 over it.
 adb shell pm uninstall "$PKG" >/dev/null 2>&1 || true
 adb install "$OLD"
-adb shell pm path "$PKG" | grep -q '^package:'
+adb shell pm path "$PKG" | grep '^package:' >/dev/null
 adb shell am start -W -n "$PKG/ro.evolauncher.k2401.MainActivity" >/dev/null
 adb shell am force-stop "$PKG"
 uid="$(adb shell stat -c %u "/data/user/0/$PKG" | tr -d '\r')"
@@ -39,11 +39,11 @@ adb shell chown "$uid:$uid" "$PREF"
 adb shell chmod 600 "$PREF"
 adb shell restorecon "$PREF"
 adb shell rm /data/local/tmp/k2401-install-probe.xml
-adb shell cat "$PREF" | grep -Fq "KEEP_USER_DATA_ON_UPDATE"
+adb shell cat "$PREF" | grep -F "KEEP_USER_DATA_ON_UPDATE" >/dev/null
 adb install -r "$NEW"
-adb shell pm path "$PKG" | grep -q '^package:'
+adb shell pm path "$PKG" | grep '^package:' >/dev/null
 adb shell dumpsys package "$PKG" | grep -F 'versionCode=124' >/dev/null
-adb shell cat "$PREF" | grep -Fq "KEEP_USER_DATA_ON_UPDATE" || {
+adb shell cat "$PREF" | grep -F "KEEP_USER_DATA_ON_UPDATE" >/dev/null || {
   echo "::error::User data was lost during same-package signed update"
   exit 18
 }
@@ -54,7 +54,7 @@ echo "K2401_UNIVERSAL_UPDATE_PRESERVES_EXISTING_USER_DATA=PASS"
 # Scenario B: user uninstalled the launcher -> install SAME APK from zero.
 adb shell pm uninstall "$PKG" >/dev/null
 adb install "$NEW"
-adb shell pm path "$PKG" | grep -q '^package:'
+adb shell pm path "$PKG" | grep '^package:' >/dev/null
 if adb shell test -f "$PREF"; then
   echo "::error::Uninstalled app's old private preferences unexpectedly persisted"
   exit 19
