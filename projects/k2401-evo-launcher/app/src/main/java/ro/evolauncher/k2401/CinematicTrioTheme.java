@@ -204,7 +204,17 @@ final class CinematicTrioTheme {
     text(c,key,x+w/2f,y+43,18,ICE,true,true);
     text(c,value,x+w/2f,y+96,38,WHITE,true,true);
     text(c,unit,x+w/2f,y+119,15,LT,false,true);
-    color(0x66535b64);c.drawRoundRect(x+w/2f-28,y+150,x+w/2f+28,y+h-25,6,6,p);
+    float bx=x+w/2f-28,by=y+150,bw=56,bh=h-175;
+    color(0x2a46505c);
+    p.setShader(new LinearGradient(bx,by,bx+bw,by,
+      new int[]{0x807f8994,0x18242c36,0x807f8994},
+      new float[]{0f,.5f,1f},Shader.TileMode.CLAMP));
+    c.drawRoundRect(bx,by,bx+bw,by+bh,6,6,p);
+    p.setShader(null);
+    color(0x9aaeb8c3);p.setStyle(Paint.Style.STROKE);
+    p.setStrokeWidth(1.4f);
+    c.drawRoundRect(bx,by,bx+bw,by+bh,6,6,p);
+    p.setStyle(Paint.Style.FILL);
     if(Float.isFinite(fraction)){
       int bottom=y+h-27;
       int top=y+152;
