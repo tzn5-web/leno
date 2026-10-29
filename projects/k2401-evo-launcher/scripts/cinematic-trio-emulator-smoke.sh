@@ -51,44 +51,53 @@ with ZipFile("projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.
         with Image.open(BytesIO(z.read(asset))) as pic:
             assert pic.size==(3840,2160),(asset,pic.size)
     assert "assets/skins/cinematic/cinematic-4k-manifest.json" in z.namelist()
-    # EXACT approved photograph, cropped WITHOUT fake sample UI. Check car
-    # identity inside generated 4K media (not merely same bitmap dimensions).
-    import json
-    exact="assets/skins/cinematic/approved-trio-reference.webp"
-    assert exact in z.namelist(),"Approved photo triptych missing from APK"
-    approval=Image.open(BytesIO(z.read(exact))).convert("RGB")
+    # Exact three user-approved individual source designs, not the old collage
+    # or the unrelated original 21 skin photos.
+    import json,hashlib
     manifest=json.loads(z.read(
         "assets/skins/cinematic/cinematic-4k-manifest.json").decode("utf-8"))
     assert [m["skin"] for m in manifest]==["A1","02","A3"]
     for k,m in enumerate(manifest):
+        src=f"assets/skins/cinematic/approved-{m['skin']}.webp"
+        assert src in z.namelist(),src
+        assert m["source"]==f"approved-{m['skin']}.webp"
+        assert m["source_sha256"]==hashlib.sha256(z.read(src)).hexdigest()
+        with Image.open(BytesIO(z.read(src))) as photo:
+            approved=photo.convert("RGB")
+        assert approved.size==(1672,941)
         asset=f"assets/skins/cinematic/scene_{k}_4k.webp"
         assert m["name"]==f"scene_{k}_4k.webp"
-        with Image.open(BytesIO(z.read(asset))) as data:
-            scene=data.convert("RGB")
+        with Image.open(BytesIO(z.read(asset))) as photo:
+            scene=photo.convert("RGB")
         assert scene.size==(3840,2160)
-        l,t,r,b=m["source_crop"]
-        assert r-l==820 and 145<=b-t<=170,(k,m["source_crop"])
-        approved_core=approval.crop((l,t,r,b))
-        photo_h=round((b-t)*3840/(r-l))
-        top=(2160-photo_h)//2-70
-        # Interior regions are completely opaque in the photograph matte.
-        # Compare vehicle and mountain pixels directly to the exact user art.
-        expected=approved_core.resize((3840,photo_h),Image.Resampling.LANCZOS)
-        focus=(1400,180,2440,photo_h-180)
-        expected_arr=np.asarray(expected.crop(focus).resize((260,90)),dtype=np.int16)
-        actual_arr=np.asarray(scene.crop((focus[0],top+focus[1],
-                   focus[2],top+focus[3])).resize((260,90)),dtype=np.int16)
-        deviation=float(np.mean(np.abs(expected_arr-actual_arr)))
-        assert deviation<33,(k,"Wrong car photo or dark garage",deviation)
-        # Native screenshot centre must remain visibly photographic.
-        displayed=Image.open(folder/f"cinematic-{22+k}.png").convert("RGB")
+        # Real physical car image must match the APPROVED current photograph
+        # in the image centre; there must not be a different stock car.
+        focus=(490,230,790,415)
+        expected=approved.resize((1280,720),Image.Resampling.LANCZOS)
         bitmap=scene.resize((1280,720),Image.Resampling.LANCZOS)
-        roi=(480,262,800,429)
-        delta=float(np.mean(np.abs(np.asarray(displayed.crop(roi),dtype=np.int16)-
-                                   np.asarray(bitmap.crop(roi),dtype=np.int16))))
-        assert delta<49,(k,"Car obscured by an opaque HUD",delta)
-        print("K2401_APPROVED_CINEMATIC_CAR_VISIBLE=PASS",
-              k,round(deviation,2),round(delta,2))
+        exp=np.asarray(expected.crop(focus),dtype=np.int16)
+        got=np.asarray(bitmap.crop(focus),dtype=np.int16)
+        car_error=float(np.mean(np.abs(exp-got)))
+        assert car_error<30,(m["skin"],"Wrong approved car",car_error)
+        displayed=shots[22+k]
+        onscreen_error=float(np.mean(np.abs(
+            np.asarray(displayed.crop(focus),dtype=np.int16)-got)))
+        assert onscreen_error<49,(m["skin"],"Vehicle covered by native HUD",onscreen_error)
+        # Printed demo music and six sample app logos were removed from both
+        # wallpaper strips. Android draws true MediaSession / installed apps.
+        top=(400,20,880,120)
+        bottom=(350,615,980,705)
+        top_difference=float(np.mean(np.abs(np.asarray(
+            expected.crop(top),dtype=np.int16)-np.asarray(
+            bitmap.crop(top),dtype=np.int16))))
+        bottom_difference=float(np.mean(np.abs(np.asarray(
+            expected.crop(bottom),dtype=np.int16)-np.asarray(
+            bitmap.crop(bottom),dtype=np.int16))))
+        assert top_difference>8,(m["skin"],"Static music/clock art leaked",top_difference)
+        assert bottom_difference>8,(m["skin"],"Static application art leaked",bottom_difference)
+        print("K2401_EXACT_APPROVED_IMAGE_IN_4K_APK=PASS",
+              m["skin"],round(car_error,1),round(onscreen_error,1))
+        print("K2401_NO_BAKED_MEDIA_OR_SHORTCUTS=PASS",m["skin"])
 java=Path("projects/k2401-evo-launcher/app/src/main/java/ro/evolauncher/k2401/CinematicTrioTheme.java").read_text()
 assert "color(edge);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(16)" in java
 assert "color(0xff5f819e);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1.5f)" in java
