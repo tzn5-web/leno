@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 import sys
 import zipfile
-from PIL import Image, ImageDraw, ImageFont, ImageStat
+from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageStat
 
 folder=Path(sys.argv[1] if len(sys.argv)>1 else "k2401-glass-hud-signed-screens")
 assert folder.is_dir(),folder
@@ -91,6 +91,18 @@ for skin in range(21,29):
     }
     views[skin]=rgb
     print(f"K2401_SIGNED_GLASS_HUD_FRAME=PASS skin={skin} blue_fraction={blue_fraction:.4f}")
+# Reject the previous false-positive: release builds ignore the debug-only
+# preview intent, so eight screenshots were silently all the SAME skin.
+# These pairs MUST differ after writing selected_skin_v2 in the disposable
+# rootable emulator and cold-launching the actual signed production package.
+differences={}
+for left,right in ((21,22),(22,23),(23,24),(24,25),
+                   (25,26),(26,27),(27,28)):
+    delta=ImageStat.Stat(ImageChops.difference(views[left],views[right])).mean
+    mean=sum(delta)/3
+    assert mean>2.5,(left,right,"identical or near-identical signed skins",mean)
+    differences[f"{left}-{right}"]=round(mean,3)
+    print(f"K2401_SIGNED_REAL_SKIN_CHANGE=PASS {left}->{right} diff={mean:.2f}")
 # Full-native-resolution comparison sheet. Labels are outside screenshots.
 sheet=Image.new("RGB",(2560,4*752),(8,9,12))
 d=ImageDraw.Draw(sheet)
@@ -105,5 +117,7 @@ sheet.save(montage,quality=93,subsampling=0)
 (folder/"holographic-audit.json").write_text(
     json.dumps({"status":"automated visual checks passed",
                 "human_fidelity_review":"required",
+                "signed_release_selection":"persisted selected_skin_v2 on disposable rooted emulator",
+                "adjacent_skin_mean_pixel_differences":differences,
                 "skins":report},indent=2),encoding="utf-8")
 print("K2401_GLASS_HUD_ALL_EIGHT_SIGNED_SCREENSHOTS_AUDITED=PASS",montage)
