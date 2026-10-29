@@ -49,7 +49,7 @@ print("K2401_ULTRA_NO_TRIM_NA_OVERLAP=PASS")
 print("K2401_ULTRA_UHD_SNAPSHOT=PASS; AMBIENT_NA_WHEN_UNAVAILABLE=PASS")
 PY
 # A sustained tap on the first slot must present the real app chooser.
-adb shell input swipe 462 645 462 645 780
+adb shell input swipe 360 645 360 645 780
 sleep 1
 adb shell uiautomator dump /sdcard/k2401-ultra-slot-picker.xml >/dev/null
 adb pull /sdcard/k2401-ultra-slot-picker.xml "$OUT/k2401-ultra-slot-picker.xml" >/dev/null
@@ -100,7 +100,7 @@ assert get("k2401-ultra-slots-before.xml")==get("k2401-ultra-slots-after.xml")
 print("K2401_ULTRA_APP_SLOT_PERSISTS_RESTART=PASS")
 PY
 # The second long press must permit replacing the same chosen shortcut.
-adb shell input swipe 462 645 462 645 780
+adb shell input swipe 360 645 360 645 780
 sleep 1
 adb shell uiautomator dump /sdcard/k2401-ultra-replace.xml >/dev/null
 adb pull /sdcard/k2401-ultra-replace.xml "$OUT/k2401-ultra-replace.xml" >/dev/null
