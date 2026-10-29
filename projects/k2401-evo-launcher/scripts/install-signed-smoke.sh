@@ -28,6 +28,21 @@ echo "K2401_PARALLEL_SIDE_BY_SIDE_WITH_SIGNED=PASS"
 # different certificate. Remove ONLY on this throwaway test emulator.
 adb shell pm uninstall "$MAIN" >/dev/null
 adb install "$DEBUG"
+# Exercise the actual EVO RED native renderer at the head-unit resolution.
+adb shell am start -W -n "$MAIN/ro.evolauncher.k2401.MainActivity" \
+  --ei k2401_skin_preview_ci 28
+sleep 5
+adb shell pidof "$MAIN" >/dev/null
+adb shell screencap -p /sdcard/k2401-evo-red-v117.png
+adb pull /sdcard/k2401-evo-red-v117.png k2401-evo-red-v117-emulator.png >/dev/null
+python3 - <<'PY'
+from PIL import Image,ImageStat
+im=Image.open("k2401-evo-red-v117-emulator.png").convert("RGB")
+assert im.size==(1280,720),im.size
+stat=ImageStat.Stat(im)
+assert max(stat.stddev)>8,("Blank or nearly blank HUD",stat.stddev)
+print("K2401_EVO_RED_V117_EMULATOR_SCREENSHOT=PASS",im.size)
+PY
 set +e
 bad="$(adb install -r "$NORMAL" 2>&1)"
 result=$?
