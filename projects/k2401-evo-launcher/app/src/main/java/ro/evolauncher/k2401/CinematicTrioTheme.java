@@ -83,11 +83,12 @@ final class CinematicTrioTheme {
     GlassHudFx.backdrop(c,id);
     Bitmap im=scenes[i];
     if(im!=null&&!im.isRecycled()){
-      // Preserve original 4K assets but remove the harsh cyan/blue dominance.
-      // Art remains behind real live Canvas HUD controls, never their source.
+      // The 4K assets now contain ONLY the approved Mitsubishi subject and
+      // graphite/silver/red atmosphere: no baked dials, music, clock or apps.
+      // Keep them visible beneath native translucent glass, not 44%-faded.
       ColorMatrix desaturated=new ColorMatrix();
       desaturated.setSaturation(.08f);
-      color(Color.WHITE);p.setFilterBitmap(true);p.setAlpha(112);
+      color(Color.WHITE);p.setFilterBitmap(true);p.setAlpha(225);
       p.setColorFilter(new ColorMatrixColorFilter(desaturated));
       c.drawBitmap(im,null,new Rect(0,0,1280,720),p);
       p.setColorFilter(null);p.setAlpha(255);
