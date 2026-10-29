@@ -29,6 +29,18 @@ for idx in (22,23,24):
     assert pic.size==(1280,720),(idx,pic.size)
     assert ImageStat.Stat(pic).stddev[1]>15,(idx,"blank image")
     shots[idx]=pic
+# Regression: previous three themes had solid black 146px upper and
+# 166px lower bands. Photographic backdrop must be visible through BOTH.
+for skin,pic in shots.items():
+    for label,rect in (
+            ("top cinematic scene",(100,110,1180,145)),
+            ("bottom cinematic scene",(90,565,1180,605))):
+        region=pic.crop(rect)
+        chroma=ImageStat.Stat(region).stddev
+        assert max(chroma)>3.5,(
+            skin,label,"solid black letterbox or empty canvas",chroma)
+        print("K2401_CINEMATIC_NO_SOLID_BLACK_BANDS=PASS",skin,label,
+              round(max(chroma),2))
 for i,j in combinations((22,23,24),2):
     delta=np.mean(np.abs(np.asarray(shots[i],dtype=np.int16)-np.asarray(shots[j],dtype=np.int16)))
     assert delta>5.0,(i,j,delta,"duplicate visual geometry")
@@ -80,11 +92,13 @@ with ZipFile("projects/k2401-evo-launcher/app/build/outputs/apk/debug/app-debug.
 java=Path("projects/k2401-evo-launcher/app/src/main/java/ro/evolauncher/k2401/CinematicTrioTheme.java").read_text()
 assert "color(edge);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(16)" in java
 assert "color(0xff5f819e);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1.5f)" in java
-assert 'c.drawRect(0,0,1280,146,p)' in java
+assert 'new int[]{0xd6040d1b,0x92040d1b,0x00040d1b}' in java
+assert 'c.drawRect(0,0,1280,146,p)' not in java
 assert 'color(0xff081626);c.drawCircle(cx,cy,r-12,p)' in java
 assert '"x1000 rpm",line);' in java
 assert 'p.setTextAlign(Paint.Align.RIGHT)' in java
-assert 'c.drawRect(0,554,1280,720,p)' in java
+assert 'new int[]{0x00040d1b,0x7c040d1b,0xe0040d1b}' in java
+assert 'c.drawRect(0,554,1280,720,p)' not in java
 assert 'vertical(c,217,159,149,387,"STFT"' in java
 assert 'vertical(c,917,159,149,387,"LTFT"' in java
 assert 'circle(c,371,382,78,"STFT"' in java
