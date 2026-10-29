@@ -74,6 +74,10 @@ for i,(label,filename) in enumerate(SOURCES):
                  fill=(100,110,120),width=3)
         pen.line([(mirror(0),784),(mirror(195),736),(mirror(310),736)],
                  fill=(144,38,51),width=2)
+    # Subtle metallic header light streaks keep the area between native
+    # status and gauges optically alive; no fake clock/music is painted.
+    pen.line([(260,158),(1412,158)],fill=(82,91,102),width=4)
+    pen.line([(390,172),(1282,172)],fill=(137,38,50),width=3)
     for k in range(-10,11):
         pen.line([(836,620),(836+k*85,940)],
                  fill=(40,44,50) if k%2 else (62,32,39),width=2)
