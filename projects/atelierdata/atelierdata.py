@@ -10,6 +10,9 @@ from repair_procedures import (ensure_schema as ensure_procedures_schema,
 from repair_export import export_procedures_json,export_procedure_html
 from dtc_catalog import ensure_schema as ensure_dtc_schema, add_dtc
 from dtc_gui import open_dtc_window
+from maintenance_plans import (ensure_schema as ensure_maintenance_schema,
+                               add_plan, log_service)
+from maintenance_gui import open_maintenance_window
 
 CATEGORIES = ("Date tehnice","Întreținere","Motor","Distribuție","Cupluri de strângere",
               "Diagnosticare / DTC","Scheme electrice","Siguranțe și relee","Frâne / ABS",
@@ -46,6 +49,7 @@ class Store:
         ensure_schema(self)
         ensure_procedures_schema(self)
         ensure_dtc_schema(self)
+        ensure_maintenance_schema(self)
     def add_vehicle(self,make,model,engine='',years='',fuel='',variant=''):
         if not make.strip() or not model.strip():raise ValueError("Marca și modelul sunt obligatorii")
         cur=self.db.execute("INSERT INTO vehicles(make,model,engine,years,fuel,variant) VALUES(?,?,?,?,?,?)",
@@ -197,7 +201,8 @@ class App:
                  ('Backup SQLite',self.backup),('Backup ZIP',self.backup_full),
                  ('Restaurare ZIP',self.restore_full),('Specificații',self.specifications),
                  ('Proceduri',self.procedures),('Scheme / imagini',self.schematics),
-                 ('Diagnosticare DTC',self.diagnostics),('Analiză IDF',self.analyze)]
+                 ('Diagnosticare DTC',self.diagnostics),('Întreținere',self.maintenance),
+                 ('Analiză IDF',self.analyze)]
         for col in range(4):
             bar.columnconfigure(col,weight=1)
         for i,(name,cmd) in enumerate(actions):
@@ -353,6 +358,9 @@ class App:
                 subprocess.Popen(['xdg-open',str(path)])
         except Exception as exc:messagebox.showerror('Fișier indisponibil',str(exc))
 
+
+    def maintenance(self):
+        return open_maintenance_window(self,Editor)
 
     def diagnostics(self):
         return open_dtc_window(self,Editor)
@@ -536,6 +544,10 @@ def main():
             dtc_id=add_dtc(ui.db,vehicle,'P0A01','Sistem demonstrativ',
                           'Descriere inventată',source='DATE SINTETICE',
                           procedure_id=pid,article_id=article)
+            maintenance_id=add_plan(ui.db,vehicle,'Întreținere fictivă',
+                                    'TEST',interval_km=1000,interval_months=6,
+                                    source='SINTETIC — NU FOLOSI')
+            log_service(ui.db,maintenance_id,'2026-01-31',1000)
             ui.refresh()
             gui_errors=[]
             def on_gui_error(exc, value, traceback):
@@ -589,7 +601,20 @@ def main():
                 popup.dtc_tree.selection_set(str(dtc_id))
                 popup.dtc_tree.event_generate('<<TreeviewSelect>>')
             ui.root.after(1850,check_dtc_window)
-            ui.root.after(3350,ui.close)
+            def check_maintenance_window():
+                popup=ui.maintenance()
+                if popup is None or not popup.winfo_exists():
+                    raise RuntimeError('MAINTENANCE_GUI_NOT_OPENED')
+                if not popup.maintenance_tree.exists(str(maintenance_id)):
+                    raise RuntimeError('MAINTENANCE_GUI_PLAN_MISSING')
+                popup.maintenance_tree.selection_set(str(maintenance_id))
+                popup.maintenance_tree.event_generate('<<TreeviewSelect>>')
+                def check_history():
+                    if len(popup.service_events_tree.get_children())!=1:
+                        raise RuntimeError('MAINTENANCE_GUI_HISTORY_MISSING')
+                ui.root.after(150,check_history)
+            ui.root.after(2400,check_maintenance_window)
+            ui.root.after(4350,ui.close)
             ui.run()
             if gui_errors:
                 raise RuntimeError('GUI_SMOKE_FAILED: '+'; '.join(gui_errors))
