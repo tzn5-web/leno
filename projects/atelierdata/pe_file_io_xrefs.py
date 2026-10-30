@@ -151,7 +151,7 @@ def analyze(data, expected_sha):
                 raise ValueError('Excessive raw IAT candidates')
             private.append(dict(section=sec['name'], file_offset=sec['raw_at'] + i,
                                 instruction_va=pe['image_base'] + sec['rva'] + i,
-                                imported_dll=item['dll'], symbol=item['symbol'], kind=kind))
+                                imported_dll=item['dll'], symbol=item['symbol'], kind=kind, iat_va=va))
     # Count literal API names and exact absolute-address references. A raw pointer
     # occurrence is not a Ghidra code reference or a proven loader edge.
     literal_counts = {}
