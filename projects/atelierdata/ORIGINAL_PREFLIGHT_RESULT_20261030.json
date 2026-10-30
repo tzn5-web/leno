@@ -1,0 +1,34 @@
+{
+  "schema": "atelierdata-original-preflight-v1",
+  "manifest_file_count": 139,
+  "expected_chunk_count": 163,
+  "verified_chunk_count": 124,
+  "missing_chunk_count": 39,
+  "expected_package_count": 16,
+  "available_package_count": 15,
+  "missing_packages": ["autodata_part_0016.zip"],
+  "idf_file_count": 81,
+  "verified_idf_file_count": 81,
+  "unverified_idf_files": [],
+  "errors": [],
+  "pe": {
+    "machine": "0x014c",
+    "format": "PE32",
+    "subsystem": 2,
+    "imported_dlls": ["ADVAPI32.dll", "KERNEL32.dll", "MSVCRT.dll", "USER32.dll"],
+    "sentinel_dll_literal_present": true,
+    "literal_is_runtime_dependency_proof": false
+  },
+  "version_metadata": {
+    "ProductCode": "CDA3.44",
+    "VersionNo": "9.200",
+    "ExpiryDate": "42004"
+  },
+  "data_integrity": "PASS",
+  "complete_archive": false,
+  "original_executed": false,
+  "license_verified": false,
+  "runtime_compatibility_verified": false,
+  "idf_decoded": false,
+  "note": "All available ZIP entry payloads match SHA256; the 39 missing chunks are in package 0016."
+}
