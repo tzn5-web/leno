@@ -1,6 +1,7 @@
 """Native Windows/Tkinter procedure navigator for user-owned, sourced workshop data."""
 from __future__ import annotations
 
+from repair_export import export_procedure_html,export_procedures_json
 from repair_procedures import (
     add_step, create_procedure, delete_procedure, delete_step, get_procedure,
     list_procedures, list_steps, move_step, procedure_text, update_procedure, update_step
@@ -8,7 +9,7 @@ from repair_procedures import (
 
 
 def open_procedures_window(app, editor_class):
-    from tkinter import messagebox, ttk
+    from tkinter import filedialog, messagebox, simpledialog, ttk
     tk=app.tk
     if app.vid is None:
         messagebox.showinfo("Vehicul necesar", "Selectează un vehicul și motorizarea sa.")
@@ -187,6 +188,49 @@ def open_procedures_window(app, editor_class):
         area.insert("1.0",f"SURSĂ: {article['source']}\n\n{article['content']}\n\n"
                   f"ATAȘAMENTE ({len(linked)}):\n{attachments}")
         area.configure(state="disabled")
+        if linked:
+            def open_attachment():
+                import os,sys,subprocess
+                choice=1 if len(linked)==1 else simpledialog.askinteger(
+                    "Atașamente","Alege numărul atașamentului (1–"+str(len(linked))+"):",
+                    minvalue=1,maxvalue=len(linked),parent=display)
+                if choice is None:return
+                try:
+                    from atelierdata_extensions import resolve_document
+                    path=resolve_document(app.db,linked[choice-1]["id"])
+                    if sys.platform=="win32":os.startfile(str(path))
+                    else:subprocess.Popen(["xdg-open",str(path)])
+                except Exception as exc:
+                    messagebox.showerror("Atașament invalid",str(exc),parent=display)
+            ttk.Button(display,text="Deschide atașament verificat SHA256",
+                       command=open_attachment).pack(pady=8)
+
+    def export_html():
+        pid=state["pid"]
+        if pid is None:
+            return messagebox.showinfo("Selectare","Selectează o procedură.",parent=top)
+        destination=filedialog.asksaveasfilename(
+            parent=top,defaultextension=".html",
+            filetypes=[("Procedură HTML imprimabilă","*.html")])
+        if not destination:return
+        try:
+            export_procedure_html(app.db,pid,destination)
+            messagebox.showinfo("Export","Procedura a fost exportată ca HTML offline.",
+                                parent=top)
+        except Exception as exc:
+            messagebox.showerror("Export eșuat",str(exc),parent=top)
+
+    def export_json():
+        destination=filedialog.asksaveasfilename(
+            parent=top,defaultextension=".json",
+            filetypes=[("Proceduri JSON","*.json")])
+        if not destination:return
+        try:
+            count=export_procedures_json(app.db,destination,vehicle_id)
+            messagebox.showinfo("Export",f"Exportate {count} proceduri ale vehiculului.",
+                                parent=top)
+        except Exception as exc:
+            messagebox.showerror("Export eșuat",str(exc),parent=top)
 
     controls=ttk.Frame(body)
     controls.pack(fill="x",pady=(12,0))
@@ -196,7 +240,8 @@ def open_procedures_window(app, editor_class):
               ("+ Pas",lambda:step_form(False)),
               ("Editează pas",lambda:step_form(True)),
               ("↑",lambda:step_move(-1)),("↓",lambda:step_move(1)),
-              ("Șterge pas",step_remove),("Document asociat",open_reference)]
+              ("Șterge pas",step_remove),("Document asociat",open_reference),
+              ("Export HTML",export_html),("Export JSON",export_json)]
     for label,callback in commands:
         ttk.Button(controls,text=label,command=callback).pack(side="left",padx=(0,5))
 
