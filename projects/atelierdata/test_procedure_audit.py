@@ -67,6 +67,17 @@ class ProcedureAuditTests(unittest.TestCase):
             "SCHEMATIC_IMAGE_UNAVAILABLE", "REFERENCE_SOURCE_MISSING"
         })
 
+    def test_sha256_valid_but_invalid_png_is_not_previewable(self):
+        fake = self.root / "invalid.png"
+        fake.write_bytes(b"synthetic non-image bytes")
+        attach_document(self.store, self.diagram, fake)
+        report = audit_procedure(self.store, self.proc)
+        self.assertFalse(report["ok"])
+        self.assertEqual(report["verified_attachments"], 1)
+        codes = {issue["code"] for issue in report["issues"]}
+        self.assertIn("SCHEMATIC_IMAGE_INVALID", codes)
+        self.assertIn("SCHEMATIC_IMAGE_UNAVAILABLE", codes)
+
     def test_tamper_detected_without_modifying_original_file(self):
         attachment_id = attach_document(self.store, self.diagram, self._image())
         path = resolve_document(self.store, attachment_id)
