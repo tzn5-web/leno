@@ -52,6 +52,20 @@ class DelayImportAuditTests(unittest.TestCase):
         self.assertEqual(public["pointer_mode_counts"], {"VA": 1})
         self.assertEqual(private["descriptors"][0]["symbols"], ["MessageBoxA"])
 
+    def test_ordinal_import(self):
+        blob = bytearray(delay_fixture())
+        struct.pack_into("<I", blob, 0x570, 0x8000007b)
+        public, private = analyze_delay_imports(bytes(blob), hashlib.sha256(blob).hexdigest())
+        self.assertEqual(public["state"], "PARSED")
+        self.assertEqual(private["descriptors"][0]["symbols"], ["#123"])
+
+    def test_small_directory_is_partial(self):
+        blob = bytearray(delay_fixture())
+        struct.pack_into("<II", blob, 0x98 + 96 + 13 * 8, 0x2100, 16)
+        public, _ = analyze_delay_imports(bytes(blob), hashlib.sha256(blob).hexdigest())
+        self.assertEqual(public["state"], "PARTIAL")
+        self.assertEqual(public["issue_counts"]["directory_too_small"], 1)
+
     def test_unmapped_name_is_partial_not_crash(self):
         blob = delay_fixture(malformed=True)
         public, private = analyze_delay_imports(blob, hashlib.sha256(blob).hexdigest())
