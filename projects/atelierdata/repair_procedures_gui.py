@@ -242,8 +242,11 @@ def open_procedures_window(app, editor_class):
               ("↑",lambda:step_move(-1)),("↓",lambda:step_move(1)),
               ("Șterge pas",step_remove),("Document asociat",open_reference),
               ("Export HTML",export_html),("Export JSON",export_json)]
-    for label,callback in commands:
-        ttk.Button(controls,text=label,command=callback).pack(side="left",padx=(0,5))
+    for start in range(0,len(commands),6):
+        row=ttk.Frame(controls)
+        row.pack(fill="x",pady=(0,5))
+        for label,callback in commands[start:start+6]:
+            ttk.Button(row,text=label,command=callback).pack(side="left",padx=(0,5))
 
     refresh_proc()
     return top
