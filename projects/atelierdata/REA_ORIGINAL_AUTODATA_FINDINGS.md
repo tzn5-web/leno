@@ -73,3 +73,17 @@ nu au fost urcate în repository. Scriptul nu decodează `.IDF`,
 nu verifică licențe și nu stabilește fluxul de control. Următorul pas
 Ghidra este confirmarea instrucțiunilor reale și a lanțului
 `LoadLibraryA`/`GetProcAddress` către operațiile de citire a fișierelor.
+
+### Verificare Ghidra pregătită, fără rezultat pretins
+
+Scriptul Java nou `tools/ghidra/AtelierData_IAT_Instruction_Check.java`
+citește raportul **privat** al analizei IAT, verifică SHA256-ul
+raportului, apoi verifică dacă fiecare candidat brut corespunde unei
+instrucțiuni `CALL`/`JMP` de 6 octeți recunoscute de Ghidra și
+notează referințele existente. Este o verificare a limitelor de
+instrucțiune, **nu** un decodor IDF. Nu modifică binarul.
+
+Acest script Ghidra **nu a fost executat în această etapă**, deoarece
+mediul curent nu include Ghidra. Raportul privat de intrare există
+local și nu este publicat. Nu se pretinde validarea celor 43 candidați
+de către Ghidra până la o rulare reală pe proiectul privat.
