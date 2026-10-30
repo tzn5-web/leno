@@ -1,0 +1,66 @@
+name: Autodata Licensed Installer - Template CI
+
+on:
+  push:
+    branches: [autodata-installer-20261030]
+    paths:
+      - "tools/autodata-installer/**"
+      - ".github/workflows/autodata-installer-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-template:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run safe staging unit tests
+        shell: pwsh
+        run: python -m unittest discover -s tools/autodata-installer/tests -v
+
+      - name: Verify exact ADCDA2 allowlist metadata
+        shell: pwsh
+        run: |
+          @'
+          import json
+          from pathlib import Path
+          m = json.loads(Path("tools/autodata-installer/payload-allowlist.json").read_text(encoding="utf-8"))
+          files = m["files"]
+          assert len(files) == 105, len(files)
+          assert sum(x["size_bytes"] for x in files) == 2278001505
+          assert all(x["path"].startswith("ADCDA2/") for x in files)
+          print("ALLOWLIST=PASS; NO_PROPRIETARY_PAYLOAD_IN_GITHUB")
+          '@ | python -
+
+      - name: Compile Inno Setup syntax with SYNTHETIC fixture (not Autodata)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Join-Path $env:RUNNER_TEMP 'autodata-ci-synthetic'
+          $dir = Join-Path $stage 'ADCDA2'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          [IO.File]::WriteAllBytes((Join-Path $dir 'ADBCD.exe'), [byte[]](77,90,0,0))
+          New-Item -ItemType Directory -Force -Path (Join-Path $dir 'COMMON') | Out-Null
+          Set-Content -Path (Join-Path $dir 'COMMON\TEST.IDF') -Value 'synthetic test fixture' -NoNewline
+          $env:AUTODATA_STAGED = $stage
+          $env:AUTODATA_OUTPUT_DIR = Join-Path $env:RUNNER_TEMP 'autodata-ci-dist'
+          New-Item -ItemType Directory -Force -Path $env:AUTODATA_OUTPUT_DIR | Out-Null
+          $iscc = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path -LiteralPath $iscc)) {
+            choco install innosetup -y --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
+          }
+          if (-not (Test-Path -LiteralPath $iscc)) { throw 'ISCC.exe not found' }
+          & $iscc 'tools/autodata-installer/installer.iss'
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compile failed' }
+          $out = Join-Path $env:AUTODATA_OUTPUT_DIR 'Autodata_3_45_Licensed_Setup.exe'
+          if (-not (Test-Path -LiteralPath $out)) { throw 'Expected test EXE missing' }
+          Write-Host 'INNO_TEMPLATE_COMPILE=PASS'
+          Write-Host 'NOTE: fixture is synthetic; test EXE is not uploaded or distributed'
