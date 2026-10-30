@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from repair_export import export_procedure_html,export_procedures_json
+from procedure_audit import audit_procedure, get_step_reference
 from repair_procedures import (
     add_step, create_procedure, delete_procedure, delete_step, get_procedure,
     list_procedures, list_steps, list_reference_articles, move_step, procedure_text, update_procedure, update_step
@@ -277,13 +278,13 @@ def open_procedures_window(app, editor_class):
     def open_reference():
         selected=steps.selection()
         if not selected:return
-        row=app.db.db.execute("SELECT article_id FROM procedure_steps WHERE id=?",
-                              (int(selected[0]),)).fetchone()
-        if row is None or row["article_id"] is None:
-            return messagebox.showinfo("Referință","Pasul nu are document asociat.",parent=top)
-        article=app.db.get_article(row["article_id"])
+        try:
+            article=get_step_reference(
+                app.db,int(selected[0]),vehicle_id,state["pid"])
+        except ValueError as exc:
+            return messagebox.showerror("Referință invalidă",str(exc),parent=top)
         if article is None:
-            return messagebox.showinfo("Referință","Documentul asociat nu mai există.",parent=top)
+            return messagebox.showinfo("Referință","Pasul nu are document asociat.",parent=top)
         from atelierdata_extensions import list_documents
         linked=list_documents(app.db,article["id"])
         display=tk.Toplevel(top)
@@ -311,6 +312,70 @@ def open_procedures_window(app, editor_class):
                     messagebox.showerror("Atașament invalid",str(exc),parent=display)
             ttk.Button(display,text="Deschide atașament verificat SHA256",
                        command=open_attachment).pack(pady=8)
+
+    def open_procedure_audit():
+        """Read-only, vehicle-scoped verification of steps and managed files."""
+        pid=state["pid"]
+        if pid is None:
+            messagebox.showinfo("Audit", "Selectează o procedură.", parent=top)
+            return None
+        try:
+            report=audit_procedure(app.db,pid)
+            if report["vehicle_id"]!=vehicle_id:
+                raise ValueError("Procedura aparține altui vehicul")
+        except Exception as exc:
+            messagebox.showerror("Audit indisponibil",str(exc),parent=top)
+            return None
+        audit=tk.Toplevel(top)
+        audit.title("Audit integritate — procedură și referințe")
+        audit.geometry("1040x560")
+        audit.minsize(720,380)
+        audit.transient(top)
+        pane=ttk.Frame(audit,padding=12)
+        pane.pack(fill="both",expand=True)
+        ttk.Label(pane,text="AUDIT DOCUMENTAȚIE — DOAR CITIRE",
+                  font=("Segoe UI Semibold",13)).pack(anchor="w",pady=(0,8))
+        summary=(f"Pași: {report['steps']} | Fișiere SHA256 verificate: "
+                 f"{report['verified_attachments']} | Erori: {report['errors']} "
+                 f"| Avertismente: {report['warnings']}")
+        ttk.Label(pane,text=summary).pack(anchor="w",pady=(0,5))
+        ttk.Label(pane,text="Sursă procedură: "+report["source"],
+                  wraplength=950).pack(anchor="w",pady=(0,6))
+        ttk.Label(pane,text=("SHA256 verifică integritatea fișierelor, nu corectitudinea "
+                             "tehnică sau dreptul de utilizare."),
+                  wraplength=950).pack(anchor="w",pady=(0,9))
+        columns=("severity","step","code","detail")
+        table=ttk.Treeview(pane,columns=columns,show="headings",selectmode="browse")
+        for key,label,width in zip(columns,
+                ("Nivel","Pas","Cod verificare","Detalii"),(95,65,260,540)):
+            table.heading(key,text=label)
+            table.column(key,width=width,minwidth=55,stretch=True)
+        table.pack(fill="both",expand=True)
+        for index,issue in enumerate(report["issues"]):
+            table.insert("","end",iid=str(index),values=(
+                issue["severity"],
+                issue["step_number"] if issue["step_number"] is not None else "—",
+                issue["code"],issue["detail"]))
+        if not report["issues"]:
+            ttk.Label(pane,text="Nu au fost detectate probleme în verificările efectuate."
+                      ).pack(anchor="w",pady=(7,0))
+        def go_to_step(event=None):
+            picked=table.selection()
+            if not picked:
+                return
+            issue=report["issues"][int(picked[0])]
+            sid=issue["step_id"]
+            if sid is not None and steps.exists(str(sid)):
+                steps.selection_set(str(sid))
+                steps.see(str(sid))
+                top.lift()
+        table.bind("<Double-1>",go_to_step)
+        ttk.Button(pane,text="Mergi la pasul selectat",command=go_to_step
+                   ).pack(anchor="w",pady=(8,0))
+        audit.audit_report=report
+        audit.issues_tree=table
+        audit.go_to_step=go_to_step
+        return audit
 
     def export_html():
         pid=state["pid"]
@@ -350,6 +415,7 @@ def open_procedures_window(app, editor_class):
               ("Șterge pas",step_remove),("Alege document",choose_reference),
               ("Document asociat",open_reference),
               ("Vezi schema",open_schematic_reference),
+              ("Audit documente",open_procedure_audit),
               ("Export HTML",export_html),("Export JSON",export_json)]
     for start in range(0,len(commands),6):
         row=ttk.Frame(controls)
@@ -362,5 +428,6 @@ def open_procedures_window(app, editor_class):
     top.steps_tree=steps
     top.open_reference_picker=choose_reference
     top.open_schematic_reference=open_schematic_reference
+    top.open_procedure_audit=open_procedure_audit
     refresh_proc()
     return top
