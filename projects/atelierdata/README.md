@@ -82,6 +82,15 @@ sau **Elimină legătura**. Nu mai este necesar să cunoști ID-ul numeric al
 articolului. Legătura nu copiază și nu modifică documentul; pașii și
 avertismentele existente sunt păstrate. Lista este locală, fără interogări web.
 
+**Navigare directă procedură → schemă:** în fereastra **Proceduri**, selectează
+pasul care are un document din categoriile „Scheme electrice” sau
+„Siguranțe și relee” și apasă **Vezi schema**. Se deschide vizualizatorul
+pe exact documentul asociat, fără schimbarea vehiculului sau motorizării.
+Prima imagine locală PNG/JPEG asociată este afișată automat numai după
+verificarea SHA256; fișierele PDF/TXT nu sunt executate automat.
+Referințele către documente obișnuite, șterse sau aparținând altui vehicul
+sunt respinse. Nu sunt incluse scheme proprietare în aplicație.
+
 Căutarea acoperă titlul, sistemul, rezumatul, avertismentele, sursa,
 instrucțiunile pașilor și titlurile documentelor asociate. Butonul
 **Document asociat** arată conținutul și atașamentele autorizate. Deschiderea
