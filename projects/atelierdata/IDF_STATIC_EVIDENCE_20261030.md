@@ -20,3 +20,58 @@ The published `idf_static_evidence.py` script ran locally with explicit manifest
 - REA 6.8.0 `inspect-pe-resources` was also **actually executed** on the same SHA256-verified original PE. It returned complete resource-directory coverage: **1,299 directory entries and 644 resources**, including 190 RT_RCDATA (type 10), 337 RT_BITMAP (type 2), 65 RT_STRING (type 6), and 6 named `UNICODEDATA` entries. Named form resources include `TAUTODATAFORM`, `TFRMAUTODATABASE` and `TTECHDATAFORM`, consistent with Delphi/VCL form metadata. This identifies UI/resource structure, **not** the IDF loader or its encoding. The detailed resource inventory remains private. REA does not currently decode the IDF format.
 
 **Status:** IDF decoder not proven. No vehicle data, repair procedure, wiring diagram, or proprietary content has been extracted. Next investigation should focus on the static loader/xref chain with private Ghidra evidence and an authorized export or format specification. Never bypass license checks or publish original files.
+
+## Audit suplimentar REA/Ghidra — resurse PE și pointeri (2026-10-30)
+
+A fost **rulat din nou REA 6.8.0** pe executabilul original privat, verificat SHA256
+`a505bbc4f8678713f352faa8fc70337d9edbe5e0ebd23ba305ca3bccd0f6fce4`.
+`inspect-pe-resources --json` a raportat `coverage=complete`, 1.299 intrări de director și
+644 resurse. Scriptul original `rea_resource_audit.py` a reverificat independent
+**fiecare dintre cele 644 hashuri SHA256 ale payloadurilor** și limitele offset/dimensiune,
+raportând `REA_RESOURCE_AUDIT=PASS resource_count=644`. Rapoartele individuale, binarul
+și numele/offseturile private rămân în spațiul privat; aici sunt doar statistici agregate.
+
+| Tip resursă | Număr | Semnături obișnuite găsite | Entropie mediană, prima fereastră 64 KiB (resurse >=1 KiB) |
+| --- | ---: | ---: | ---: |
+| RT_RCDATA (10) | 190 | 0 antete DFM binare `TPF0`, 0 DFM text `object`/`inherited` | 7,9408 biți/octet |
+| RT_BITMAP (2) | 337 | 0 antete DIB uzuale (12/40/52/56/108/124) | 7,9756 biți/octet |
+| RT_STRING (6) | 65 | Nu s-a pretins decodarea șirurilor | 7,8494 biți/octet |
+| RT_ICON (3) | 9 | Nu a fost încercată decodarea imaginii | 6,2439 biți/octet |
+| UNICODEDATA | 6 | Nu a fost încercată decodarea | 7,9940 biți/octet |
+
+Entropia mediană exclude resursele sub 1 KiB pentru a limita efectele eșantioanelor mici.
+48 dintre cele 190 RT_RCDATA și 150 dintre cele 337 RT_BITMAP au dimensiune de cel puțin
+4 KiB și entropia primei ferestre >= 7,9. Aceste rezultate sugerează că **payloadurile
+resurselor nu sunt stocate în formele convenționale așteptate**, însă nu dovedesc criptare,
+compresie, mecanismul de transformare, formatul IDF sau accesul la date.
+
+A fost rulat efectiv **Ghidra 12.1.4** headless cu `-noanalysis` și scriptul
+`tools/ghidra/AtelierData_IDF_PointerCandidates.java` pe același original verificat.
+Rezultatul privat a regăsit `inflate 1.2.3` la `00ac01f1` și `TFRMAUTODATABASE`
+la `00f170a8`, dar **zero apariții LE32 ale adreselor acestora în blocurile de memorie
+scanate**. Căutarea literală `.IDF` a rămas fără rezultat. Acesta este un test static
+limitat de pointeri, nu o analiză completă a fluxului de control; adresele pot fi
+calculate dinamic și nu se poate exclude un încărcător indirect.
+
+### Reproducere numai pe copii private autorizate
+
+~~~bash
+node rea-agents/scripts/rea.mjs inspect-pe-resources ORIGINAL.exe --json > rea-private.json
+python projects/atelierdata/rea_resource_audit.py \
+  --pe ORIGINAL.exe --rea-json rea-private.json \
+  --expected-sha256 HASH_VERIFICAT \
+  --public-output sumar-fara-date-originale.json \
+  --private-output raport-privat.json
+python projects/atelierdata/rea_resource_audit.py --self-test
+~~~
+
+Scriptul verifică exact hashul executabilului și fiecare digest din raportul REA;
+respinge rapoartele incomplete, payloadurile modificate și offseturile invalide.
+Autotestul folosește exclusiv PE și resurse **sintetice**. Analiza privată a fost
+făcută local, fără executarea binarului original, fără ocolirea licenței, fără
+folosirea arhivei `part_0016` și fără publicarea fișierelor proprietare.
+
+**Stadiu neschimbat:** decodorul `.IDF` și lanțul de încărcare a datelor nu sunt
+identificate. Următoarea direcție de investigare este localizarea statică a
+rutinei care citește fișierele, cu dovezi de referințe și flux de date, nu
+presupunerea unui algoritm pe baza entropiei.
