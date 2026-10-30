@@ -16,7 +16,7 @@ The published `idf_static_evidence.py` script ran locally with explicit manifest
 
 - Tool: `projects/atelierdata/idf_static_evidence.py`, including a synthetic-data self-test that deliberately rejects a wrong SHA256.
 - Private execution: 57 verified samples, 0 skipped for the configured size bound, output retained as private report `AtelierData_IDF_Static_Evidence_ALL_Available_20261030.json` in the conversation environment, **not uploaded to GitHub**.
-- Ghidra script: `tools/ghidra/AtelierData_IDF_Xrefs.py`, prepared for headless static xrefs on a legally obtained private executable. **Ghidra execution on the original executable is not yet verified**.
+- Ghidra 12.1.4: the **Java** script `tools/ghidra/AtelierData_IDF_Xrefs.java` was executed headlessly on the original SHA256-verified `ADBCD.exe` with `-noanalysis`, returning PASS and a private JSON report. The program was identified as x86:LE:32:default. `inflate 1.2.3` was located at memory address `00ac01f1` and `TFRMAUTODATABASE` at `00f170a8`. No existing xrefs were recorded in this no-analysis run. A full autoanalysis attempt timed out with decompiler/resource warnings, so a working loader call chain is **not** established.
 - REA: prior real PE import reports are in `REA_ORIGINAL_AUTODATA_FINDINGS.md`. REA does not currently decode the IDF format.
 
 **Status:** IDF decoder not proven. No vehicle data, repair procedure, wiring diagram, or proprietary content has been extracted. Next investigation should focus on the static loader/xref chain with private Ghidra evidence and an authorized export or format specification. Never bypass license checks or publish original files.
