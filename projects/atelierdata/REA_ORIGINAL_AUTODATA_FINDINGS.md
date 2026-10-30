@@ -30,3 +30,46 @@ The complete REA Evidence JSON artifacts and a Romanian report are retained as c
 - `tools/cloud/autodata_rea_static_colab.ipynb` runs REA against the original `ADBCD.exe` privately in user-authorized Google Colab and writes evidence to Drive.
 
 Next technically meaningful investigation: identify the legitimate data-format loader and obtain a supported, authorized export/format specification, without duplicating protected application code or bypassing license checks.
+
+
+## Audit nou: apeluri IAT și nume API de acces la fișiere (2026-10-30)
+
+S-a executat **efectiv**, local și exclusiv static, scriptul nou
+[`pe_file_io_xrefs.py`](pe_file_io_xrefs.py) pe originalul privat
+`ADBCD.exe`, cu SHA256 verificat
+`a505bbc4f8678713f352faa8fc70337d9edbe5e0ebd23ba305ca3bccd0f6fce4`.
+Nu a fost executat codul original și nu s-au accesat rutine de licențiere.
+
+Rezultat reproductibil: PE32 x86, **17 intrări în tabela clasică de import**,
+4 DLL-uri (`KERNEL32`, `USER32`, `ADVAPI32`, `MSVCRT`).
+Au fost scanate **10.819.584 octeți** din 3 secțiuni marcate executabile.
+S-au găsit **43 secvențe brute** `FF 15/FF 25` compatibile cu adrese IAT,
+dintre care **19 secvențe** `FF 15` pentru `LoadLibraryA`.
+Aceste secvențe sunt **candidați**, nu instrucțiuni validate prin dezasamblare.
+
+`CreateFileA` (1 apariție ASCII), `CreateFileW` (1),
+`ReadFile` (2) și `SetFilePointer` (1) apar literal în PE, însă
+**nu sunt printre cele 17 importuri statice**. Scanarea brută nu a găsit
+referințe LE32 directe către adresele acestor șiruri în secțiunile
+marcate executabile. Nici `.IDF` nu apare literal (ASCII/UTF-16LE).
+Interpretarea corectă este că **lanțul de acces la fișiere trebuie urmărit
+prin rezolvare dinamică/importuri întârziate sau cod intermediar**;
+nu s-a demonstrat încă mecanismul exact.
+
+Testele sintetice ale scriptului au trecut local: **4/4**, inclusiv
+respingerea SHA256 greșit, a unui antet PE invalid și separarea raportului
+privat (offseturi) de agregatele publice. Testele au fost integrate în
+workflow-ul Windows `atelierdata-windows.yml`; rezultatul CI pentru
+această modificare trebuie verificat separat.
+
+Rulare pe o copie privată autorizată:
+
+~~~powershell
+python projects/atelierdata/pe_file_io_xrefs.py --pe C:\PRIVATE\ADBCD.exe --expected-sha256 a505bbc4f8678713f352faa8fc70337d9edbe5e0ebd23ba305ca3bccd0f6fce4 --public-output C:\PRIVATE\iat-summary.json --private-output C:\PRIVATE\iat-details.json
+~~~
+
+Nu publica `iat-details.json` sau binarele originale. Datele brute
+nu au fost urcate în repository. Scriptul nu decodează `.IDF`,
+nu verifică licențe și nu stabilește fluxul de control. Următorul pas
+Ghidra este confirmarea instrucțiunilor reale și a lanțului
+`LoadLibraryA`/`GetProcAddress` către operațiile de citire a fișierelor.
