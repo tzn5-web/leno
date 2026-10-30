@@ -35,6 +35,7 @@ jobs:
             if ($errors.Count -gt 0) { throw "POWERSHELL_PARSE_FAILED:$name $($errors[0].Message)" }
           }
           Write-Host "POWERSHELL_PARSE=PASS"
+          $global:LASTEXITCODE = 0  # Expected negative test must not fail the CI step
       - name: Create synthetic harmless fixture (no Autodata binaries)
         shell: pwsh
         run: |
