@@ -55,6 +55,13 @@ jobs:
           '@ | Set-Content fixture_gen.py
           python fixture_gen.py
           python tools/autodata-oneclick/verify_payload.py --source testfixture --manifest fixture_manifest.json
+      - name: Reject synthetic manifest as a production source
+        shell: pwsh
+        run: |
+          python tools/autodata-oneclick/verify_payload.py --production --source testfixture --manifest fixture_manifest.json
+          if ($LASTEXITCODE -eq 0) { throw "SYNTHETIC_MANIFEST_ACCEPTED_AS_PRODUCTION" }
+          Write-Host "PRODUCTION_MANIFEST_GATE_NEGATIVE_TEST=PASS"
+          $global:LASTEXITCODE = 0
       - name: Reject corruption in synthetic fixture
         shell: pwsh
         run: |
