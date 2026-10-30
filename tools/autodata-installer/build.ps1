@@ -4,7 +4,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$PayloadRoot,
     [Parameter(Mandatory = $true)][string]$Inventory,
-    [Parameter(Mandatory = $true)][switch]$AuthorizedUseConfirmed,
+    [switch]$AuthorizedUseConfirmed,
     [string]$OutputDir = (Join-Path $PSScriptRoot 'dist'),
     [string]$Python = 'python'
 )
