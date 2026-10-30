@@ -68,3 +68,14 @@ accessed or bypassed.
 
 CI status for this iteration must be obtained from the actual Windows
 Actions run, not inferred from publication of these source changes.
+
+## Additional Ghidra output safety
+
+The Ghidra v2 helper now canonicalizes original PE, private input report and
+both output paths, refusing output aliases that could truncate the original
+or its input evidence. `test_ghidra_script_contract.py` checks this
+source-level contract along with the MD5/SHA256 and opcode-verification
+guards. **This is a source-level regression check, not a Ghidra compile,
+execution or verification of the original.** A real private Ghidra run
+remains necessary before treating any raw FF15/FF25 candidate as a
+disassembled instruction.
