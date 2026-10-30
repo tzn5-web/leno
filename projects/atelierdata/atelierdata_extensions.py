@@ -11,7 +11,7 @@ from pathlib import Path
 
 _ALLOWED = {'.pdf', '.png', '.jpg', '.jpeg', '.txt'}
 _MAX_SIZE = 32 * 1024 * 1024
-_SAFE_NAME = re.compile(r'^[0-9a-f]{64}\\.(?:pdf|png|jpe?g|txt)$')
+_SAFE_NAME = re.compile(r'^[0-9a-f]{64}\.(?:pdf|png|jpe?g|txt)$')
 
 
 def integrity_check(store):
