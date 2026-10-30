@@ -27,8 +27,8 @@ un instalator complet funcțional nu a fost construit.
   **numai** fișierele de pe lista explicită, calculează SHA-256.
 - `installer.iss`: reîmpachetează fișierele autorizate într-un **singur EXE**
   folosind Inno Setup 6, cu dezinstalare și scurtătură Windows.
-- `build.ps1`: construiește local instalatorul, dintr-un director licențiat
-  și verificat. Nu execută fișierele aplicației.
+- `verify_original_manifest.py`: verifică fiecare fragment SHA-256 al celor 105 fișiere ADCDA2 față de `INVENTAR.json` privat, fără să ruleze executabile.
+- `build.ps1`: refuză compilarea fără `INVENTAR.json`, confirmarea dreptului de utilizare și scanarea Microsoft Defender fără detecții raportate. Nu execută fișierele aplicației.
 - `tests/`: teste unitare cu date **sintetice**, fără binare Autodata.
 - `.github/workflows/autodata-installer-ci.yml`: verifică în GitHub Actions
   scripturile și compilarea unui EXE de test cu date sintetice. Nu publică
@@ -46,9 +46,9 @@ python prepare_payload.py --source "D:\Autodata_3.45" --staging "D:\Autodata_sta
 powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -PayloadRoot "D:\Autodata_3.45" -OutputDir "D:\Autodata_Setup"
 ```
 
-Dacă toate cele 105 fișiere există și au dimensiunile inventariate,
+Dacă toate cele 105 fișiere există, au dimensiunile și hashurile pe fragmente identice cu inventarul privat, iar Defender nu raportează detecții,
 rezultatul este `Autodata_3_45_Licensed_Setup.exe`. Acest EXE **doar
-copiază fișierele aplicației și creează scurtătura**. Nu instalează automat
+copiază fișierele aplicației și creează scurtătura**. Scanarea și verificarea SHA-256 nu dovedesc autenticitatea furnizorului sau validitatea licenței. Nu instalează automat
 drivere Sentinel, nu importă registrul și nu activează licența: acești
 pași necesită instrucțiunile oficiale verificate și metode legitime.
 Este posibil ca aplicația să nu pornească doar din copierea fișierelor.
@@ -56,6 +56,10 @@ Este posibil ca aplicația să nu pornească doar din copierea fișierelor.
 `INVENTAR.txt` și dimensiunile sale sunt dovezi de consistență, **nu**
 dovezi că fișierele sunt sigure sau autentice. Verificați proveniența
 și semnăturile executabilelor înainte de instalare.
+
+## Dovezi suplimentare din fișierele accesibile
+
+Documentele `ADCDA2/ENG/RegMessage.htm`, `TERMCOND.TXT`, `COPY.txt` și `COMMON/VERINFO.DAT` au fost citite inert din ZIP-ul 0004, cu SHA-256 confirmat în `INVENTAR.json`. Ele indică o procedură istorică de înregistrare prin cod furnizat de Autodata și o licență de abonament. `VERINFO.DAT` indică `ProductCode=CDA3.44`, astfel că denumirea arhivei „3.45” **nu confirmă versiunea internă**. Instrucțiunile de instalare din ZIP-ul 0016 rămân necitite. Detalii: `AUDIT.md`.
 
 ## Ce NU face proiectul
 
