@@ -203,8 +203,12 @@ def analyze(data, expected_sha):
 
 def run(pe_path, expected_sha, public_path, private_path=None):
     pe_path, public_path = Path(pe_path), Path(public_path)
-    if private_path is not None and Path(private_path).resolve() == public_path.resolve():
-        raise ValueError('Private and public outputs must differ')
+    source = pe_path.resolve()
+    destination = public_path.resolve()
+    if destination == source:
+        raise ValueError('Public output must differ from input PE')
+    if private_path is not None and Path(private_path).resolve() in (source, destination):
+        raise ValueError('Private output must differ from input PE and public output')
     with pe_path.open('rb') as stream:
         data = stream.read(MAX_PE + 1)
     public, private = analyze(data, expected_sha)
