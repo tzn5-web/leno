@@ -125,10 +125,13 @@ def _article_reference(store, procedure_id, article_id):
 
 
 def _renumber(store,procedure_id,ordered_ids):
-    # Use temporary negative positions to avoid transient collisions with UNIQUE.
+    # Stage at unused positive indices; CHECK(step_number > 0) remains satisfied.
+    row=store.db.execute("SELECT COALESCE(MAX(step_number),0) FROM procedure_steps "
+                         "WHERE procedure_id=?",(procedure_id,)).fetchone()
+    offset=row[0]+len(ordered_ids)+1
     for idx,sid in enumerate(ordered_ids,1):
         store.db.execute("UPDATE procedure_steps SET step_number=? "
-                         "WHERE procedure_id=? AND id=?",(-idx,procedure_id,sid))
+                         "WHERE procedure_id=? AND id=?",(offset+idx,procedure_id,sid))
     for idx,sid in enumerate(ordered_ids,1):
         store.db.execute("UPDATE procedure_steps SET step_number=? "
                          "WHERE procedure_id=? AND id=?",(idx,procedure_id,sid))
