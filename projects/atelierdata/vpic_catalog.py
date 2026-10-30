@@ -15,11 +15,12 @@ import urllib.request
 BASE="https://vpic.nhtsa.dot.gov/api/vehicles"
 MAX_RESPONSE=2_000_000
 MAX_ROWS=2500
-MAKE_RE=re.compile(r"^[\w .&'()/-]{2,80}$",re.UNICODE)
+MAKE_RE=re.compile(r"^[\w .&'()-]{2,80}$",re.UNICODE)
 SOURCE="NHTSA vPIC GetModelsForMakeYear — public vehicle identification data"
 
 def valid_query(make,year):
-    if not isinstance(make,str) or not MAKE_RE.fullmatch(make.strip()):
+    if (not isinstance(make,str) or not MAKE_RE.fullmatch(make.strip())
+            or not any(ch.isalnum() for ch in make.strip())):
         raise ValueError("Marca este invalidă (2-80 caractere)")
     if isinstance(year,bool):
         raise ValueError("An invalid")
