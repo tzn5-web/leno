@@ -8,6 +8,10 @@ on:
       - ".github/workflows/autodata-installer-ci.yml"
   workflow_dispatch:
 
+concurrency:
+  group: autodata-installer-template
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
