@@ -47,3 +47,11 @@ Un script original de verificare/reasamblare a fost testat pe date sintetice (in
 **Control statistic suplimentar:** 77 semnături distincte pe primii 4 octeți pentru cele 81 IDF; niciun antet inițial ZIP, GZIP sau zlib convențional dintre cele testate. Aceste observații nu certifică un format, o cheie sau un algoritm de decodare.
 
 **Concluzie:** toate datele IDF disponibile în arhiva originală sunt recuperabile byte-for-byte, dar nu există încă un decodor funcțional. Nici funcționarea originalului nu este confirmată.
+
+## Legătura verificată între executabil și componenta lipsă
+
+Scanarea statică, efectuată pe originalul SHA256-verificat, a identificat secvența ASCII exactă `SentinelKeyW.DLL` la offsetul de fișier `0x10E5E71` în `ADBCD.exe`. Manifestul original plasează fișierul omonim `ADCDA2/SentinelKeyW.DLL` **exclusiv în pachetul 0016**, inaccesibil. De aceea avem un **candidat concret de dependență runtime lipsă**, însă apariția unui literal nu demonstrează că DLL-ul este încărcat pe fiecare cale de executare.
+
+Pentru utilizarea legală a unei licențe autentice, furnizorul de tehnologii Sentinel pune la dispoziție o [pagină oficială cu drivere](https://cpl.thalesgroup.com/software-monetization/sentinel-drivers). Instalarea unui driver oficial nu garantează licențierea și compatibilitatea aplicației vechi. Nu folosiți utilitarele neoficiale de activare/emulare din arhivă și nu ocoliți blocările furnizorului de stocare.
+
+**Stadiu de recuperare a datelor: PASS. Stadiu de funcționare al aplicației originale: BLOCKED, licență/runtime neconfirmate.**
