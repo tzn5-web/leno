@@ -117,3 +117,19 @@ DEMO,Model fictiv,MOTOR-DEMO,N/A,,,P0A01,Sistem fictiv,DESCRIERE DOAR TEST,Simpt
 \`\`\`
 
 Pachetul de teste include validarea formatului codului, păstrarea sursei, interzicerea legăturilor către alt vehicul, import/export JSON, teste CSV, deduplicare și verificarea SQLite. Rularea Windows testează și deschiderea ferestrei DTC din executabilul real.
+
+## Plan de întreținere și istoric verificabil
+
+Butonul **Întreținere** deschide un modul original de planificare pentru fiecare motorizare.
+
+- Operație, sistem, interval în kilometri și/sau luni, condiții speciale și sursă explicită
+- Jurnalul intervențiilor efectuate, cu data reală, kilometrajul și note
+- Calculul scadenței de la ultima intervenție consemnată, nu dintr-un kilometraj ori o dată inventate
+- Stări: în termen, scadent, fără istoric sau necalculat (kilometraj lipsă)
+- Scadență la primul dintre pragurile de kilometri și dată; lipsa kilometrajului nu dovedește că operația este în termen
+- Verificare date ISO YYYY-MM-DD, control kilometrajului față de intervențiile anterioare și tratarea lunilor calendaristice, inclusiv anii bisecți
+- Administrare și ștergere planuri/intervenții; SQLite include istoricul în backupul ZIP complet
+
+**Nu conține intervale producător precompletate.** Datele trebuie să provină dintr-o sursă validă pentru motorizarea și regimul de utilizare exact. Calculul este orientativ și nu înlocuiește instrucțiunile producătorului.
+
+Teste automate: python -m unittest discover -s projects/atelierdata -p test_maintenance_plans.py -v. Buildul Windows deschide și fereastra Întreținere folosind o mașină și o operație sintetice.
