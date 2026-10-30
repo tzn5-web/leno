@@ -1,0 +1,44 @@
+name: Build portable REA static-analysis runtime (Linux)
+on:
+  push:
+    branches: [atelierdata-20261030]
+    paths:
+      - '.github/workflows/rea-offline-runtime.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  runtime:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install verified official REA package into isolated runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p offline-rea/bin
+          npm install --no-audit --no-fund --omit=dev --prefix "$PWD/offline-rea" rea-agents@6.8.0
+          cp -L "$(command -v node)" offline-rea/bin/node
+          offline-rea/bin/node offline-rea/node_modules/rea-agents/scripts/rea.mjs --version
+          offline-rea/bin/node offline-rea/node_modules/rea-agents/scripts/rea.mjs inspect-pe-imports --help >/dev/null
+      - name: Pack static-analysis tools only (no user data)
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -czf REA_Offline_Linux_Runtime.tar.gz -C offline-rea .
+          ls -lah REA_Offline_Linux_Runtime.tar.gz
+          sha256sum REA_Offline_Linux_Runtime.tar.gz > REA_Offline_Linux_Runtime.sha256
+          printf 'REA source: https://github.com/morluto/rea\nPackage: rea-agents@6.8.0\nNode runtime: 24.x\nNo original Autodata binaries included.\n' > README.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: REA_Offline_Linux_Runtime
+          path: |
+            REA_Offline_Linux_Runtime.tar.gz
+            REA_Offline_Linux_Runtime.sha256
+            README.txt
+          retention-days: 3
+          if-no-files-found: error
