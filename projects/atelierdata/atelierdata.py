@@ -344,7 +344,7 @@ class App:
             try:
                 report=backup_bundle(self.db,path)
                 messagebox.showinfo('Backup complet',
-                    f"Backup salvat: {report['documents']} atașamente.\\n{path}")
+                    f"Backup salvat: {report['documents']} atașamente.\n{path}")
             except Exception as exc:messagebox.showerror('Backup eșuat',str(exc))
 
     def restore_full(self):
@@ -360,8 +360,8 @@ class App:
         try:
             dbfile=restore_bundle(archive,Path(parent)/name)
             messagebox.showinfo('Restaurare verificată',
-                'Baza și atașamentele au fost restaurate în director nou.\\n'+str(dbfile)+
-                '\\nPentru a folosi baza restaurată, redeschide aplicația cu --db-path.')
+                'Baza și atașamentele au fost restaurate în director nou.\n'+str(dbfile)+
+                '\nPentru a folosi baza restaurată, redeschide aplicația cu --db-path.')
         except Exception as exc:messagebox.showerror('Restaurare eșuată',str(exc))
     def backup(self):
         from tkinter import filedialog,messagebox
