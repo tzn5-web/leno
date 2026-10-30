@@ -149,3 +149,12 @@ Butonul **Întreținere** deschide un modul original de planificare pentru fieca
 **Nu conține intervale producător precompletate.** Datele trebuie să provină dintr-o sursă validă pentru motorizarea și regimul de utilizare exact. Calculul este orientativ și nu înlocuiește instrucțiunile producătorului.
 
 Teste automate: python -m unittest discover -s projects/atelierdata -p test_maintenance_plans.py -v. Buildul Windows deschide și fereastra Întreținere folosind o mașină și o operație sintetice.
+
+
+## Audit de integritate pentru proceduri și documente
+
+În fereastra „Proceduri” selectează o procedură și apasă „Audit documente”. Verificarea este numai pentru citire și nu trimite documente sau date despre vehicul în cloud. Raportul afișează numărul de pași, fișierele atașate validate SHA256, erori și avertismente. Fiecare problemă indică pasul; dublu-clic sau „Mergi la pasul selectat” navighează la acesta.
+
+Verificările includ numerotarea pașilor, sursa procedurii, existența și proveniența documentelor asociate, interzicerea referințelor către alt vehicul, fișiere lipsă/modificate și lipsa unei imagini PNG/JPEG previzualizabile pentru scheme. PDF-urile autorizate pot fi deschise prin vizualizatorul sistemului, dar nu sunt redate ca imagini în vizualizatorul de scheme. Un SHA256 corect **nu** demonstrează corectitudinea tehnică sau existența unei licențe. Nu sunt incluse proceduri ori valori tehnice proprietare.
+
+Codul: `procedure_audit.py`; teste sintetice: `test_procedure_audit.py`. Testul de interfață Windows verifică deschiderea raportului și integritatea unui atașament sintetic, atât în Python, cât și în executabilul PyInstaller.
