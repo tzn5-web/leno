@@ -18,7 +18,9 @@ jobs:
       - name: Python syntax + core application smoke test
         shell: pwsh
         run: |
-          python -m py_compile projects/atelierdata/atelierdata.py
+          python -m py_compile projects/atelierdata/atelierdata.py projects/atelierdata/atelierdata_extensions.py projects/atelierdata/test_extensions.py
+          python -m unittest discover -s projects/atelierdata -p test_extensions.py -v
+          if ($LASTEXITCODE -ne 0) { throw "EXTENSIONS_REGRESSION_TEST_FAILED" }
           python projects/atelierdata/atelierdata.py --self-test
           if ($LASTEXITCODE -ne 0) { throw "SOURCE_TEST_FAILED" }
       - name: Build one-file Windows EXE
