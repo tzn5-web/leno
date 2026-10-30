@@ -79,6 +79,11 @@ class IATStaticTriageTests(unittest.TestCase):
             self.assertIn('file_offset', private.read_text())
             with self.assertRaisesRegex(ValueError, 'must differ'):
                 run(source, hashlib.sha256(source.read_bytes()).hexdigest(), pub, pub)
+            with self.assertRaisesRegex(ValueError, 'must differ'):
+                run(source, hashlib.sha256(source.read_bytes()).hexdigest(), source, private)
+            with self.assertRaisesRegex(ValueError, 'must differ'):
+                run(source, hashlib.sha256(source.read_bytes()).hexdigest(), pub, source)
+            self.assertEqual(source.read_bytes(), sample_pe())
 
 
 if __name__ == '__main__':
