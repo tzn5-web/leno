@@ -247,6 +247,33 @@ def open_procedures_window(app, editor_class):
         top.reference_picker=picker
         return picker
 
+    def open_schematic_reference():
+        """Navigate to a linked diagram, keeping the procedure's vehicle scope."""
+        selected=steps.selection()
+        if not selected or state["pid"] is None:
+            messagebox.showinfo("Schemă", "Selectează un pas.", parent=top)
+            return None
+        row=app.db.db.execute(
+            "SELECT s.article_id FROM procedure_steps s "
+            "JOIN procedures p ON p.id=s.procedure_id "
+            "WHERE s.id=? AND p.id=? AND p.vehicle_id=?",
+            (int(selected[0]),state["pid"],vehicle_id)).fetchone()
+        if row is None or row["article_id"] is None:
+            messagebox.showinfo("Schemă", "Pasul nu are schemă asociată.", parent=top)
+            return None
+        try:
+            from schematic_viewer import get_schematic_reference, open_schematics_window
+            get_schematic_reference(app.db,vehicle_id,row["article_id"])
+            return open_schematics_window(
+                app,editor_class,selected_article_id=row["article_id"],
+                vehicle_id=vehicle_id)
+        except ValueError as exc:
+            messagebox.showinfo("Schemă indisponibilă",str(exc),parent=top)
+            return None
+        except Exception as exc:
+            messagebox.showerror("Eroare schemă",str(exc),parent=top)
+            return None
+
     def open_reference():
         selected=steps.selection()
         if not selected:return
@@ -322,6 +349,7 @@ def open_procedures_window(app, editor_class):
               ("↑",lambda:step_move(-1)),("↓",lambda:step_move(1)),
               ("Șterge pas",step_remove),("Alege document",choose_reference),
               ("Document asociat",open_reference),
+              ("Vezi schema",open_schematic_reference),
               ("Export HTML",export_html),("Export JSON",export_json)]
     for start in range(0,len(commands),6):
         row=ttk.Frame(controls)
@@ -333,5 +361,6 @@ def open_procedures_window(app, editor_class):
     top.procedures_tree=procedures
     top.steps_tree=steps
     top.open_reference_picker=choose_reference
+    top.open_schematic_reference=open_schematic_reference
     refresh_proc()
     return top
