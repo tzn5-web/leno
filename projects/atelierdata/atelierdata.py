@@ -93,6 +93,7 @@ class Store:
     def close(self):self.db.close()
 
 def import_records(store,path):
+    """Import valid records atomically; reject invalid rows without partial writes."""
     path=Path(path)
     if path.suffix.lower()=='.csv':
         with path.open(encoding='utf-8-sig',newline='') as stream:rows=list(csv.DictReader(stream))
@@ -102,19 +103,35 @@ def import_records(store,path):
     else:raise ValueError("Accept doar CSV/JSON")
     if not isinstance(rows,list):raise ValueError("JSON invalid")
     result={'inserted':0,'rejected':[]}
-    vehicles={}
+    validated=[]
     for i,row in enumerate(rows,1):
         try:
             if not isinstance(row,dict) or any(not str(row.get(k,'')).strip() for k in ('make','model','category','title')):
                 raise ValueError("Câmpurile make, model, category, title sunt obligatorii")
             fields=[str(row.get(k,'')).strip() for k in ('make','model','engine','years','fuel','variant')]
-            key=tuple(fields)
-            if key not in vehicles:
-                old=store.db.execute("SELECT id FROM vehicles WHERE make=? AND model=? AND engine=? AND years=? AND fuel=? AND variant=?",fields).fetchone()
-                vehicles[key]=old['id'] if old else store.add_vehicle(*fields)
-            store.add_article(vehicles[key],str(row['category']),str(row['title']),str(row.get('content',row.get('body',''))),str(row.get('source','')))
-            result['inserted']+=1
+            validated.append((fields,str(row['category']).strip(),str(row['title']).strip(),
+                              str(row.get('content',row.get('body',''))),str(row.get('source',''))))
         except (ValueError,KeyError,TypeError) as exc:result['rejected'].append(f"{i}: {exc}")
+    # Do not commit an import with rejected records: callers can correct and retry.
+    if result['rejected']:
+        return result
+    vehicles={}
+    try:
+        with store.db:
+            for fields,category,title,content,source in validated:
+                key=tuple(fields)
+                if key not in vehicles:
+                    old=store.db.execute("SELECT id FROM vehicles WHERE make=? AND model=? AND engine=? AND years=? AND fuel=? AND variant=?",fields).fetchone()
+                    if old:vehicles[key]=old['id']
+                    else:
+                        cur=store.db.execute("INSERT INTO vehicles(make,model,engine,years,fuel,variant) VALUES(?,?,?,?,?,?)",fields)
+                        vehicles[key]=cur.lastrowid
+                store.db.execute("INSERT INTO articles(vehicle_id,category,title,content,source) VALUES(?,?,?,?,?)",
+                                 (vehicles[key],category,title,content,source))
+                result['inserted']+=1
+    except Exception:
+        result['inserted']=0
+        raise
     return result
 
 def probe_idf(root):
