@@ -1,0 +1,79 @@
+name: Autodata OneClick source CI
+
+on:
+  push:
+    branches: [autodata-colab-20261030]
+    paths:
+      - 'tools/autodata-oneclick/**'
+      - '.github/workflows/autodata-oneclick-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  installer-template-test:
+    name: Validate safe installer template only
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile syntax
+        shell: pwsh
+        run: |
+          python -m py_compile tools/autodata-oneclick/verify_payload.py tools/autodata-oneclick/source_review.py
+      - name: Create synthetic harmless fixture (no Autodata binaries)
+        shell: pwsh
+        run: |
+          @'
+          import json,hashlib
+          from pathlib import Path
+          root=Path("testfixture")
+          (root/"ADCDA2").mkdir(parents=True,exist_ok=True)
+          data=b"FAKE EXE PLACEHOLDER ONLY - DO NOT DISTRIBUTE AS AUTODATA"
+          (root/"ADCDA2"/"ADBCD.exe").write_bytes(data)
+          manifest={"archive":"Autodata__3.45.rar","files":[
+            {"path":"Autodata__3.45/ADCDA2/ADBCD.exe",
+             "size_bytes":len(data),"chunks":[{"package":"fixture.zip",
+                "entry":"Autodata__3.45/ADCDA2/ADBCD.exe",
+                "bytes":len(data),"sha256":hashlib.sha256(data).hexdigest()}]}]}
+          Path("fixture_manifest.json").write_text(json.dumps(manifest),encoding="utf8")
+          '@ | Set-Content fixture_gen.py
+          python fixture_gen.py
+          python tools/autodata-oneclick/verify_payload.py --source testfixture --manifest fixture_manifest.json
+      - name: Reject corruption in synthetic fixture
+        shell: pwsh
+        run: |
+          [IO.File]::WriteAllBytes("testfixture/ADCDA2/ADBCD.exe", [Text.Encoding]::UTF8.GetBytes("MODIFIED FILE"))
+          python tools/autodata-oneclick/verify_payload.py --source testfixture --manifest fixture_manifest.json
+          if ($LASTEXITCODE -eq 0) { throw "Verifier wrongly accepted tampered payload" }
+          Write-Host "HASH_NEGATIVE_TEST=PASS"
+          python fixture_gen.py
+      - name: Install Inno Setup compiler
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup install failed" }
+      - name: Compile synthetic EXE for installer syntax only
+        shell: pwsh
+        run: |
+          $env:AUTODATA_SOURCE = (Resolve-Path "testfixture/ADCDA2").Path
+          New-Item -Path "build-test" -ItemType Directory -Force | Out-Null
+          $env:AUTODATA_OUTPUT = (Resolve-Path "build-test").Path
+          $compiler = @(
+            "$env:ProgramFiles\Inno Setup 7\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
+            "$([Environment]::GetEnvironmentVariable('ProgramFiles(x86)'))\Inno Setup 7\ISCC.exe",
+            "$([Environment]::GetEnvironmentVariable('ProgramFiles(x86)'))\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+          if (-not $compiler) { throw "ISCC.exe not found" }
+          & $compiler "tools/autodata-oneclick/oneclick.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno script compilation failed" }
+          if (-not (Test-Path "build-test/Autodata_3_45_OneClick_Setup.exe")) {
+            throw "Missing synthetic installer EXE"
+          }
+          Write-Host "TEMPLATE_EXE_BUILD=PASS (synthetic data only)"
+      - name: Never publish fixture as Autodata
+        shell: pwsh
+        run: |
+          Write-Host "No Autodata files were included in this CI run. CI confirms template syntax only."
