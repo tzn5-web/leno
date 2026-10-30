@@ -248,5 +248,8 @@ def open_procedures_window(app, editor_class):
         for label,callback in commands[start:start+6]:
             ttk.Button(row,text=label,command=callback).pack(side="left",padx=(0,5))
 
+    # Expose read-only widget handles for the packaged Windows GUI smoke test.
+    top.procedures_tree=procedures
+    top.steps_tree=steps
     refresh_proc()
     return top
