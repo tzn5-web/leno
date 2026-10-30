@@ -1,0 +1,23 @@
+name: Autodata static audit notebook tests
+on:
+  push:
+    branches:
+      - autodata-colab-20261030
+    paths:
+      - 'notebooks/autodata_3_45_static_audit.ipynb'
+      - 'tests/test_autodata_static_notebook.py'
+      - '.github/workflows/autodata-static-audit-tests.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  synthetic-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Static syntax and safe synthetic ZIP/hash tests
+        run: python tests/test_autodata_static_notebook.py
