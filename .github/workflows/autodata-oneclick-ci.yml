@@ -73,7 +73,39 @@ jobs:
             throw "Missing synthetic installer EXE"
           }
           Write-Host "TEMPLATE_EXE_BUILD=PASS (synthetic data only)"
-      - name: Never publish fixture as Autodata
+      - name: Smoke-test install and uninstall of synthetic fixture
         shell: pwsh
         run: |
-          Write-Host "No Autodata files were included in this CI run. CI confirms template syntax only."
+          $installer = (Resolve-Path "build-test/Autodata_3_45_OneClick_Setup.exe").Path
+          $testDir = Join-Path $env:RUNNER_TEMP "Autodata-Template-Synthetic-Test"
+          $install = Start-Process -FilePath $installer -ArgumentList @(
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$testDir"
+          ) -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Template install failed: $($install.ExitCode)" }
+          if (-not (Test-Path (Join-Path $testDir "ADCDA2/ADBCD.exe"))) {
+            throw "Synthetic installed payload missing"
+          }
+          Write-Host "SYNTHETIC_INSTALL=PASS"
+          $uninstaller = Join-Path $testDir "unins000.exe"
+          if (-not (Test-Path $uninstaller)) { throw "Uninstaller missing" }
+          $uninstall = Start-Process -FilePath $uninstaller -ArgumentList @(
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"
+          ) -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw "Template uninstall failed: $($uninstall.ExitCode)" }
+          if (Test-Path (Join-Path $testDir "ADCDA2/ADBCD.exe")) {
+            throw "Synthetic fixture remained installed after uninstall"
+          }
+          Write-Host "SYNTHETIC_UNINSTALL=PASS"
+      - name: Preserve clearly labeled DEMO TEMPLATE only
+        shell: pwsh
+        run: |
+          Rename-Item -LiteralPath "build-test/Autodata_3_45_OneClick_Setup.exe" -NewName "ONECLICK_TEMPLATE_SYNTHETIC_NOT_AUTODATA.exe"
+          "This EXE contains only synthetic test data. It does NOT install Autodata." | Set-Content "build-test/READ_THIS_IS_A_TEST_ONLY.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: autodata-installer-synthetic-template-test-only
+          path: |
+            build-test/ONECLICK_TEMPLATE_SYNTHETIC_NOT_AUTODATA.exe
+            build-test/READ_THIS_IS_A_TEST_ONLY.txt
+          retention-days: 7
+          if-no-files-found: error
