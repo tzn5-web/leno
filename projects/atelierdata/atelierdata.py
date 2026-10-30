@@ -13,6 +13,7 @@ from dtc_gui import open_dtc_window
 from maintenance_plans import (ensure_schema as ensure_maintenance_schema,
                                add_plan, log_service)
 from maintenance_gui import open_maintenance_window
+from vpic_catalog_gui import open_vehicle_catalog
 
 CATEGORIES = ("Date tehnice","Întreținere","Motor","Distribuție","Cupluri de strângere",
               "Diagnosticare / DTC","Scheme electrice","Siguranțe și relee","Frâne / ABS",
@@ -202,7 +203,7 @@ class App:
                  ('Restaurare ZIP',self.restore_full),('Specificații',self.specifications),
                  ('Proceduri',self.procedures),('Scheme / imagini',self.schematics),
                  ('Diagnosticare DTC',self.diagnostics),('Întreținere',self.maintenance),
-                 ('Analiză IDF',self.analyze)]
+                 ('Catalog public NHTSA',self.public_catalog),('Analiză IDF',self.analyze)]
         for col in range(4):
             bar.columnconfigure(col,weight=1)
         for i,(name,cmd) in enumerate(actions):
@@ -358,6 +359,9 @@ class App:
                 subprocess.Popen(['xdg-open',str(path)])
         except Exception as exc:messagebox.showerror('Fișier indisponibil',str(exc))
 
+
+    def public_catalog(self):
+        return open_vehicle_catalog(self)
 
     def maintenance(self):
         return open_maintenance_window(self,Editor)
@@ -614,7 +618,21 @@ def main():
                         raise RuntimeError('MAINTENANCE_GUI_HISTORY_MISSING')
                 ui.root.after(150,check_history)
             ui.root.after(2400,check_maintenance_window)
-            ui.root.after(4350,ui.close)
+            def check_public_catalog():
+                from vpic_catalog import cache_models
+                cache_models(ui.db,[{
+                    'make_id':514,'model_id':1200,'make_name':'MITSUBISHI',
+                    'model_name':'Lancer','model_year':2008}])
+                catalog=ui.public_catalog()
+                catalog.make_var.set('MITSUBISHI')
+                catalog.year_var.set('2008')
+                catalog.load_offline_models()
+                if len(catalog.models_tree.get_children())!=1:
+                    raise RuntimeError('VPIC_OFFLINE_GUI_MODEL_MISSING')
+                if ui.db.stats()[0]!=1:
+                    raise RuntimeError('VPIC_GUI_AUTO_INSERTED_PERSONAL_VEHICLE')
+            ui.root.after(3050,check_public_catalog)
+            ui.root.after(4850,ui.close)
             ui.run()
             if gui_errors:
                 raise RuntimeError('GUI_SMOKE_FAILED: '+'; '.join(gui_errors))
