@@ -604,6 +604,32 @@ def main():
                     if linked['article_id']!=second_article or not linked['safety_note']:
                         raise RuntimeError('PROCEDURES_REFERENCE_PICKER_UPDATE_FAILED')
                 ui.root.after(200,check_steps)
+                def check_navigation():
+                    window.steps_tree.selection_set(str(step_id))
+                    picker=window.open_reference_picker()
+                    if picker is None or not picker.winfo_exists():
+                        raise RuntimeError('PROCEDURES_SCHEMATIC_PICKER_NOT_OPENED')
+                    if not picker.reference_tree.exists(str(article)):
+                        raise RuntimeError('PROCEDURES_SCHEMATIC_REFERENCE_NOT_FOUND')
+                    picker.reference_tree.selection_set(str(article))
+                    picker.apply_reference()
+                    linked=ui.db.db.execute(
+                        'SELECT article_id,safety_note FROM procedure_steps WHERE id=?',
+                        (step_id,)).fetchone()
+                    if linked['article_id']!=article or not linked['safety_note']:
+                        raise RuntimeError('PROCEDURES_SCHEMATIC_REFERENCE_NOT_LINKED')
+                    viewer=window.open_schematic_reference()
+                    if viewer is None or not viewer.winfo_exists():
+                        raise RuntimeError('PROCEDURES_SCHEMATIC_NAVIGATION_FAILED')
+                    if viewer.schematics_tree.selection()!=(str(article),):
+                        raise RuntimeError('PROCEDURES_SCHEMATIC_WRONG_ARTICLE')
+                    if len(viewer.attachments_tree.get_children())!=1:
+                        raise RuntimeError('PROCEDURES_SCHEMATIC_ATTACHMENT_NOT_SELECTED')
+                    def check_navigation_image():
+                        if len(viewer.diagram_canvas.find_all())!=1:
+                            raise RuntimeError('PROCEDURES_SCHEMATIC_IMAGE_NOT_RENDERED')
+                    ui.root.after(220,check_navigation_image)
+                ui.root.after(950,check_navigation)
             ui.root.after(520,check_procedures_window)
             def check_schematics_window():
                 from PIL import Image
