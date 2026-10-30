@@ -1,0 +1,34 @@
+name: Prepare private Ghidra 12.1.4 runtime
+on:
+  push:
+    branches: [atelierdata-20261030]
+    paths:
+      - '.github/workflows/ghidra-offline-runtime.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - name: Download official Ghidra release and verify SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --connect-timeout 30 --max-time 900 \
+            'https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.4_build/ghidra_12.1.4_PUBLIC_20260921.zip' \
+            -o ghidra_12.1.4_PUBLIC_20260921.zip
+          echo 'ddac49f903da9d5bac833e5cc79395098b9c33cfd3279be5f31bd00387d2d4db  ghidra_12.1.4_PUBLIC_20260921.zip' | sha256sum -c -
+          unzip -tq ghidra_12.1.4_PUBLIC_20260921.zip
+          echo 'Ghidra official release, SHA256 verified. NO user binaries included.' > README.txt
+          echo 'GHIDRA_RUNTIME_INTEGRITY=PASS'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ghidra_12_1_4_Official_Verified
+          path: |
+            ghidra_12.1.4_PUBLIC_20260921.zip
+            README.txt
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
