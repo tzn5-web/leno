@@ -29,6 +29,8 @@ if (-not (Test-Path -LiteralPath $program -PathType Container)) {
 }
 $manifest = (Resolve-Path -LiteralPath $Inventory -ErrorAction Stop).Path
 
+New-Item -ItemType Directory -Path $stage -Force | Out-Null
+try {
 # Hash-verify ALL 105 original files, in exact original 64 MiB fragment order.
 # INVENTAR.json stays local/private; it is never uploaded to GitHub.
 & $Python $verifier --source $root --manifest $manifest --output (Join-Path $stage 'verified.json')
@@ -74,9 +76,7 @@ if (-not (Test-Path -LiteralPath $compiler)) {
     $compiler = $found.Source
 }
 
-New-Item -ItemType Directory -Path $stage -Force | Out-Null
 New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
-try {
     & $Python $stager --source $root --staging $stage --allowlist $allowlist
     if ($LASTEXITCODE -ne 0) { throw 'Payload staging failed; installer not built.' }
 
