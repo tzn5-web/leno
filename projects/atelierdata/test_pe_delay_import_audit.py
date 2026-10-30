@@ -60,12 +60,12 @@ class DelayImportAuditTests(unittest.TestCase):
         self.assertEqual(public["resolved_symbol_count"], 1)
         self.assertIsNone(private["descriptors"][0]["dll"])
 
-    def test_truncated_descriptor_directory(self):
+    def test_unmapped_directory(self):
         blob = bytearray(delay_fixture())
         struct.pack_into("<II", blob, 0x98 + 96 + 13 * 8, 0x21f0, 64)
         public, _ = analyze_delay_imports(bytes(blob), hashlib.sha256(blob).hexdigest())
         self.assertEqual(public["state"], "PARTIAL")
-        self.assertGreater(public["issue_counts"]["descriptor_unmapped"], 0)
+        self.assertGreater(public["issue_counts"]["directory_unmapped"], 0)
 
     def test_sha256_and_output_separation(self):
         blob = delay_fixture()
