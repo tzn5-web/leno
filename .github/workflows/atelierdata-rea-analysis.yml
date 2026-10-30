@@ -1,0 +1,88 @@
+name: REA static analysis of AtelierData Windows
+
+on:
+  push:
+    branches: [atelierdata-20261030]
+    paths:
+      - '.github/workflows/atelierdata-rea-analysis.yml'
+      - 'projects/atelierdata/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rea-static-evidence:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Compile current original AtelierData application
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check pyinstaller
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name AtelierData projects/atelierdata/atelierdata.py
+          if ($LASTEXITCODE -ne 0) { throw "APP_BUILD_FAILED" }
+          if (-not (Test-Path 'dist/AtelierData.exe')) { throw "APP_BINARY_NOT_FOUND" }
+      - name: Install pinned upstream REA and verify CLI
+        shell: pwsh
+        run: |
+          node --version
+          npm install --global --no-audit --no-fund rea-agents@6.8.0
+          if ($LASTEXITCODE -ne 0) { throw "REA_INSTALL_FAILED" }
+          rea --version
+          if ($LASTEXITCODE -ne 0) { throw "REA_VERSION_FAILED" }
+      - name: REA inspect PE import table (NO execution of target binary)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force 'rea-evidence' | Out-Null
+          rea inspect-pe-imports (Resolve-Path 'dist/AtelierData.exe').Path --json |
+            Out-File -LiteralPath 'rea-evidence/pe_imports.json' -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw "REA_PE_INSPECTION_FAILED" }
+      - name: REA inspect desktop application directory (NO execution)
+        shell: pwsh
+        run: |
+          rea inspect-desktop-application (Resolve-Path 'dist').Path --json |
+            Out-File -LiteralPath 'rea-evidence/desktop_application.json' -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw "REA_DIRECTORY_INSPECTION_FAILED" }
+      - name: Verify evidence outputs and stamp provenance
+        shell: pwsh
+        run: |
+          @'
+          import hashlib,json,pathlib,datetime
+          root=pathlib.Path("rea-evidence")
+          documents={}
+          for name in ("pe_imports.json","desktop_application.json"):
+              p=root/name
+              if p.stat().st_size==0:
+                  raise RuntimeError("REA_EMPTY_REPORT "+name)
+              data=json.loads(p.read_text(encoding="utf-8-sig"))
+              if not isinstance(data,dict):
+                  raise RuntimeError("REA_INVALID_RESPONSE "+name)
+              if data.get("ok") is False or (isinstance(data.get("result"),dict) and data["result"].get("ok") is False):
+                  raise RuntimeError("REA_REPORTED_ERROR "+name)
+              documents[name]={"bytes":p.stat().st_size,"sha256":hashlib.sha256(p.read_bytes()).hexdigest(),
+                               "top_keys":list(data.keys())[:20]}
+          binary=pathlib.Path("dist/AtelierData.exe")
+          provenance={"tool":"REA / morluto/rea via npm pinned 6.8.0",
+                      "target":"AtelierData.exe (self-authored example, NOT proprietary Autodata source)",
+                      "binary_sha256":hashlib.sha256(binary.read_bytes()).hexdigest(),
+                      "timestamp_utc":datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                      "reports":documents,"original_autodata_analyzed":False}
+          (root/"SUMMARY.json").write_text(json.dumps(provenance,indent=2),encoding="utf-8")
+          print("REA_STATIC_EVIDENCE=PASS",json.dumps(provenance,sort_keys=True))
+          '@ | Set-Content 'validate_rea.py' -Encoding utf8
+          python validate_rea.py
+          if ($LASTEXITCODE -ne 0) { throw "REA_REPORT_VALIDATION_FAILED" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AtelierData_REA_Static_Reports
+          path: rea-evidence/
+          retention-days: 14
+          if-no-files-found: error
