@@ -1,5 +1,7 @@
 """Regression tests for inert, authorized repair-procedure exports."""
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -65,6 +67,24 @@ class RepairExportTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             export_procedure_html(self.store,self.procedure,self.root/"wrong.txt")
         self.assertEqual(self.store.db.execute("PRAGMA quick_check").fetchone()[0],"ok")
+
+    def test_cli_exports(self):
+        script=str(Path(__file__).with_name("atelierdata.py"))
+        target=self.root/"cli-procedures.json"
+        run=subprocess.run([sys.executable,script,"--db-path",str(self.store.path),
+                            "--export-procedures-json",str(target)],
+                           capture_output=True,text=True,timeout=30)
+        self.assertEqual(run.returncode,0,run.stderr)
+        self.assertIn("EXPORT_PROCEDURES_JSON=PASS",run.stdout)
+        self.assertEqual(len(json.loads(target.read_text(encoding="utf-8"))["procedures"]),1)
+        html=self.root/"cli-procedure.html"
+        run=subprocess.run([sys.executable,script,"--db-path",str(self.store.path),
+                            "--procedure-id",str(self.procedure),
+                            "--export-procedure-html",str(html)],
+                           capture_output=True,text=True,timeout=30)
+        self.assertEqual(run.returncode,0,run.stderr)
+        self.assertIn("EXPORT_PROCEDURE_HTML=PASS",run.stdout)
+        self.assertIn("&lt;script&gt;",html.read_text(encoding="utf-8"))
 
     def test_filter_by_vehicle(self):
         other=self.store.add_vehicle("SECOND","TEST")
