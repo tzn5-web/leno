@@ -64,3 +64,38 @@ python -m unittest discover -s projects/atelierdata -p "test_*.py" -v
 ```
 
 **Stadiu:** funcțiile de administrare a specificațiilor sunt implementate și supuse testelor automate Windows. Numărul și calitatea înregistrărilor reale depind în continuare de o sursă tehnică autorizată. Analiza formatului proprietar `.IDF` rămâne o investigație separată.
+
+
+## Proceduri de reparație și referințe autorizate
+
+Butonul **Proceduri** deschide un editor pentru proceduri de atelier asociate
+motorizării selectate. Fiecare procedură are sistem, titlu, descriere,
+avertisment general și **sursă obligatorie**. Pașii se pot adăuga, edita,
+șterge și reordona; fiecare pas poate avea avertisment separat și referință
+la un articol sau o schemă deja introdusă pentru **același vehicul**.
+Ștergerea articolului elimină legătura, nu lasă un ID invalid.
+
+Căutarea acoperă titlul, sistemul, rezumatul, avertismentele, sursa,
+instrucțiunile pașilor și titlurile documentelor asociate. Butonul
+**Document asociat** arată conținutul și atașamentele autorizate. Deschiderea
+unui PDF/PNG/JPG/TXT se face doar după verificarea integrității SHA256 a
+fișierului administrat.
+
+**Export HTML** creează o fișă imprimabilă offline cu pași, avertismente și
+sursă. Conținutul este escap-at HTML, nu include scripturi sau resurse
+externe și nu încorporează fișiere atașate. **Export JSON** salvează
+procedurile și proveniența, dar nu include octeții documentelor. Pentru
+arhivarea integrală a bazei și atașamentelor, folosește **Backup ZIP**.
+
+Comenzi pentru export din Windows PowerShell:
+
+~~~powershell
+python projects/atelierdata/atelierdata.py --db-path .\work\atelierdata.sqlite3 --export-procedures-json .\work\proceduri.json
+python projects/atelierdata/atelierdata.py --db-path .\work\atelierdata.sqlite3 --procedure-id 1 --export-procedure-html .\work\procedura.html
+python -m unittest discover -s projects/atelierdata -p "test_*.py" -v
+~~~
+
+ID-ul procedurii se referă la o procedură existentă în baza proprie. Testele
+automate folosesc exclusiv conținut sintetic, nu valori tehnice reale.
+Aplicația nu distribuie, nu decodifică și nu revendică datele proprietare
+Autodata. Pentru fișe tehnice reale sunt necesare surse autorizate.
