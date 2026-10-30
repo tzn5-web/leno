@@ -75,6 +75,13 @@ avertisment general și **sursă obligatorie**. Pașii se pot adăuga, edita,
 la un articol sau o schemă deja introdusă pentru **același vehicul**.
 Ștergerea articolului elimină legătura, nu lasă un ID invalid.
 
+Pentru a lega un document de un pas, selectează pasul și apasă **Alege document**.
+Fereastra afișează doar articolele vehiculului curent, cu categoria, titlul și
+proveniența lor; poți căuta inclusiv după sursă, apoi **Leagă documentul selectat**
+sau **Elimină legătura**. Nu mai este necesar să cunoști ID-ul numeric al
+articolului. Legătura nu copiază și nu modifică documentul; pașii și
+avertismentele existente sunt păstrate. Lista este locală, fără interogări web.
+
 Căutarea acoperă titlul, sistemul, rezumatul, avertismentele, sursa,
 instrucțiunile pașilor și titlurile documentelor asociate. Butonul
 **Document asociat** arată conținutul și atașamentele autorizate. Deschiderea
