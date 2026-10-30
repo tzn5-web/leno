@@ -182,10 +182,15 @@ class App:
         ttk.Label(title,text='ATELIERDATA  |  CATALOG TEHNIC OFFLINE',font=('Segoe UI Semibold',18)).pack(side='left')
         self.stat=tk.StringVar();ttk.Label(title,textvariable=self.stat).pack(side='right')
         bar=ttk.Frame(root,padding=(18,0,18,12));bar.pack(fill='x')
-        for name,cmd in [('+ Vehicul',self.new_vehicle),('+ Document',self.new_article),
-                         ('Import CSV/JSON',self.load),('Export JSON',self.export),('Backup SQLite',self.backup),
-                         ('Backup ZIP',self.backup_full),('Restaurare ZIP',self.restore_full),('Analiză IDF',self.analyze)]:
-            ttk.Button(bar,text=name,command=cmd).pack(side='left',padx=(0,7))
+        actions=[('+ Vehicul',self.new_vehicle),('+ Document',self.new_article),
+                 ('Import CSV/JSON',self.load),('Export JSON',self.export),
+                 ('Backup SQLite',self.backup),('Backup ZIP',self.backup_full),
+                 ('Restaurare ZIP',self.restore_full),('Analiză IDF',self.analyze)]
+        for col in range(4):
+            bar.columnconfigure(col,weight=1)
+        for i,(name,cmd) in enumerate(actions):
+            ttk.Button(bar,text=name,command=cmd).grid(
+                row=i//4,column=i%4,sticky='ew',padx=4,pady=3)
         panes=ttk.PanedWindow(root,orient='horizontal');panes.pack(fill='both',expand=True,padx=17,pady=(0,12))
         left=ttk.Frame(panes);middle=ttk.Frame(panes);right=ttk.Frame(panes)
         panes.add(left,weight=3);panes.add(middle,weight=4);panes.add(right,weight=5)
