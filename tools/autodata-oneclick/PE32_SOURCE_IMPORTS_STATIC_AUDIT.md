@@ -2,7 +2,7 @@
 
 ## Provenance and method
 
-Read-only inspection of the **original** `Autodata__3.45/ADCDA2/ADBCD.exe` member from `autodata_part_0001.zip` (the Drive archive fragment already obtained via the authorized connection). The ZIP member is 18,102,272 bytes; SHA256 `a505bbc4f8678713f352faa8fc70337d9edbe5e0ebd23ba305ca3bccd0f6fce4`, matching the manifest. No executable was started. A local Python `struct` parser read PE32 headers, section mapping, IMAGE_IMPORT_DESCRIPTOR and 32-bit import thunk arrays. **This is an independent static parser, NOT a REA analysis of the original binary.**
+Read-only inspection of the **original** `Autodata__3.45/ADCDA2/ADBCD.exe` member from `autodata_part_0001.zip` (the Drive archive fragment already obtained via the authorized connection). The ZIP member is 18,102,272 bytes; SHA256 `a505bbc4f8678713f352faa8fc70337d9edbe5e0ebd23ba305ca3bccd0f6fce4`, matching the manifest. No executable was started. A local Python `struct` parser read PE32 headers, section mapping, IMAGE_IMPORT_DESCRIPTOR and 32-bit import thunk arrays. Independent GNU `objdump -p` completed with exit code 0 and confirmed `pei-i386`, PE32 magic `010b`, and the same four standard imported DLLs. **This is an independent static parser, NOT a REA analysis of the original binary.**
 
 ## Concrete import-table observations
 
