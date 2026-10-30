@@ -6,7 +6,7 @@ import hashlib
 from jarray import zeros
 
 TERMS = ('MODELS.IDF', 'CONST.IDF', 'CSS.IDF', 'DTC.IDF', '.IDF',
-         'inflate 1.2.3', 'ChilkatCrypt2')
+         'inflate 1.2.3', 'TFRMAUTODATABASE', 'ChilkatCrypt2')
 MAX_SCAN_BYTES = 128 * 1024 * 1024
 MAX_MATCHES_PER_TERM = 32
 MAX_XREFS_PER_MATCH = 16
