@@ -19,6 +19,19 @@ The presence of `LoadLibraryA` and `GetProcAddress` means **runtime-loaded depen
 
 Section names are mostly numeric (`0000001` through `0000013`) plus `.rsrc`. These are atypical but not proof of packing, encryption, tampering, or maliciousness. No embedded Authenticode certificate directory was declared. PE version-resource fields and `COMMON/VERINFO.DAT` are self-reported metadata, not an authenticity guarantee. `VERINFO.DAT` reports `ProductCode=CDA3.44`; the RAR label `3.45` is therefore not a validated product-version identity.
 
+## Additional binary string evidence: Sentinel dependency candidate
+
+A bounded ASCII scan of the same SHA256-verified original PE, without execution, found an embedded contiguous NUL-separated DLL-name block in the last PE section. The following exact byte offsets (zero-based, decimal) were observed:
+
+- `SentinelKeyW.DLL` at **17,718,897**
+- `gdiplus.dll` at **17,718,931**
+- `cfgmgr32.dll` at **17,718,914**
+- `netapi32.dll` at **17,718,948**
+- `wsock32.dll` at **17,718,965**
+- `oleacc.dll` at **17,718,999**
+
+The same block includes `advapi32.dll`, `user32.dll`, `kernel32.dll`, `msimg32.dll`, `gdi32.dll`, `version.dll`, `mpr.dll`, `ole32.dll`, `comctl32.dll`, `winspool.drv`, `shell32.dll`, `comdlg32.dll`, `winmm.dll` and `MSVCRT.dll`. These strings provide **direct evidence that the original executable contains references to SentinelKeyW.DLL and gdiplus.dll**, although they are absent from its four standard import descriptors. The block's exact role (dynamic loader list, embedded import metadata, resource or other) has **not** been determined. This is not evidence of successful license activation or that a driver must be installed.
+
 ## REA integration and limits
 
 The **separate** pinned REA 6.8.0 GitHub Actions job on 2026-10-30 executed real REA `inspect-pe-imports`, `inspect-pe-certificates`, `inspect-desktop-application` on a **harmless Windows notepad.exe fixture**, with Node 24.22.1, hash-negative gate, JSON output and artifact capture. The synthetic job returned PASS; see [run 41109921444](https://github.com/tzn5-web/leno/actions/runs/41109921444). This verifies the REA integration, **not** original Autodata analysis. The original private PE must not be uploaded to the public repo. Use `rea_static_private.ps1` with its exact SHA256 on a private authorized Windows machine to obtain original-PE REA evidence.
