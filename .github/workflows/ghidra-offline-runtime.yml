@@ -23,12 +23,25 @@ jobs:
           unzip -tq ghidra_12.1.4_PUBLIC_20260921.zip
           echo 'Ghidra official release, SHA256 verified. NO user binaries included.' > README.txt
           echo 'GHIDRA_RUNTIME_INTEGRITY=PASS'
+      - name: Split verified release into transport-sized chunks
+        shell: bash
+        run: |
+          set -euo pipefail
+          split -b 300000000 -d -a 2 ghidra_12.1.4_PUBLIC_20260921.zip ghidra.part_
+          test -s ghidra.part_00
+          test -s ghidra.part_01
+          echo 'GHIDRA_TRANSPORT_SPLIT=PASS'
       - uses: actions/upload-artifact@v4
         with:
-          name: Ghidra_12_1_4_Official_Verified
-          path: |
-            ghidra_12.1.4_PUBLIC_20260921.zip
-            README.txt
+          name: Ghidra_12_1_4_Part_00
+          path: ghidra.part_00
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ghidra_12_1_4_Part_01
+          path: ghidra.part_01
           compression-level: 0
           retention-days: 1
           if-no-files-found: error
