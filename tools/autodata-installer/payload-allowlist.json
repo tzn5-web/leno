@@ -1,0 +1,427 @@
+{
+  "format": "autodata-v345-inventory-v1",
+  "source": "INVENTAR.txt, Google Drive folder 1XqpDaYI5zkdUXY85wLSvpsklatT0P0Bd",
+  "warning": "Path and size inventory is not evidence of authenticity, safety, or license validity.",
+  "files": [
+    {
+      "path": "ADCDA2/ADBCD.exe",
+      "size_bytes": 18102272
+    },
+    {
+      "path": "ADCDA2/COMMON/ACGRAPH.IDF",
+      "size_bytes": 53873207
+    },
+    {
+      "path": "ADCDA2/COMMON/CATICONS.IDF",
+      "size_bytes": 639554
+    },
+    {
+      "path": "ADCDA2/COMMON/CONST.IDF",
+      "size_bytes": 10
+    },
+    {
+      "path": "ADCDA2/COMMON/CSS.IDF",
+      "size_bytes": 2869
+    },
+    {
+      "path": "ADCDA2/COMMON/DC.DAT",
+      "size_bytes": 26
+    },
+    {
+      "path": "ADCDA2/COMMON/FAS.IDF",
+      "size_bytes": 3381989
+    },
+    {
+      "path": "ADCDA2/COMMON/GENBMP.IDF",
+      "size_bytes": 683775
+    },
+    {
+      "path": "ADCDA2/COMMON/GENERAL.IDF",
+      "size_bytes": 9312
+    },
+    {
+      "path": "ADCDA2/COMMON/HLPBMP.IDF",
+      "size_bytes": 19365
+    },
+    {
+      "path": "ADCDA2/COMMON/INDICES.IDF",
+      "size_bytes": 2636
+    },
+    {
+      "path": "ADCDA2/COMMON/MANRANGE.IDF",
+      "size_bytes": 399888
+    },
+    {
+      "path": "ADCDA2/COMMON/MIDLINKS.IDF",
+      "size_bytes": 17617935
+    },
+    {
+      "path": "ADCDA2/COMMON/MIDS.IDF",
+      "size_bytes": 5551494
+    },
+    {
+      "path": "ADCDA2/COMMON/MIDTDoc.IDF",
+      "size_bytes": 1895016
+    },
+    {
+      "path": "ADCDA2/COMMON/MODELS.IDF",
+      "size_bytes": 2581279
+    },
+    {
+      "path": "ADCDA2/COMMON/OPEN.bmp",
+      "size_bytes": 2362424
+    },
+    {
+      "path": "ADCDA2/COMMON/REPSTR.IDF",
+      "size_bytes": 5468
+    },
+    {
+      "path": "ADCDA2/COMMON/RT.IDF",
+      "size_bytes": 24618319
+    },
+    {
+      "path": "ADCDA2/COMMON/RTINCJOB.IDF",
+      "size_bytes": 17364402
+    },
+    {
+      "path": "ADCDA2/COMMON/RTRELJOB.IDF",
+      "size_bytes": 509188
+    },
+    {
+      "path": "ADCDA2/COMMON/SGINT.IDF",
+      "size_bytes": 31956465
+    },
+    {
+      "path": "ADCDA2/COMMON/SGOPS.IDF",
+      "size_bytes": 51464668
+    },
+    {
+      "path": "ADCDA2/COMMON/SGPARTSDATA.IDF",
+      "size_bytes": 986
+    },
+    {
+      "path": "ADCDA2/COMMON/SGSTRINGS.IDF",
+      "size_bytes": 5146
+    },
+    {
+      "path": "ADCDA2/COMMON/SRSGRAPH.IDF",
+      "size_bytes": 78505764
+    },
+    {
+      "path": "ADCDA2/COMMON/TD.IDF",
+      "size_bytes": 22674774
+    },
+    {
+      "path": "ADCDA2/COMMON/TDDIFF.IDF",
+      "size_bytes": 42
+    },
+    {
+      "path": "ADCDA2/COMMON/TDGRAPH.IDF",
+      "size_bytes": 206591529
+    },
+    {
+      "path": "ADCDA2/COMMON/TECDOC.IDF",
+      "size_bytes": 2695594
+    },
+    {
+      "path": "ADCDA2/COMMON/TP.IDF",
+      "size_bytes": 1416285
+    },
+    {
+      "path": "ADCDA2/COMMON/VERINFO.DAT",
+      "size_bytes": 79
+    },
+    {
+      "path": "ADCDA2/COMMON/VIGRAPH.IDF",
+      "size_bytes": 2675
+    },
+    {
+      "path": "ADCDA2/COMMON/VINEXP.IDF",
+      "size_bytes": 64553
+    },
+    {
+      "path": "ADCDA2/COMMON/WA.IDF",
+      "size_bytes": 4495577
+    },
+    {
+      "path": "ADCDA2/COMMON/WDEP.DAT",
+      "size_bytes": 378032
+    },
+    {
+      "path": "ADCDA2/COMMON/YEARS.IDF",
+      "size_bytes": 97338
+    },
+    {
+      "path": "ADCDA2/COMMON/distinfo.xml",
+      "size_bytes": 14255
+    },
+    {
+      "path": "ADCDA2/ChilkatCert.dll",
+      "size_bytes": 856992
+    },
+    {
+      "path": "ADCDA2/ChilkatCrypt2.dll",
+      "size_bytes": 926624
+    },
+    {
+      "path": "ADCDA2/ChilkatUtil.dll",
+      "size_bytes": 660384
+    },
+    {
+      "path": "ADCDA2/ENG/ABS.IDF",
+      "size_bytes": 2489429
+    },
+    {
+      "path": "ADCDA2/ENG/AC.IDF",
+      "size_bytes": 2677823
+    },
+    {
+      "path": "ADCDA2/ENG/BD.IDF",
+      "size_bytes": 1600606
+    },
+    {
+      "path": "ADCDA2/ENG/CDSCRSTR.IDF",
+      "size_bytes": 387940
+    },
+    {
+      "path": "ADCDA2/ENG/COPY.txt",
+      "size_bytes": 1398
+    },
+    {
+      "path": "ADCDA2/ENG/DIAPRESS.IDF",
+      "size_bytes": 18149
+    },
+    {
+      "path": "ADCDA2/ENG/DTC.IDF",
+      "size_bytes": 3036052
+    },
+    {
+      "path": "ADCDA2/ENG/ECL.IDF",
+      "size_bytes": 3886435
+    },
+    {
+      "path": "ADCDA2/ENG/EM.IDF",
+      "size_bytes": 15418205
+    },
+    {
+      "path": "ADCDA2/ENG/EMGEN.IDF",
+      "size_bytes": 88947
+    },
+    {
+      "path": "ADCDA2/ENG/EMTS.IDF",
+      "size_bytes": 439767
+    },
+    {
+      "path": "ADCDA2/ENG/ENG_HELP.chm",
+      "size_bytes": 12818768
+    },
+    {
+      "path": "ADCDA2/ENG/ENG_TT.chm",
+      "size_bytes": 3957114
+    },
+    {
+      "path": "ADCDA2/ENG/EOBD2.IDF",
+      "size_bytes": 191648
+    },
+    {
+      "path": "ADCDA2/ENG/EPB.IDF",
+      "size_bytes": 241610
+    },
+    {
+      "path": "ADCDA2/ENG/ERROR.TXT",
+      "size_bytes": 99
+    },
+    {
+      "path": "ADCDA2/ENG/GENERAL.IDF",
+      "size_bytes": 20665
+    },
+    {
+      "path": "ADCDA2/ENG/GUIDEDDIAG.IDF",
+      "size_bytes": 318648
+    },
+    {
+      "path": "ADCDA2/ENG/KP.IDF",
+      "size_bytes": 905876
+    },
+    {
+      "path": "ADCDA2/ENG/PO.IDF",
+      "size_bytes": 4732775
+    },
+    {
+      "path": "ADCDA2/ENG/RegMessage.htm",
+      "size_bytes": 1119
+    },
+    {
+      "path": "ADCDA2/ENG/SCRIPT.IDF",
+      "size_bytes": 186235
+    },
+    {
+      "path": "ADCDA2/ENG/SD.IDF",
+      "size_bytes": 399578
+    },
+    {
+      "path": "ADCDA2/ENG/SGNOTES.IDF",
+      "size_bytes": 108430
+    },
+    {
+      "path": "ADCDA2/ENG/SGSUM.IDF",
+      "size_bytes": 648154
+    },
+    {
+      "path": "ADCDA2/ENG/SI.IDF",
+      "size_bytes": 364528
+    },
+    {
+      "path": "ADCDA2/ENG/SL.IDF",
+      "size_bytes": 54878
+    },
+    {
+      "path": "ADCDA2/ENG/SRS.IDF",
+      "size_bytes": 2468952
+    },
+    {
+      "path": "ADCDA2/ENG/TB.IDF",
+      "size_bytes": 6725569
+    },
+    {
+      "path": "ADCDA2/ENG/TDNOTES.IDF",
+      "size_bytes": 1471565
+    },
+    {
+      "path": "ADCDA2/ENG/TERMCOND.TXT",
+      "size_bytes": 13175
+    },
+    {
+      "path": "ADCDA2/ENG/TPMS.IDF",
+      "size_bytes": 847253
+    },
+    {
+      "path": "ADCDA2/ENG/TSB.IDF",
+      "size_bytes": 2053578
+    },
+    {
+      "path": "ADCDA2/ENG/WANOTES.IDF",
+      "size_bytes": 1042116
+    },
+    {
+      "path": "ADCDA2/ENG/WD.IDF",
+      "size_bytes": 1631571
+    },
+    {
+      "path": "ADCDA2/ENG/WDCDHLP.IDF",
+      "size_bytes": 11581
+    },
+    {
+      "path": "ADCDA2/ENG/WLS.IDF",
+      "size_bytes": 15568
+    },
+    {
+      "path": "ADCDA2/ENG/country.xml",
+      "size_bytes": 3355
+    },
+    {
+      "path": "ADCDA2/ENG/string.xml",
+      "size_bytes": 114993
+    },
+    {
+      "path": "ADCDA2/ENG/support.htm",
+      "size_bytes": 5208
+    },
+    {
+      "path": "ADCDA2/GRAPHICS/ABSGRAPH.IDF",
+      "size_bytes": 30078316
+    },
+    {
+      "path": "ADCDA2/GRAPHICS/BDGRAPH.IDF",
+      "size_bytes": 38206950
+    },
+    {
+      "path": "ADCDA2/GRAPHICS/DTCGRAPH.IDF",
+      "size_bytes": 13197540
+    },
+    {
+      "path": "ADCDA2/GRAPHICS/ECLGRAPH.IDF",
+      "size_bytes": 86593398
+    },
+    {
+      "path": "ADCDA2/GRAPHICS/EMGRAPH.IDF",
+      "size_bytes": 81012054
+    },
+    {
+      "path": "ADCDA2/GRAPHICS/EPBGRAPH.IDF",
+      "size_bytes": 733775
+    },
+    {
+      "path": "ADCDA2/GRAPHICS/GD.IDF",
+      "size_bytes": 1328340
+    },
+    {
+      "path": "ADCDA2/GRAPHICS/KPGRAPH.IDF",
+      "size_bytes": 6237904
+    },
+    {
+      "path": "ADCDA2/GRAPHICS/POGRAPH.IDF",
+      "size_bytes": 6712597
+    },
+    {
+      "path": "ADCDA2/GRAPHICS/SB.IDF",
+      "size_bytes": 93659115
+    },
+    {
+      "path": "ADCDA2/GRAPHICS/SIGRAPH.IDF",
+      "size_bytes": 3801797
+    },
+    {
+      "path": "ADCDA2/GRAPHICS/TBGRAPH.IDF",
+      "size_bytes": 129075632
+    },
+    {
+      "path": "ADCDA2/GRAPHICS/TPMSGRAPH.IDF",
+      "size_bytes": 5063706
+    },
+    {
+      "path": "ADCDA2/GRAPHICS/TSBGRAPH.IDF",
+      "size_bytes": 6236634
+    },
+    {
+      "path": "ADCDA2/GRAPHICS/WAGRAPH.IDF",
+      "size_bytes": 4974011
+    },
+    {
+      "path": "ADCDA2/GRAPHICS/WDGRAPH.IDF",
+      "size_bytes": 416079669
+    },
+    {
+      "path": "ADCDA2/GRAPHICS/WDGRAPH_1.IDF",
+      "size_bytes": 724065391
+    },
+    {
+      "path": "ADCDA2/GRAPHICS/WLSGRAPH.IDF",
+      "size_bytes": 841630
+    },
+    {
+      "path": "ADCDA2/RelLic.dll",
+      "size_bytes": 28792
+    },
+    {
+      "path": "ADCDA2/SentinelKeyW.DLL",
+      "size_bytes": 2961712
+    },
+    {
+      "path": "ADCDA2/cw3220mt.dll",
+      "size_bytes": 245760
+    },
+    {
+      "path": "ADCDA2/gdiplus.dll",
+      "size_bytes": 1748992
+    },
+    {
+      "path": "ADCDA2/libeay32.dll",
+      "size_bytes": 1069056
+    },
+    {
+      "path": "ADCDA2/ssleay32.dll",
+      "size_bytes": 221184
+    }
+  ]
+}
