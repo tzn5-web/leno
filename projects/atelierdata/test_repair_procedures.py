@@ -6,7 +6,7 @@ from pathlib import Path
 from atelierdata import Store
 from repair_procedures import (ensure_schema,create_procedure,update_procedure,
     get_procedure,list_procedures,delete_procedure,add_step,update_step,delete_step,
-    move_step,list_steps,procedure_text)
+    move_step,list_steps,procedure_text,list_reference_articles)
 
 class ProcedureTests(unittest.TestCase):
     def setUp(self):
@@ -83,6 +83,31 @@ class ProcedureTests(unittest.TestCase):
         self.assertEqual(len(list_procedures(self.db,self.vid,search="ABC")),1)
         self.assertEqual(len(list_procedures(self.db,self.vid,search="Date sintetice")),1)
         self.assertEqual(len(list_procedures(self.db,self.vid,search="NO-MATCH")),0)
+
+    def test_document_reference_picker_scope_source_and_literal_search(self):
+        owned=self.db.add_article(self.vid,"Scheme electrice","Schema %_ DEMO",
+                                  "No real schematic","OWNED-LICENCE")
+        other=self.db.add_article(self.other,"Scheme electrice","Schema %_ DEMO",
+                                  "Not available to first vehicle","OTHER-LICENCE")
+        same=self.db.add_article(self.vid,"Note atelier","Other note",
+                                 "Test","WORKSHOP-OWNED")
+        rows=list_reference_articles(self.db,self.pid)
+        self.assertEqual({r["id"] for r in rows},{owned,same})
+        self.assertNotIn(other,{r["id"] for r in rows})
+        self.assertEqual([r["id"] for r in list_reference_articles(self.db,self.pid,"%_")],[owned])
+        self.assertEqual([r["id"] for r in list_reference_articles(self.db,self.pid,"OWNED-LICENCE")],[owned])
+        self.assertEqual(list_reference_articles(self.db,self.pid,"OTHER-LICENCE"),[])
+        self.assertEqual(list_reference_articles(self.db,self.pid,"ZZZ"),[])
+        with self.assertRaises(ValueError):
+            list_reference_articles(self.db,999999)
+        with self.assertRaises(ValueError):
+            list_reference_articles(self.db,self.pid,"x"*201)
+        step=add_step(self.db,self.pid,"Step with verified reference",article_id=owned)
+        self.assertEqual(list_steps(self.db,self.pid)[0]["article_id"],owned)
+        with self.assertRaises(ValueError):
+            update_step(self.db,step,"Not allowed",article_id=other)
+        self.assertEqual(list_steps(self.db,self.pid)[0]["article_id"],owned)
+        self.assertEqual(self.db.db.execute("PRAGMA quick_check").fetchone()[0],"ok")
 
     def test_reopen_and_integrity(self):
         add_step(self.db,self.pid,"Pas 1")
