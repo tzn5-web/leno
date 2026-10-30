@@ -44,7 +44,8 @@ if (-not $SkipDesktop) {
 foreach ($check in $checks) {
   $out = Join-Path $dest ("rea_" + $check.name + ".json")
   $err = Join-Path $dest ("rea_" + $check.name + ".stderr.txt")
-  & $ReaCli @($check.args) 1> $out 2> $err
+  $commandArgs = [string[]]$check.args
+  & $ReaCli @commandArgs 1> $out 2> $err
   if ($LASTEXITCODE -ne 0) { throw "REA_COMMAND_FAILED:$($check.name) code=$LASTEXITCODE" }
   try { $null = Get-Content -LiteralPath $out -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 100 }
   catch { throw "REA_INVALID_JSON:$($check.name):$($_.Exception.Message)" }
