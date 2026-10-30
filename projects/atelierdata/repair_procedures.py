@@ -98,6 +98,29 @@ def list_procedures(store,vehicle_id=None,search=""):
     return store.db.execute(sql+" ORDER BY v.make,v.model,p.system,p.title,p.id",args).fetchall()
 
 
+
+def list_reference_articles(store, procedure_id, search=""):
+    """Documents available to a step, scoped strictly to the procedure's vehicle.
+
+    The returned data are only user-entered article metadata; no remote content.
+    Search treats %, _ and backslash as literal characters.
+    """
+    if get_procedure(store, procedure_id) is None:
+        raise ValueError("Procedure does not exist")
+    if not isinstance(search, str) or len(search) > 200 or "\0" in search:
+        raise ValueError("Invalid document search")
+    query = ("SELECT a.id,a.vehicle_id,a.category,a.title,a.source "
+             "FROM articles a JOIN procedures p ON p.vehicle_id=a.vehicle_id "
+             "WHERE p.id=?")
+    args = [procedure_id]
+    if search:
+        pattern = "%" + search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        query += (" AND (a.title LIKE ? ESCAPE '\\' OR a.category LIKE ? ESCAPE '\\'"
+                  " OR a.source LIKE ? ESCAPE '\\')")
+        args.extend((pattern, pattern, pattern))
+    return store.db.execute(query + " ORDER BY a.category,a.title,a.id", args).fetchall()
+
+
 def get_procedure(store,pid):
     return store.db.execute("SELECT * FROM procedures WHERE id=?",(pid,)).fetchone()
 
