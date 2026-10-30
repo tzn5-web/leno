@@ -27,7 +27,7 @@ class AtomicImportTests(unittest.TestCase):
             root=Path(tmp)
             store=Store(root/'catalog.sqlite3')
             file=root/'batch.csv'
-            file.write_text('make,model,category,title\\nA,B,Motor,One\\nA,B,Motor,Two\\n',encoding='utf-8')
+            file.write_text('make,model,category,title\nA,B,Motor,One\nA,B,Motor,Two\n',encoding='utf-8')
             result=import_records(store,file)
             self.assertEqual(result['inserted'],2)
             self.assertEqual(store.stats(),[1,2])
