@@ -503,8 +503,19 @@ def main():
     if args.ui_smoke:
         with tempfile.TemporaryDirectory() as folder:
             ui=App(Path(folder)/'ui-smoke.sqlite3')
-            ui.root.after(1100,ui.close)
+            vehicle=ui.db.add_vehicle('SYNTHETIC','GUI TEST')
+            ui.vid=vehicle
+            ui.refresh()
+            gui_errors=[]
+            def on_gui_error(exc, value, traceback):
+                gui_errors.append(f'{exc.__name__}: {value}')
+                ui.root.after(0,ui.close)
+            ui.root.report_callback_exception=on_gui_error
+            ui.root.after(240,ui.specifications)
+            ui.root.after(1400,ui.close)
             ui.run()
+            if gui_errors:
+                raise RuntimeError('GUI_SMOKE_FAILED: '+'; '.join(gui_errors))
         return 0
     if args.probe_idf:
         report=probe_idf(args.probe_idf)
