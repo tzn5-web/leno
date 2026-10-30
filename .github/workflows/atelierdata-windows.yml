@@ -1,0 +1,47 @@
+name: AtelierData Windows EXE
+on:
+  push:
+    branches: [atelierdata-20261030]
+    paths:
+      - 'projects/atelierdata/**'
+      - '.github/workflows/atelierdata-windows.yml'
+  workflow_dispatch:
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Python syntax + core application smoke test
+        shell: pwsh
+        run: |
+          python -m py_compile projects/atelierdata/atelierdata.py
+          python projects/atelierdata/atelierdata.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw "SOURCE_TEST_FAILED" }
+      - name: Build one-file Windows EXE
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check pyinstaller
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name AtelierData projects/atelierdata/atelierdata.py
+          if ($LASTEXITCODE -ne 0) { throw "WINDOWS_BUILD_FAILED" }
+      - name: Run real compiled EXE self-test
+        shell: pwsh
+        run: |
+          & .\dist\AtelierData.exe --self-test
+          if ($LASTEXITCODE -ne 0) { throw "PACKAGED_EXE_SELF_TEST_FAILED" }
+          if (-not (Test-Path ".\dist\AtelierData.exe")) { throw "EXE_MISSING" }
+          $file = Get-Item ".\dist\AtelierData.exe"
+          $sha = (Get-FileHash $file.FullName -Algorithm SHA256).Hash
+          Write-Host "WINDOWS_EXE_TEST=PASS bytes=$($file.Length) sha256=$sha"
+          "AtelierData is an original empty catalog. It does not include or decode Autodata proprietary content." | Set-Content .\dist\README_IMPORTANTE.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AtelierData_Windows_OriginalApp
+          path: |
+            dist/AtelierData.exe
+            dist/README_IMPORTANTE.txt
+          if-no-files-found: error
+          retention-days: 14
