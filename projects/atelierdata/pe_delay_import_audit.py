@@ -176,8 +176,12 @@ def analyze_delay_imports(data: bytes, expected_sha256: str):
 
 def run(pe_path, expected_sha256, public_path, private_path=None):
     pe_path, public_path = Path(pe_path), Path(public_path)
-    if private_path is not None and Path(private_path).resolve() == public_path.resolve():
-        raise ValueError("Public and private outputs must differ")
+    input_resolved = pe_path.resolve()
+    if public_path.resolve() == input_resolved:
+        raise ValueError("Public output must differ from input PE")
+    if private_path is not None:
+        if Path(private_path).resolve() in (input_resolved, public_path.resolve()):
+            raise ValueError("Private output must differ from input PE and public output")
     with pe_path.open("rb") as fh:
         data = fh.read(MAX_PE + 1)
     public, private = analyze_delay_imports(data, expected_sha256)
