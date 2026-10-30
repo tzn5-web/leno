@@ -32,7 +32,8 @@ def image_metadata(path):
     Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
     try:
         with Image.open(source) as picture:
-            if picture.format not in ("PNG", "JPEG"):
+            expected="PNG" if source.suffix.lower()==".png" else "JPEG"
+            if picture.format != expected:
                 raise ValueError("Formatul imaginii nu corespunde extensiei")
             w, h = picture.size
             if w <= 0 or h <= 0 or w * h > MAX_IMAGE_PIXELS:
