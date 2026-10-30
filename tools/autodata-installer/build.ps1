@@ -38,6 +38,7 @@ if ($LASTEXITCODE -ne 0) {
     throw 'PRIVATE_INVENTORY_SHA256_VERIFICATION_FAILED: refusing to package.'
 }
 Write-Host 'ORIGINAL_INVENTORY_SHA256=PASS'
+Remove-Item -LiteralPath (Join-Path $stage 'verified.json') -Force -ErrorAction Stop
 
 # Windows Defender is a necessary check, not a guarantee that a file is safe.
 if (-not (Get-Command Get-MpComputerStatus -ErrorAction SilentlyContinue) -or
