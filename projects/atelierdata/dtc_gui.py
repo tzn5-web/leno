@@ -4,6 +4,67 @@ from __future__ import annotations
 from dtc_catalog import add_dtc, update_dtc, delete_dtc, get_dtc, list_dtc, dtc_text, import_dtc, export_dtc
 
 
+def _dtc_editor(parent, previous):
+    """Scrollable multiline editor so long diagnostic notes remain usable."""
+    from tkinter import ttk
+    import tkinter as tk
+    content = {}
+    form = tk.Toplevel(parent)
+    form.title("Editare referință DTC" if previous else "Cod DTC nou")
+    form.geometry("770x670")
+    form.minsize(580,450)
+    form.transient(parent)
+    form.grab_set()
+    wrapper=ttk.Frame(form,padding=10);wrapper.pack(fill="both",expand=True)
+    bar=ttk.Frame(wrapper);bar.pack(side="bottom",fill="x",pady=6)
+    scroll=ttk.Frame(wrapper);scroll.pack(fill="both",expand=True)
+    canvas=tk.Canvas(scroll,highlightthickness=0,bg="#101a2b")
+    vbar=ttk.Scrollbar(scroll,orient="vertical",command=canvas.yview)
+    canvas.configure(yscrollcommand=vbar.set)
+    vbar.pack(side="right",fill="y")
+    canvas.pack(side="left",fill="both",expand=True)
+    fields=ttk.Frame(canvas,padding=10)
+    item=canvas.create_window((0,0),window=fields,anchor="nw")
+    fields.bind("<Configure>",lambda event:canvas.configure(scrollregion=canvas.bbox("all")))
+    canvas.bind("<Configure>",lambda event:canvas.itemconfigure(item,width=event.width))
+    definitions=(
+        ("code","Cod P/B/C/U *",1),
+        ("system","Sistem *",1),
+        ("title","Descriere *",1),
+        ("symptoms","Simptome",4),
+        ("possible_causes","Cauze posibile",4),
+        ("checks","Verificări documentate",6),
+        ("notes","Note",4),
+        ("source","Sursă / referință exactă *",1),
+        ("procedure_id","ID procedură asociată (opțional)",1),
+        ("article_id","ID document asociat (opțional)",1))
+    controls={}
+    for key,label,rows in definitions:
+        ttk.Label(fields,text=label).pack(anchor="w",pady=(5,2))
+        initial=("" if previous is None else
+                 str(previous[key] or "") if key not in ("procedure_id","article_id")
+                 else str(previous[key] or ""))
+        if rows>1:
+            widget=tk.Text(fields,height=rows,wrap="word",font=("Segoe UI",10))
+            widget.insert("1.0",initial)
+        else:
+            widget=ttk.Entry(fields)
+            widget.insert(0,initial)
+        widget.pack(fill="x" if rows==1 else "both",pady=(0,5))
+        controls[key]=(widget,rows)
+    def save():
+        nonlocal content
+        content={}
+        for key,(widget,rows) in controls.items():
+            content[key]=(widget.get("1.0","end-1c") if rows>1 else widget.get()).strip()
+        form.destroy()
+    ttk.Button(bar,text="Salvează",command=save).pack(side="right",padx=(8,0))
+    ttk.Button(bar,text="Anulează",command=form.destroy).pack(side="right")
+    form.bind("<Escape>",lambda event:form.destroy())
+    parent.wait_window(form)
+    return content or None
+
+
 def open_dtc_window(app, editor_class):
     from tkinter import ttk, filedialog, messagebox
     tk=app.tk
@@ -83,7 +144,7 @@ def open_dtc_window(app, editor_class):
             ("procedure_id","ID procedură asociată (opțional)",str(entry["procedure_id"]) if entry and entry["procedure_id"] else ""),
             ("article_id","ID document asociat (opțional)",str(entry["article_id"]) if entry and entry["article_id"] else "")
         ]
-        data=editor_class(win,"Cod DTC" if create else "Editare DTC",fields).value
+        data=_dtc_editor(win,entry)
         if data is None:return
         try:
             proc=int(data.pop("procedure_id")) if data["procedure_id"] else None
