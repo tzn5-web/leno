@@ -6,6 +6,7 @@ from atelierdata_backup import backup_bundle,restore_bundle
 from technical_specs import (ensure_schema,add_spec,update_spec,remove_spec,get_spec,
                              list_specs,import_specs,export_specs)
 from repair_procedures import ensure_schema as ensure_procedures_schema
+from repair_export import export_procedures_json,export_procedure_html
 
 CATEGORIES = ("Date tehnice","Întreținere","Motor","Distribuție","Cupluri de strângere",
               "Diagnosticare / DTC","Scheme electrice","Siguranțe și relee","Frâne / ABS",
@@ -501,6 +502,9 @@ def main():
     ap.add_argument('--export-specs')
     ap.add_argument('--list-specs',action='store_true')
     ap.add_argument('--search-specs',default='')
+    ap.add_argument('--export-procedures-json')
+    ap.add_argument('--export-procedure-html')
+    ap.add_argument('--procedure-id',type=int)
     ap.add_argument('--backup-zip')
     ap.add_argument('--restore-zip')
     ap.add_argument('--restore-dir')
@@ -534,10 +538,20 @@ def main():
         target=restore_bundle(args.restore_zip,args.restore_dir)
         print('RESTORE_ZIP=PASS database='+str(target));return 0
     if (args.export_json or args.import_records or args.check_db or args.backup_zip
-        or args.import_specs or args.export_specs or args.list_specs):
+        or args.import_specs or args.export_specs or args.list_specs
+        or args.export_procedures_json or args.export_procedure_html):
 
         store=Store(database)
         try:
+            if args.export_procedures_json:
+                count=export_procedures_json(store,args.export_procedures_json)
+                print('EXPORT_PROCEDURES_JSON=PASS count='+str(count));return 0
+            if args.export_procedure_html:
+                if args.procedure_id is None:
+                    ap.error('--export-procedure-html necesită --procedure-id')
+                target=export_procedure_html(store,args.procedure_id,
+                                             args.export_procedure_html)
+                print('EXPORT_PROCEDURE_HTML=PASS path='+str(target));return 0
             if args.import_specs:
                 result=import_specs(store,args.import_specs)
                 print('IMPORT_SPECS=PASS '+json.dumps(result,ensure_ascii=False));return 0
