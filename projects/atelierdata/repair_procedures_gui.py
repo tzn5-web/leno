@@ -4,7 +4,7 @@ from __future__ import annotations
 from repair_export import export_procedure_html,export_procedures_json
 from repair_procedures import (
     add_step, create_procedure, delete_procedure, delete_step, get_procedure,
-    list_procedures, list_steps, move_step, procedure_text, update_procedure, update_step
+    list_procedures, list_steps, list_reference_articles, move_step, procedure_text, update_procedure, update_step
 )
 
 
@@ -167,6 +167,86 @@ def open_procedures_window(app, editor_class):
             delete_step(app.db,int(selected[0]))
             refresh_steps()
 
+    def choose_reference():
+        """Select a verified same-vehicle article by title, not by opaque numeric ID."""
+        selected=steps.selection()
+        if not selected or state["pid"] is None:
+            messagebox.showinfo("Selectare","Selectează un pas pentru a lega un document.",parent=top)
+            return None
+        sid=int(selected[0])
+        original=app.db.db.execute("SELECT * FROM procedure_steps WHERE id=?",(sid,)).fetchone()
+        if original is None or original["procedure_id"]!=state["pid"]:
+            messagebox.showerror("Referință","Pasul nu mai aparține procedurii.",parent=top)
+            return None
+        pid=state["pid"]
+        picker=tk.Toplevel(top)
+        picker.title("Alege documentul asociat pasului")
+        picker.geometry("790x500")
+        picker.minsize(580,340)
+        picker.transient(top)
+        picker.grab_set()
+        box=ttk.Frame(picker,padding=12)
+        box.pack(fill="both",expand=True)
+        ttk.Label(box,text="DOCUMENTE ALE ACELUIAȘI VEHICUL",
+                  font=("Segoe UI Semibold",12)).pack(anchor="w",pady=(0,5))
+        ttk.Label(box,text="Selectează un document propriu/licențiat; alte vehicule sunt excluse."
+                 ).pack(anchor="w",pady=(0,8))
+        search_ref=tk.StringVar()
+        ttk.Entry(box,textvariable=search_ref).pack(fill="x",pady=(0,8))
+        columns=("category","title","source")
+        references=ttk.Treeview(box,columns=columns,show="headings",selectmode="browse")
+        for key,label,width in zip(columns,("Categorie","Document","Proveniență"),(170,280,250)):
+            references.heading(key,text=label)
+            references.column(key,width=width,stretch=True,minwidth=75)
+        references.pack(fill="both",expand=True)
+        notice=tk.StringVar()
+        ttk.Label(box,textvariable=notice).pack(anchor="w",pady=(7,5))
+
+        def populate(*_):
+            references.delete(*references.get_children())
+            try:
+                docs=list_reference_articles(app.db,pid,search_ref.get())
+                for article in docs:
+                    references.insert("","end",iid=str(article["id"]),
+                                      values=(article["category"],article["title"],article["source"]))
+                if original["article_id"] is not None and references.exists(str(original["article_id"])):
+                    references.selection_set(str(original["article_id"]))
+                notice.set(f"{len(docs)} documente; sursa este afișată pentru verificare.")
+            except Exception as exc:
+                notice.set("Eroare de căutare: "+str(exc))
+        search_ref.trace_add("write",populate)
+        populate()
+
+        def change_link(article_id):
+            try:
+                current=app.db.db.execute("SELECT * FROM procedure_steps WHERE id=?",(sid,)).fetchone()
+                if current is None or current["procedure_id"]!=pid:
+                    raise ValueError("Pasul a fost șters sau mutat")
+                update_step(app.db,sid,current["instruction"],current["safety_note"],article_id)
+                picker.destroy()
+                refresh_steps(sid)
+            except Exception as exc:
+                messagebox.showerror("Referință invalidă",str(exc),parent=picker)
+
+        def apply():
+            picked=references.selection()
+            if not picked:
+                messagebox.showinfo("Selectare","Alege un document din listă.",parent=picker)
+                return
+            change_link(int(picked[0]))
+
+        actions=ttk.Frame(box)
+        actions.pack(fill="x",pady=(7,0))
+        ttk.Button(actions,text="Leagă documentul selectat",command=apply).pack(side="left",padx=(0,8))
+        ttk.Button(actions,text="Elimină legătura",command=lambda:change_link(None)).pack(side="left")
+        ttk.Button(actions,text="Anulează",command=picker.destroy).pack(side="right")
+        references.bind("<Double-1>",lambda _event:apply())
+        picker.reference_tree=references
+        picker.apply_reference=apply
+        picker.clear_reference=lambda:change_link(None)
+        top.reference_picker=picker
+        return picker
+
     def open_reference():
         selected=steps.selection()
         if not selected:return
@@ -240,7 +320,8 @@ def open_procedures_window(app, editor_class):
               ("+ Pas",lambda:step_form(False)),
               ("Editează pas",lambda:step_form(True)),
               ("↑",lambda:step_move(-1)),("↓",lambda:step_move(1)),
-              ("Șterge pas",step_remove),("Document asociat",open_reference),
+              ("Șterge pas",step_remove),("Alege document",choose_reference),
+              ("Document asociat",open_reference),
               ("Export HTML",export_html),("Export JSON",export_json)]
     for start in range(0,len(commands),6):
         row=ttk.Frame(controls)
@@ -251,5 +332,6 @@ def open_procedures_window(app, editor_class):
     # Expose read-only widget handles for the packaged Windows GUI smoke test.
     top.procedures_tree=procedures
     top.steps_tree=steps
+    top.open_reference_picker=choose_reference
     refresh_proc()
     return top
