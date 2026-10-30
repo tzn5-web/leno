@@ -21,6 +21,8 @@ def _sha(path):
 def backup_bundle(store, destination):
     """Create a consistent SQLite snapshot plus SHA256-checked managed documents."""
     destination = Path(destination)
+    if destination.suffix.lower() != '.zip' or destination.resolve() == store.path.resolve():
+        raise ValueError('Backup-ul trebuie salvat ca ZIP, nu peste baza SQLite')
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
         snapshot = Path(tmp) / 'database.sqlite3'
@@ -35,6 +37,8 @@ def backup_bundle(store, destination):
         try:
             if verify.execute('PRAGMA quick_check').fetchone()[0] != 'ok':
                 raise ValueError('Snapshot SQLite invalid')
+            if verify.execute('PRAGMA foreign_key_check').fetchall():
+                raise ValueError('Relații SQLite invalide')
             attachments = verify.execute('SELECT id,path FROM attachments ORDER BY id').fetchall()
         finally:
             verify.close()
@@ -66,7 +70,7 @@ def backup_bundle(store, destination):
                     'created_utc': datetime.now(timezone.utc).isoformat(),
                     'database_sha256': _sha(snapshot),
                     'documents': hashes,
-                    'original_proprietary_data_included': False
+                    'original_proprietary_data_automatically_included': False
                 }
                 archive.writestr('manifest.json', json.dumps(manifest, indent=2))
             os.replace(temp_zip, destination)
@@ -87,7 +91,11 @@ def restore_bundle(archive_path, new_directory):
         names = set(archive.namelist())
         if 'manifest.json' not in names or 'database.sqlite3' not in names:
             raise ValueError('Backup incomplet')
+        if archive.getinfo('manifest.json').file_size > 1024 * 1024:
+            raise ValueError('Manifest prea mare')
         manifest = json.loads(archive.read('manifest.json'))
+        if not isinstance(manifest, dict):
+            raise ValueError('Manifest invalid')
         if manifest.get('format') != 'atelierdata-backup-v1':
             raise ValueError('Versiune backup necunoscută')
         docs = manifest.get('documents')
