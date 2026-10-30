@@ -19,6 +19,9 @@ jobs:
         shell: pwsh
         run: |
           python -m py_compile projects/atelierdata/atelierdata.py projects/atelierdata/atelierdata_extensions.py projects/atelierdata/test_extensions.py
+          python -m py_compile projects/atelierdata/idf_static_evidence.py tools/ghidra/AtelierData_IDF_Xrefs.py
+          python projects/atelierdata/idf_static_evidence.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw "IDF_STATIC_EVIDENCE_TEST_FAILED" }
           python -m unittest discover -s projects/atelierdata -p test_extensions.py -v
           if ($LASTEXITCODE -ne 0) { throw "EXTENSIONS_REGRESSION_TEST_FAILED" }
           python projects/atelierdata/atelierdata.py --self-test
