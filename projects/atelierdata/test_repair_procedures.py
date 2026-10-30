@@ -83,7 +83,6 @@ class ProcedureTests(unittest.TestCase):
             self.assertEqual(reopened.db.execute("PRAGMA quick_check").fetchone()[0],"ok")
         finally:
             reopened.close()
-        self.db=Store(self.root/"test.sqlite3")
 
 if __name__=="__main__":
     unittest.main()
