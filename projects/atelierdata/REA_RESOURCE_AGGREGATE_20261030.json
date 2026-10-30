@@ -1,0 +1,124 @@
+{
+  "schema": "atelierdata-rea-resource-aggregate-v1",
+  "binary_sha256": "a505bbc4f8678713f352faa8fc70337d9edbe5e0ebd23ba305ca3bccd0f6fce4",
+  "binary_bytes": 18102272,
+  "rea_coverage": "complete",
+  "resource_count": 644,
+  "resource_types": {
+    "1": {
+      "count": 16,
+      "payload_bytes": 4928,
+      "samples_ge_1024": 0,
+      "entropy_ge_7_9_count_ge_4096": 0,
+      "median_first_window_entropy_ge_1024": null,
+      "binary_dfm_headers": 0,
+      "text_dfm_headers": 0,
+      "dib_headers": 0
+    },
+    "2": {
+      "count": 337,
+      "payload_bytes": 2159736,
+      "samples_ge_1024": 244,
+      "entropy_ge_7_9_count_ge_4096": 150,
+      "median_first_window_entropy_ge_1024": 7.9756,
+      "binary_dfm_headers": 0,
+      "text_dfm_headers": 0,
+      "dib_headers": 0
+    },
+    "3": {
+      "count": 9,
+      "payload_bytes": 23784,
+      "samples_ge_1024": 6,
+      "entropy_ge_7_9_count_ge_4096": 0,
+      "median_first_window_entropy_ge_1024": 6.2439,
+      "binary_dfm_headers": 0,
+      "text_dfm_headers": 0,
+      "dib_headers": 0
+    },
+    "5": {
+      "count": 2,
+      "payload_bytes": 164,
+      "samples_ge_1024": 0,
+      "entropy_ge_7_9_count_ge_4096": 0,
+      "median_first_window_entropy_ge_1024": null,
+      "binary_dfm_headers": 0,
+      "text_dfm_headers": 0,
+      "dib_headers": 0
+    },
+    "6": {
+      "count": 65,
+      "payload_bytes": 68500,
+      "samples_ge_1024": 23,
+      "entropy_ge_7_9_count_ge_4096": 0,
+      "median_first_window_entropy_ge_1024": 7.8494,
+      "binary_dfm_headers": 0,
+      "text_dfm_headers": 0,
+      "dib_headers": 0
+    },
+    "10": {
+      "count": 190,
+      "payload_bytes": 836666,
+      "samples_ge_1024": 149,
+      "entropy_ge_7_9_count_ge_4096": 48,
+      "median_first_window_entropy_ge_1024": 7.9408,
+      "binary_dfm_headers": 0,
+      "text_dfm_headers": 0,
+      "dib_headers": 0
+    },
+    "12": {
+      "count": 16,
+      "payload_bytes": 320,
+      "samples_ge_1024": 0,
+      "entropy_ge_7_9_count_ge_4096": 0,
+      "median_first_window_entropy_ge_1024": null,
+      "binary_dfm_headers": 0,
+      "text_dfm_headers": 0,
+      "dib_headers": 0
+    },
+    "14": {
+      "count": 1,
+      "payload_bytes": 132,
+      "samples_ge_1024": 0,
+      "entropy_ge_7_9_count_ge_4096": 0,
+      "median_first_window_entropy_ge_1024": null,
+      "binary_dfm_headers": 0,
+      "text_dfm_headers": 0,
+      "dib_headers": 0
+    },
+    "16": {
+      "count": 1,
+      "payload_bytes": 684,
+      "samples_ge_1024": 0,
+      "entropy_ge_7_9_count_ge_4096": 0,
+      "median_first_window_entropy_ge_1024": null,
+      "binary_dfm_headers": 0,
+      "text_dfm_headers": 0,
+      "dib_headers": 0
+    },
+    "24": {
+      "count": 1,
+      "payload_bytes": 848,
+      "samples_ge_1024": 0,
+      "entropy_ge_7_9_count_ge_4096": 0,
+      "median_first_window_entropy_ge_1024": null,
+      "binary_dfm_headers": 0,
+      "text_dfm_headers": 0,
+      "dib_headers": 0
+    },
+    "UNICODEDATA": {
+      "count": 6,
+      "payload_bytes": 161551,
+      "samples_ge_1024": 6,
+      "entropy_ge_7_9_count_ge_4096": 5,
+      "median_first_window_entropy_ge_1024": 7.994,
+      "binary_dfm_headers": 0,
+      "text_dfm_headers": 0,
+      "dib_headers": 0
+    }
+  },
+  "target_executed": false,
+  "idf_decoder_proven": false,
+  "payloads_decoded": false,
+  "interpretation": "Entropy and absent familiar DFM/DIB headers do not prove encryption, compression or IDF format.",
+  "privacy": "Aggregates only: no original payloads, names or offsets."
+}
