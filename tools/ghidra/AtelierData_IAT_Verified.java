@@ -47,10 +47,20 @@ public class AtelierData_IAT_Verified extends GhidraScript {
         if (args.length != 4 && args.length != 5)
             throw new IllegalArgumentException(
                 "Expected: private-iat.json private-ghidra.json expected-sha256 original-pe [public-summary.json]");
+        // Canonicalize every path before opening an output stream. A typo must
+        // never truncate the original executable or the private input evidence.
+        File privateInput = new File(args[0]).getCanonicalFile();
+        File privateOutput = new File(args[1]).getCanonicalFile();
+        File originalInput = new File(args[3]).getCanonicalFile();
+        File publicOutput = args.length == 5 ? new File(args[4]).getCanonicalFile() : null;
+        if (privateOutput.equals(privateInput) || privateOutput.equals(originalInput) ||
+            (publicOutput != null && (publicOutput.equals(originalInput) ||
+             publicOutput.equals(privateInput) || publicOutput.equals(privateOutput))))
+            throw new IllegalArgumentException("Output path must differ from all input paths");
         String expected = args[2].toLowerCase(Locale.ROOT);
         if (!expected.matches("[0-9a-f]{64}"))
             throw new IllegalArgumentException("Expected SHA256 must be 64 hexadecimal characters");
-        String[] actual = hashes(new File(args[3]));
+        String[] actual = hashes(originalInput);
         if (!expected.equals(actual[0]))
             throw new IllegalArgumentException("Original PE SHA256 mismatch");
         // Ghidra's imported-file MD5 binds currentProgram to the independently
@@ -61,7 +71,7 @@ public class AtelierData_IAT_Verified extends GhidraScript {
             throw new IllegalArgumentException("Ghidra program does not match original PE MD5");
 
         JsonObject input;
-        try (Reader reader = new BufferedReader(new FileReader(args[0]))) {
+        try (Reader reader = new BufferedReader(new FileReader(privateInput))) {
             input = JsonParser.parseReader(reader).getAsJsonObject();
         }
         if (!"atelierdata-pe-iat-private-v1".equals(input.get("schema").getAsString()) ||
@@ -141,11 +151,11 @@ public class AtelierData_IAT_Verified extends GhidraScript {
         privateReport.put("schema", "atelierdata-ghidra-iat-private-v2");
         privateReport.put("private_only", true);
         privateReport.put("candidates", checks);
-        try (Writer writer = new BufferedWriter(new FileWriter(args[1]))) {
+        try (Writer writer = new BufferedWriter(new FileWriter(privateOutput))) {
             new GsonBuilder().setPrettyPrinting().create().toJson(privateReport, writer);
         }
         if (args.length == 5) {
-            try (Writer writer = new BufferedWriter(new FileWriter(args[4]))) {
+            try (Writer writer = new BufferedWriter(new FileWriter(publicOutput))) {
                 new GsonBuilder().setPrettyPrinting().create().toJson(publicReport, writer);
             }
         }
