@@ -5,7 +5,8 @@ from atelierdata_extensions import integrity_check,export_records,attach_documen
 from atelierdata_backup import backup_bundle,restore_bundle
 from technical_specs import (ensure_schema,add_spec,update_spec,remove_spec,get_spec,
                              list_specs,import_specs,export_specs)
-from repair_procedures import ensure_schema as ensure_procedures_schema
+from repair_procedures import (ensure_schema as ensure_procedures_schema,
+                               create_procedure,add_step)
 from repair_export import export_procedures_json,export_procedure_html
 
 CATEGORIES = ("Date tehnice","Întreținere","Motor","Distribuție","Cupluri de strângere",
@@ -515,6 +516,12 @@ def main():
             ui=App(Path(folder)/'ui-smoke.sqlite3')
             vehicle=ui.db.add_vehicle('SYNTHETIC','GUI TEST')
             ui.vid=vehicle
+            article=ui.db.add_article(vehicle,'Scheme electrice',
+                                      'Referință sintetică','Doar test','TEST')
+            pid=create_procedure(ui.db,vehicle,'Sistem sintetic','Procedură GUI TEST',
+                                 source='TEST ONLY')
+            add_step(ui.db,pid,'Pas fictiv pentru smoke-test',
+                     safety_note='Nu este o instrucțiune reală',article_id=article)
             ui.refresh()
             gui_errors=[]
             def on_gui_error(exc, value, traceback):
@@ -522,8 +529,20 @@ def main():
                 ui.root.after(0,ui.close)
             ui.root.report_callback_exception=on_gui_error
             ui.root.after(200,ui.specifications)
-            ui.root.after(520,ui.procedures)
-            ui.root.after(1850,ui.close)
+            def check_procedures_window():
+                window=ui.procedures()
+                if window is None or not window.winfo_exists():
+                    raise RuntimeError('PROCEDURES_GUI_NOT_OPENED')
+                if len(window.procedures_tree.get_children())!=1:
+                    raise RuntimeError('PROCEDURES_GUI_ROWS_MISSING')
+                window.procedures_tree.selection_set(str(pid))
+                window.procedures_tree.event_generate('<<TreeviewSelect>>')
+                def check_steps():
+                    if len(window.steps_tree.get_children())!=1:
+                        raise RuntimeError('PROCEDURES_GUI_STEPS_MISSING')
+                ui.root.after(200,check_steps)
+            ui.root.after(520,check_procedures_window)
+            ui.root.after(2100,ui.close)
             ui.run()
             if gui_errors:
                 raise RuntimeError('GUI_SMOKE_FAILED: '+'; '.join(gui_errors))
