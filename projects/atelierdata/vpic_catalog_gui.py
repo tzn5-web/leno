@@ -132,4 +132,6 @@ def open_vehicle_catalog(app):
     ttk.Button(actions,text="Caută în cache OFFLINE",command=offline).pack(side="left",padx=(0,7))
     ttk.Button(actions,text="Adaugă modelul selectat",command=add_selected).pack(side="left")
     tree.bind("<Double-1>",add_selected)
+    win.load_offline_models=offline
+    win.load_online_models=online
     return win
