@@ -57,8 +57,8 @@ class Store:
            (make.strip(),model.strip(),engine.strip(),years.strip(),fuel.strip(),variant.strip()))
         self.db.commit();return cur.lastrowid
     def list_vehicles(self,search=''):
-        q='%'+search+'%'
-        return self.db.execute("SELECT * FROM vehicles WHERE make LIKE ? OR model LIKE ? OR engine LIKE ? ORDER BY make,model,engine", (q,q,q)).fetchall()
+        q='%'+search.replace('\\','\\\\').replace('%','\\%').replace('_','\\_')+'%'
+        return self.db.execute("SELECT * FROM vehicles WHERE make LIKE ? ESCAPE '\\' OR model LIKE ? ESCAPE '\\' OR engine LIKE ? ESCAPE '\\' ORDER BY make,model,engine", (q,q,q)).fetchall()
     def add_article(self,vehicle_id,category,title,content='',source=''):
         if not title.strip():raise ValueError("Titlu lipsă")
         cur=self.db.execute("INSERT INTO articles(vehicle_id,category,title,content,source) VALUES(?,?,?,?,?)",
