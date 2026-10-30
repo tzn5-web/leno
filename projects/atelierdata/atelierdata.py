@@ -5,6 +5,7 @@ from atelierdata_extensions import integrity_check,export_records,attach_documen
 from atelierdata_backup import backup_bundle,restore_bundle
 from technical_specs import (ensure_schema,add_spec,update_spec,remove_spec,get_spec,
                              list_specs,import_specs,export_specs)
+from repair_procedures import ensure_schema as ensure_procedures_schema
 
 CATEGORIES = ("Date tehnice","Întreținere","Motor","Distribuție","Cupluri de strângere",
               "Diagnosticare / DTC","Scheme electrice","Siguranțe și relee","Frâne / ABS",
@@ -39,6 +40,7 @@ class Store:
         """)
         self.db.commit()
         ensure_schema(self)
+        ensure_procedures_schema(self)
     def add_vehicle(self,make,model,engine='',years='',fuel='',variant=''):
         if not make.strip() or not model.strip():raise ValueError("Marca și modelul sunt obligatorii")
         cur=self.db.execute("INSERT INTO vehicles(make,model,engine,years,fuel,variant) VALUES(?,?,?,?,?,?)",
@@ -189,7 +191,7 @@ class App:
                  ('Import CSV/JSON',self.load),('Export JSON',self.export),
                  ('Backup SQLite',self.backup),('Backup ZIP',self.backup_full),
                  ('Restaurare ZIP',self.restore_full),('Specificații',self.specifications),
-                 ('Analiză IDF',self.analyze)]
+                 ('Proceduri',self.procedures),('Analiză IDF',self.analyze)]
         for col in range(4):
             bar.columnconfigure(col,weight=1)
         for i,(name,cmd) in enumerate(actions):
@@ -345,6 +347,10 @@ class App:
                 subprocess.Popen(['xdg-open',str(path)])
         except Exception as exc:messagebox.showerror('Fișier indisponibil',str(exc))
 
+
+    def procedures(self):
+        from repair_procedures_gui import open_procedures_window
+        return open_procedures_window(self,Editor)
 
     def specifications(self):
         """Structured service values, each with a source and measurement conditions."""
@@ -511,8 +517,9 @@ def main():
                 gui_errors.append(f'{exc.__name__}: {value}')
                 ui.root.after(0,ui.close)
             ui.root.report_callback_exception=on_gui_error
-            ui.root.after(240,ui.specifications)
-            ui.root.after(1400,ui.close)
+            ui.root.after(200,ui.specifications)
+            ui.root.after(520,ui.procedures)
+            ui.root.after(1850,ui.close)
             ui.run()
             if gui_errors:
                 raise RuntimeError('GUI_SMOKE_FAILED: '+'; '.join(gui_errors))
