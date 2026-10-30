@@ -62,7 +62,11 @@ class Store:
     def stats(self):
         return [self.db.execute("SELECT COUNT(*) FROM "+table).fetchone()[0] for table in ('vehicles','articles')]
     def backup(self,path):
-        with sqlite3.connect(path) as out:self.db.backup(out)
+        out=sqlite3.connect(path)
+        try:
+            self.db.backup(out)
+        finally:
+            out.close()
     def close(self):self.db.close()
 
 def import_records(store,path):
