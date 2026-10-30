@@ -82,7 +82,7 @@ jobs:
             "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$testDir"
           ) -Wait -PassThru
           if ($install.ExitCode -ne 0) { throw "Template install failed: $($install.ExitCode)" }
-          if (-not (Test-Path (Join-Path $testDir "ADCDA2/ADBCD.exe"))) {
+          if (-not (Test-Path (Join-Path $testDir "ADBCD.exe"))) {
             throw "Synthetic installed payload missing"
           }
           Write-Host "SYNTHETIC_INSTALL=PASS"
@@ -92,7 +92,7 @@ jobs:
             "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"
           ) -Wait -PassThru
           if ($uninstall.ExitCode -ne 0) { throw "Template uninstall failed: $($uninstall.ExitCode)" }
-          if (Test-Path (Join-Path $testDir "ADCDA2/ADBCD.exe")) {
+          if (Test-Path (Join-Path $testDir "ADBCD.exe")) {
             throw "Synthetic fixture remained installed after uninstall"
           }
           Write-Host "SYNTHETIC_UNINSTALL=PASS"
