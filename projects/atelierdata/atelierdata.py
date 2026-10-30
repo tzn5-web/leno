@@ -677,6 +677,24 @@ def main():
                             raise RuntimeError('SCHEMATIC_IMAGE_NOT_DRAWN')
                     ui.root.after(170,image_drawn)
                 ui.root.after(220,check_image)
+                def check_reverse_usage():
+                    usage=schematic.open_usage()
+                    if usage is None or not usage.winfo_exists():
+                        raise RuntimeError('SCHEMATIC_REVERSE_USAGE_WINDOW_NOT_OPENED')
+                    rows=usage.usage_tree.get_children()
+                    if len(rows)!=1:
+                        raise RuntimeError('SCHEMATIC_REVERSE_USAGE_ROW_MISSING')
+                    usage.usage_tree.selection_set(rows[0])
+                    editor=usage.open_step()
+                    if editor is None or not editor.winfo_exists():
+                        raise RuntimeError('SCHEMATIC_REVERSE_NAVIGATION_NOT_OPENED')
+                    def check_target():
+                        if editor.procedures_tree.selection()!=(str(pid),):
+                            raise RuntimeError('SCHEMATIC_REVERSE_WRONG_PROCEDURE')
+                        if editor.steps_tree.selection()!=(str(step_id),):
+                            raise RuntimeError('SCHEMATIC_REVERSE_WRONG_STEP')
+                    ui.root.after(170,check_target)
+                ui.root.after(600,check_reverse_usage)
             ui.root.after(950,check_schematics_window)
             def check_dtc_window():
                 popup=ui.diagnostics()
