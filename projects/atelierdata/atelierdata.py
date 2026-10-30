@@ -8,6 +8,8 @@ from technical_specs import (ensure_schema,add_spec,update_spec,remove_spec,get_
 from repair_procedures import (ensure_schema as ensure_procedures_schema,
                                create_procedure,add_step)
 from repair_export import export_procedures_json,export_procedure_html
+from dtc_catalog import ensure_schema as ensure_dtc_schema, add_dtc
+from dtc_gui import open_dtc_window
 
 CATEGORIES = ("Date tehnice","Întreținere","Motor","Distribuție","Cupluri de strângere",
               "Diagnosticare / DTC","Scheme electrice","Siguranțe și relee","Frâne / ABS",
@@ -43,6 +45,7 @@ class Store:
         self.db.commit()
         ensure_schema(self)
         ensure_procedures_schema(self)
+        ensure_dtc_schema(self)
     def add_vehicle(self,make,model,engine='',years='',fuel='',variant=''):
         if not make.strip() or not model.strip():raise ValueError("Marca și modelul sunt obligatorii")
         cur=self.db.execute("INSERT INTO vehicles(make,model,engine,years,fuel,variant) VALUES(?,?,?,?,?,?)",
@@ -194,7 +197,7 @@ class App:
                  ('Backup SQLite',self.backup),('Backup ZIP',self.backup_full),
                  ('Restaurare ZIP',self.restore_full),('Specificații',self.specifications),
                  ('Proceduri',self.procedures),('Scheme / imagini',self.schematics),
-                 ('Analiză IDF',self.analyze)]
+                 ('Diagnosticare DTC',self.diagnostics),('Analiză IDF',self.analyze)]
         for col in range(4):
             bar.columnconfigure(col,weight=1)
         for i,(name,cmd) in enumerate(actions):
@@ -350,6 +353,9 @@ class App:
                 subprocess.Popen(['xdg-open',str(path)])
         except Exception as exc:messagebox.showerror('Fișier indisponibil',str(exc))
 
+
+    def diagnostics(self):
+        return open_dtc_window(self,Editor)
 
     def schematics(self):
         from schematic_viewer import open_schematics_window
@@ -527,6 +533,9 @@ def main():
                                  source='TEST ONLY')
             add_step(ui.db,pid,'Pas fictiv pentru smoke-test',
                      safety_note='Nu este o instrucțiune reală',article_id=article)
+            dtc_id=add_dtc(ui.db,vehicle,'P0A01','Sistem demonstrativ',
+                          'Descriere inventată',source='DATE SINTETICE',
+                          procedure_id=pid,article_id=article)
             ui.refresh()
             gui_errors=[]
             def on_gui_error(exc, value, traceback):
@@ -571,7 +580,16 @@ def main():
                     ui.root.after(170,image_drawn)
                 ui.root.after(220,check_image)
             ui.root.after(950,check_schematics_window)
-            ui.root.after(2950,ui.close)
+            def check_dtc_window():
+                popup=ui.diagnostics()
+                if popup is None or not popup.winfo_exists():
+                    raise RuntimeError('DTC_GUI_NOT_OPENED')
+                if not popup.dtc_tree.exists(str(dtc_id)):
+                    raise RuntimeError('DTC_GUI_ENTRY_NOT_LISTED')
+                popup.dtc_tree.selection_set(str(dtc_id))
+                popup.dtc_tree.event_generate('<<TreeviewSelect>>')
+            ui.root.after(1850,check_dtc_window)
+            ui.root.after(3350,ui.close)
             ui.run()
             if gui_errors:
                 raise RuntimeError('GUI_SMOKE_FAILED: '+'; '.join(gui_errors))
