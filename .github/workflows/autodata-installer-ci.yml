@@ -29,6 +29,18 @@ jobs:
         shell: pwsh
         run: python -m unittest discover -s tools/autodata-installer/tests -v
 
+      - name: Parse PowerShell builder without running it
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path "tools/autodata-installer/build.ps1").Path,
+            [ref]$tokens, [ref]$errors
+          ) | Out-Null
+          if (@($errors).Count -ne 0) { throw ("PowerShell parse failed: " + ($errors | Out-String)) }
+          Write-Host "POWERSHELL_BUILDER_PARSE=PASS"
+
       - name: Verify exact ADCDA2 allowlist metadata
         shell: pwsh
         run: |
@@ -68,3 +80,58 @@ jobs:
           if (-not (Test-Path -LiteralPath $out)) { throw 'Expected test EXE missing' }
           Write-Host 'INNO_TEMPLATE_COMPILE=PASS'
           Write-Host 'NOTE: fixture is synthetic; test EXE is not uploaded or distributed'
+
+      - name: Test original-manifest SHA256 verifier on synthetic fixture
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Join-Path $env:RUNNER_TEMP 'autodata-ci-synthetic'
+          $manifest = Join-Path $env:RUNNER_TEMP 'autodata-synthetic-inventory.json'
+          $report = Join-Path $env:RUNNER_TEMP 'autodata-synthetic-verified.json'
+          @'
+          import hashlib,json,os
+          from pathlib import Path
+          root=Path(os.environ["RUNNER_TEMP"])/"autodata-ci-synthetic"/"ADCDA2"
+          files=[]
+          for p in sorted(root.rglob("*")):
+              if not p.is_file():continue
+              data=p.read_bytes()
+              name="Autodata__3.45/ADCDA2/"+p.relative_to(root).as_posix()
+              files.append({"path":name,"size_bytes":len(data),"chunks":[
+                  {"package":"synthetic-only.zip","entry":name,
+                   "bytes":len(data),"sha256":hashlib.sha256(data).hexdigest()}]})
+          Path(os.environ["RUNNER_TEMP"],"autodata-synthetic-inventory.json").write_text(
+              json.dumps({"archive":"Autodata__3.45.rar","files":files}),encoding="utf8")
+          '@ | python -
+          python tools/autodata-installer/verify_original_manifest.py --source $stage --manifest $manifest --output $report
+          if ($LASTEXITCODE -ne 0) { throw 'Synthetic original inventory check failed' }
+          [IO.File]::WriteAllBytes((Join-Path $stage 'ADCDA2/ADBCD.exe'), [byte[]](77,90,0,1))
+          python tools/autodata-installer/verify_original_manifest.py --source $stage --manifest $manifest --output $report
+          if ($LASTEXITCODE -eq 0) { throw 'Corrupted fixture was accepted' }
+          Write-Host 'SYNTHETIC_SHA256_NEGATIVE_TEST=PASS'
+          [IO.File]::WriteAllBytes((Join-Path $stage 'ADCDA2/ADBCD.exe'), [byte[]](77,90,0,0))
+
+      - name: Smoke-test synthetic Windows install and uninstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Join-Path $env:RUNNER_TEMP 'autodata-ci-dist/Autodata_3_45_Licensed_Setup.exe'
+          $testDir = Join-Path $env:RUNNER_TEMP 'autodata-ci-installed-synthetic'
+          $install = Start-Process -FilePath $installer -ArgumentList @(
+            '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$testDir"
+          ) -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Synthetic install failed: $($install.ExitCode)" }
+          if (-not (Test-Path (Join-Path $testDir 'ADCDA2/ADBCD.exe'))) {
+            throw 'Synthetic installed file missing'
+          }
+          Write-Host 'SYNTHETIC_INSTALL=PASS'
+          $uninstaller = Join-Path $testDir 'unins000.exe'
+          if (-not (Test-Path $uninstaller)) { throw 'Synthetic uninstaller missing' }
+          $uninstall = Start-Process -FilePath $uninstaller -ArgumentList @(
+            '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART'
+          ) -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw "Synthetic uninstall failed: $($uninstall.ExitCode)" }
+          if (Test-Path (Join-Path $testDir 'ADCDA2/ADBCD.exe')) {
+            throw 'Synthetic installed file remained after uninstall'
+          }
+          Write-Host 'SYNTHETIC_UNINSTALL=PASS'
