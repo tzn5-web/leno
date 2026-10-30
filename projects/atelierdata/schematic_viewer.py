@@ -325,8 +325,9 @@ def open_schematics_window(app, editor_class, selected_article_id=None, vehicle_
         for i,row in enumerate(records):
             table.insert("","end",iid=str(i),values=(
                 row["system"],row["title"],row["step_number"],
-                row["instruction"][:180],row["safety_note"][:180],
-                row["source"]))
+                row["instruction"][:180],
+                (row["safety_note"] + (" | General: " + row["precautions"]
+                 if row["precautions"] else ""))[:240],row["source"]))
         if not records:
             ttk.Label(panel,text="Schema nu este asociată niciunui pas de reparație."
                       ).pack(anchor="w",pady=(7,0))
