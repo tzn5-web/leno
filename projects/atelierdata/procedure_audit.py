@@ -9,6 +9,7 @@ from pathlib import Path
 
 from atelierdata_extensions import list_documents, resolve_document
 from repair_procedures import get_procedure, list_steps
+from schematic_viewer import image_metadata
 
 SCHEMATIC_CATEGORIES = frozenset(("Scheme electrice", "Siguranțe și relee"))
 IMAGE_SUFFIXES = frozenset((".png", ".jpg", ".jpeg"))
@@ -90,7 +91,14 @@ def audit_procedure(store, procedure_id):
                 verified_path = resolve_document(store, doc["id"])
                 checked += 1
                 if Path(verified_path).suffix.lower() in IMAGE_SUFFIXES:
-                    has_previewable_image = True
+                    try:
+                        image_metadata(verified_path)
+                    except (ValueError, OSError) as exc:
+                        flag("ERROR", "SCHEMATIC_IMAGE_INVALID",
+                             "Imaginea nu poate fi previzualizată: " + str(exc),
+                             step, doc["id"])
+                    else:
+                        has_previewable_image = True
             except (ValueError, OSError) as exc:
                 flag("ERROR", "ATTACHMENT_INTEGRITY_FAILED",
                      "Fișier lipsă, cale invalidă sau SHA256 diferit: " + str(exc),
