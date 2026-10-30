@@ -88,8 +88,13 @@ def list_procedures(store,vehicle_id=None,search=""):
     if vehicle_id is not None:
         sql+=" AND p.vehicle_id=?";args.append(vehicle_id)
     if search:
-        sql+=" AND (p.title LIKE ? OR p.system LIKE ? OR p.summary LIKE ?)"
-        args.extend(["%"+search+"%"]*3)
+        sql+=(" AND (p.title LIKE ? OR p.system LIKE ? OR p.summary LIKE ?"
+              " OR p.precautions LIKE ? OR p.source LIKE ?"
+              " OR EXISTS (SELECT 1 FROM procedure_steps s"
+              " LEFT JOIN articles a ON a.id=s.article_id"
+              " WHERE s.procedure_id=p.id AND (s.instruction LIKE ?"
+              " OR s.safety_note LIKE ? OR a.title LIKE ?)))")
+        args.extend(["%"+search+"%"]*8)
     return store.db.execute(sql+" ORDER BY v.make,v.model,p.system,p.title,p.id",args).fetchall()
 
 
