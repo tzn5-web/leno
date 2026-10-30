@@ -37,3 +37,13 @@ Verificare directă, numai prin citire, a fișierelor aflate în pachetele 0001�
 - Niciun patch de licențiere, emulator sau executabil din arhivă nu a fost rulat. Diagnosticarea compatibilității autentice necesită o copie/licență autorizată și, după verificări de securitate, un mediu Windows izolat.
 
 **Prioritate de depanare:** confirmați proveniența/licența și componentele runtime autentice, comparați codul de versiune cu mediul Windows, apoi analizați erorile de pornire. Modificarea datelor `.IDF` intacte nu este justificată de constatările curente.
+
+## Reconstrucție fizică integrală a bazei de date IDF
+
+Au fost reconstruite efectiv, într-un director privat izolat, **toate cele 81 fișiere IDF** din fragmentele ZIP verificate. Dimensiunea totală rezultată: **2.231.509.692 octeți**, cu exact 81 fișiere prezente în ierarhia de directoare originală, fără erori de verificare. Reconstrucția nu conține componentele din pachetul 0016. Originalele reconstruite nu se distribuie.
+
+Un script original de verificare/reasamblare a fost testat pe date sintetice (inclusiv refuzul unui hash greșit, al unei traversări de cale și al suprascrierii unui director existent), apoi rulat pe cele 15 pachete reale. Reasamblarea este exclusiv pentru date `.IDF`, fără pornirea executabilelor.
+
+**Control statistic suplimentar:** 77 semnături distincte pe primii 4 octeți pentru cele 81 IDF; niciun antet inițial ZIP, GZIP sau zlib convențional dintre cele testate. Aceste observații nu certifică un format, o cheie sau un algoritm de decodare.
+
+**Concluzie:** toate datele IDF disponibile în arhiva originală sunt recuperabile byte-for-byte, dar nu există încă un decodor funcțional. Nici funcționarea originalului nu este confirmată.
