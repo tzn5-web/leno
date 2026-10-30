@@ -19,3 +19,21 @@ Proiectul conține cod original pentru un catalog auto offline pe Windows, **nu*
 CSV sau JSON (array sau {\"records\": [...]}). Coloane obligatorii: \`make\`, \`model\`, \`category\`, \`title\`; opționale: \`engine\`, \`years\`, \`fuel\`, \`variant\`, \`content\`, \`source\`.
 
 Niciun cuplu de strângere, interval de service, procedură sau diagramă nu este inventat. Nu publica date proprietare/chei în repository-ul public.
+
+
+## Funcții noi — verificare, documente și backup complet
+
+Aplicația acceptă atașamente locale PDF/PNG/JPG/JPEG/TXT, copiate în directorul administrat `documents/` și verificate SHA256 înainte de deschidere. Fișierele executabile sunt respinse. Exportul JSON conține exclusiv datele introduse/importate legal de utilizator, nu fișierele atașate. Backup-ul complet ZIP include snapshot SQLite și atașamentele administrate; restaurarea verifică hashurile și baza SQLite și creează **un director nou**, fără suprascrierea bazei active.
+
+```powershell
+python projects/atelierdata/atelierdata.py --db-path .\work\atelierdata.sqlite3 --check-db
+python projects/atelierdata/atelierdata.py --db-path .\work\atelierdata.sqlite3 --export-json .\work\records.json
+python projects/atelierdata/atelierdata.py --db-path .\work\atelierdata.sqlite3 --import-records .\work\authorized.csv
+python projects/atelierdata/atelierdata.py --db-path .\work\atelierdata.sqlite3 --backup-zip .\work\backup.zip
+python projects/atelierdata/atelierdata.py --restore-zip .\work\backup.zip --restore-dir .\work\restored-new-folder
+python projects/atelierdata/idf_static_evidence.py --self-test
+```
+
+Pentru analiza statică a celor 57 de fișiere IDF verificate SHA256 din două pachete private, vezi `IDF_STATIC_EVIDENCE_20261030.md`. Scriptul Ghidra este în `tools/ghidra/AtelierData_IDF_Xrefs.py`; execuția sa efectivă pe executabilul original **nu este încă demonstrată**. Rapoartele private și binarele originale nu se publică în acest repository.
+
+**Limitare de test:** autotestele și smoke-testul GUI din CI verifică funcțiile selectate și pornirea executabilului, nu echivalența cu Autodata sau acuratețea unor proceduri reale.
