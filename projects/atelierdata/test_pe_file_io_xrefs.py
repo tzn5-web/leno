@@ -48,6 +48,8 @@ class IATStaticTriageTests(unittest.TestCase):
         self.assertEqual(public['focus_candidates']['kernel32.dll!LoadLibraryA:call'], 1)
         self.assertEqual(public['literal_probes']['CreateFileA']['ascii']['literal_count_at_most_1024'], 1)
         self.assertEqual(private['candidates'][0]['file_offset'], 0x220)
+        self.assertEqual(private['candidates'][0]['iat_va'], 0x4020c0)
+        self.assertNotIn('iat_va', json.dumps(public))
         self.assertFalse(public['idf_decoder_proven'])
         self.assertNotIn('file_offset', json.dumps(public))
 
