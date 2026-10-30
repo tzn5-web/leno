@@ -193,7 +193,8 @@ class App:
                  ('Import CSV/JSON',self.load),('Export JSON',self.export),
                  ('Backup SQLite',self.backup),('Backup ZIP',self.backup_full),
                  ('Restaurare ZIP',self.restore_full),('Specificații',self.specifications),
-                 ('Proceduri',self.procedures),('Analiză IDF',self.analyze)]
+                 ('Proceduri',self.procedures),('Scheme / imagini',self.schematics),
+                 ('Analiză IDF',self.analyze)]
         for col in range(4):
             bar.columnconfigure(col,weight=1)
         for i,(name,cmd) in enumerate(actions):
@@ -349,6 +350,10 @@ class App:
                 subprocess.Popen(['xdg-open',str(path)])
         except Exception as exc:messagebox.showerror('Fișier indisponibil',str(exc))
 
+
+    def schematics(self):
+        from schematic_viewer import open_schematics_window
+        return open_schematics_window(self,Editor)
 
     def procedures(self):
         from repair_procedures_gui import open_procedures_window
@@ -542,7 +547,31 @@ def main():
                         raise RuntimeError('PROCEDURES_GUI_STEPS_MISSING')
                 ui.root.after(200,check_steps)
             ui.root.after(520,check_procedures_window)
-            ui.root.after(2100,ui.close)
+            def check_schematics_window():
+                from PIL import Image
+                image_path=Path(folder)/'synthetic_diagram.png'
+                Image.new('RGB',(640,320),(10,40,70)).save(image_path)
+                attach_document(ui.db,article,image_path)
+                schematic=ui.schematics()
+                if schematic is None or not schematic.winfo_exists():
+                    raise RuntimeError('SCHEMATIC_VIEWER_NOT_OPENED')
+                if not schematic.schematics_tree.exists(str(article)):
+                    raise RuntimeError('SCHEMATIC_ARTICLE_NOT_LISTED')
+                schematic.schematics_tree.selection_set(str(article))
+                schematic.schematics_tree.event_generate('<<TreeviewSelect>>')
+                def check_image():
+                    attachments=schematic.attachments_tree.get_children()
+                    if len(attachments)!=1:
+                        raise RuntimeError('SCHEMATIC_ATTACHMENT_NOT_LISTED')
+                    schematic.attachments_tree.selection_set(attachments[0])
+                    schematic.attachments_tree.event_generate('<<TreeviewSelect>>')
+                    def image_drawn():
+                        if len(schematic.diagram_canvas.find_all())!=1:
+                            raise RuntimeError('SCHEMATIC_IMAGE_NOT_DRAWN')
+                    ui.root.after(170,image_drawn)
+                ui.root.after(220,check_image)
+            ui.root.after(950,check_schematics_window)
+            ui.root.after(2950,ui.close)
             ui.run()
             if gui_errors:
                 raise RuntimeError('GUI_SMOKE_FAILED: '+'; '.join(gui_errors))
