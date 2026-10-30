@@ -18,7 +18,7 @@ if ($LASTEXITCODE -ne 0) { throw "PRIVATE_REVIEW_REQUIRED" }
 $root=(Resolve-Path -LiteralPath $ExtractedRoot).Path
 $manifestPath=(Resolve-Path -LiteralPath $Manifest).Path
 $program=Join-Path $root "ADCDA2"
-& python (Join-Path $PSScriptRoot "verify_payload.py") --source $root --manifest $manifestPath --output (Join-Path $PSScriptRoot "payload_verification.json")
+& python (Join-Path $PSScriptRoot "verify_payload.py") --production --source $root --manifest $manifestPath --output (Join-Path $PSScriptRoot "payload_verification.json")
 if ($LASTEXITCODE -ne 0) {throw "PAYLOAD_VERIFICATION_FAILED"}
 if (-not (Get-Command Start-MpScan -ErrorAction SilentlyContinue)) {
     throw "DEFENDER_UNAVAILABLE: source cannot be approved automatically"
