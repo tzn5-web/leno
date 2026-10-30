@@ -39,7 +39,7 @@ python projects/atelierdata/pe_entrypoint_layout.py --pe C:\\PRIVATE\\ADBCD.exe 
 python -m unittest discover -s projects/atelierdata -p 'test_*.py' -v
 ```
 
-The tool was **run on the actual SHA256-verified private executable**. Its **four new synthetic regression tests passed locally**, including hash rejection, invalid entrypoint rejection, overlay calculation, and IAT attribution. GitHub Actions was updated to include these files in Python syntax and test discovery; **a new Windows CI result must be checked separately before declaring the new build PASS**.
+The tool was **run on the actual SHA256-verified private executable**. Its **four new synthetic regression tests passed locally**, including hash rejection, invalid entrypoint rejection, overlay calculation, and IAT attribution. GitHub Actions was updated to include these files in Python syntax and test discovery. **Windows CI run 41134102681 completed SUCCESS** on commit `0b02da9638ad03ebfb65cb0d729a2243b65ba79b`, with **66/66 automated tests**, application SQLite self-test, compiled EXE self-test and GUI smoke test PASS. [Windows CI run](https://github.com/tzn5-web/leno/actions/runs/41134102681). Compiled `AtelierData.exe` is **19,483,581 bytes**, SHA256 `d552178f5e43b413aaf09613e24b2045c89b729d96ee42aab5b7498eccd7fdef`. This validates existing test coverage, not data correctness or equivalence with Autodata.
 
 No executable bytes, proprietary resources, source database contents, protected file keys, or private Ghidra evidence were uploaded to this public repository. The script reports section-level aggregate statistics only. The restricted ZIP part 0016 was not accessed or bypassed.
 
@@ -51,4 +51,4 @@ The earlier REA 6.8.0 analysis is documented in [`REA_ORIGINAL_AUTODATA_FINDINGS
 - Original application starts with legitimate license: **not demonstrated**.
 - IDF structure and decoder: **not established**.
 - New PE entrypoint/section evidence: **verified**.
-- New synthetic tests: **4/4 locally PASS**; Windows CI pending verification.
+- New synthetic tests: **4/4 locally PASS**; Windows CI: **66/66 tests PASS**, compiled EXE and GUI smoke test PASS.
