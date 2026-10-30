@@ -50,6 +50,8 @@ def ensure_schema(store):
       UNIQUE(procedure_id,step_number)
     );
     CREATE INDEX IF NOT EXISTS idx_steps_procedure ON procedure_steps(procedure_id,step_number);
+    CREATE INDEX IF NOT EXISTS idx_steps_article_reference
+      ON procedure_steps(article_id,procedure_id,step_number);
     """)
     store.db.commit()
 
