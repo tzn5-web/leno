@@ -154,15 +154,6 @@ def open_schematics_window(app, editor_class, selected_article_id=None, vehicle_
             schematics.selection_set(str(prefer))
             schematics.see(str(prefer))
             select_article()
-            # Show the first verified local image immediately on direct navigation.
-            # PDF/TXT attachments are never launched without an explicit user click.
-            for attachment_id in attachments.get_children():
-                record = app.db.db.execute(
-                    "SELECT path FROM attachments WHERE id=?", (int(attachment_id),)).fetchone()
-                if record and Path(record["path"]).suffix.lower() in IMAGE_EXT:
-                    attachments.selection_set(attachment_id)
-                    preview_selection()
-                    break
 
     def clear_image():
         state["image"]=None
@@ -188,10 +179,18 @@ def open_schematics_window(app, editor_class, selected_article_id=None, vehicle_
         title.set(article["title"])
         set_details(f"Categorie: {article['category']}\nSursă: {article['source'] or 'neprecizată'}"
                     f"\n{article['content']}")
+        first_image_id=None
         for item in list_documents(app.db,article["id"]):
             ext=Path(item["path"]).suffix.lower()
             label="Imagine" if ext in IMAGE_EXT else "Document"
             attachments.insert("","end",iid=str(item["id"]),text=f"{label}: {item['path'][:20]}")
+            if first_image_id is None and ext in IMAGE_EXT:
+                first_image_id=str(item["id"])
+        # TreeviewSelect may fire after programmatic selection. Preview here,
+        # rather than only in refresh_schematics, so that event cannot clear it.
+        if first_image_id is not None:
+            attachments.selection_set(first_image_id)
+            preview_selection()
     schematics.bind("<<TreeviewSelect>>",select_article)
     q.trace_add("write",lambda *_:refresh_schematics())
 
