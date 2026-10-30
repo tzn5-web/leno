@@ -73,6 +73,17 @@ class ProcedureTests(unittest.TestCase):
             move_step(self.db,999,-1)
         self.assertEqual(len(list_steps(self.db,self.pid)),0)
 
+    def test_search_across_step_warning_provenance_and_reference(self):
+        document=self.db.add_article(self.vid,"Scheme electrice","Schemă sintetică ABC",
+                                     "Conținut de test","TEST")
+        add_step(self.db,self.pid,"Instrucțiune fictivă XYZ",
+                 safety_note="AVERTISMENT DEMO",article_id=document)
+        self.assertEqual(len(list_procedures(self.db,self.vid,search="XYZ")),1)
+        self.assertEqual(len(list_procedures(self.db,self.vid,search="DEMO")),1)
+        self.assertEqual(len(list_procedures(self.db,self.vid,search="ABC")),1)
+        self.assertEqual(len(list_procedures(self.db,self.vid,search="Date sintetice")),1)
+        self.assertEqual(len(list_procedures(self.db,self.vid,search="NO-MATCH")),0)
+
     def test_reopen_and_integrity(self):
         add_step(self.db,self.pid,"Pas 1")
         self.db.close()
