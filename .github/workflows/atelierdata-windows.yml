@@ -18,7 +18,7 @@ jobs:
       - name: Python syntax + core application smoke test
         shell: pwsh
         run: |
-          python -m py_compile projects/atelierdata/atelierdata.py projects/atelierdata/atelierdata_extensions.py projects/atelierdata/atelierdata_backup.py projects/atelierdata/technical_specs.py projects/atelierdata/test_extensions.py projects/atelierdata/test_technical_specs.py
+          python -m py_compile projects/atelierdata/atelierdata.py projects/atelierdata/atelierdata_extensions.py projects/atelierdata/atelierdata_backup.py projects/atelierdata/technical_specs.py projects/atelierdata/repair_procedures.py projects/atelierdata/repair_procedures_gui.py projects/atelierdata/test_extensions.py projects/atelierdata/test_technical_specs.py projects/atelierdata/test_repair_procedures.py
           python -m py_compile projects/atelierdata/idf_static_evidence.py tools/ghidra/AtelierData_IDF_Xrefs.py
           python projects/atelierdata/idf_static_evidence.py --self-test
           if ($LASTEXITCODE -ne 0) { throw "IDF_STATIC_EVIDENCE_TEST_FAILED" }
