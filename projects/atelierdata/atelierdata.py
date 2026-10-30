@@ -252,9 +252,9 @@ class App:
                 self.aid=aid;a=self.db.get_article(aid)
                 self.detail.set(a['title'])
                 files=list_documents(self.db,aid)
-                names='\\n'.join(f"{i+1}. {item['path']}" for i,item in enumerate(files))
-                self.show(f"CATEGORIE: {a['category']}\\nSURSĂ: {a['source'] or 'neprecizată'}\\n\\n{a['content']}" +
-                          (f"\\n\\nFIȘIERE ATAȘATE ({len(files)}):\\n{names}" if files else ''))
+                names='\n'.join(f"{i+1}. {item['path']}" for i,item in enumerate(files))
+                self.show(f"CATEGORIE: {a['category']}\nSURSĂ: {a['source'] or 'neprecizată'}\n\n{a['content']}" +
+                          (f"\n\nFIȘIERE ATAȘATE ({len(files)}):\n{names}" if files else ''))
     def new_vehicle(self):
         from tkinter import messagebox
         fields=[('make','Marca *',''),('model','Model *',''),('engine','Cod motor',''),
