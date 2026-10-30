@@ -573,6 +573,15 @@ def main():
             log_service(ui.db,maintenance_id,'2026-01-31',1000)
             ui.refresh()
             gui_errors=[]
+            # Non-interactive smoke tests must fail instead of waiting forever
+            # on an error/info dialog that no CI runner can dismiss.
+            from tkinter import messagebox as smoke_messagebox
+            previous_showerror=smoke_messagebox.showerror
+            previous_showinfo=smoke_messagebox.showinfo
+            def unexpected_smoke_dialog(title,message,**kwargs):
+                raise RuntimeError('GUI_SMOKE_UNEXPECTED_DIALOG: '+str(title)+': '+str(message))
+            smoke_messagebox.showerror=unexpected_smoke_dialog
+            smoke_messagebox.showinfo=unexpected_smoke_dialog
             def on_gui_error(exc, value, traceback):
                 gui_errors.append(f'{exc.__name__}: {value}')
                 ui.root.after(0,ui.close)
@@ -692,7 +701,11 @@ def main():
                     raise RuntimeError('VPIC_GUI_AUTO_INSERTED_PERSONAL_VEHICLE')
             ui.root.after(3050,check_public_catalog)
             ui.root.after(4850,ui.close)
-            ui.run()
+            try:
+                ui.run()
+            finally:
+                smoke_messagebox.showerror=previous_showerror
+                smoke_messagebox.showinfo=previous_showinfo
             if gui_errors:
                 raise RuntimeError('GUI_SMOKE_FAILED: '+'; '.join(gui_errors))
         return 0
