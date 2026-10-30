@@ -14,7 +14,7 @@ class ProcedureTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root=Path(self.temp.name)
         self.db=Store(self.root/"test.sqlite3")
-        self.addCleanup(self.db.close)
+        self.addCleanup(lambda: self.db.close())
         ensure_schema(self.db)
         self.vid=self.db.add_vehicle("TEST BRAND","TEST MODEL","DEMO-ONLY")
         self.other=self.db.add_vehicle("SECOND TEST","MODEL","DEMO-ONLY")
