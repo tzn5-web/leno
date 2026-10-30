@@ -9,11 +9,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path, PurePosixPath
-import shutil
 import sys
-import tempfile
 
 
 def load_allowlist(path: Path) -> list[dict]:
@@ -24,8 +21,10 @@ def load_allowlist(path: Path) -> list[dict]:
     seen = set()
     for row in files:
         raw = row["path"]
+        if not isinstance(raw, str):
+            raise ValueError("Non-string allowlist path")
         rel = PurePosixPath(raw)
-        if (not isinstance(raw, str) or "\\" in raw or ":" in raw
+        if ("\\" in raw or ":" in raw
                 or rel.is_absolute() or ".." in rel.parts or not rel.parts
                 or rel.parts[0] != "ADCDA2"):
             raise ValueError("Unsafe or out-of-scope path: " + str(raw))
@@ -35,8 +34,6 @@ def load_allowlist(path: Path) -> list[dict]:
         if key in seen:
             raise ValueError("Duplicate path: " + raw)
         seen.add(key)
-    if "ad cda2" in seen:  # defensive placeholder: never used as an entry
-        raise ValueError("Invalid allowlist")
     if "adcda2/adbcd.exe" not in seen:
         raise ValueError("Missing main vendor executable in allowlist")
     return files
