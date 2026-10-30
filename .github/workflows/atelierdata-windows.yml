@@ -33,6 +33,9 @@ jobs:
           $exePath = (Resolve-Path '.\dist\AtelierData.exe').Path
           $process = Start-Process -FilePath $exePath -ArgumentList '--self-test' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "PACKAGED_EXE_SELF_TEST_FAILED exit=$($process.ExitCode)" }
+          $ui = Start-Process -FilePath $exePath -ArgumentList '--ui-smoke' -Wait -PassThru
+          if ($ui.ExitCode -ne 0) { throw "PACKAGED_GUI_TEST_FAILED exit=$($ui.ExitCode)" }
+          Write-Host "GUI_SMOKE_TEST=PASS"
           if (-not (Test-Path ".\dist\AtelierData.exe")) { throw "EXE_MISSING" }
           $file = Get-Item ".\dist\AtelierData.exe"
           $sha = (Get-FileHash $file.FullName -Algorithm SHA256).Hash
