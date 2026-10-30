@@ -9,13 +9,26 @@ from repair_procedures import (
 )
 
 
-def open_procedures_window(app, editor_class):
+def open_procedures_window(app, editor_class, selected_procedure_id=None,
+                           selected_step_id=None, vehicle_id=None):
     from tkinter import filedialog, messagebox, simpledialog, ttk
     tk=app.tk
-    if app.vid is None:
+    vehicle_id=app.vid if vehicle_id is None else vehicle_id
+    if vehicle_id is None:
         messagebox.showinfo("Vehicul necesar", "Selectează un vehicul și motorizarea sa.")
         return None
-    vehicle_id=app.vid
+    if selected_procedure_id is not None:
+        target=get_procedure(app.db,selected_procedure_id)
+        if target is None or target["vehicle_id"]!=vehicle_id:
+            raise ValueError("Procedura nu aparține vehiculului selectat")
+        if selected_step_id is not None:
+            linked=app.db.db.execute(
+                "SELECT 1 FROM procedure_steps WHERE id=? AND procedure_id=?",
+                (selected_step_id,selected_procedure_id)).fetchone()
+            if linked is None:
+                raise ValueError("Pasul nu aparține procedurii selectate")
+    elif selected_step_id is not None:
+        raise ValueError("Selectarea pasului necesită procedura asociată")
     top=tk.Toplevel(app.root)
     top.title("AtelierData — proceduri de atelier")
     top.geometry("1180x720")
@@ -94,7 +107,8 @@ def open_procedures_window(app, editor_class):
     def selection(event=None):
         items=procedures.selection()
         state["pid"]=int(items[0]) if items else None
-        refresh_steps()
+        selected=(selected_step_id if state["pid"]==selected_procedure_id else None)
+        refresh_steps(selected)
 
     procedures.bind("<<TreeviewSelect>>",selection)
     search.trace_add("write",lambda *_:refresh_proc())
@@ -429,5 +443,7 @@ def open_procedures_window(app, editor_class):
     top.open_reference_picker=choose_reference
     top.open_schematic_reference=open_schematic_reference
     top.open_procedure_audit=open_procedure_audit
-    refresh_proc()
+    refresh_proc(selected_procedure_id)
+    if selected_procedure_id is not None and selected_step_id is not None:
+        refresh_steps(selected_step_id)
     return top
