@@ -43,7 +43,7 @@ Din directorul `tools/autodata-installer`:
 
 ```powershell
 python prepare_payload.py --source "D:\Autodata_3.45" --staging "D:\Autodata_stage" --dry-run
-powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -PayloadRoot "D:\Autodata_3.45" -OutputDir "D:\Autodata_Setup"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -PayloadRoot "D:\Autodata_3.45" -Inventory "D:\INVENTAR.json" -AuthorizedUseConfirmed -OutputDir "D:\Autodata_Setup"
 ```
 
 Dacă toate cele 105 fișiere există, au dimensiunile și hashurile pe fragmente identice cu inventarul privat, iar Defender nu raportează detecții,
