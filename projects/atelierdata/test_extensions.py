@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -12,6 +13,7 @@ from atelierdata import Store, import_records
 from atelierdata_extensions import (
     attach_document, export_records, integrity_check, list_documents, resolve_document
 )
+from atelierdata_backup import backup_bundle, restore_bundle
 
 
 class ExtensionsTests(unittest.TestCase):
@@ -72,6 +74,52 @@ class ExtensionsTests(unittest.TestCase):
             "SELECT id FROM attachments WHERE path='../../escape.pdf'").fetchone()[0]
         with self.assertRaises(ValueError):
             resolve_document(self.store, bad)
+
+
+    def test_complete_backup_and_verified_restore(self):
+        source = self.root / 'authorized.pdf'
+        source.write_bytes(b'%PDF-1.4\\n%%EOF\\n')
+        attach_document(self.store, self.aid, source)
+        backup = self.root / 'complete.zip'
+        summary = backup_bundle(self.store, backup)
+        self.assertEqual(summary['documents'], 1)
+        target = self.root / 'restored'
+        database = restore_bundle(backup, target)
+        restored = Store(database)
+        try:
+            self.assertEqual(restored.stats(), [1, 1])
+            self.assertTrue(integrity_check(restored)['ok'])
+            item = list_documents(restored, self.aid)[0]
+            self.assertEqual(resolve_document(restored, item['id']).read_bytes(),
+                             source.read_bytes())
+        finally:
+            restored.close()
+        with self.assertRaises(FileExistsError):
+            restore_bundle(backup, target)
+        with zipfile.ZipFile(backup) as archive:
+            payload = {name: archive.read(name) for name in archive.namelist()}
+        payload['database.sqlite3'] = b'corrupted'
+        corrupt = self.root / 'corrupt.zip'
+        with zipfile.ZipFile(corrupt, 'w') as archive:
+            for name, data in payload.items():
+                archive.writestr(name, data)
+        with self.assertRaises(ValueError):
+            restore_bundle(corrupt, self.root / 'bad_restore')
+        self.assertFalse((self.root / 'bad_restore').exists())
+
+    def test_restore_rejects_unexpected_member(self):
+        backup = self.root / 'empty.zip'
+        backup_bundle(self.store, backup)
+        with zipfile.ZipFile(backup) as archive:
+            payload = {name: archive.read(name) for name in archive.namelist()}
+        evil = self.root / 'evil.zip'
+        with zipfile.ZipFile(evil, 'w') as archive:
+            for name, data in payload.items():
+                archive.writestr(name, data)
+            archive.writestr('../escape.txt', 'not allowed')
+        with self.assertRaises(ValueError):
+            restore_bundle(evil, self.root / 'blocked')
+        self.assertFalse((self.root / 'escape.txt').exists())
 
     def test_cli_export_import_and_check(self):
         script = str(Path(__file__).with_name('atelierdata.py'))
