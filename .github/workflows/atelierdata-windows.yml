@@ -30,8 +30,9 @@ jobs:
       - name: Run real compiled EXE self-test
         shell: pwsh
         run: |
-          & .\dist\AtelierData.exe --self-test
-          if ($LASTEXITCODE -ne 0) { throw "PACKAGED_EXE_SELF_TEST_FAILED" }
+          $exePath = (Resolve-Path '.\dist\AtelierData.exe').Path
+          $process = Start-Process -FilePath $exePath -ArgumentList '--self-test' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "PACKAGED_EXE_SELF_TEST_FAILED exit=$($process.ExitCode)" }
           if (-not (Test-Path ".\dist\AtelierData.exe")) { throw "EXE_MISSING" }
           $file = Get-Item ".\dist\AtelierData.exe"
           $sha = (Get-FileHash $file.FullName -Algorithm SHA256).Hash
