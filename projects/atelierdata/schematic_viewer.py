@@ -290,11 +290,82 @@ def open_schematics_window(app, editor_class, selected_article_id=None, vehicle_
         except Exception as exc:
             messagebox.showerror("Atașament invalid",str(exc),parent=window)
 
+    def show_usage():
+        """Show which repair steps refer to this diagram, without modifying data."""
+        aid=state["article_id"]
+        if aid is None:
+            messagebox.showinfo("Referințe","Selectează o schemă.",parent=window)
+            return None
+        try:
+            get_schematic_reference(app.db,vehicle_id,aid)
+            from procedure_usage import list_document_usage
+            records=list_document_usage(app.db,vehicle_id,aid)
+        except (ValueError, OSError) as exc:
+            messagebox.showerror("Referințe invalide",str(exc),parent=window)
+            return None
+        usage=tk.Toplevel(window)
+        usage.title("AtelierData — proceduri care folosesc schema")
+        usage.geometry("1100x500")
+        usage.minsize(760,350)
+        usage.transient(window)
+        panel=ttk.Frame(usage,padding=12)
+        panel.pack(fill="both",expand=True)
+        ttk.Label(panel,text="UNDE ESTE FOLOSITĂ ACEASTĂ SCHEMĂ",
+                  font=("Segoe UI Semibold",14)).pack(anchor="w",pady=(0,8))
+        ttk.Label(panel,text="Referințe locale; fiecare pas păstrează sursa și avertismentele.",
+                  wraplength=900).pack(anchor="w",pady=(0,10))
+        cols=("system","procedure","step","instruction","warning","source")
+        table=ttk.Treeview(panel,columns=cols,show="headings",selectmode="browse")
+        labels=("Sistem","Procedură","Pas","Instrucțiune","Avertisment","Proveniență")
+        widths=(120,170,50,260,210,170)
+        for key,label,width in zip(cols,labels,widths):
+            table.heading(key,text=label)
+            table.column(key,width=width,minwidth=45,stretch=True)
+        table.pack(fill="both",expand=True)
+        for i,row in enumerate(records):
+            table.insert("","end",iid=str(i),values=(
+                row["system"],row["title"],row["step_number"],
+                row["instruction"][:180],row["safety_note"][:180],
+                row["source"]))
+        if not records:
+            ttk.Label(panel,text="Schema nu este asociată niciunui pas de reparație."
+                      ).pack(anchor="w",pady=(7,0))
+        def open_step(event=None):
+            picked=table.selection()
+            if not picked:
+                return None
+            selected=records[int(picked[0])]
+            try:
+                # Re-check references because the database may change while open.
+                live=list_document_usage(app.db,vehicle_id,aid)
+                if not any(r["procedure_id"]==selected["procedure_id"] and
+                           r["step_id"]==selected["step_id"] for r in live):
+                    raise ValueError("Referința a fost modificată sau ștearsă")
+                from repair_procedures_gui import open_procedures_window
+                result=open_procedures_window(
+                    app,editor_class,
+                    selected_procedure_id=selected["procedure_id"],
+                    selected_step_id=selected["step_id"],
+                    vehicle_id=vehicle_id)
+                if result is not None:
+                    result.lift()
+                return result
+            except (ValueError, OSError) as exc:
+                messagebox.showerror("Navigare invalidă",str(exc),parent=usage)
+                return None
+        table.bind("<Double-1>",open_step)
+        ttk.Button(panel,text="Deschide pasul selectat",command=open_step).pack(
+            anchor="w",pady=(9,0))
+        usage.usage_tree=table
+        usage.open_step=open_step
+        return usage
+
     toolbar=ttk.Frame(body)
     toolbar.pack(fill="x",pady=(7,0))
     for label,callback in [("+ Schemă",add_schematic),
                            ("Atașează fișier",attach_image),
                            ("Deschide",open_selected),
+                           ("Folosit în proceduri",show_usage),
                            ("Potrivește",fit),
                            ("−",lambda:change_zoom(0.8)),
                            ("+",lambda:change_zoom(1.25))]:
@@ -304,5 +375,6 @@ def open_schematics_window(app, editor_class, selected_article_id=None, vehicle_
         if state["image"] is None:return
         change_zoom(1.15 if event.delta>0 else 1/1.15)
     canvas.bind("<Control-MouseWheel>",scroll_zoom)
+    window.open_usage=show_usage
     refresh_schematics(selected_article_id)
     return window
