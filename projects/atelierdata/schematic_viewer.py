@@ -62,15 +62,30 @@ def list_schematic_articles(store, vehicle_id, search=""):
     return store.db.execute(query + " ORDER BY category,title,id", params).fetchall()
 
 
-def open_schematics_window(app, editor_class):
-    """Show the original AtelierData vehicle schematics browser (no bundled drawings)."""
+def get_schematic_reference(store, vehicle_id, article_id):
+    """Resolve only a same-vehicle, user-owned schematic; reject unrelated articles."""
+    if isinstance(article_id, bool) or not isinstance(article_id, int) or article_id <= 0:
+        raise ValueError("Invalid schematic article ID")
+    row = store.db.execute(
+        "SELECT id,vehicle_id,category,title,source FROM articles "
+        "WHERE id=? AND vehicle_id=? AND category IN (?,?)",
+        (article_id, vehicle_id, *SCHEME_CATEGORIES)).fetchone()
+    if row is None:
+        raise ValueError("Schematic not found for the selected vehicle")
+    return row
+
+
+def open_schematics_window(app, editor_class, selected_article_id=None, vehicle_id=None):
+    """Open a vehicle-scoped schematic and optionally navigate to an exact article."""
     from tkinter import ttk, messagebox, filedialog
     from PIL import Image, ImageTk
     tk = app.tk
-    vehicle_id = app.vid
+    vehicle_id = app.vid if vehicle_id is None else vehicle_id
     if vehicle_id is None:
         messagebox.showinfo("Vehicul necesar", "Selectează un vehicul.")
         return None
+    if selected_article_id is not None:
+        get_schematic_reference(app.db, vehicle_id, selected_article_id)
 
     window = tk.Toplevel(app.root)
     window.title("AtelierData — scheme și documentație")
@@ -139,6 +154,15 @@ def open_schematics_window(app, editor_class):
             schematics.selection_set(str(prefer))
             schematics.see(str(prefer))
             select_article()
+            # Show the first verified local image immediately on direct navigation.
+            # PDF/TXT attachments are never launched without an explicit user click.
+            for attachment_id in attachments.get_children():
+                record = app.db.db.execute(
+                    "SELECT path FROM attachments WHERE id=?", (int(attachment_id),)).fetchone()
+                if record and Path(record["path"]).suffix.lower() in IMAGE_EXT:
+                    attachments.selection_set(attachment_id)
+                    preview_selection()
+                    break
 
     def clear_image():
         state["image"]=None
@@ -281,5 +305,5 @@ def open_schematics_window(app, editor_class):
         if state["image"] is None:return
         change_zoom(1.15 if event.delta>0 else 1/1.15)
     canvas.bind("<Control-MouseWheel>",scroll_zoom)
-    refresh_schematics()
+    refresh_schematics(selected_article_id)
     return window
