@@ -158,3 +158,15 @@ Teste automate: python -m unittest discover -s projects/atelierdata -p test_main
 Verificările includ numerotarea pașilor, sursa procedurii, existența și proveniența documentelor asociate, interzicerea referințelor către alt vehicul, fișiere lipsă/modificate și lipsa unei imagini PNG/JPEG previzualizabile pentru scheme. PDF-urile autorizate pot fi deschise prin vizualizatorul sistemului, dar nu sunt redate ca imagini în vizualizatorul de scheme. Un SHA256 corect **nu** demonstrează corectitudinea tehnică sau existența unei licențe. Nu sunt incluse proceduri ori valori tehnice proprietare.
 
 Codul: `procedure_audit.py`; teste sintetice: `test_procedure_audit.py`. Testul de interfață Windows verifică deschiderea raportului și integritatea unui atașament sintetic, atât în Python, cât și în executabilul PyInstaller.
+
+## Referințe inverse: schemă → proceduri
+
+În fereastra **Scheme / imagini**, selectează o schemă și apasă **„Folosit în proceduri”**.
+Lista arată toate procedurile și etapele din **același vehicul** care folosesc
+documentul, inclusiv avertismentele și proveniența introdusă de autor. Selectează
+o intrare și apasă **„Deschide pasul selectat”** pentru navigare la procedura și
+pasul exact. O referință ștearsă sau modificată este verificată din nou înainte
+de navigare. Interogarea nu schimbă SQLite și nu extrage date proprietare.
+
+Teste: `python -m unittest discover -s projects/atelierdata -p 'test_procedure_usage.py' -v`
+și testul integrat Windows `python projects/atelierdata/atelierdata.py --ui-smoke`.
