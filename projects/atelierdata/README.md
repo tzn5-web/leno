@@ -34,6 +34,6 @@ python projects/atelierdata/atelierdata.py --restore-zip .\work\backup.zip --res
 python projects/atelierdata/idf_static_evidence.py --self-test
 ```
 
-Pentru analiza statică a celor 57 de fișiere IDF verificate SHA256 din două pachete private, vezi `IDF_STATIC_EVIDENCE_20261030.md`. Scriptul Ghidra este în `tools/ghidra/AtelierData_IDF_Xrefs.py`; execuția sa efectivă pe executabilul original **nu este încă demonstrată**. Rapoartele private și binarele originale nu se publică în acest repository.
+Pentru analiza statică a celor 57 de fișiere IDF verificate SHA256 din două pachete private, vezi `IDF_STATIC_EVIDENCE_20261030.md`. Scriptul Java Ghidra 12.1.4 este în `tools/ghidra/AtelierData_IDF_Xrefs.java`; analiza statică headless **a fost executată** pe originalul verificat SHA256, fără autoanaliză completă. Referințele către încărcătorul IDF nu sunt încă demonstrate. Rapoartele private și binarele originale nu se publică în acest repository.
 
 **Limitare de test:** autotestele și smoke-testul GUI din CI verifică funcțiile selectate și pornirea executabilului, nu echivalența cu Autodata sau acuratețea unor proceduri reale.
