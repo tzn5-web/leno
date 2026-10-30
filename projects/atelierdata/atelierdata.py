@@ -3,6 +3,8 @@ import argparse,csv,json,os,sqlite3,sys,tempfile,math,collections,zipfile
 from pathlib import Path
 from atelierdata_extensions import integrity_check,export_records,attach_document,list_documents,resolve_document
 from atelierdata_backup import backup_bundle,restore_bundle
+from technical_specs import (ensure_schema,add_spec,update_spec,remove_spec,get_spec,
+                             list_specs,import_specs,export_specs)
 
 CATEGORIES = ("Date tehnice","Întreținere","Motor","Distribuție","Cupluri de strângere",
               "Diagnosticare / DTC","Scheme electrice","Siguranțe și relee","Frâne / ABS",
@@ -36,6 +38,7 @@ class Store:
           CREATE INDEX IF NOT EXISTS idx_vehicles_lookup ON vehicles(make,model,engine);
         """)
         self.db.commit()
+        ensure_schema(self)
     def add_vehicle(self,make,model,engine='',years='',fuel='',variant=''):
         if not make.strip() or not model.strip():raise ValueError("Marca și modelul sunt obligatorii")
         cur=self.db.execute("INSERT INTO vehicles(make,model,engine,years,fuel,variant) VALUES(?,?,?,?,?,?)",
@@ -185,7 +188,8 @@ class App:
         actions=[('+ Vehicul',self.new_vehicle),('+ Document',self.new_article),
                  ('Import CSV/JSON',self.load),('Export JSON',self.export),
                  ('Backup SQLite',self.backup),('Backup ZIP',self.backup_full),
-                 ('Restaurare ZIP',self.restore_full),('Analiză IDF',self.analyze)]
+                 ('Restaurare ZIP',self.restore_full),('Specificații',self.specifications),
+                 ('Analiză IDF',self.analyze)]
         for col in range(4):
             bar.columnconfigure(col,weight=1)
         for i,(name,cmd) in enumerate(actions):
@@ -341,6 +345,96 @@ class App:
                 subprocess.Popen(['xdg-open',str(path)])
         except Exception as exc:messagebox.showerror('Fișier indisponibil',str(exc))
 
+
+    def specifications(self):
+        """Structured service values, each with a source and measurement conditions."""
+        from tkinter import filedialog,messagebox
+        if not self.vid:
+            return messagebox.showinfo('Vehicul necesar',
+                                       'Selectează o motorizare înainte de specificații.')
+        tk=self.tk;ttk=self.ttk
+        vehicle_id=self.vid
+        window=tk.Toplevel(self.root)
+        window.title('AtelierData — specificații tehnice și proveniență')
+        window.geometry('1080x580')
+        window.transient(self.root)
+        root=ttk.Frame(window,padding=14)
+        root.pack(fill='both',expand=True)
+        ttk.Label(root,text='SPECIFICAȚII TEHNICE — VALORI CU SURSĂ',
+                  font=('Segoe UI Semibold',14)).pack(anchor='w',pady=(0,8))
+        search=tk.StringVar()
+        q=ttk.Entry(root,textvariable=search)
+        q.pack(fill='x',pady=(0,7))
+        cols=('system','parameter','value','unit','conditions','source')
+        view=ttk.Treeview(root,columns=cols,show='headings',selectmode='browse')
+        names=('Sistem','Parametru','Valoare','Unitate','Condiții','Sursă')
+        widths=(145,185,95,76,260,180)
+        for col,title,width in zip(cols,names,widths):
+            view.heading(col,text=title);view.column(col,width=width,minwidth=55,stretch=True)
+        area=ttk.Frame(root);area.pack(fill='both',expand=True)
+        view.pack(in_=area,side='left',fill='both',expand=True)
+        scroll=ttk.Scrollbar(area,orient='vertical',command=view.yview)
+        scroll.pack(side='right',fill='y')
+        view.configure(yscrollcommand=scroll.set)
+        info=tk.StringVar()
+        ttk.Label(root,textvariable=info).pack(anchor='w',pady=(8,6))
+        def refresh():
+            view.delete(*view.get_children())
+            rows=list_specs(self.db,vehicle_id,search.get())
+            for item in rows:
+                view.insert('','end',iid=str(item['id']),
+                            values=tuple(item[key] for key in cols))
+            info.set(f'{len(rows)} valori disponibile. Nu sunt introduse date fictive.')
+        q.bind('<KeyRelease>',lambda event:refresh())
+        def edit(is_new):
+            current=None
+            if not is_new:
+                selected=view.selection()
+                if not selected:
+                    return messagebox.showinfo('Selectare','Selectează o valoare tehnică.',parent=window)
+                current=get_spec(self.db,int(selected[0]))
+            fields=[
+              ('system','Sistem *',current['system'] if current else ''),
+              ('parameter','Parametru *',current['parameter'] if current else ''),
+              ('value','Valoare *',current['value'] if current else ''),
+              ('unit','Unitate',current['unit'] if current else ''),
+              ('conditions','Condiții de măsurare',current['conditions'] if current else ''),
+              ('source','Sursa exactă / referința *',current['source'] if current else '')]
+            data=Editor(window,'Valoare tehnică',fields).value
+            if data is None:return
+            try:
+                if is_new:add_spec(self.db,vehicle_id,**data)
+                else:update_spec(self.db,current['id'],**data)
+                refresh()
+            except Exception as exc:messagebox.showerror('Valoare respinsă',str(exc),parent=window)
+        def delete():
+            selected=view.selection()
+            if not selected:return
+            if messagebox.askyesno('Confirmare','Ștergi această specificație?',parent=window):
+                remove_spec(self.db,int(selected[0]));refresh()
+        def imp():
+            file=filedialog.askopenfilename(parent=window,filetypes=[('CSV/JSON','*.csv *.json')])
+            if not file:return
+            try:
+                report=import_specs(self.db,file)
+                refresh();self.refresh()
+                messagebox.showinfo('Import',f"Importate: {report['inserted']} / Duplicat: {report['duplicates']}",
+                                    parent=window)
+            except Exception as exc:messagebox.showerror('Import respins',str(exc),parent=window)
+        def exp():
+            file=filedialog.asksaveasfilename(parent=window,defaultextension='.json',
+                      filetypes=[('JSON','*.json')])
+            if not file:return
+            try:
+                n=export_specs(self.db,file)
+                messagebox.showinfo('Export',f'Exportate {n} valori cu sursele asociate.',parent=window)
+            except Exception as exc:messagebox.showerror('Export eșuat',str(exc),parent=window)
+        buttons=ttk.Frame(root);buttons.pack(fill='x',pady=(6,0))
+        for label,action in [('+ Valoare',lambda:edit(True)),('Editează',lambda:edit(False)),
+                              ('Șterge',delete),('Import CSV/JSON',imp),('Export JSON',exp)]:
+            ttk.Button(buttons,text=label,command=action).pack(side='left',padx=(0,7))
+        refresh()
+
     def backup_full(self):
         from tkinter import filedialog,messagebox
         path=filedialog.asksaveasfilename(defaultextension='.zip',
@@ -397,6 +491,10 @@ def main():
     ap.add_argument('--export-json')
     ap.add_argument('--import-records')
     ap.add_argument('--check-db',action='store_true')
+    ap.add_argument('--import-specs')
+    ap.add_argument('--export-specs')
+    ap.add_argument('--list-specs',action='store_true')
+    ap.add_argument('--search-specs',default='')
     ap.add_argument('--backup-zip')
     ap.add_argument('--restore-zip')
     ap.add_argument('--restore-dir')
@@ -417,9 +515,20 @@ def main():
         if not args.restore_dir:ap.error('--restore-zip necesită --restore-dir')
         target=restore_bundle(args.restore_zip,args.restore_dir)
         print('RESTORE_ZIP=PASS database='+str(target));return 0
-    if args.export_json or args.import_records or args.check_db or args.backup_zip:
+    if (args.export_json or args.import_records or args.check_db or args.backup_zip
+        or args.import_specs or args.export_specs or args.list_specs):
+
         store=Store(database)
         try:
+            if args.import_specs:
+                result=import_specs(store,args.import_specs)
+                print('IMPORT_SPECS=PASS '+json.dumps(result,ensure_ascii=False));return 0
+            if args.export_specs:
+                n=export_specs(store,args.export_specs)
+                print('EXPORT_SPECS=PASS count='+str(n));return 0
+            if args.list_specs:
+                items=[dict(x) for x in list_specs(store,search=args.search_specs)]
+                print(json.dumps(items,ensure_ascii=False,indent=2));return 0
             if args.backup_zip:
                 report=backup_bundle(store,args.backup_zip)
                 print('BACKUP_ZIP=PASS '+json.dumps(report));return 0
