@@ -1,0 +1,71 @@
+name: Autodata REA static audit (synthetic Windows fixture only)
+on:
+  workflow_dispatch:
+  push:
+    branches: [autodata-colab-20261030]
+    paths:
+      - 'tools/autodata-oneclick/rea_static_private.ps1'
+      - '.github/workflows/autodata-rea-static-ci.yml'
+permissions:
+  contents: read
+jobs:
+  rea-synthetic-pe:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.22.1'
+      - name: Install pinned REA 6.8.0 in runner temp
+        shell: pwsh
+        run: |
+          $tool = Join-Path $env:RUNNER_TEMP "rea-tool"
+          npm install --prefix $tool --no-audit --no-fund --ignore-scripts --save-exact rea-agents@6.8.0
+          if ($LASTEXITCODE -ne 0) { throw "REA_INSTALL_FAILED" }
+          $rea = Join-Path $tool "node_modules\.bin\rea.cmd"
+          if (-not (Test-Path $rea)) { throw "REA_NOT_FOUND" }
+          & $rea --version
+          if ($LASTEXITCODE -ne 0) { throw "REA_VERSION_FAILED" }
+          "REA_BIN=$rea" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Prepare harmless Windows PE fixture (NOT Autodata)
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP "rea-synthetic-fixture"
+          New-Item -ItemType Directory -Path $dir -Force | Out-Null
+          $source = Join-Path $env:windir "System32\notepad.exe"
+          if (-not (Test-Path $source)) { throw "WINDOWS_FIXTURE_NOT_FOUND" }
+          Copy-Item -LiteralPath $source -Destination (Join-Path $dir "notepad.exe")
+          $hash = (Get-FileHash (Join-Path $dir "notepad.exe") -Algorithm SHA256).Hash
+          "FIXTURE_EXE=$(Join-Path $dir 'notepad.exe')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "FIXTURE_SHA=$hash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Negative SHA256 gate (must refuse)
+        shell: pwsh
+        run: |
+          $reports = Join-Path $env:RUNNER_TEMP "rea-negative"
+          $rejected = $false
+          try {
+            & tools/autodata-oneclick/rea_static_private.ps1 -SourceExe $env:FIXTURE_EXE -ExpectedSha256 ("0" * 64) -OutputDir $reports -ReaCli $env:REA_BIN
+          } catch { $rejected = $true }
+          if (-not $rejected) { throw "INVALID_HASH_ACCEPTED" }
+          Write-Host "REA_HASH_REJECTION=PASS"
+      - name: Execute REA static PE imports, certificates and desktop inventory
+        shell: pwsh
+        run: |
+          $reports = Join-Path $env:RUNNER_TEMP "rea-reports"
+          & tools/autodata-oneclick/rea_static_private.ps1 -SourceExe $env:FIXTURE_EXE -ExpectedSha256 $env:FIXTURE_SHA -OutputDir $reports -ReaCli $env:REA_BIN
+          if (-not $?) { throw "REA_STATIC_AUDIT_FAILED" }
+          foreach ($name in @("rea_pe-imports.json","rea_pe-certificates.json","rea_desktop-application.json","rea_receipt.json")) {
+            if (-not (Test-Path (Join-Path $reports $name))) { throw "REA_REPORT_MISSING:$name" }
+          }
+          Write-Host "REA_SYNTHETIC_CI=PASS"
+      - name: Upload safe fixture evidence only, including failures
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rea-static-windows-fixture-NOT-AUTODATA
+          path: ${{ runner.temp }}/rea-reports/
+          if-no-files-found: warn
+          retention-days: 7
