@@ -639,6 +639,20 @@ def main():
                             raise RuntimeError('PROCEDURES_SCHEMATIC_IMAGE_NOT_RENDERED')
                     ui.root.after(220,check_navigation_image)
                 ui.root.after(950,check_navigation)
+                def check_procedure_audit():
+                    window.procedures_tree.selection_set(str(pid))
+                    window.procedures_tree.event_generate('<<TreeviewSelect>>')
+                    audit=window.open_procedure_audit()
+                    if audit is None or not audit.winfo_exists():
+                        raise RuntimeError('PROCEDURES_AUDIT_WINDOW_NOT_OPENED')
+                    report=audit.audit_report
+                    if report['steps']!=1 or report['errors']!=0:
+                        raise RuntimeError('PROCEDURES_AUDIT_INCORRECT_STEP_STATUS')
+                    if report['verified_attachments']!=1 or report['warnings']!=0:
+                        raise RuntimeError('PROCEDURES_AUDIT_SHA256_CHECK_FAILED')
+                    if audit.issues_tree.get_children():
+                        raise RuntimeError('PROCEDURES_AUDIT_UNEXPECTED_FINDINGS')
+                ui.root.after(1650,check_procedure_audit)
             ui.root.after(520,check_procedures_window)
             def check_schematics_window():
                 from PIL import Image
