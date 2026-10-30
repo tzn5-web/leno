@@ -43,7 +43,7 @@ Fișierele IDF au fost verificate ca fișiere *complete* numai dacă fiecare fra
 
 ## Blocaje reale și concluzie
 
-1. `autodata_part_0016.zip` nu este accesibil prin Google Drive (HTTP 403, fișier marcat malware/spam); acolo apar `SentinelKeyW.DLL`, `RelLic.dll`, instalatoare, fișiere de registru și utilitare neoficiale. Nu se forțează accesul și nu se execută emulatorul.
+1. `autodata_part_0016.zip` nu este accesibil prin Google Drive (HTTP 403, fișier marcat malware/spam); acolo apar `SentinelKeyW.DLL`, `cw3220mt.dll`, `gdiplus.dll`, `libeay32.dll`, `ssleay32.dll`, instalatoare, fișiere de registru și utilitare neoficiale. **Corecție verificată:** `RelLic.dll` se află în pachetul 0015, a fost verificat SHA256 și este PE32/x86; nu este o componentă lipsă. Vezi `ORIGINAL_RUNTIME_DEPENDENCY_AUDIT_20261030.md`. Nu se forțează accesul și nu se execută emulatorul.
 2. Nu există dovada unei licențe originale valabile sau a unui kit autentic de instalare. Un patch al verificării de expirare ori emularea cheii nu este o reparație tehnică acceptabilă.
 3. Fără mediul și licența autentice, nu se poate demonstra o instalare legală funcțională pe Windows, deși toate bazele IDF sunt intacte.
 
