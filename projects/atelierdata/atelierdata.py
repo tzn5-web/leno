@@ -305,10 +305,17 @@ class App:
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument('--self-test',action='store_true')
+    ap.add_argument('--ui-smoke',action='store_true')
     ap.add_argument('--probe-idf')
     ap.add_argument('--output',default='idf_probe.json')
     args=ap.parse_args()
     if args.self_test:return self_test()
+    if args.ui_smoke:
+        with tempfile.TemporaryDirectory() as folder:
+            ui=App(Path(folder)/'ui-smoke.sqlite3')
+            ui.root.after(1100,ui.close)
+            ui.run()
+        return 0
     if args.probe_idf:
         report=probe_idf(args.probe_idf)
         Path(args.output).write_text(json.dumps(report,indent=2,ensure_ascii=False),encoding='utf8')
