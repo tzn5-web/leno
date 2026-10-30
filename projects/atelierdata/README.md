@@ -37,3 +37,30 @@ python projects/atelierdata/idf_static_evidence.py --self-test
 Pentru analiza statică a celor 57 de fișiere IDF verificate SHA256 din două pachete private, vezi `IDF_STATIC_EVIDENCE_20261030.md`. Scriptul Java Ghidra 12.1.4 este în `tools/ghidra/AtelierData_IDF_Xrefs.java`; analiza statică headless **a fost executată** pe originalul verificat SHA256, fără autoanaliză completă. Referințele către încărcătorul IDF nu sunt încă demonstrate. Rapoartele private și binarele originale nu se publică în acest repository.
 
 **Limitare de test:** autotestele și smoke-testul GUI din CI verifică funcțiile selectate și pornirea executabilului, nu echivalența cu Autodata sau acuratețea unor proceduri reale.
+
+
+## Specificații tehnice structurate — modul nou
+
+Butonul **Specificații** deschide un tabel asociat motorizării selectate, cu câmpurile `Sistem`, `Parametru`, `Valoare`, `Unitate`, `Condiții de măsurare` și `Sursa exactă`.
+
+- Adaugă, modifică, șterge și caută valori tehnice pe fiecare vehicul.
+- Importă în mod tranzacțional date licențiate introduse de utilizator din CSV/JSON și nu păstrează importuri parțiale când detectează rânduri invalide.
+- Detectează înregistrări identice deja existente și raportează numărul lor, fără să le dubleze.
+- Exportă valorile într-un JSON cu formatul `atelierdata-specifications-v1`. Backup-ul ZIP existent conține și noul tabel SQLite.
+- În mod intenționat nu sunt introduse valori de reparație exemplificative care ar putea fi confundate cu date reale.
+
+Exemplu de CSV (numai câmpuri text, fără valori tehnice inventate):
+```csv
+make,model,engine,years,fuel,variant,system,parameter,value,unit,conditions,source
+Exemplu,Model fictiv,MOTOR-DEMO,N/A,,,"Sistem demonstrativ","Parametru test","DOAR TEST",,,"Date sintetice pentru test"
+```
+
+Rulare fără GUI:
+```powershell
+python projects/atelierdata/atelierdata.py --db-path .\work\atelierdata.sqlite3 --import-specs .\specifications.csv
+python projects/atelierdata/atelierdata.py --db-path .\work\atelierdata.sqlite3 --list-specs --search-specs motor
+python projects/atelierdata/atelierdata.py --db-path .\work\atelierdata.sqlite3 --export-specs .\specifications.json
+python -m unittest discover -s projects/atelierdata -p "test_*.py" -v
+```
+
+**Stadiu:** funcțiile de administrare a specificațiilor sunt implementate și supuse testelor automate Windows. Numărul și calitatea înregistrărilor reale depind în continuare de o sursă tehnică autorizată. Analiza formatului proprietar `.IDF` rămâne o investigație separată.
