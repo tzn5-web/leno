@@ -560,8 +560,10 @@ def main():
                                       'Referință sintetică','Doar test','TEST')
             pid=create_procedure(ui.db,vehicle,'Sistem sintetic','Procedură GUI TEST',
                                  source='TEST ONLY')
-            add_step(ui.db,pid,'Pas fictiv pentru smoke-test',
+            step_id=add_step(ui.db,pid,'Pas fictiv pentru smoke-test',
                      safety_note='Nu este o instrucțiune reală',article_id=article)
+            second_article=ui.db.add_article(vehicle,'Note atelier',
+                          'Referință secundară sintetică','Date fictive','TEST OWNED')
             dtc_id=add_dtc(ui.db,vehicle,'P0A01','Sistem demonstrativ',
                           'Descriere inventată',source='DATE SINTETICE',
                           procedure_id=pid,article_id=article)
@@ -587,6 +589,20 @@ def main():
                 def check_steps():
                     if len(window.steps_tree.get_children())!=1:
                         raise RuntimeError('PROCEDURES_GUI_STEPS_MISSING')
+                    window.steps_tree.selection_set(str(step_id))
+                    picker=window.open_reference_picker()
+                    if picker is None or not picker.winfo_exists():
+                        raise RuntimeError('PROCEDURES_REFERENCE_PICKER_NOT_OPENED')
+                    refs=picker.reference_tree.get_children()
+                    if set(refs)!={str(article),str(second_article)}:
+                        raise RuntimeError('PROCEDURES_REFERENCE_PICKER_WRONG_VEHICLE_SCOPE')
+                    picker.reference_tree.selection_set(str(second_article))
+                    picker.apply_reference()
+                    linked=ui.db.db.execute(
+                        'SELECT article_id,safety_note FROM procedure_steps WHERE id=?',
+                        (step_id,)).fetchone()
+                    if linked['article_id']!=second_article or not linked['safety_note']:
+                        raise RuntimeError('PROCEDURES_REFERENCE_PICKER_UPDATE_FAILED')
                 ui.root.after(200,check_steps)
             ui.root.after(520,check_procedures_window)
             def check_schematics_window():
