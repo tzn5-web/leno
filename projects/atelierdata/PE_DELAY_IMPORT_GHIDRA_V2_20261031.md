@@ -30,8 +30,9 @@ byte sequences, which are not validated x86 instructions.
   and exact 32-bit IAT operand. It separately counts Ghidra references to IAT.
   It writes private detailed evidence and optionally a public aggregate report.
   Unlike the older script, matching a report SHA256 alone is **not sufficient**.
-- Six new synthetic tests cover absent/RVA/VA/malformed/unmapped delay import
-  descriptors, SHA256 rejection and public/private output isolation. Existing
+- Eight new synthetic tests cover absent/RVA/VA/malformed/unmapped delay import
+  descriptors, ordinal imports, undersized directories, SHA256 rejection and
+  public/private output isolation. Existing
   PE triage test now checks private `iat_va` and public redaction.
 
 **Important status distinction:** The new Python parser and Ghidra v2 script
