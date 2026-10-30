@@ -99,3 +99,21 @@ ID-ul procedurii se referă la o procedură existentă în baza proprie. Testele
 automate folosesc exclusiv conținut sintetic, nu valori tehnice reale.
 Aplicația nu distribuie, nu decodifică și nu revendică datele proprietare
 Autodata. Pentru fișe tehnice reale sunt necesare surse autorizate.
+
+
+## Diagnosticare DTC — modul offline
+
+Fila **Diagnosticare DTC** este un catalog original de informații introduse de utilizator sau obținute din surse tehnice cu licență. Fiecare cod este legat de marcă, model și motorizare, conținând sistemul, descrierea, simptomele, cauzele posibile, verificările, notele și sursa exactă. Sunt acceptate codurile standardizate ca formă \`P/B/C/U\` urmate de patru cifre hexazecimale. Aplicația **nu presupune semnificația unui cod doar din formatul lui**.
+
+Modulul include căutare, creare, editare, ștergere, import CSV/JSON tranzacțional, export JSON, control pentru înregistrări duplicate după vehicul/cod/sursă și legături opționale către proceduri și articole ale **aceluiași vehicul**. Baza SQLite include și aceste date în backupul ZIP complet existent. Datele DTC nu sunt incluse în aplicația distribuită.
+
+Nu există conexiune OBD-II, comenzi către ECU, anularea erorilor sau promisiuni de identificare automată a defectelor. Modulul este pentru consultarea documentației tehnice.
+
+Fișier CSV pentru import (exemplu exclusiv sintetic):
+
+\`\`\`csv
+make,model,engine,years,fuel,variant,code,system,title,symptoms,possible_causes,checks,notes,source
+DEMO,Model fictiv,MOTOR-DEMO,N/A,,,P0A01,Sistem fictiv,DESCRIERE DOAR TEST,Simptom demonstrativ,Cauză demonstrativă,Verificare fictivă,Nicio valoare reală,SYNTHETIC TEST
+\`\`\`
+
+Pachetul de teste include validarea formatului codului, păstrarea sursei, interzicerea legăturilor către alt vehicul, import/export JSON, teste CSV, deduplicare și verificarea SQLite. Rularea Windows testează și deschiderea ferestrei DTC din executabilul real.
