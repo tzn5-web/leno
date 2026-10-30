@@ -40,6 +40,23 @@ generate la extragerea arhivei, nu o dovadă a autenticității furnizorului.
 - `Keygen`, `Autodata 3.45_Keygen`, `Emulators`, `dseo13b.exe`
   — componente cu risc ridicat; nu vor fi incluse în instalator.
 
+## Documente originale citite inert din ZIP-ul 0004
+
+Am accesat `autodata_part_0004.zip` prin conectorul Google Drive, am citit **numai bytes**, fără a executa nimic, și am verificat SHA-256 al fiecărui document cu `INVENTAR.json`:
+
+| Document | Octeți | SHA-256 inventar | Concluzie |
+|---|---:|---|---|
+| `ADCDA2/COMMON/VERINFO.DAT` | 79 | verificat: PASS | `ProductCode=CDA3.44`, `VersionNo=9.200`, `ExpiryDate=42004`; semnificația datei de expirare nu este stabilită |
+| `ADCDA2/COMMON/distinfo.xml` | 14.255 | verificat: PASS | metadate de distribuție; antet datat 28.10.2013 |
+| `ADCDA2/ENG/RegMessage.htm` | 1.119 | verificat: PASS | înregistrare istorică prin cod unic transmis de Autodata, pe baza formularului și seriei |
+| `ADCDA2/ENG/TERMCOND.TXT` | 13.175 | verificat: PASS | permis electronic și cod de înregistrare emis de furnizor/agent autorizat; abonament cu limitări și expirare |
+| `ADCDA2/ENG/COPY.txt` | 1.398 | verificat: PASS | drepturi de autor și drepturi asupra bazei de date; copierea și distribuirea sunt restricționate |
+| `ADCDA2/ENG/support.htm` | 5.208 | verificat: PASS | informații istorice de contact; disponibilitatea actuală nu este confirmată |
+
+Acestea sunt fișiere din **arhiva utilizatorului**, nu documente autentificate independent de furnizor. În particular, **versiunea „3.45” nu este confirmată de metadatele interne**, care indică `CDA3.44`. O instalare cu succes nu echivalează cu activarea sau dreptul de utilizare.
+
+`INSTALLATION INSTRUCTIONS.txt`, `Autodata 3.45_Keygen/install instructions_3.45.txt`, `License manual.pdf` și documentul PDF rusesc pentru Windows XP x32 apar doar în ZIP-ul 0016; **nu au fost citite** și nu putem deduce pașii lor reali.
+
 ## Blocaj specific
 
 Google Drive a respins descărcarea `autodata_part_0016.zip` cu
@@ -57,7 +74,7 @@ prin alte metode pentru a ocoli filtrul.
 
 Proiectul `tools/autodata-installer` din ramura
 `autodata-installer-20261030` conține un constructor de instalator
-Inno Setup, un script de validare/copie, lista explicită de 105 fișiere
+Inno Setup, un verificator SHA-256 bazat pe inventarul privat, un script de validare/copie, lista explicită de 105 fișiere
 și teste automate cu fișiere sintetice.
 
 Nu există încă un EXE final care să instaleze și să activeze Autodata.
