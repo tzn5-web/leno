@@ -210,8 +210,20 @@ def open_schematics_window(app, editor_class):
             render()
         except Exception as exc:
             messagebox.showerror("Fișier invalid",str(exc),parent=window)
+    def preview_selection(event=None):
+        selection=attachments.selection()
+        if not selection:return
+        row=app.db.db.execute("SELECT path FROM attachments WHERE id=?",
+                              (int(selection[0]),)).fetchone()
+        if row is None:return
+        if Path(row["path"]).suffix.lower() in IMAGE_EXT:
+            open_selected()
+        else:
+            clear_image()
+            zoom_label.set("PDF / text — apasă Deschide pentru aplicația Windows")
+
     attachments.bind("<Double-1>",open_selected)
-    attachments.bind("<<TreeviewSelect>>",open_selected)
+    attachments.bind("<<TreeviewSelect>>",preview_selection)
 
     def change_zoom(factor):
         if state["image"] is None:return
