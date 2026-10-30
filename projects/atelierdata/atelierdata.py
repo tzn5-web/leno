@@ -2,6 +2,7 @@ from __future__ import annotations
 import argparse,csv,json,os,sqlite3,sys,tempfile,math,collections,zipfile
 from pathlib import Path
 from atelierdata_extensions import integrity_check,export_records,attach_document,list_documents,resolve_document
+from atelierdata_backup import backup_bundle,restore_bundle
 
 CATEGORIES = ("Date tehnice","Întreținere","Motor","Distribuție","Cupluri de strângere",
               "Diagnosticare / DTC","Scheme electrice","Siguranțe și relee","Frâne / ABS",
@@ -182,7 +183,8 @@ class App:
         self.stat=tk.StringVar();ttk.Label(title,textvariable=self.stat).pack(side='right')
         bar=ttk.Frame(root,padding=(18,0,18,12));bar.pack(fill='x')
         for name,cmd in [('+ Vehicul',self.new_vehicle),('+ Document',self.new_article),
-                         ('Import CSV/JSON',self.load),('Export JSON',self.export),('Backup',self.backup),('Analiză IDF',self.analyze)]:
+                         ('Import CSV/JSON',self.load),('Export JSON',self.export),('Backup SQLite',self.backup),
+                         ('Backup ZIP',self.backup_full),('Restaurare ZIP',self.restore_full),('Analiză IDF',self.analyze)]:
             ttk.Button(bar,text=name,command=cmd).pack(side='left',padx=(0,7))
         panes=ttk.PanedWindow(root,orient='horizontal');panes.pack(fill='both',expand=True,padx=17,pady=(0,12))
         left=ttk.Frame(panes);middle=ttk.Frame(panes);right=ttk.Frame(panes)
@@ -333,6 +335,34 @@ class App:
                 import subprocess
                 subprocess.Popen(['xdg-open',str(path)])
         except Exception as exc:messagebox.showerror('Fișier indisponibil',str(exc))
+
+    def backup_full(self):
+        from tkinter import filedialog,messagebox
+        path=filedialog.asksaveasfilename(defaultextension='.zip',
+                    filetypes=[('Backup AtelierData ZIP','*.zip')])
+        if path:
+            try:
+                report=backup_bundle(self.db,path)
+                messagebox.showinfo('Backup complet',
+                    f"Backup salvat: {report['documents']} atașamente.\\n{path}")
+            except Exception as exc:messagebox.showerror('Backup eșuat',str(exc))
+
+    def restore_full(self):
+        from tkinter import filedialog,messagebox,simpledialog
+        archive=filedialog.askopenfilename(filetypes=[('Backup AtelierData ZIP','*.zip')])
+        if not archive:return
+        parent=filedialog.askdirectory(title='Alege directorul PĂRINTE pentru restaurare')
+        if not parent:return
+        name=simpledialog.askstring('Restaurare','Numele noului director:',parent=self.root)
+        if not name:return
+        if name in ('.','..') or '/' in name or chr(92) in name:
+            return messagebox.showerror('Destinație invalidă','Folosește un nume simplu de director.')
+        try:
+            dbfile=restore_bundle(archive,Path(parent)/name)
+            messagebox.showinfo('Restaurare verificată',
+                'Baza și atașamentele au fost restaurate în director nou.\\n'+str(dbfile)+
+                '\\nPentru a folosi baza restaurată, redeschide aplicația cu --db-path.')
+        except Exception as exc:messagebox.showerror('Restaurare eșuată',str(exc))
     def backup(self):
         from tkinter import filedialog,messagebox
         p=filedialog.asksaveasfilename(defaultextension='.sqlite3',filetypes=[('SQLite','*.sqlite3')])
@@ -362,6 +392,9 @@ def main():
     ap.add_argument('--export-json')
     ap.add_argument('--import-records')
     ap.add_argument('--check-db',action='store_true')
+    ap.add_argument('--backup-zip')
+    ap.add_argument('--restore-zip')
+    ap.add_argument('--restore-dir')
     args=ap.parse_args()
     if args.self_test:return self_test()
     if args.ui_smoke:
@@ -375,9 +408,16 @@ def main():
         Path(args.output).write_text(json.dumps(report,indent=2,ensure_ascii=False),encoding='utf8')
         print('IDF_PROBE=PASS count='+str(report['count']));return 0
     database=Path(args.db_path) if args.db_path else db_path()
-    if args.export_json or args.import_records or args.check_db:
+    if args.restore_zip:
+        if not args.restore_dir:ap.error('--restore-zip necesită --restore-dir')
+        target=restore_bundle(args.restore_zip,args.restore_dir)
+        print('RESTORE_ZIP=PASS database='+str(target));return 0
+    if args.export_json or args.import_records or args.check_db or args.backup_zip:
         store=Store(database)
         try:
+            if args.backup_zip:
+                report=backup_bundle(store,args.backup_zip)
+                print('BACKUP_ZIP=PASS '+json.dumps(report));return 0
             if args.export_json:
                 n=export_records(store,args.export_json)
                 print('EXPORT_JSON=PASS count='+str(n));return 0
