@@ -24,3 +24,16 @@ Audit static, fără executarea fișierelor originale și fără publicarea con�
 **Decodorul IDF: NOT PROVEN.**
 
 Verificarea s-a făcut numai din cele 15 pachete autorizate, cu manifestul oferit de utilizator; nu s-au executat utilitare de licențiere, emulare, drivere sau binare originale. Conținutul original nu este publicat aici.
+
+## Diagnostic static suplimentar al executabilului și al versiunii
+
+Verificare directă, numai prin citire, a fișierelor aflate în pachetele 0001–0015:
+
+- `ADCDA2/COMMON/VERINFO.DAT` conține `ProductCode=CDA3.44`, `VersionNo=9.200`, `ExpiryDate=42004`. **Există o diferență între numele arhivei („3.45”) și codul produsului declarat de metadate („CDA3.44”)**; asta nu demonstrează singur incompatibilitatea.
+- Dacă `42004` este interpretat ca număr serial de dată Windows/OLE, corespunde zilei **31 decembrie 2014**. Interpretarea câmpului în aplicație nu a fost demonstrată prin analiză de cod; nu trebuie modificat pentru a evita controlul de valabilitate.
+- `ADCDA2/ENG/RegMessage.htm` descrie înregistrarea cu cod emis de furnizor.
+- `ADCDA2/ENG/TERMCOND.TXT` descrie licențe de tip abonament cu perioade limitate și permise electronice. Aceste informații explică de ce simpla prezență a tuturor bazelor nu garantează utilizarea aplicației.
+- Prezența `LoadLibraryA` / `GetProcAddress` în PE sugerează că analiza importurilor statice nu este suficientă pentru o listă completă de DLL-uri runtime.
+- Niciun patch de licențiere, emulator sau executabil din arhivă nu a fost rulat. Diagnosticarea compatibilității autentice necesită o copie/licență autorizată și, după verificări de securitate, un mediu Windows izolat.
+
+**Prioritate de depanare:** confirmați proveniența/licența și componentele runtime autentice, comparați codul de versiune cu mediul Windows, apoi analizați erorile de pornire. Modificarea datelor `.IDF` intacte nu este justificată de constatările curente.
