@@ -1,6 +1,7 @@
 from __future__ import annotations
 import argparse,csv,json,os,sqlite3,sys,tempfile,math,collections,zipfile
 from pathlib import Path
+from atelierdata_extensions import integrity_check,export_records,attach_document,list_documents,resolve_document
 
 CATEGORIES = ("Date tehnice","Întreținere","Motor","Distribuție","Cupluri de strângere",
               "Diagnosticare / DTC","Scheme electrice","Siguranțe și relee","Frâne / ABS",
@@ -15,6 +16,7 @@ class Store:
         self.path=Path(path);self.path.parent.mkdir(parents=True,exist_ok=True)
         self.db=sqlite3.connect(self.path);self.db.row_factory=sqlite3.Row
         self.db.execute("PRAGMA foreign_keys=ON")
+        self.db.execute("PRAGMA busy_timeout=5000")
         self.db.executescript("""
           CREATE TABLE IF NOT EXISTS vehicles(
             id INTEGER PRIMARY KEY,make TEXT NOT NULL,model TEXT NOT NULL,engine TEXT DEFAULT '',
@@ -26,6 +28,11 @@ class Store:
           CREATE TABLE IF NOT EXISTS attachments(
             id INTEGER PRIMARY KEY,article_id INTEGER NOT NULL,path TEXT NOT NULL,
             FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE);
+        """)
+        self.db.executescript("""
+          CREATE INDEX IF NOT EXISTS idx_articles_vehicle_category ON articles(vehicle_id,category,title);
+          CREATE INDEX IF NOT EXISTS idx_attachments_article ON attachments(article_id);
+          CREATE INDEX IF NOT EXISTS idx_vehicles_lookup ON vehicles(make,model,engine);
         """)
         self.db.commit()
     def add_vehicle(self,make,model,engine='',years='',fuel='',variant=''):
@@ -175,7 +182,7 @@ class App:
         self.stat=tk.StringVar();ttk.Label(title,textvariable=self.stat).pack(side='right')
         bar=ttk.Frame(root,padding=(18,0,18,12));bar.pack(fill='x')
         for name,cmd in [('+ Vehicul',self.new_vehicle),('+ Document',self.new_article),
-                         ('Import CSV/JSON',self.load),('Backup',self.backup),('Analiză IDF',self.analyze)]:
+                         ('Import CSV/JSON',self.load),('Export JSON',self.export),('Backup',self.backup),('Analiză IDF',self.analyze)]:
             ttk.Button(bar,text=name,command=cmd).pack(side='left',padx=(0,7))
         panes=ttk.PanedWindow(root,orient='horizontal');panes.pack(fill='both',expand=True,padx=17,pady=(0,12))
         left=ttk.Frame(panes);middle=ttk.Frame(panes);right=ttk.Frame(panes)
@@ -202,6 +209,8 @@ class App:
         act=ttk.Frame(right);act.pack(fill='x',pady=(10,0))
         ttk.Button(act,text='Editare',command=self.edit_article).pack(side='left',padx=(0,7))
         ttk.Button(act,text='Șterge',command=self.del_article).pack(side='left',padx=(0,7))
+        ttk.Button(act,text='Atașează',command=self.attach).pack(side='left',padx=(0,7))
+        ttk.Button(act,text='Deschide fișier',command=self.open_attached).pack(side='left')
         self.message=tk.StringVar(value='Datele tehnice nu sunt incluse până la obținerea unui export autorizat.')
         ttk.Label(root,textvariable=self.message).pack(anchor='w',padx=18,pady=(0,12))
         self.refresh();root.protocol('WM_DELETE_WINDOW',self.close)
@@ -242,7 +251,10 @@ class App:
             if aid:
                 self.aid=aid;a=self.db.get_article(aid)
                 self.detail.set(a['title'])
-                self.show(f"CATEGORIE: {a['category']}\nSURSĂ: {a['source'] or 'neprecizată'}\n\n{a['content']}")
+                files=list_documents(self.db,aid)
+                names='\\n'.join(f"{i+1}. {item['path']}" for i,item in enumerate(files))
+                self.show(f"CATEGORIE: {a['category']}\\nSURSĂ: {a['source'] or 'neprecizată'}\\n\\n{a['content']}" +
+                          (f"\\n\\nFIȘIERE ATAȘATE ({len(files)}):\\n{names}" if files else ''))
     def new_vehicle(self):
         from tkinter import messagebox
         fields=[('make','Marca *',''),('model','Model *',''),('engine','Cod motor',''),
@@ -283,6 +295,44 @@ class App:
                 r=import_records(self.db,path);self.refresh()
                 messagebox.showinfo('Import',f"Importate: {r['inserted']}, respinse: {len(r['rejected'])}")
             except Exception as exc:messagebox.showerror('Import eșuat',str(exc))
+
+    def export(self):
+        from tkinter import filedialog,messagebox
+        path=filedialog.asksaveasfilename(defaultextension='.json',
+                    filetypes=[('JSON AtelierData','*.json')])
+        if path:
+            try:
+                n=export_records(self.db,path)
+                messagebox.showinfo('Export',f'Exportate {n} documente introduse de utilizator.')
+            except Exception as exc:messagebox.showerror('Export eșuat',str(exc))
+
+    def attach(self):
+        from tkinter import filedialog,messagebox
+        if not self.aid:return messagebox.showinfo('Document necesar','Selectează un document.')
+        path=filedialog.askopenfilename(filetypes=[('Documente permise','*.pdf *.png *.jpg *.jpeg *.txt')])
+        if path:
+            try:
+                attach_document(self.db,self.aid,path)
+                self.select_article()
+                self.message.set('Atașament copiat în stocarea locală.')
+            except Exception as exc:messagebox.showerror('Atașament respins',str(exc))
+
+    def open_attached(self):
+        from tkinter import messagebox,simpledialog
+        if not self.aid:return messagebox.showinfo('Document necesar','Selectează un document.')
+        files=list_documents(self.db,self.aid)
+        if not files:return messagebox.showinfo('Fără atașamente','Nu există fișiere atașate.')
+        index=1 if len(files)==1 else simpledialog.askinteger(
+            'Atașamente','Numărul fișierului din lista documentului:',
+            minvalue=1,maxvalue=len(files),parent=self.root)
+        if index is None:return
+        try:
+            path=resolve_document(self.db,files[index-1]['id'])
+            if sys.platform=='win32':os.startfile(str(path))
+            else:
+                import subprocess
+                subprocess.Popen(['xdg-open',str(path)])
+        except Exception as exc:messagebox.showerror('Fișier indisponibil',str(exc))
     def backup(self):
         from tkinter import filedialog,messagebox
         p=filedialog.asksaveasfilename(defaultextension='.sqlite3',filetypes=[('SQLite','*.sqlite3')])
@@ -308,6 +358,10 @@ def main():
     ap.add_argument('--ui-smoke',action='store_true')
     ap.add_argument('--probe-idf')
     ap.add_argument('--output',default='idf_probe.json')
+    ap.add_argument('--db-path')
+    ap.add_argument('--export-json')
+    ap.add_argument('--import-records')
+    ap.add_argument('--check-db',action='store_true')
     args=ap.parse_args()
     if args.self_test:return self_test()
     if args.ui_smoke:
@@ -320,6 +374,21 @@ def main():
         report=probe_idf(args.probe_idf)
         Path(args.output).write_text(json.dumps(report,indent=2,ensure_ascii=False),encoding='utf8')
         print('IDF_PROBE=PASS count='+str(report['count']));return 0
-    App(db_path()).run();return 0
+    database=Path(args.db_path) if args.db_path else db_path()
+    if args.export_json or args.import_records or args.check_db:
+        store=Store(database)
+        try:
+            if args.export_json:
+                n=export_records(store,args.export_json)
+                print('EXPORT_JSON=PASS count='+str(n));return 0
+            if args.import_records:
+                result=import_records(store,args.import_records)
+                print('IMPORT_RECORDS='+json.dumps(result,ensure_ascii=False))
+                return 1 if result['rejected'] else 0
+            report=integrity_check(store)
+            print('DATABASE_INTEGRITY='+json.dumps(report,ensure_ascii=False))
+            return 0 if report['ok'] else 1
+        finally:store.close()
+    App(database).run();return 0
 
 if __name__=='__main__':sys.exit(main())
