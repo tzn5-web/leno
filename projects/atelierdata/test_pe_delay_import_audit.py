@@ -81,6 +81,11 @@ class DelayImportAuditTests(unittest.TestCase):
             self.assertIn("MessageBoxA", priv.read_text())
             with self.assertRaisesRegex(ValueError, "must differ"):
                 run(src, hashlib.sha256(blob).hexdigest(), pub, pub)
+            with self.assertRaisesRegex(ValueError, "must differ"):
+                run(src, hashlib.sha256(blob).hexdigest(), src, priv)
+            with self.assertRaisesRegex(ValueError, "must differ"):
+                run(src, hashlib.sha256(blob).hexdigest(), pub, src)
+            self.assertEqual(src.read_bytes(), blob)
 
 
 if __name__ == "__main__":
