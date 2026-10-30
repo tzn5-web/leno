@@ -1,53 +1,55 @@
-# Audit Autodata 3.45 — 2026-10-30
+# Autodata 3.45 — audit pe conținut real (31 octombrie 2026)
 
-## Scope
+> Obiect: **arhiva originală Autodata 3.45**, nu dezvoltarea unei alte aplicații. Fără Azure. Fișierele executable și scripturile din arhivă nu au fost executate.
 
-The subject is the user's **original Autodata 3.45 archive**, distributed for static analysis as 16 ZIP files. This is **not** a new AtelierData application. GitHub holds analysis code, Google Drive holds source material and reports, and Colab runs only when started by the user. **No Azure.**
+## Verificare efectivă Google Drive și ZIP
 
-## Evidence audited
+Sursă: https://drive.google.com/drive/folders/1XqpDaYI5zkdUXY85wLSvpsklatT0P0Bd
 
-- Google Drive source folder: https://drive.google.com/drive/folders/1XqpDaYI5zkdUXY85wLSvpsklatT0P0Bd
-- Drive folder listing at audit time: 21 entries (16 numbered ZIPs, INVENTAR.json, INVENTAR.txt, listare_7z.txt, TRANSFER_FINALIZAT.txt, Autodata_OneClick_Audit folder).
-- All 16 names, autodata_part_0001.zip to autodata_part_0016.zip, were present; 16 unique nonzero-size ZIPs. Drive metadata size sum: **2,323,731,093 bytes**. This is a metadata check, **not a content hash check**.
-- INVENTAR.json: **139 logical files**, **163 ZIP entries/chunks**, **2,323,704,957 extracted bytes**, **16 package names**, without duplicate manifest file paths, duplicate chunk references, invalid relative paths, declared-size mismatches or incorrect chunk order.
-- Extensions: **81 .IDF**, **17 .exe**, **9 .dll**, **6 .reg**, **4 .cmd**, **2 .bat**, **1 .vbs**, with other text, XML, image, help, document and metadata files. The 81 .IDF are distributed as COMMON 32, ENG 31, GRAPHICS 18.
-- Original RAR SHA-256 shown by manifest: `e82235c262ea401c2f4609b1480787dbe05a953a6cf57f767d5c3465353267da`. **This is an unverified declaration**; ZIP metadata cannot prove the RAR's hash.
+- Google Drive listează toate cele **16** ZIP-uri. Acest fapt nu dovedește, singur, integritatea lor.
+- Au fost descărcate pe calea normală, fără niciun bypass, **ZIP-urile 0001–0015** și examinate numai static, cu Python `zipfile`.
+- Am calculat independent SHA-256 pentru **124/124 intrări** accesibile, iar toate cele 124 SHA-256 și dimensiuni corespund manifestului `INVENTAR.json`. **PASS pentru toate intrările accesibile**: **2.271.754.801 octeți** verificați.
+- Repartiția intrărilor verificate pe pachete: `0001:22; 0002:7; 0003:2; 0004:55; 0005:4; 0006:7; 0007:7; 0008:2; 0009:2; 0010:3; 0011:2; 0012:2; 0013:2; 0014:2; 0015:5`.
+- Manifestul enumeră **139 fișiere logice**, **163 bucăți/intrări ZIP**, **2.323.704.957 octeți** pentru toate cele 16 ZIP-uri. Nu sunt duplicate de căi/chunk și nici nepotriviri de dimensiuni declarate.
+- Toate cele **81 fișiere .IDF** (în total **2.231.509.692 octeți**, organizate în **105 bucăți ZIP**) sunt integral cuprinse în pachetele **0001–0015**, iar toate bucățile lor au trecut SHA-256. **0 fișiere .IDF în ZIP 0016**.
 
-## Access and security
+### Partea 0016 și securitatea
 
-- `Autodata_OneClick_Audit/SOURCE_ACCESS_STATUS.json` reports a prior provider rejection for `autodata_part_0016.zip`: HTTP **403**, `cannotDownloadAbusiveFile`, text: "This file has been identified as malware or spam and cannot be downloaded." Do not retry with abuse acknowledgements, mirror the blocked package or evade provider malware protections.
-- Original EXE/DLL/keygen/activator/emulator/installers/scripts are never executed. Files with active content are hashed/inventoried rather than interpreted or launched.
-- No conclusions about IDF internals can be drawn from names alone, even for files whose names contain GRAPH/TD/WD.
+Raportul Drive anterior `Autodata_OneClick_Audit/SOURCE_ACCESS_STATUS.json` consemnează blocarea părții `autodata_part_0016.zip` prin HTTP 403 `cannotDownloadAbusiveFile`. Partea 0016 conține executabile/DLL-uri/instalatoare/keygen și documente auxiliare; **nu conține .IDF**. Nu am reîncercat, executat sau ocolit blocarea ei.
 
-## GitHub code review and changes
+- Integritatea celor **39 de intrări** din ZIP 0016 rămâne **NEVERIFICATĂ**.
+- SHA-256 al arhivei RAR originale `e82235c262ea401c2f4609b1480787dbe05a953a6cf57f767d5c3465353267da` este doar raportat de manifest, nu recalculat din RAR-ul original.
+- Niciun program original, activator, keygen, DLL, CMD, BAT sau VBS nu a fost executat.
 
-Branch: `autodata-colab-20261030`.
+## Inspecție statică a conținutului
 
-1. Notebook `notebooks/autodata_3_45_static_audit.ipynb` retains the fixed Drive API `pageSize` parameter (not the invalid `page_size`).
-2. The known provider-blocked part 0016 is explicitly skipped. Other downloads are attempted only via normal authenticated Drive access; partial files are discarded and their size is checked against Drive metadata.
-3. A **manifest-only structural audit** was added so useful evidence is available despite blocked ZIPs.
-4. Reports include `manifest_structural_audit.json` and `manifest_structural_errors.csv`; report uploads update existing file names instead of endlessly duplicating them.
-5. A self-contained synthetic test `tests/test_autodata_static_notebook.py` and GitHub Actions workflow `.github/workflows/autodata-static-audit-tests.yml` were added. This test is intended to detect syntax errors, bad chunk hashes and regressions using **synthetic** files, not original executable content.
+XML analizate prin `defusedxml`:
 
-## Status and acceptance criteria
-
-| Gate | State | Pass requirement |
+| Fișier | Rădăcină XML | Rezultat |
 |---|---|---|
-| Drive listing metadata | PASS | 16 unique nonempty ZIP names present |
-| Manifest internal consistency | PASS | Counts, sizes, chunk order and references consistent |
-| Original RAR byte-for-byte SHA256 | NOT VERIFIED | Actual original archive independently hashed if legitimately accessible |
-| Raw ZIP contents | NOT VERIFIED | Ordinary downloads and chunk SHA256 comparisons on each accessible ZIP |
-| Known-blocked part 0016 | BLOCKED | Preserve explicit provider refusal; do not bypass |
-| Notebook publication and readback | PASS | Notebook exists at exact GitHub branch/path |
-| Notebook execution with real Drive data | NOT VERIFIED | User starts Colab Run all and reports are written |
-| Automated synthetic CI result | NOT VERIFIED | Passing GitHub Actions job; workflow exists but no successful run confirmed |
-| IDF structure decoded | NOT ESTABLISHED | Independent repeatable parser proof on accessible sample data |
-| Windows application outcome | OUT OF SCOPE | This phase targets the original archive, not an app build |
+| `COMMON/distinfo.xml` | `Distributors` | 53 de noduri `Distributor` |
+| `ENG/country.xml` | `Countries` | 24 de noduri `country` |
+| `ENG/string.xml` | `AllText` | 2.167 noduri `Text` |
 
-## Next execution
+Analiza primilor 4096 octeți din fiecare `.IDF` a identificat o mediană a entropiei de aproximativ **7,954 biți/octet**; această distribuție este **compatibilă cu date comprimate sau criptate**, dar nu stabilește algoritmul ori formatul. Nu există încă un parser demonstrat. Există prefixe comune pentru anumite perechi (`SGINT.IDF`/`SGOPS.IDF`, 38 octeți; `MIDLINKS.IDF`/`RTINCJOB.IDF`, 20 octeți; `TDGRAPH.IDF`/`SD.IDF`, 20 octeți). Acestea sunt **indicii pentru cercetare**, nu dovezi de decodare.
 
-Notebook: https://colab.research.google.com/github/tzn5-web/leno/blob/autodata-colab-20261030/notebooks/autodata_3_45_static_audit.ipynb
+## Starea reală
 
-The next **user-initiated** action is to open a fresh notebook version, authenticate Drive and select **Runtime → Run all**. Reports should be written to an `Autodata_3_45_ANALYSIS` folder (created in the source folder when allowed, otherwise in My Drive). After the first complete report, prioritize accessible COMMON/ENG IDF headers and safely parsed XML, then develop documented hypotheses and tests without asserting undocumented format semantics.
+| Criteriu | Stare |
+|---|---|
+| 16/16 ZIP prezente în Drive | PASS (metadate) |
+| 15 ZIP-uri accesibile, hashuri reale | **124/124 PASS** |
+| Toate cele 81 .IDF — integritate hash | **PASS** |
+| XML static | **3/3 parser PASS** |
+| ZIP 0016 | BLOCKED (provider), **39 intrări neverificate** |
+| RAR original SHA-256 | NEVERIFICAT |
+| Format/cheie/decodare .IDF | NEDEMONSTRAT |
+| Funcționarea aplicației Autodata originale | NEDEMONSTRAT |
+| Notebook Colab | Publicat; nu mai este necesar pentru a recalcula cele 124 hashuri deja verificate direct |
+| GitHub Actions test sintetic | Configurat; fără rezultat PASS observat |
 
-This report distinguishes manifest validation from byte verification and records the known provider block rather than working around it.
+## Direcția exactă
+
+**Nu se începe o aplicație nouă.** Următorul pas tehnic este să cercetăm **structura reală a IDF** folosind fișierele deja verificate, fără a executa aplicațiile sau activatoarele originale. Priorități: antete și segmente cu prefixe comune, detectarea tipurilor de containere cunoscute, corelarea fișierelor COMMON/ENG/GRAPHICS, documentarea strictă a ipotezelor, teste repetabile. Dacă formatul rămâne criptat/proprietar, se raportează explicit această limită; nu se pretinde funcționare 1:1 fără probe.
+
+Notebook: https://github.com/tzn5-web/leno/blob/autodata-colab-20261030/notebooks/autodata_3_45_static_audit.ipynb
