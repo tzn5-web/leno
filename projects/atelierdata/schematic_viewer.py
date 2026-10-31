@@ -77,7 +77,11 @@ def list_schematic_articles(store, vehicle_id, search=""):
 
 def get_schematic_reference(store, vehicle_id, article_id):
     """Resolve only a same-vehicle, user-owned schematic; reject unrelated articles."""
-    if isinstance(article_id, bool) or not isinstance(article_id, int) or article_id <= 0:
+    # SQLite binds True as 1 and accepts integral floats. Never allow an
+    # untyped caller to select another vehicle or article implicitly.
+    if type(vehicle_id) is not int or vehicle_id <= 0:
+        raise ValueError("Invalid schematic vehicle ID")
+    if type(article_id) is not int or article_id <= 0:
         raise ValueError("Invalid schematic article ID")
     row = store.db.execute(
         "SELECT id,vehicle_id,category,title,source FROM articles "
@@ -112,6 +116,10 @@ def open_schematics_window(app, editor_class, selected_article_id=None, vehicle_
     if vehicle_id is None:
         messagebox.showinfo("Vehicul necesar", "Selectează un vehicul.")
         return None
+    # Reject invalid vehicle IDs before creating a window, even when the
+    # caller did not request navigation to a particular article.
+    if type(vehicle_id) is not int or vehicle_id <= 0:
+        raise ValueError("Invalid schematic vehicle ID")
     if selected_article_id is not None:
         get_schematic_reference(app.db, vehicle_id, selected_article_id)
 

@@ -49,6 +49,22 @@ class ProcedureSchematicNavigationTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     get_schematic_reference(self.store, self.car, ref)
 
+    def test_reference_rejects_untyped_vehicle_and_article_ids_without_db_changes(self):
+        before = self.store.db.total_changes
+        for invalid in (True, False, float(self.car), str(self.car), 0, -1):
+            with self.subTest(vehicle=repr(invalid)):
+                with self.assertRaises(ValueError):
+                    get_schematic_reference(self.store, invalid, self.schematic)
+        for invalid in (True, False, float(self.schematic),
+                        str(self.schematic), 0, -1):
+            with self.subTest(article=repr(invalid)):
+                with self.assertRaises(ValueError):
+                    get_schematic_reference(self.store, self.car, invalid)
+        self.assertEqual(self.store.db.total_changes, before)
+        self.assertEqual(
+            get_schematic_reference(self.store, self.car, self.schematic)["id"],
+            self.schematic)
+
     def test_step_link_to_verified_image_and_deletion(self):
         image_path = self.root / "synthetic.png"
         Image.new("RGB", (32, 16), (40, 60, 80)).save(image_path)

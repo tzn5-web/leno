@@ -35,6 +35,17 @@ def main():
             attachment = attach_document(store, article, image_path)
             app = SimpleNamespace(tk=tk, root=root, db=store, vid=vehicle,
                                   refresh=lambda: None)
+            # A stale/untyped vehicle ID must fail before Tk creates a popup.
+            with patch("tkinter.Toplevel") as popup:
+                for bad in (True, float(vehicle), str(vehicle), 0):
+                    try:
+                        open_schematics_window(
+                            app, lambda *_: None, vehicle_id=bad)
+                    except ValueError:
+                        pass
+                    else:
+                        raise AssertionError("Invalid vehicle ID accepted")
+                popup.assert_not_called()
             viewer = open_schematics_window(
                 app, lambda *_: None, selected_article_id=article)
             root.update()
