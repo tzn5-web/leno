@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from repair_export import export_procedure_html,export_procedures_json
 from procedure_audit import audit_procedure, get_step_reference
+from procedure_search_hits import list_procedure_hits
 from repair_procedures import (
     add_step, create_procedure, delete_procedure, delete_step, get_procedure,
     list_procedures, list_steps, list_reference_articles, move_step, procedure_text, update_procedure, update_step
@@ -57,6 +58,8 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
               wraplength=290).pack(anchor="w",pady=(0,8))
     search_notice=tk.StringVar(value="")
     ttk.Label(left,textvariable=search_notice,wraplength=290).pack(anchor="w")
+    ttk.Button(left,text="Rezultate detaliate → pas",command=lambda:open_search_hits()
+               ).pack(anchor="w",pady=(4,7))
     procedures=ttk.Treeview(left,show="tree")
     procedures.pack(fill="both",expand=True,padx=(0,12))
     ttk.Label(right,text="PAȘI ÎN ORDINEA EXECUȚIEI").pack(anchor="w",pady=(0,5))
@@ -122,6 +125,77 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
 
     procedures.bind("<<TreeviewSelect>>",selection)
     search.trace_add("write",lambda *_:refresh_proc())
+
+    def open_search_hits():
+        """List exact match locations and jump to a verified same-vehicle step."""
+        try:
+            hits=list_procedure_hits(app.db,vehicle_id,search.get())
+        except ValueError as exc:
+            messagebox.showinfo("Căutare detaliată",str(exc),parent=top)
+            return None
+        popup=tk.Toplevel(top)
+        popup.title("Rezultate căutare — proceduri și pași")
+        popup.geometry("1080x540")
+        popup.minsize(740,360)
+        popup.transient(top)
+        box=ttk.Frame(popup,padding=12)
+        box.pack(fill="both",expand=True)
+        ttk.Label(box,text=f"{len(hits)} potriviri pentru «{search.get()}»",
+                  font=("Segoe UI Semibold",12)).pack(anchor="w",pady=(0,7))
+        ttk.Label(box,text="Rezultatele sunt din documentația locală, cu proveniență și vehicul verificate."
+                  ).pack(anchor="w",pady=(0,7))
+        columns=("procedure","step","field","excerpt","source")
+        table=ttk.Treeview(box,columns=columns,show="headings",selectmode="browse")
+        for key,title,width in zip(columns,
+                ("Procedură","Pas","Câmp","Fragment găsit","Proveniență"),
+                (190,45,160,420,190)):
+            table.heading(key,text=title)
+            table.column(key,width=width,minwidth=40,stretch=True)
+        table.pack(fill="both",expand=True)
+        for index,hit in enumerate(hits):
+            table.insert("","end",iid=str(index),values=(
+                hit["procedure_title"],
+                hit["step_number"] if hit["step_number"] is not None else "—",
+                hit["field"],hit["excerpt"],hit["source"]))
+        def go_to_hit(event=None):
+            selected=table.selection()
+            if not selected:return None
+            hit=hits[int(selected[0])]
+            procedure=get_procedure(app.db,hit["procedure_id"])
+            if procedure is None or procedure["vehicle_id"]!=vehicle_id:
+                messagebox.showerror("Referință invalidă",
+                    "Procedura nu mai aparține vehiculului selectat.",parent=popup)
+                return None
+            sid=hit["step_id"]
+            if sid is not None:
+                exists=app.db.db.execute(
+                    "SELECT 1 FROM procedure_steps WHERE id=? AND procedure_id=?",
+                    (sid,hit["procedure_id"])).fetchone()
+                if exists is None:
+                    messagebox.showerror("Referință invalidă",
+                        "Pasul nu mai aparține procedurii.",parent=popup)
+                    return None
+            refresh_proc(hit["procedure_id"])
+            if not procedures.exists(str(hit["procedure_id"])):
+                messagebox.showinfo("Căutare modificată",
+                    "Procedura nu mai corespunde filtrului curent.",parent=popup)
+                return None
+            procedures.selection_set(str(hit["procedure_id"]))
+            procedures.see(str(hit["procedure_id"]))
+            state["pid"]=hit["procedure_id"]
+            refresh_steps(sid)
+            if sid is not None and steps.exists(str(sid)):
+                steps.selection_set(str(sid))
+                steps.see(str(sid))
+            top.lift()
+            return hit
+        table.bind("<Double-1>",go_to_hit)
+        ttk.Button(box,text="Deschide potrivirea selectată",command=go_to_hit
+                   ).pack(anchor="w",pady=(9,0))
+        popup.hits_tree=table
+        popup.go_to_hit=go_to_hit
+        popup.hits=hits
+        return popup
 
     def procedure_form(edit):
         current=get_procedure(app.db,state["pid"]) if edit and state["pid"] else None
@@ -451,6 +525,7 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
     top.procedures_tree=procedures
     top.procedure_search_var=search
     top.procedure_search_notice=search_notice
+    top.open_search_hits=open_search_hits
     top.steps_tree=steps
     top.open_reference_picker=choose_reference
     top.open_schematic_reference=open_schematic_reference
