@@ -724,6 +724,7 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
     top.procedure_search_notice=search_notice
     top.open_search_hits=open_search_hits
     top.steps_tree=steps
+    top.procedure_detail_text=detail
     top.refresh_steps=refresh_steps
     top.move_selected_step=step_move
     top.open_reference_picker=choose_reference
