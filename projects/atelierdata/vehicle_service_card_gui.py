@@ -7,6 +7,7 @@ from __future__ import annotations
 from tkinter import ttk,messagebox,simpledialog
 import tkinter as tk
 from vehicle_service_card import FIELD_DATA,SECTIONS,card,add_value,edit_value,delete_value
+from vehicle_service_card_export import export_vehicle_card_html
 
 def open_vehicle_service_card(app):
     vid=app.vid
@@ -163,11 +164,27 @@ def open_vehicle_service_card(app):
                                parent=win):
             try:delete_value(app.db,vid,chosen[1]["id"]);refresh()
             except Exception as exc:messagebox.showerror("Ștergere",str(exc),parent=win)
+    def save_printable():
+        from tkinter import filedialog
+        path=filedialog.asksaveasfilename(parent=win,defaultextension=".html",
+              filetypes=[("HTML pentru imprimare","*.html")],
+              initialfile="AtelierData_fisa_vehicul.html")
+        if not path:return
+        try:
+            summary=export_vehicle_card_html(app.db,vid,path)
+            messagebox.showinfo("Fișă exportată",
+                f"Fișă salvată: {summary['path']}\n"
+                f"Câmpuri cu date documentate: {summary['sourced']}/{summary['fields']}",
+                parent=win)
+        except Exception as exc:
+            messagebox.showerror("Export",str(exc),parent=win)
+
     buttons=ttk.Frame(root);buttons.pack(fill="x",pady=(6,0))
     ttk.Button(buttons,text="Adaugă / editează valoare",command=edit_dialog).pack(side="left")
     ttk.Button(buttons,text="+ Variantă alternativă",command=add_alternative).pack(side="left",padx=8)
     ttk.Button(buttons,text="Șterge valoare",command=delete_selected).pack(side="left")
     ttk.Button(buttons,text="Reîncarcă",command=refresh).pack(side="left",padx=8)
+    ttk.Button(buttons,text="Exportă fișa HTML",command=save_printable).pack(side="left")
     ttk.Button(buttons,text="Închide",command=win.destroy).pack(side="right")
     tree.bind("<<TreeviewSelect>>",view_selected)
     search.trace_add("write",lambda *_:refresh())
