@@ -180,13 +180,23 @@ def list_library(store,make="",model="",engine="",year="",category="",query="",
     if only_indexed:sql+=" AND lib.attachment_id IS NOT NULL"
     q=_clean(query,"Căutare",limit=150)
     if q:
-        like="%"+q.replace("\\","\\\\").replace("%","\\%").replace("_","\\_")+"%"
-        sql+=(r""" AND (v.make LIKE ? ESCAPE '\' OR v.model LIKE ? ESCAPE '\'
-         OR v.engine LIKE ? ESCAPE '\' OR art.title LIKE ? ESCAPE '\'
-         OR COALESCE(lib.display_title,'') LIKE ? ESCAPE '\'
-         OR COALESCE(lib.source_name,'') LIKE ? ESCAPE '\'
-         OR COALESCE(lib.applicability_note,'') LIKE ? ESCAPE '\')""")
-        params.extend([like]*7)
+        # SQLite LIKE only folds ASCII case; this matches the Unicode-aware
+        # procedure search and treats '%'/'_' as ordinary document text.
+        # Bind the needle separately: never interpolate user input into SQL.
+        store.db.create_function(
+            "atelierdata_library_contains", 2,
+            lambda value, needle: int(isinstance(value, str)
+                                      and isinstance(needle, str)
+                                      and needle.casefold() in value.casefold()),
+            deterministic=True)
+        sql+=(""" AND (atelierdata_library_contains(v.make, ?)
+         OR atelierdata_library_contains(v.model, ?)
+         OR atelierdata_library_contains(v.engine, ?)
+         OR atelierdata_library_contains(art.title, ?)
+         OR atelierdata_library_contains(lib.display_title, ?)
+         OR atelierdata_library_contains(lib.source_name, ?)
+         OR atelierdata_library_contains(lib.applicability_note, ?))""")
+        params.extend([q]*7)
     sql+=" ORDER BY v.make,v.model,v.engine,COALESCE(lib.display_title,art.title),att.id"
     rows=[dict(r) for r in store.db.execute(sql,params)]
     # A model year is not identical to a year range. Filter the vehicle's exact
