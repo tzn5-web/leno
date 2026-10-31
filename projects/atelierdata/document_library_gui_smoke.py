@@ -21,7 +21,7 @@ def main():
             vid=store.add_vehicle("Mitsubishi","Lancer","4A91","2008","Benzina")
             doc=Path(directory)/"example.pdf"
             doc.write_bytes(b"%PDF-1.4\n%%EOF\n")
-            import_local_file(store,vid,doc,"Manual de atelier","Synthetic 4A91",
+            import_local_file(store,vid,doc,"Manual de atelier","Straße %_ 4A91",
                               "Local synthetic fixture",rights_basis="document_propriu")
             app=TestApp(root,store,vid)
             win=open_document_library(app)
@@ -33,6 +33,15 @@ def main():
             win.library_search.set("Not found fixture")
             root.update_idletasks()
             assert len(win.library_tree.get_children())==0
+            win.library_search.set("STRASSE")
+            root.update_idletasks()
+            assert len(win.library_tree.get_children())==1, "Unicode search must find Straße"
+            win.library_search.set("%_")
+            root.update_idletasks()
+            assert len(win.library_tree.get_children())==1, "Percent/underscore are literal"
+            win.library_search.set("STRASSE%")
+            root.update_idletasks()
+            assert len(win.library_tree.get_children())==0, "Search must not expand SQL wildcards"
             win.library_search.set("4A91")
             root.update_idletasks()
             assert len(win.library_tree.get_children())==1
