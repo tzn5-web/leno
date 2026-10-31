@@ -12,7 +12,6 @@ import json
 import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
 
 SCHEMA = "atelierdata-original-windows-authenticode-gate-v1"
@@ -76,9 +75,13 @@ def read_windows_signature(path: Path) -> dict:
     """Use Windows trust APIs via PowerShell; never invoke the target file."""
     if os.name != "nt":
         raise RuntimeError("Authenticode trust verification requires Windows")
-    shell = shutil.which("powershell.exe") or shutil.which("pwsh.exe")
-    if shell is None:
-        raise RuntimeError("PowerShell is not available")
+    # Use the OS-owned binary, not a PATH-search result from an untrusted folder.
+    windows_root = os.environ.get("SystemRoot") or os.environ.get("WINDIR")
+    if not windows_root:
+        raise RuntimeError("Windows system root is not available")
+    shell = Path(windows_root) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    if not shell.is_file():
+        raise RuntimeError("System PowerShell is not available")
     env = os.environ.copy()
     env["ATELIERDATA_SIGNATURE_TARGET"] = str(path)
     run = subprocess.run(
