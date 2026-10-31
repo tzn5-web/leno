@@ -70,7 +70,7 @@ def next_hit_index(hit_count, current_index=None, direction=1):
     return (current_index + direction) % hit_count
 
 
-def list_procedure_hits(store, vehicle_id, search, limit=DEFAULT_LIMIT, offset=0):
+def list_procedure_hits(store, vehicle_id, search, limit=DEFAULT_LIMIT, offset=0, field=None):
     """Find literal matches with exact step IDs and verified vehicle provenance.
 
     Each matching procedure metadata field yields a hit without a step ID.
@@ -86,6 +86,9 @@ def list_procedure_hits(store, vehicle_id, search, limit=DEFAULT_LIMIT, offset=0
         raise ValueError("Limită invalidă")
     if isinstance(offset, bool) or not isinstance(offset, int) or not 0 <= offset <= 1000000:
         raise ValueError("Invalid search offset")
+    valid_fields = {label for _, label in (*PROCEDURE_FIELDS, *STEP_FIELDS)}
+    if field is not None and field not in valid_fields:
+        raise ValueError('Invalid search field')
     # Reuse the canonical literal SQL search and its vehicle/length validation.
     procedures = list_procedures(store, vehicle_id, search)
     needle = search.casefold()
@@ -94,6 +97,8 @@ def list_procedure_hits(store, vehicle_id, search, limit=DEFAULT_LIMIT, offset=0
 
     def collect(hit):
         nonlocal seen
+        if field is not None and hit['field'] != field:
+            return False
         if seen >= offset:
             results.append(hit)
         seen += 1
