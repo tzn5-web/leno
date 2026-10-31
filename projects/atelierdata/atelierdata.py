@@ -769,6 +769,23 @@ def main():
                         'DELETE FROM procedure_steps WHERE procedure_id=?'
                         ' AND instruction=?',(pid,'PAGED-UI synthetic step'))
                     ui.db.db.commit()
+                    # Windows GUI integration: a Unicode match spanning a
+                    # line break must be visible in the selected result row.
+                    multiline_sid=add_step(
+                        ui.db,pid,'LINEBREAK-UI synthetic step',
+                        safety_note='x'*240+'Straße\nWARN-UI'+'z'*100)
+                    window.procedure_search_var.set('STRASSE\nwarn-ui')
+                    multiline=window.open_search_hits()
+                    if multiline is None or len(multiline.hits)!=1:
+                        raise RuntimeError('PROCEDURES_GUI_MULTILINE_SEARCH_FAILED')
+                    if 'Straße WARN-UI' not in multiline.hits[0]['excerpt']:
+                        raise RuntimeError('PROCEDURES_GUI_MULTILINE_EXCERPT_FAILED')
+                    if len(multiline.hits_tree.get_children())!=1:
+                        raise RuntimeError('PROCEDURES_GUI_MULTILINE_ROW_MISSING')
+                    multiline.destroy()
+                    ui.db.db.execute(
+                        'DELETE FROM procedure_steps WHERE id=?',(multiline_sid,))
+                    ui.db.db.commit()
                     window.procedure_search_var.set('100%_')
                     hits=window.open_search_hits()
                     if hits is None or not hits.winfo_exists():
