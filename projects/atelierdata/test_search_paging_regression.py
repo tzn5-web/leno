@@ -18,6 +18,14 @@ class SearchPagingRegression(unittest.TestCase):
         self.assertEqual(indices[next_hit_index(len(indices), 1, 1)], 0)
         self.assertEqual(indices[next_hit_index(len(indices), 0, -1)], 2)
 
+    def test_unicode_casefold_excerpt_offsets(self):
+        # Earlier expansion must not shift the match or cut its first letter.
+        self.assertEqual(_excerpt("ß abcneedle", "needle", radius=0), "needle")
+        # A casefold match can span fewer original characters than the query.
+        self.assertEqual(_excerpt("Straße", "SSE", radius=0), "ße")
+        self.assertEqual(_excerpt("İstanbul", "stan", radius=0), "stan")
+        self.assertEqual(_excerpt("abc", "missing", radius=2), "abc")
+
     def test_excerpt_preserves_literal_match(self):
         self.assertIn("100%_", _excerpt("prefix 100%_ suffix", "100%_"))
 
