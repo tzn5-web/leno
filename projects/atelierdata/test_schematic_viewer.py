@@ -36,7 +36,7 @@ class SchematicViewerTests(unittest.TestCase):
         self.store.add_article(
             self.second,"Scheme electrice","STRASSE 100%_",
             "Notă de test","Licență TEST")
-        for query in ("STRASSE", "100%_", "istanbul", "LICENȚĂ"):
+        for query in ("STRASSE", "100%_", "İSTANBUL", "LICENȚĂ"):
             with self.subTest(query=query):
                 before=self.store.db.total_changes
                 matches=list_schematic_articles(self.store,self.vehicle,query)
@@ -44,7 +44,7 @@ class SchematicViewerTests(unittest.TestCase):
                 self.assertEqual(self.store.db.total_changes,before)
         self.assertEqual(list_schematic_articles(self.store,self.vehicle,"100%X"),[])
         self.assertEqual(list_schematic_articles(self.store,self.vehicle,"100_X"),[])
-        for bad in (None, 1, True, "x"*201, "bad\\0search"):
+        for bad in (None, 1, True, "x"*201, "bad\0search"):
             with self.subTest(invalid=repr(bad)):
                 with self.assertRaises(ValueError):
                     list_schematic_articles(self.store,self.vehicle,bad)
