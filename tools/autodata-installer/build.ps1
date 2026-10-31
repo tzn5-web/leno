@@ -5,6 +5,7 @@ param(
     [Parameter(Mandatory = $true)][string]$PayloadRoot,
     [Parameter(Mandatory = $true)][string]$Inventory,
     [switch]$AuthorizedUseConfirmed,
+    [Parameter(Mandatory = $true)][string]$ReviewRecord,
     [string]$OutputDir = (Join-Path $PSScriptRoot 'dist'),
     [string]$Python = 'python'
 )
@@ -15,10 +16,20 @@ $iss = Join-Path $PSScriptRoot 'installer.iss'
 $stager = Join-Path $PSScriptRoot 'prepare_payload.py'
 $verifier = Join-Path $PSScriptRoot 'verify_original_manifest.py'
 $allowlist = Join-Path $PSScriptRoot 'payload-allowlist.json'
+$gate = Join-Path $PSScriptRoot 'release_gate.py'
 $stage = Join-Path ([IO.Path]::GetTempPath()) ('autodata-stage-' + [guid]::NewGuid().ToString('N'))
 if (-not $AuthorizedUseConfirmed) {
     throw 'AuthorizedUseConfirmed is required: only package files you are legally entitled to use.'
 }
+# Fail closed on source/license/install/version review before any packaging operation.
+# This attestation is required but is not a substitute for real vendor proof.
+$record = (Resolve-Path -LiteralPath $ReviewRecord -ErrorAction Stop).Path
+$publicCheckout = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
+if ($record.StartsWith($publicCheckout + '\', [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'PRIVATE_REVIEW_RECORD_MUST_BE_OUTSIDE_REPOSITORY'
+}
+& $Python $gate --record $record --stage build
+if ($LASTEXITCODE -ne 0) { throw 'SOURCE_AND_LICENSE_REVIEW_INCOMPLETE' }
 $root = (Resolve-Path -LiteralPath $PayloadRoot -ErrorAction Stop).Path
 if ([IO.Path]::GetFileName($root).Equals('ADCDA2', [StringComparison]::OrdinalIgnoreCase)) {
     $root = Split-Path -Parent $root
