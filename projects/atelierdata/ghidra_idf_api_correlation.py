@@ -43,6 +43,10 @@ def correlate(idf_report, api_report, expected_sha256):
     api_symbols = api_report.get("api_symbols")
     if not isinstance(hits, dict) or not isinstance(api_symbols, dict):
         raise ValueError("Missing Ghidra xref collections")
+    scan_truncated = api_report.get("symbol_scan_truncated", False)
+    if type(scan_truncated) is not bool:
+        raise ValueError("Invalid API scan truncation flag")
+    truncated_symbol_refs = 0
     idf_functions = set()
     api_functions = set()
     api_code_functions = set()
@@ -75,6 +79,10 @@ def correlate(idf_report, api_report, expected_sha256):
         for symbol in symbols:
             if not isinstance(symbol, dict) or not isinstance(symbol.get("references"), list):
                 raise ValueError("Invalid API symbol")
+            refs_truncated = symbol.get("references_truncated", False)
+            if type(refs_truncated) is not bool:
+                raise ValueError("Invalid API reference truncation flag")
+            truncated_symbol_refs += int(refs_truncated)
             for ref in symbol["references"]:
                 if not isinstance(ref, dict):
                     raise ValueError("Invalid API reference")
@@ -93,6 +101,8 @@ def correlate(idf_report, api_report, expected_sha256):
         "source_sha256_claims_match": True,
         "idf_reference_count": idf_refs,
         "api_reference_count": api_refs,
+        "api_scan_or_reference_coverage_truncated": scan_truncated or bool(truncated_symbol_refs),
+        "api_symbols_with_truncated_references": truncated_symbol_refs,
         "idf_referencing_functions": len(idf_functions),
         "api_referencing_functions": len(api_functions),
         "api_call_or_jump_functions": len(api_code_functions),
@@ -100,7 +110,7 @@ def correlate(idf_report, api_report, expected_sha256):
         "shared_idf_and_api_call_or_jump_functions": len(idf_functions & api_code_functions),
         "target_executed": False,
         "idf_decoder_proven": False,
-        "limitations": ("Static, incomplete Ghidra xrefs. A shared function is a "
+        "limitations": ("Static, potentially truncated Ghidra xrefs. A shared function is a "
                         "triage candidate, not proof of file access or decoding. "
                         "Dynamically resolved calls and indirect edges may be missed.")
     }
