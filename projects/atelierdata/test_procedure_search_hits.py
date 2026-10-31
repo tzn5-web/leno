@@ -38,6 +38,17 @@ class ProcedureSearchHitTests(unittest.TestCase):
         return list_procedure_hits(
             self.db, self.car if vehicle is None else vehicle, query, limit=limit)
 
+    def test_search_hits_require_explicit_vehicle_scope(self):
+        # No missing or malformed scope may expose a second vehicle's steps.
+        before = self.db.db.total_changes
+        for invalid in (None, 0, -1, True, False, "1", 1.5, [], {}):
+            with self.subTest(vehicle_id=repr(invalid)), self.assertRaises(ValueError):
+                list_procedure_hits(self.db, invalid, "FOREIGN-STEP")
+        self.assertEqual(list_procedure_hits(self.db, self.car, "FOREIGN-STEP"), [])
+        other_hits = list_procedure_hits(self.db, self.other, "FOREIGN-STEP")
+        self.assertEqual([h["step_id"] for h in other_hits], [self.other_sid])
+        self.assertEqual(self.db.db.total_changes, before)
+
     def test_metadata_field_skips_step_document_queries(self):
         # A metadata-only search must not read large step/article bodies.
         statements = []
