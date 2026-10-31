@@ -667,6 +667,17 @@ def main():
                         raise RuntimeError('PROCEDURES_SEARCH_HITS_NAVIGATION_FAILED')
                     if window.steps_tree.selection()!=(str(step_id),):
                         raise RuntimeError('PROCEDURES_SEARCH_HITS_STEP_NOT_SELECTED')
+                    # The reference picker previously switched this step to
+                    # the synthetic second article. Verify direct hit-to-document
+                    # navigation opens that exact same-vehicle document.
+                    document=hits.open_hit_reference()
+                    if document is None or not document.winfo_exists():
+                        raise RuntimeError('PROCEDURES_SEARCH_HIT_DOCUMENT_NOT_OPENED')
+                    if document.reference_article_id!=second_article:
+                        raise RuntimeError('PROCEDURES_SEARCH_HIT_WRONG_DOCUMENT')
+                    if 'Date fictive' not in document.reference_text_widget.get('1.0','end'):
+                        raise RuntimeError('PROCEDURES_SEARCH_HIT_DOCUMENT_TEXT_MISSING')
+                    document.destroy()
                     hits.destroy()
                     window.procedure_search_var.set('')
                 ui.root.after(620,check_search_hits)
