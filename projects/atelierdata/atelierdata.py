@@ -14,6 +14,7 @@ from maintenance_plans import (ensure_schema as ensure_maintenance_schema,
                                add_plan, log_service)
 from maintenance_gui import open_maintenance_window
 from vpic_catalog_gui import open_vehicle_catalog
+from catalog_search import search_catalog,open_search_window
 from technical_sources_gui import open_sources_window
 
 CATEGORIES = ("Date tehnice","Întreținere","Motor","Distribuție","Cupluri de strângere",
@@ -222,6 +223,7 @@ class App:
                  ('Proceduri',self.procedures),('Scheme / imagini',self.schematics),
                  ('Diagnosticare DTC',self.diagnostics),('Întreținere',self.maintenance),
                  ('Catalog public NHTSA',self.public_catalog),('Surse tehnice online',self.online_sources),
+                 ('Căutare globală',self.global_search),
                  ('Analiză IDF',self.analyze)]
         for col in range(4):
             bar.columnconfigure(col,weight=1)
@@ -395,6 +397,9 @@ class App:
         from schematic_viewer import open_schematics_window
         return open_schematics_window(self,Editor)
 
+    def global_search(self):
+        return open_search_window(self)
+
     def procedures(self):
         from repair_procedures_gui import open_procedures_window
         return open_procedures_window(self,Editor)
@@ -548,6 +553,9 @@ def main():
     ap.add_argument('--export-specs')
     ap.add_argument('--list-specs',action='store_true')
     ap.add_argument('--search-specs',default='')
+    ap.add_argument('--search-all',default=None,help='Caută literal în toate modulele catalogului local')
+    ap.add_argument('--search-vehicle-id',type=int)
+    ap.add_argument('--search-limit',type=int,default=100)
     ap.add_argument('--export-procedures-json')
     ap.add_argument('--export-procedure-html')
     ap.add_argument('--procedure-id',type=int)
@@ -846,10 +854,17 @@ def main():
         print('RESTORE_ZIP=PASS database='+str(target));return 0
     if (args.export_json or args.import_records or args.check_db or args.backup_zip
         or args.import_specs or args.export_specs or args.list_specs
-        or args.export_procedures_json or args.export_procedure_html):
+        or args.export_procedures_json or args.export_procedure_html
+        or args.search_all is not None):
 
         store=Store(database)
         try:
+            if args.search_all is not None:
+                rows=search_catalog(store,args.search_all,vehicle_id=args.search_vehicle_id,
+                                    limit=args.search_limit)
+                print(json.dumps({'schema':'atelierdata-search-v1','results':rows},
+                                 ensure_ascii=False,indent=2))
+                return 0
             if args.export_procedures_json:
                 count=export_procedures_json(store,args.export_procedures_json)
                 print('EXPORT_PROCEDURES_JSON=PASS count='+str(count));return 0
