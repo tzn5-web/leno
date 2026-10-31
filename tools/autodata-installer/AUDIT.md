@@ -81,3 +81,31 @@ Nu există încă un EXE final care să instaleze și să activeze Autodata.
 Construirea unui EXE de instalare din fișierele originale este distinctă
 de recompilarea aplicației proprietare, al cărei cod-sursă lipsește.
 Activarea prin licență autentică rămâne obligatorie.
+
+## Continuare: delimitare instalator original vs analiză .IDF (31 octombrie 2026)
+
+**Proiect canonic:** `autodata-installer-20261030/tools/autodata-installer/`. Celălalt șablon `autodata-colab-20261030/tools/autodata-oneclick/` este păstrat numai istoric; proiectul `atelierdata-20261030` rămâne separat și **nu este Autodata originală**.
+
+**Îmbunătățiri de validare:** constructorul `build.ps1` cere un `-ReviewRecord` privat verificat de `release_gate.py`, care impune atestarea examinării autenticității sursei, a licenței emise legal, a instrucțiunilor originale, a dependențelor Sentinel, a diferenței CDA3.44/3.45 și distribuirea privată. În lipsa oricărei atestări, scriptul refuză construirea. Testele noi sunt sintetice; rezultatele ultimei rulari CI nu sunt încă confirmate.
+
+**Identitatea versiunii:** fișierul `COMMON/VERINFO.DAT`, citit inert din `autodata_part_0004.zip`, conține în cei 79 de octeți:
+
+```ini
+[PRODUCT INFORMATION]
+ProductCode=CDA3.44
+VersionNo=9.200
+ExpiryDate=42004
+```
+
+Numele arhivei este `Autodata__3.45.rar`, dar **nu se poate stabili doar din metadatele disponibile dacă '3.45' este aceeași ediție, o etichetă a pachetului sau un kit amestecat**. Eticheta pachetului Inno este acum **Autodata Original (licensed files; edition unverified)**, iar `AppVersion=0.1.0` descrie exclusiv șablonul, nu produsul Autodata.
+
+**Inspecție statică suplimentară `ADBCD.exe`**, citit exclusiv din ZIP 0001, SHA256 deja verificat față de manifest:
+
+- Există exact o apariție ASCII a `SentinelKeyW.DLL` la offsetul de fișier **17.718.897**, urmată de `gdiplus.dll` la **17.718.931**, ambele în secțiunea PE numerotată `0000013`.
+- Însă `SentinelKeyW.DLL` și `gdiplus.dll` **nu apar între cele patru DLL-uri importate static** în tabela PE clasică; relația funcțională poate fi indirectă și nu este încă trasată.
+- Referințele ASCII `cw3220mt.dll`, `libeay32.dll`, `ssleay32.dll`, `RelLic.dll` și `C:\\ADCDA2` **nu au fost găsite** în scanarea completă a bytes-ilor executabilului. Absența unui nume literal nu dovedește independența funcțională.
+- Lipsesc în continuare cinci DLL-uri din pachetul 0016 accesibil doar ca metadate. Nu se poate compila un original complet verificat din pachetele normale 0001–0015.
+
+**Calea de instalare:** exemplul `C:\\ADCDA2` și alegerea implicită a șablonului sunt ipoteze nevalidate, nu instrucțiuni oficiale. Nu am executat aplicația, driverele Sentinel, scripturile de registry sau vreun activator. Nu am ocolit blocările Google Drive și nu am încă un test de lansare Windows.
+
+**Criterii de finalizare rămase:** (1) surse complete, autentice și licențiate, accesibile printr-o cale autorizată; (2) toate SHA256 pentru cele 105 fișiere originale; (3) documentație legitimă privind calea instalării, dependențele și activarea; (4) test Windows izolat de instalare, lansare, acces date și dezinstalare; (5) compilare și revizuire a pachetului final. Un PASS cu fixture sintetic nu îndeplinește aceste criterii.
