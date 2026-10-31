@@ -5,9 +5,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from atelierdata_extensions import _SAFE_NAME, resolve_document
 
-MAX_DOCUMENT = 32 * 1024 * 1024
+MAX_DOCUMENT = 128 * 1024 * 1024
 MAX_DATABASE = 256 * 1024 * 1024
-MAX_TOTAL = 512 * 1024 * 1024
+MAX_TOTAL = 2 * 1024 * 1024 * 1024
 
 
 def _sha(path):
@@ -48,11 +48,11 @@ def backup_bundle(store, destination):
             if not _SAFE_NAME.fullmatch(name):
                 raise ValueError('Atașament vechi fără cale administrată: ' + name)
             path = resolve_document(store, attachment_id)
-            if path.stat().st_size > MAX_DOCUMENT:
+            if path.stat().st_size > (MAX_DOCUMENT if path.suffix.lower()=='.pdf' else 32*1024*1024):
                 raise ValueError('Atașament prea mare')
             total += path.stat().st_size
             if total > MAX_TOTAL:
-                raise ValueError('Backup depășește 512 MiB')
+                raise ValueError('Backup depășește 2 GiB')
             documents[name] = path
         fd, temp_zip = tempfile.mkstemp(prefix='.atelierdata-backup-', suffix='.zip',
                                         dir=str(destination.parent))
@@ -110,14 +110,14 @@ def restore_bundle(archive_path, new_directory):
             raise ValueError('Fișiere neașteptate sau duplicate în ZIP')
         total = 0
         for info in archive.infolist():
-            limit = MAX_DATABASE if info.filename == 'database.sqlite3' else MAX_DOCUMENT
+            limit = MAX_DATABASE if info.filename == 'database.sqlite3' else (MAX_DOCUMENT if info.filename.lower().endswith('.pdf') else 32*1024*1024)
             if info.filename == 'manifest.json':
                 limit = 1024 * 1024
             if info.file_size > limit:
                 raise ValueError('Fișier depășește limita permisă')
             total += info.file_size
         if total > MAX_TOTAL:
-            raise ValueError('Arhiva depășește 512 MiB decomprimat')
+            raise ValueError('Arhiva depășește 2 GiB decomprimat')
         with tempfile.TemporaryDirectory(prefix='.atelierdata-restore-',
                                           dir=str(destination.parent)) as temp:
             staging = Path(temp)
