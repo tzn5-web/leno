@@ -24,7 +24,7 @@ The owner's `TRANSFER_FINALIZAT.txt` records the archive SHA256 as `e82235c262ea
 ## Concrete changes
 
 - Added `original_windows_path_gate.py`: metadata-only TXT/JSON validator, aggregate JSON output, Windows filename checks, rejects accidental overwrite of the input. It never opens archive contents.
-- Added 10 synthetic regression tests covering case collisions, path traversal, Windows device names, invalid characters, long paths, TXT/JSON parsing and output safety.
+- Added 11 synthetic regression tests covering case collisions, path traversal, Windows device names, invalid characters, long paths, TXT/JSON parsing and output safety, and empty-inventory rejection.
 - Fixed `original_archive_preflight.audit()` to **skip `autodata_part_0016.zip` unconditionally at the base reader layer**, including if the file appears on disk. This closes a gap where direct invocation of the lower-level preflight (as opposed to the stricter integrity gate) could otherwise have opened the malware-flagged package.
 - Added a synthetic regression test with a deliberately invalid file named `autodata_part_0016.zip`, proving the reader reports it missing without calling `zipfile.ZipFile`.
 
