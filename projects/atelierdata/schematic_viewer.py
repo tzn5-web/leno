@@ -53,12 +53,25 @@ def fit_zoom(width, height, viewport_width, viewport_height):
 
 
 def list_schematic_articles(store, vehicle_id, search=""):
+    """Vehicle-scoped, literal Unicode search; never interpret SQL wildcards."""
+    if type(vehicle_id) is not int or vehicle_id <= 0:
+        raise ValueError("Invalid schematic vehicle ID")
+    if not isinstance(search, str) or len(search) > 200 or "\\0" in search:
+        raise ValueError("Invalid schematic search")
     query = ("SELECT id,vehicle_id,category,title,content,source FROM articles WHERE "
              "vehicle_id=? AND category IN (?,?)")
     params = [vehicle_id, *SCHEME_CATEGORIES]
     if search:
-        query += " AND (title LIKE ? OR content LIKE ? OR source LIKE ?)"
-        params += ["%" + search + "%"] * 3
+        store.db.create_function(
+            "atelierdata_schematic_contains", 2,
+            lambda value, term: int(isinstance(value, str)
+                                    and isinstance(term, str)
+                                    and term.casefold() in value.casefold()),
+            deterministic=True)
+        query += (" AND (atelierdata_schematic_contains(title, ?) "
+                  "OR atelierdata_schematic_contains(content, ?) "
+                  "OR atelierdata_schematic_contains(source, ?))")
+        params.extend((search, search, search))
     return store.db.execute(query + " ORDER BY category,title,id", params).fetchall()
 
 
@@ -73,6 +86,21 @@ def get_schematic_reference(store, vehicle_id, article_id):
     if row is None:
         raise ValueError("Schematic not found for the selected vehicle")
     return row
+
+
+def resolve_schematic_attachment(store, vehicle_id, article_id, attachment_id):
+    """Recheck article/vehicle/attachment membership at open time, then SHA256."""
+    if any(type(identifier) is not int or identifier <= 0
+           for identifier in (vehicle_id, article_id, attachment_id)):
+        raise ValueError("Invalid schematic attachment reference")
+    row = store.db.execute(
+        "SELECT t.id FROM attachments t JOIN articles a ON a.id=t.article_id "
+        "WHERE t.id=? AND a.id=? AND a.vehicle_id=? "
+        "AND a.category IN (?,?)",
+        (attachment_id, article_id, vehicle_id, *SCHEME_CATEGORIES)).fetchone()
+    if row is None:
+        raise ValueError("Attachment no longer belongs to the selected schematic")
+    return resolve_document(store, attachment_id)
 
 
 def open_schematics_window(app, editor_class, selected_article_id=None, vehicle_id=None):
@@ -147,7 +175,12 @@ def open_schematics_window(app, editor_class, selected_article_id=None, vehicle_
 
     def refresh_schematics(prefer=None):
         schematics.delete(*schematics.get_children())
-        for row in list_schematic_articles(app.db,vehicle_id,q.get()):
+        try:
+            rows = list_schematic_articles(app.db,vehicle_id,q.get())
+        except ValueError:
+            rows = []
+            title.set("Căutare invalidă (maximum 200 caractere)")
+        for row in rows:
             schematics.insert("","end",iid=str(row["id"]),
                               text=f"[{row['category']}] {row['title']}")
         if prefer is not None and schematics.exists(str(prefer)):
@@ -214,7 +247,8 @@ def open_schematics_window(app, editor_class, selected_article_id=None, vehicle_
         if not items:
             return
         try:
-            path=resolve_document(app.db,int(items[0]))
+            path=resolve_schematic_attachment(
+                app.db,vehicle_id,state["article_id"],int(items[0]))
             if path.suffix.lower() not in IMAGE_EXT:
                 if sys.platform=="win32":
                     os.startfile(str(path))
@@ -236,8 +270,11 @@ def open_schematics_window(app, editor_class, selected_article_id=None, vehicle_
     def preview_selection(event=None):
         selection=attachments.selection()
         if not selection:return
-        row=app.db.db.execute("SELECT path FROM attachments WHERE id=?",
-                              (int(selection[0]),)).fetchone()
+        row=app.db.db.execute(
+            "SELECT t.path FROM attachments t JOIN articles a ON a.id=t.article_id "
+            "WHERE t.id=? AND a.id=? AND a.vehicle_id=? AND a.category IN (?,?)",
+            (int(selection[0]),state["article_id"],vehicle_id,*SCHEME_CATEGORIES)
+        ).fetchone()
         if row is None:return
         if Path(row["path"]).suffix.lower() in IMAGE_EXT:
             open_selected()
@@ -377,5 +414,7 @@ def open_schematics_window(app, editor_class, selected_article_id=None, vehicle_
         change_zoom(1.15 if event.delta>0 else 1/1.15)
     canvas.bind("<Control-MouseWheel>",scroll_zoom)
     window.open_usage=show_usage
+    window.schematic_search_var=q
+    window.open_selected_attachment=open_selected
     refresh_schematics(selected_article_id)
     return window
