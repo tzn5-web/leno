@@ -106,6 +106,16 @@ def probe_idf(root):
                 with archive.open(member) as stream:
                     digest, sample = _read_digest(stream, member.file_size)
                 items.append(_summarize(member.filename, member.file_size, digest, sample))
+    elif root.is_file() and root.suffix.casefold() == ".idf":
+        # Single-file inspection avoids forcing users to copy private evidence
+        # into a new directory or ZIP. Read-only, with the same resource limits.
+        size = root.stat().st_size
+        if size > MAX_FILE_BYTES:
+            raise ValueError("IDF file exceeds size limit")
+        with root.open("rb") as stream:
+            digest, sample = _read_digest(stream, size)
+        total_bytes = size
+        items.append(_summarize(root.name, size, digest, sample))
     elif root.is_dir():
         base = root.resolve(strict=True)
         for path in root.rglob("*"):
