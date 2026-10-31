@@ -18,6 +18,13 @@ import java.util.*;
 public class AtelierData_IAT_Instruction_Check extends GhidraScript {
     private static final int MAX_CANDIDATES = 200000;
 
+    private long readUnsignedLE32(byte[] bytes, int at) {
+        return ((long)(bytes[at] & 255)) |
+            ((long)(bytes[at + 1] & 255) << 8) |
+            ((long)(bytes[at + 2] & 255) << 16) |
+            ((long)(bytes[at + 3] & 255) << 24);
+    }
+
     @Override
     public void run() throws Exception {
         String[] args = getScriptArgs();
@@ -34,6 +41,13 @@ public class AtelierData_IAT_Instruction_Check extends GhidraScript {
             throw new IllegalArgumentException("Input SHA256 mismatch");
         if (!"atelierdata-pe-iat-private-v1".equals(input.get("schema").getAsString()))
             throw new IllegalArgumentException("Unknown private report schema");
+        // The expected SHA256 authenticates the JSON, not the Ghidra import.
+        // Compare independently computed PE MD5 with Ghidra's imported MD5.
+        String inputMd5 = input.get("md5").getAsString().toLowerCase(Locale.ROOT);
+        String importedMd5 = currentProgram.getExecutableMD5();
+        if (!inputMd5.matches("[a-f0-9]{32}") || importedMd5 == null ||
+            !inputMd5.equals(importedMd5.toLowerCase(Locale.ROOT)))
+            throw new IllegalArgumentException("Ghidra imported PE MD5 mismatch");
         JsonArray rows = input.getAsJsonArray("candidates");
         if (rows == null || rows.size() > MAX_CANDIDATES)
             throw new IllegalArgumentException("Excessive/missing candidate list");
@@ -45,12 +59,17 @@ public class AtelierData_IAT_Instruction_Check extends GhidraScript {
             monitor.checkCancelled();
             JsonObject item = element.getAsJsonObject();
             long va = item.get("instruction_va").getAsLong();
+            long expectedIat = item.get("iat_va").getAsLong();
+            if (va < 0 || va > 0xffffffffL || expectedIat < 0 ||
+                expectedIat > 0xffffffffL)
+                throw new IllegalArgumentException("Non-PE32 candidate address");
             Address address = toAddr(va);
             boolean inMemory = currentProgram.getMemory().contains(address);
             Instruction instruction = inMemory ?
                 currentProgram.getListing().getInstructionAt(address) : null;
             boolean valid = false;
             int referenceCount = 0;
+            boolean referenceToExpectedIat = false;
             String mnemonic = null;
             String function = null;
             if (instruction != null) {
@@ -62,12 +81,20 @@ public class AtelierData_IAT_Instruction_Check extends GhidraScript {
                     currentProgram.getMemory().getBytes(address, bytes) == 6 &&
                     (bytes[0] & 255) == 255 &&
                     (bytes[1] & 255) == ("CALL".equals(expectedMnemonic) ? 0x15 : 0x25) &&
-                    expectedMnemonic.equalsIgnoreCase(mnemonic)) {
+                    expectedMnemonic.equalsIgnoreCase(mnemonic) &&
+                    readUnsignedLE32(bytes, 2) == expectedIat) {
                     valid = true;
                     recognized++;
                 }
-                referenceCount = instruction.getReferencesFrom().length;
-                if (referenceCount > 0) withReferences++;
+                if (valid) {
+                    for (ghidra.program.model.symbol.Reference ref : instruction.getReferencesFrom()) {
+                        if (ref.getToAddress().equals(toAddr(expectedIat))) {
+                            referenceToExpectedIat = true;
+                            referenceCount++;
+                        }
+                    }
+                    if (referenceToExpectedIat) withReferences++;
+                }
                 Function f = getFunctionContaining(address);
                 if (f != null) function = f.getName();
             }
@@ -78,21 +105,28 @@ public class AtelierData_IAT_Instruction_Check extends GhidraScript {
             check.put("recognized_instruction", valid);
             check.put("mnemonic", mnemonic);
             check.put("references_from_instruction", referenceCount);
+            check.put("reference_to_expected_iat", referenceToExpectedIat);
+            check.put("iat_va", expectedIat);
+            check.put("kind", item.get("kind").getAsString());
             check.put("containing_function", function);
             checks.add(check);
         }
         output.put("schema", "atelierdata-ghidra-iat-instruction-check-v1");
         output.put("source_sha256", expected);
+        output.put("source_md5", importedMd5.toLowerCase(Locale.ROOT));
+        output.put("ghidra_executable_md5_verified", true);
         output.put("program_name", currentProgram.getName());
         output.put("candidate_count", rows.size());
         output.put("recognized_instruction_count", recognized);
         output.put("instructions_with_references", withReferences);
+        output.put("references_to_expected_iat", withReferences);
         output.put("target_executed", false);
         output.put("idf_decoder_proven", false);
         output.put("private_only", true);
         output.put("candidates", checks);
         output.put("limitations",
-            "Recognized instruction boundaries and Ghidra references are not proof of a file loader. " +
+            "Imported PE MD5, exact FF15/FF25 IAT pointer and references verified. " +
+            "Static instruction boundaries and references are not proof of a file loader. " +
             "A no-analysis import may yield zero recognized instructions.");
         try (FileWriter writer = new FileWriter(args[1])) {
             writer.write(new GsonBuilder().setPrettyPrinting().create().toJson(output));
