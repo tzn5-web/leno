@@ -5,7 +5,7 @@ from repair_export import export_procedure_html,export_procedures_json
 from procedure_audit import audit_procedure, get_step_reference
 from procedure_audit_export import export_procedure_audit_json
 from procedure_audit_html import export_procedure_audit_html
-from procedure_search_hits import list_procedure_hits
+from procedure_search_hits import DEFAULT_LIMIT, list_procedure_hits, next_hit_index
 from repair_procedures import (
     add_step, create_procedure, delete_procedure, delete_step, get_procedure,
     list_procedures, list_steps, list_reference_articles, move_step, procedure_text, update_procedure, update_step
@@ -142,7 +142,7 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         popup.transient(top)
         box=ttk.Frame(popup,padding=12)
         box.pack(fill="both",expand=True)
-        ttk.Label(box,text=f"{len(hits)} potriviri pentru «{search.get()}»",
+        ttk.Label(box,text=f"{len(hits)} potriviri afișate (maxim {DEFAULT_LIMIT}) pentru «{search.get()}»",
                   font=("Segoe UI Semibold",12)).pack(anchor="w",pady=(0,7))
         ttk.Label(box,text="Rezultatele sunt din documentația locală, cu proveniență și vehicul verificate."
                   ).pack(anchor="w",pady=(0,7))
@@ -159,6 +159,19 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                 hit["procedure_title"],
                 hit["step_number"] if hit["step_number"] is not None else "—",
                 hit["field"],hit["excerpt"],hit["source"]))
+        def move_hit_selection(direction):
+            """Select the next or previous search hit without altering SQLite."""
+            chosen=table.selection()
+            current=int(chosen[0]) if chosen else None
+            index=next_hit_index(len(hits),current,direction)
+            if index is None:
+                return None
+            iid=str(index)
+            table.selection_set(iid)
+            table.focus(iid)
+            table.see(iid)
+            return hits[index]
+
         def go_to_hit(event=None):
             selected=table.selection()
             if not selected:return None
@@ -214,7 +227,14 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         ttk.Button(actions,text="Deschide potrivirea selectată",command=go_to_hit
                    ).pack(side="left",padx=(0,8))
         ttk.Button(actions,text="Documentul pasului găsit",command=open_hit_reference
+                   ).pack(side="left",padx=(0,8))
+        ttk.Button(actions,text="◀ Anterior",command=lambda:move_hit_selection(-1)
+                   ).pack(side="left",padx=(0,8))
+        ttk.Button(actions,text="Următor ▶",command=lambda:move_hit_selection(1)
                    ).pack(side="left")
+        popup.bind("<Alt-Left>",lambda _event:move_hit_selection(-1))
+        popup.bind("<Alt-Right>",lambda _event:move_hit_selection(1))
+        popup.move_hit_selection=move_hit_selection
         popup.hits_tree=table
         popup.go_to_hit=go_to_hit
         popup.open_hit_reference=open_hit_reference

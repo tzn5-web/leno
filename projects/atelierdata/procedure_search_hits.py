@@ -37,6 +37,28 @@ def _excerpt(value, needle, radius=85):
     return ("…" if start else "") + value[start:end] + ("…" if end < len(value) else "")
 
 
+def next_hit_index(hit_count, current_index=None, direction=1):
+    """Return the next/previous displayed search row, wrapping at the ends.
+
+    This pure helper is shared by the Windows results dialog and unit tests.
+    A missing selection starts at the first (next) or last (previous) row.
+    """
+    if (isinstance(hit_count, bool) or not isinstance(hit_count, int)
+            or not 0 <= hit_count <= 1000):
+        raise ValueError("Invalid search result count")
+    if isinstance(direction, bool) or direction not in (-1, 1):
+        raise ValueError("Invalid search navigation direction")
+    if current_index is not None and (
+            isinstance(current_index, bool) or not isinstance(current_index, int)
+            or not 0 <= current_index < hit_count):
+        raise ValueError("Invalid selected search result")
+    if not hit_count:
+        return None
+    if current_index is None:
+        return 0 if direction == 1 else hit_count - 1
+    return (current_index + direction) % hit_count
+
+
 def list_procedure_hits(store, vehicle_id, search, limit=DEFAULT_LIMIT):
     """Find literal matches with exact step IDs and verified vehicle provenance.
 

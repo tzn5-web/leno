@@ -664,6 +664,15 @@ def main():
                         raise RuntimeError('PROCEDURES_MULTI_HITS_FIELDS_MISSING')
                     if len(multi.hits_tree.get_children()) != len(multi.hits):
                         raise RuntimeError('PROCEDURES_MULTI_HITS_ROWS_MISSING')
+                    first=multi.move_hit_selection(1)
+                    if first is None or multi.hits_tree.selection()!=('0',):
+                        raise RuntimeError('PROCEDURES_MULTI_HITS_NEXT_SELECTION_FAILED')
+                    last=multi.move_hit_selection(-1)
+                    if last is None or multi.hits_tree.selection()!=(str(len(multi.hits)-1),):
+                        raise RuntimeError('PROCEDURES_MULTI_HITS_PREVIOUS_WRAP_FAILED')
+                    again=multi.move_hit_selection(1)
+                    if again is None or multi.hits_tree.selection()!=('0',):
+                        raise RuntimeError('PROCEDURES_MULTI_HITS_FORWARD_WRAP_FAILED')
                     multi.destroy()
                     window.procedure_search_var.set('100%_')
                     hits=window.open_search_hits()

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from atelierdata import Store
 from repair_procedures import create_procedure, add_step
-from procedure_search_hits import list_procedure_hits
+from procedure_search_hits import list_procedure_hits, next_hit_index
 
 
 class ProcedureSearchHitTests(unittest.TestCase):
@@ -37,6 +37,27 @@ class ProcedureSearchHitTests(unittest.TestCase):
     def hits(self, query, vehicle=None, limit=250):
         return list_procedure_hits(
             self.db, self.car if vehicle is None else vehicle, query, limit=limit)
+
+    def test_result_navigation_wrap_and_empty(self):
+        self.assertIsNone(next_hit_index(0))
+        self.assertEqual(next_hit_index(3), 0)
+        self.assertEqual(next_hit_index(3, direction=-1), 2)
+        self.assertEqual(next_hit_index(3, 0, -1), 2)
+        self.assertEqual(next_hit_index(3, 2, 1), 0)
+        self.assertEqual(next_hit_index(3, 1, 1), 2)
+        self.assertEqual(next_hit_index(1, 0, 1), 0)
+
+    def test_result_navigation_rejects_invalid_indices(self):
+        for count in (-1, 1001, True, 2.5, "2"):
+            with self.subTest(count=count), self.assertRaises(ValueError):
+                next_hit_index(count)
+        for direction in (0, 2, True, "1"):
+            with self.subTest(direction=direction), self.assertRaises(ValueError):
+                next_hit_index(2, direction=direction)
+        for selected in (-1, 2, True, 1.2, "1", 0):
+            count = 0 if selected == 0 and type(selected) is int else 2
+            with self.subTest(selected=selected, count=count), self.assertRaises(ValueError):
+                next_hit_index(count, selected)
 
     def test_literal_percent_underscore_and_backslash(self):
         for term in ("100%_", "%_", "100%"):
