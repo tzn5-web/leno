@@ -53,10 +53,30 @@ def main():
             assert len(viewer.diagram_canvas.find_all()) == 1
             viewer.schematic_search_var.set("STRASSE")
             root.update()
-            assert viewer.schematics_tree.exists(str(article))
+            assert viewer.schematics_tree.selection() == (str(article),)
+            assert viewer.attachments_tree.get_children() == (str(attachment),)
+            assert len(viewer.diagram_canvas.find_all()) == 1
             viewer.schematic_search_var.set("100%X")
             root.update()
             assert not viewer.schematics_tree.get_children()
+            assert not viewer.attachments_tree.get_children(), "Stale attachments after filter"
+            assert not viewer.diagram_canvas.find_all(), "Stale image after filter"
+            assert viewer.schematic_title_var.get() == "Selectează o schemă"
+            assert not viewer.schematic_details_text.get("1.0", "end").strip()
+            viewer.schematic_search_var.set("")
+            root.update()
+            assert viewer.schematics_tree.exists(str(article))
+            assert not viewer.attachments_tree.get_children()
+            viewer.schematics_tree.selection_set(str(article))
+            root.update()
+            assert viewer.attachments_tree.get_children() == (str(attachment),)
+            assert len(viewer.diagram_canvas.find_all()) == 1
+            viewer.schematic_search_var.set("x" * 201)
+            root.update()
+            assert not viewer.attachments_tree.get_children(), "Invalid search retained attachment"
+            assert not viewer.diagram_canvas.find_all(), "Invalid search retained preview"
+            assert "invalidă" in viewer.schematic_title_var.get()
+            assert not viewer.schematic_details_text.get("1.0", "end").strip()
             viewer.schematic_search_var.set("")
             root.update()
             viewer.schematics_tree.selection_set(str(article))
