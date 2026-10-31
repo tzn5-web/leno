@@ -7,7 +7,7 @@ from backup_verification import verify_backup_bundle
 from technical_specs import (ensure_schema,add_spec,update_spec,remove_spec,get_spec,
                              list_specs,import_specs,export_specs)
 from repair_procedures import (ensure_schema as ensure_procedures_schema,
-                               create_procedure,add_step)
+                               create_procedure,add_step,delete_step)
 from repair_export import export_procedures_json,export_procedure_html
 from dtc_catalog import ensure_schema as ensure_dtc_schema, add_dtc
 from dtc_gui import open_dtc_window
@@ -664,6 +664,28 @@ def main():
                         (step_id,)).fetchone()
                     if linked['article_id']!=second_article or not linked['safety_note']:
                         raise RuntimeError('PROCEDURES_REFERENCE_PICKER_UPDATE_FAILED')
+                    # Packaged Windows GUI regression: move a synthetic step
+                    # both ways, verify the visible order and SQLite numbering.
+                    # Restore the original single-step fixture afterwards.
+                    temporary_step=add_step(ui.db,pid,'REORDER-UI synthetic step')
+                    try:
+                        window.refresh_steps(temporary_step)
+                        if window.steps_tree.get_children()!=(str(step_id),str(temporary_step)):
+                            raise RuntimeError('PROCEDURES_GUI_REORDER_INITIAL_ROWS_FAILED')
+                        window.move_selected_step(-1)
+                        if window.steps_tree.get_children()!=(str(temporary_step),str(step_id)):
+                            raise RuntimeError('PROCEDURES_GUI_REORDER_UP_FAILED')
+                        if tuple(window.steps_tree.item(key,'values')[0]
+                                 for key in window.steps_tree.get_children())!=('1','2'):
+                            raise RuntimeError('PROCEDURES_GUI_REORDER_NUMBERS_FAILED')
+                        window.move_selected_step(1)
+                        if window.steps_tree.get_children()!=(str(step_id),str(temporary_step)):
+                            raise RuntimeError('PROCEDURES_GUI_REORDER_DOWN_FAILED')
+                    finally:
+                        delete_step(ui.db,temporary_step)
+                        window.refresh_steps(step_id)
+                    if window.steps_tree.get_children()!=(str(step_id),):
+                        raise RuntimeError('PROCEDURES_GUI_REORDER_RESTORE_FAILED')
                 ui.root.after(200,check_steps)
                 def check_navigation():
                     window.steps_tree.selection_set(str(step_id))
