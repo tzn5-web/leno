@@ -87,3 +87,39 @@ Acest script Ghidra **nu a fost executat în această etapă**, deoarece
 mediul curent nu include Ghidra. Raportul privat de intrare există
 local și nu este publicat. Nu se pretinde validarea celor 43 candidați
 de către Ghidra până la o rulare reală pe proiectul privat.
+
+
+## Verificare statică suplimentară cu GNU objdump 2.44 (2026-10-31)
+
+**Rulare reală** a scriptului nou `pe_static_call_alignment.py` asupra copiei private
+`ADBCD.exe`, SHA256 `a505bbc4f8678713f352faa8fc70337d9edbe5e0ebd23ba305ca3bccd0f6fce4`
+verificat înainte de disassembly. S-a folosit `objdump -p` pentru tabela IAT și
+`objdump -d -M intel` pentru dezasamblare liniară, fără lansarea executabilului.
+
+- **17** importuri PE clasice, în **3** secțiuni cu flag executabil.
+- **43** secvențe brute `FF 15/FF 25` care indică adrese IAT.
+- **38/43** sunt aliniate cu instrucțiuni `call/jmp` în disassembly-ul liniar GNU;
+  **5/43** nu sunt confirmate în această reprezentare.
+- Cele **38** instrucțiuni candidate sunt în secțiunea `0000013`;
+  dintre ele, **16** vizează `KERNEL32!LoadLibraryA`.
+- Nu există instrucțiuni `call/jmp` aliniate cu `GetProcAddress` în
+  această scanare. Acest lucru **nu dovedește absența** utilizării
+  `GetProcAddress` prin alte forme de apel indirect.
+- Nu s-a identificat un traseu demonstrat până la citirea `.IDF`,
+  nici un decodor și niciun format de date validat.
+
+**Limitare esențială:** `objdump -d` este o dezasamblare liniară;
+poate interpreta date drept cod. Potrivirea celor 38 de instrucțiuni
+nu dovedește că sunt accesibile din punctul de intrare sau că rulează.
+**Ghidra CFG/xrefs nu a fost rulat în această etapă**, deci cele 38
+rămân candidați de validat, nu funcții de încărcare IDF confirmate.
+
+Scriptul nou are un autotest sintetic executat local cu rezultat
+`PE_STATIC_CALL_ALIGNMENT_SELF_TEST=PASS` și este integrat în CI.
+Nu au fost publicate binare, offseturi detaliate, resurse sau date
+proprietare. Exemplu de rulare numai pe o copie privată autorizată:
+
+```bash
+python projects/atelierdata/pe_static_call_alignment.py --self-test
+python projects/atelierdata/pe_static_call_alignment.py --pe /private/ADBCD.exe --output /private/pe-summary.json
+```
