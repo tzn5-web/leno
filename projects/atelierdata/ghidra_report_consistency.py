@@ -46,7 +46,9 @@ def validate(triage, ghidra):
         raise ValueError("Invalid triage SHA256")
     if not isinstance(md5, str) or not re.fullmatch(r"[a-f0-9]{32}", md5):
         raise ValueError("Invalid triage MD5")
-    if ghidra.get("source_sha256") != sha or ghidra.get("ghidra_executable_md5_verified") is not True:
+    if (ghidra.get("source_sha256") != sha
+            or ghidra.get("source_md5") != md5
+            or ghidra.get("ghidra_executable_md5_verified") is not True):
         raise ValueError("Mismatched original identity")
     for flag in ("target_executed", "cfg_reachability_proven", "idf_decoder_proven"):
         if ghidra.get(flag) is not False:
