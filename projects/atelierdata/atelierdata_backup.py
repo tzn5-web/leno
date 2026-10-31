@@ -86,6 +86,12 @@ def restore_bundle(archive_path, new_directory):
     destination = Path(new_directory)
     if destination.exists():
         raise FileExistsError('Destinația trebuie să fie un director nou, inexistent')
+    # The read-only verifier checks ZIP entry types, duplicate names, bounded
+    # decompression, manifest hashes, SQLite integrity and attachment references.
+    # Run it BEFORE creating any restore directory or extracting a member.
+    # Import here to avoid a module cycle: the verifier imports backup limits.
+    from backup_verification import verify_backup_bundle
+    verify_backup_bundle(archive_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive_path) as archive:
         names = set(archive.namelist())
