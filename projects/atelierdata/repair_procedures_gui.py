@@ -163,8 +163,8 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         filter_row=ttk.Frame(box)
         filter_row.pack(fill="x",pady=(0,7))
         ttk.Label(filter_row,text="Câmp:").pack(side="left",padx=(0,7))
-        available_fields=[label for _,label in (*PROCEDURE_FIELDS,*STEP_FIELDS)
-                          if any(hit["field"]==label for hit in hits)]
+        # A field may first occur after page 1; expose the complete schema.
+        available_fields=[label for _,label in (*PROCEDURE_FIELDS,*STEP_FIELDS)]
         field_choice=ttk.Combobox(filter_row,textvariable=field_filter,
                                   values=("Toate câmpurile",*available_fields),
                                   state="readonly",width=29)
@@ -241,10 +241,7 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                 messagebox.showerror("Căutare detaliată",str(exc),parent=popup)
                 return False
             hits[:]=new_hits
-            choices=("Toate câmpurile",*(
-                label for _,label in (*PROCEDURE_FIELDS,*STEP_FIELDS)
-                if any(hit["field"]==label for hit in hits)))
-            field_choice.configure(values=("Toate câmpurile",*(label for _,label in (*PROCEDURE_FIELDS,*STEP_FIELDS))))
+            field_choice.configure(values=("Toate câmpurile",*available_fields))
             # Preserve a selected field across pages, even when this page
             # contains no matches in that field. Reset only by user choice.
             refresh_hit_filter()
