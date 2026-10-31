@@ -25,6 +25,7 @@ jobs:
         run: |
           python -m py_compile projects/atelierdata/atelierdata.py projects/atelierdata/technical_sources.py projects/atelierdata/technical_sources_gui.py projects/atelierdata/test_technical_sources.py projects/atelierdata/sources_gui_smoke.py projects/atelierdata/atelierdata_extensions.py projects/atelierdata/atelierdata_backup.py projects/atelierdata/technical_specs.py projects/atelierdata/repair_procedures.py projects/atelierdata/repair_procedures_gui.py projects/atelierdata/schematic_viewer.py projects/atelierdata/test_schematic_viewer.py projects/atelierdata/dtc_catalog.py projects/atelierdata/dtc_gui.py projects/atelierdata/test_dtc_catalog.py projects/atelierdata/vpic_catalog.py projects/atelierdata/vpic_catalog_gui.py projects/atelierdata/test_vpic_catalog.py projects/atelierdata/maintenance_plans.py projects/atelierdata/maintenance_gui.py projects/atelierdata/test_maintenance_plans.py projects/atelierdata/repair_export.py projects/atelierdata/test_repair_export.py projects/atelierdata/test_extensions.py projects/atelierdata/test_technical_specs.py projects/atelierdata/test_repair_procedures.py projects/atelierdata/test_procedure_schematic_navigation.py projects/atelierdata/procedure_audit.py projects/atelierdata/test_procedure_audit.py projects/atelierdata/procedure_audit_export.py projects/atelierdata/test_procedure_audit_export.py projects/atelierdata/procedure_audit_html.py projects/atelierdata/test_procedure_audit_html.py projects/atelierdata/procedure_usage.py projects/atelierdata/test_procedure_usage.py projects/atelierdata/test_procedure_search_literal.py projects/atelierdata/procedure_search_hits.py projects/atelierdata/test_procedure_search_hits.py
           python -m py_compile projects/atelierdata/idf_static_evidence.py projects/atelierdata/rea_resource_audit.py projects/atelierdata/pe_file_io_xrefs.py projects/atelierdata/test_pe_file_io_xrefs.py projects/atelierdata/pe_entrypoint_layout.py projects/atelierdata/test_pe_entrypoint_layout.py projects/atelierdata/pe_delay_import_audit.py projects/atelierdata/test_pe_delay_import_audit.py projects/atelierdata/pe_iat_evidence_validate.py projects/atelierdata/test_pe_iat_evidence_validate.py tools/ghidra/AtelierData_IDF_Xrefs.py
+          python -m py_compile projects/atelierdata/catalog_search.py projects/atelierdata/test_catalog_search.py
           python -m py_compile projects/atelierdata/split_archive_manifest_audit.py
           python -m py_compile projects/atelierdata/full_idf_chunk_audit.py
           python projects/atelierdata/full_idf_chunk_audit.py --self-test
@@ -37,6 +38,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "IDF_STATIC_EVIDENCE_TEST_FAILED" }
           python -m unittest discover -s projects/atelierdata -p 'test_*.py' -v
           if ($LASTEXITCODE -ne 0) { throw "ATELIERDATA_REGRESSION_TEST_FAILED" }
+          $searchDb = Join-Path $env:RUNNER_TEMP 'atelierdata-search-ci.sqlite3'
+          $searchJson = python projects/atelierdata/atelierdata.py --db-path $searchDb --search-all 'Mitsubishi'
+          if ($LASTEXITCODE -ne 0) { throw "SEARCH_CLI_FAILED" }
+          $searchResult = ($searchJson -join "`n") | ConvertFrom-Json
+          if ($searchResult.schema -ne 'atelierdata-search-v1' -or $searchResult.results.Count -ne 0) { throw "SEARCH_CLI_INVALID_RESULT" }
           python projects/atelierdata/atelierdata.py --self-test
           if ($LASTEXITCODE -ne 0) { throw "SOURCE_TEST_FAILED" }
           python projects/atelierdata/atelierdata.py --ui-smoke
@@ -55,6 +61,9 @@ jobs:
           $exePath = (Resolve-Path '.\dist\AtelierData.exe').Path
           $process = Start-Process -FilePath $exePath -ArgumentList '--self-test' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "PACKAGED_EXE_SELF_TEST_FAILED exit=$($process.ExitCode)" }
+          $searchDb = Join-Path $env:RUNNER_TEMP 'atelierdata-exe-search-ci.sqlite3'
+          $search = Start-Process -FilePath $exePath -ArgumentList @('--db-path', $searchDb, '--search-all', 'Mitsubishi') -Wait -PassThru
+          if ($search.ExitCode -ne 0) { throw "PACKAGED_SEARCH_CLI_FAILED exit=$($search.ExitCode)" }
           $ui = Start-Process -FilePath $exePath -ArgumentList '--ui-smoke' -Wait -PassThru
           if ($ui.ExitCode -ne 0) { throw "PACKAGED_GUI_TEST_FAILED exit=$($ui.ExitCode)" }
           Write-Host "GUI_SMOKE_TEST=PASS"
