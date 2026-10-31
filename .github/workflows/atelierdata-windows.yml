@@ -31,6 +31,9 @@ jobs:
           python -m py_compile projects/atelierdata/ghidra_report_consistency.py projects/atelierdata/test_ghidra_report_consistency.py projects/atelierdata/test_article_search_literal.py
           python -m py_compile projects/atelierdata/ghidra_evidence_replay.py projects/atelierdata/test_ghidra_evidence_replay.py
           python -m py_compile projects/atelierdata/ghidra_iat_consistency.py projects/atelierdata/test_ghidra_iat_consistency.py
+          python -m py_compile projects/atelierdata/ghidra_iat_source_replay.py projects/atelierdata/test_ghidra_iat_source_replay.py
+          python -m unittest discover -s projects/atelierdata -p 'test_ghidra_iat_source_replay.py' -v
+          if ($LASTEXITCODE -ne 0) { throw "GHIDRA_IAT_SOURCE_REPLAY_TEST_FAILED" }
           python -m unittest discover -s projects/atelierdata -p 'test_ghidra_iat_consistency.py' -v
           if ($LASTEXITCODE -ne 0) { throw "GHIDRA_IAT_CONSISTENCY_TEST_FAILED" }
           python -m unittest discover -s projects/atelierdata -p 'test_ghidra_evidence_replay.py' -v
