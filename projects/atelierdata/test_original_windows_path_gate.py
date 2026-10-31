@@ -49,6 +49,10 @@ class WindowsPathGateTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 load_paths(p)
 
+    def test_empty_inventory_rejected(self):
+        with self.assertRaisesRegex(ValueError, "empty"):
+            audit_paths([])
+
     def test_negative_size_rejected(self):
         with self.assertRaises(ValueError):
             audit_paths([(ROOT + "/a", -1)])
