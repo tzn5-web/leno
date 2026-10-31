@@ -162,3 +162,26 @@ The private Ghidra LoadLibrary argument checker now records the **actual MD5 rep
 The static `AtelierData_IDF_Xrefs.py` memory scanner also now excludes matches fully contained in a previous chunk's overlap, while retaining patterns crossing chunk boundaries. Previously an occurrence within the 128-byte carry could be counted twice. This affects the correctness of **future** private keyword-hit counts; earlier reports should be re-generated before comparing counts.
 
 Regression tests added: two for missing/wrong Ghidra MD5 and one for wrong MD5 in the SHA256-gated replay, all using **synthetic data only**. They are picked up by the existing `python -m unittest discover -s projects/atelierdata -p 'test_*.py' -v` Windows workflow. No original executable, DLL, proprietary IDF or private Ghidra report has been committed. The modified Ghidra scripts have **not been executed on the private original during this update**; GitHub Actions outcome for these commits is **not yet verified**. The blocked package 0016 remains untouched.
+
+
+## 2026-10-31: independent PE-IAT / Ghidra evidence hardening
+
+A concrete false-positive risk was found in `tools/ghidra/AtelierData_IAT_Instruction_Check.java`: the earlier script trusted the SHA256 string in a private triage report without checking the **identity of the executable actually imported into Ghidra**. It also accepted the `FF 15` / `FF 25` opcode and six-byte instruction length without comparing the embedded 32-bit target operand against the reported IAT address; unrelated references from an instruction could inflate the count.
+
+Changes implemented:
+- `pe_file_io_xrefs.py` now includes an independently computed **MD5 of the source PE** in its **private-only** report (existing SHA256 remains mandatory). The public summary does not expose the MD5 or addresses.
+- The Ghidra Java script now **rejects** a mismatched `currentProgram.getExecutableMD5()`, validates the **exact little-endian 32-bit IAT operand** and counts only references to the expected IAT address on verified instructions.
+- Each private Ghidra row includes numeric PE32 VA, kind, IAT target and identity metadata for deterministic independent replay.
+- New `ghidra_iat_consistency.py` validates report schema, exact source SHA256/MD5, candidate addresses and symbols, kinds, IAT pointers, evidence flags and aggregate totals; writes only an **atomic, redacted aggregate**.
+- `test_ghidra_iat_consistency.py` adds synthetic regression tests and is explicitly invoked in Windows CI.
+
+Private reproduction, only on an authorized original copy:
+
+```powershell
+python projects/atelierdata/pe_file_io_xrefs.py --pe C:\PRIVATE\ADBCD.exe --expected-sha256 a505bbc4f8678713f352faa8fc70337d9edbe5e0ebd23ba305ca3bccd0f6fce4 --public-output C:\PRIVATE\iat-summary.json --private-output C:\PRIVATE\iat-private.json
+# In a private Ghidra headless project, after auto-analysis:
+# -postScript AtelierData_IAT_Instruction_Check.java C:\PRIVATE\iat-private.json C:\PRIVATE\ghidra-iat-private.json a505bbc4f8678713f352faa8fc70337d9edbe5e0ebd23ba305ca3bccd0f6fce4
+python projects/atelierdata/ghidra_iat_consistency.py --private-triage C:\PRIVATE\iat-private.json --private-ghidra C:\PRIVATE\ghidra-iat-private.json --public-output C:\PRIVATE\iat-public-aggregate.json
+```
+
+**Proof boundary:** the Java script was changed but **has not yet been run against the original in Ghidra** in this update. Python tests use synthetic PE bytes, not private application code. Neither MD5 matching nor instruction/IAT cross-reference matching proves an IDF decoder, a reachable loader, or any legal right to extract proprietary data. No protected ZIP, PE, IDF or private report was committed.
