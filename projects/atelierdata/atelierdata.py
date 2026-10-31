@@ -609,6 +609,23 @@ def main():
             ui.root.report_callback_exception=on_gui_error
             ui.root.after(200,ui.specifications)
             def check_procedures_window():
+                from repair_procedures_gui import open_procedures_window
+                original_children = tuple(ui.root.winfo_children())
+                invalid_navigation = (
+                    {"vehicle_id": True},
+                    {"selected_procedure_id": float(pid)},
+                    {"selected_procedure_id": pid, "selected_step_id": True},
+                    {"selected_procedure_id": pid, "selected_step_id": float(step_id)},
+                )
+                for kwargs in invalid_navigation:
+                    try:
+                        open_procedures_window(ui, Editor, **kwargs)
+                    except ValueError:
+                        pass
+                    else:
+                        raise RuntimeError('PROCEDURES_GUI_INVALID_ID_ACCEPTED')
+                    if tuple(ui.root.winfo_children()) != original_children:
+                        raise RuntimeError('PROCEDURES_GUI_INVALID_ID_CREATED_WINDOW')
                 window=ui.procedures()
                 if window is None or not window.winfo_exists():
                     raise RuntimeError('PROCEDURES_GUI_NOT_OPENED')

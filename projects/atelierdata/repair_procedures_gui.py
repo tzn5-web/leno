@@ -13,6 +13,13 @@ from repair_procedures import (
 )
 
 
+def _validate_navigation_id(value, label):
+    """Require exact positive SQLite IDs before resolving GUI navigation."""
+    if type(value) is not int or value <= 0:
+        raise ValueError(f"Invalid {label} ID")
+    return value
+
+
 def open_procedures_window(app, editor_class, selected_procedure_id=None,
                            selected_step_id=None, vehicle_id=None):
     from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -21,6 +28,11 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
     if vehicle_id is None:
         messagebox.showinfo("Vehicul necesar", "Selectează un vehicul și motorizarea sa.")
         return None
+    _validate_navigation_id(vehicle_id, "vehicle")
+    if selected_procedure_id is not None:
+        _validate_navigation_id(selected_procedure_id, "procedure")
+    if selected_step_id is not None:
+        _validate_navigation_id(selected_step_id, "step")
     if selected_procedure_id is not None:
         target=get_procedure(app.db,selected_procedure_id)
         if target is None or target["vehicle_id"]!=vehicle_id:

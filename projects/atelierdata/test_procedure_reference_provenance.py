@@ -87,6 +87,45 @@ class ProcedureReferenceProvenanceTests(unittest.TestCase):
         self.assertEqual(self.store.db.total_changes, before)
         self.assertEqual(self.store.db.execute("PRAGMA quick_check").fetchone()[0], "ok")
 
+    def test_navigation_id_validator_rejects_implicit_sqlite_coercions(self):
+        from repair_procedures_gui import _validate_navigation_id
+        self.assertEqual(_validate_navigation_id(self.car, "vehicle"), self.car)
+        self.assertEqual(_validate_navigation_id(self.procedure, "procedure"), self.procedure)
+        for invalid in (True, False, 1.0, "1", 0, -1, None, [], {}):
+            with self.subTest(value=repr(invalid)), self.assertRaises(ValueError):
+                _validate_navigation_id(invalid, "procedure")
+
+    def test_gui_navigation_rejects_invalid_ids_before_creating_window(self):
+        import tkinter as tk
+        from repair_procedures_gui import open_procedures_window
+
+        try:
+            root = tk.Tk()
+        except tk.TclError as exc:
+            self.skipTest("No graphical Tk display available: " + str(exc))
+        self.addCleanup(root.destroy)
+        root.withdraw()
+        app = SimpleNamespace(root=root, tk=tk, db=self.store, vid=self.car)
+        original_children = tuple(root.winfo_children())
+        before = self.store.db.total_changes
+        cases = (
+            {"vehicle_id": True},
+            {"vehicle_id": float(self.car)},
+            {"vehicle_id": str(self.car)},
+            {"selected_procedure_id": True},
+            {"selected_procedure_id": float(self.procedure)},
+            {"selected_procedure_id": str(self.procedure)},
+            {"selected_procedure_id": self.procedure, "selected_step_id": True},
+            {"selected_procedure_id": self.procedure, "selected_step_id": float(self.step)},
+            {"selected_procedure_id": self.procedure, "selected_step_id": str(self.step)},
+            {"vehicle_id": self.other, "selected_procedure_id": self.procedure},
+        )
+        for kwargs in cases:
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
+                open_procedures_window(app, object, **kwargs)
+            self.assertEqual(tuple(root.winfo_children()), original_children)
+        self.assertEqual(self.store.db.total_changes, before)
+
     def test_tkinter_procedure_detail_and_live_reference_revocation(self):
         import tkinter as tk
         from repair_procedures_gui import open_procedures_window
