@@ -57,6 +57,18 @@ class TechnicalSpecsTests(unittest.TestCase):
             export_specs(self.store,self.store.path)
         self.assertFalse(self.store.db.execute("PRAGMA foreign_key_check").fetchall())
 
+    def test_search_literal_sql_wildcards_and_input_validation(self):
+        for token in ("100%", "sensor_1", "back\\slash", "plain"):
+            add_spec(self.store, self.vehicle, "Synthetic", token, "unknown",
+                     source="SYNTHETIC")
+        for token in ("100%", "sensor_1", "back\\slash", "plain"):
+            results = list_specs(self.store, self.vehicle, search=token)
+            self.assertEqual([row["parameter"] for row in results], [token])
+        self.assertEqual(list_specs(self.store, self.vehicle, search="nonexistent"), [])
+        for invalid in (None, 3, "x" * 201, "a\0b"):
+            with self.assertRaises(ValueError):
+                list_specs(self.store, self.vehicle, search=invalid)
+
     def test_import_csv(self):
         p=self.root/"import.csv"
         p.write_text("make,model,engine,years,system,parameter,value,source\n"
