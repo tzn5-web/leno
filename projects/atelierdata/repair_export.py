@@ -43,7 +43,8 @@ def _record(store,procedure):
             "instruction":step["instruction"],
             "safety_note":step["safety_note"],
             "reference_article_id":step["article_id"],
-            "reference_title":step["reference_title"]
+            "reference_title":step["reference_title"],
+            "reference_source":step["reference_source"]
         } for step in list_steps(store,procedure["id"])]
     }
 
@@ -100,7 +101,9 @@ def procedure_html(store,procedure_id):
                          +esc(step["safety_note"])+"</p>")
         if step["reference_title"]:
             parts.append("<p class='reference'>Document asociat: "
-                         +esc(step["reference_title"])+"</p>")
+                         +esc(step["reference_title"])
+                         +("<br>Sursă document: "+esc(step["reference_source"])
+                           if step["reference_source"] else "")+"</p>")
         parts.append("</section>")
     parts.append("<footer><hr><p class='meta'>Acest document reproduce numai informațiile "
                  "introduse sau importate autorizat. Fișierele atașate nu sunt incluse. "
