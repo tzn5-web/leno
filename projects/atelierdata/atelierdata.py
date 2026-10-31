@@ -652,6 +652,19 @@ def main():
                     ui.root.after(220,check_navigation_image)
                 ui.root.after(950,check_navigation)
                 def check_search_hits():
+                    # GUI integration: show all fields for one literal query,
+                    # not only the first field of a matching procedure/step.
+                    window.procedure_search_var.set('TEST')
+                    multi=window.open_search_hits()
+                    if multi is None or not multi.winfo_exists():
+                        raise RuntimeError('PROCEDURES_MULTI_HITS_GUI_NOT_OPENED')
+                    fields={hit['field'] for hit in multi.hits}
+                    if not {'Titlu procedură', 'Proveniență procedură',
+                            'Instrucțiune pas', 'Proveniență document'} <= fields:
+                        raise RuntimeError('PROCEDURES_MULTI_HITS_FIELDS_MISSING')
+                    if len(multi.hits_tree.get_children()) != len(multi.hits):
+                        raise RuntimeError('PROCEDURES_MULTI_HITS_ROWS_MISSING')
+                    multi.destroy()
                     window.procedure_search_var.set('100%_')
                     hits=window.open_search_hits()
                     if hits is None or not hits.winfo_exists():
