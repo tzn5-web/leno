@@ -22,7 +22,9 @@ def main():
             doc=Path(directory)/"example.pdf"
             doc.write_bytes(b"%PDF-1.4\n%%EOF\n")
             import_local_file(store,vid,doc,"Manual de atelier","Straße %_ 4A91",
-                              "Local synthetic fixture",rights_basis="document_propriu")
+                              "Local synthetic fixture",rights_basis="document_propriu",
+                              source_url="https://example.org/synthetic%_source",
+                              revision="EDITION-ß-42")
             app=TestApp(root,store,vid)
             win=open_document_library(app)
             root.update_idletasks()
@@ -42,6 +44,14 @@ def main():
             win.library_search.set("STRASSE%")
             root.update_idletasks()
             assert len(win.library_tree.get_children())==0, "Search must not expand SQL wildcards"
+            for provenance_query in ("synthetic%_source", "EDITION-SS-42"):
+                win.library_search.set(provenance_query)
+                root.update_idletasks()
+                assert len(win.library_tree.get_children())==1, (
+                    "GUI must find source URL and Unicode revision: "+provenance_query)
+            win.library_search.set("synthetic%_missing")
+            root.update_idletasks()
+            assert len(win.library_tree.get_children())==0, "GUI search must remain literal"
             win.library_search.set("4A91")
             root.update_idletasks()
             assert len(win.library_tree.get_children())==1
