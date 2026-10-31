@@ -6,6 +6,9 @@ on:
       - 'projects/atelierdata/**'
       - '.github/workflows/atelierdata-windows.yml'
   workflow_dispatch:
+concurrency:
+  group: atelierdata-windows-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   windows:
     runs-on: windows-latest
