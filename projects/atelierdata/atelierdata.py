@@ -796,6 +796,29 @@ def main():
                         raise RuntimeError('PROCEDURES_SEARCH_HIT_DOCUMENT_TEXT_MISSING')
                     document.destroy()
                     hits.destroy()
+                    # End-to-end GUI regression: SQLite must find a Unicode
+                    # casefold expansion, then navigate to the same vehicle.
+                    original_title=ui.db.db.execute(
+                        'SELECT title FROM procedures WHERE id=?',(pid,)
+                    ).fetchone()[0]
+                    ui.db.db.execute(
+                        'UPDATE procedures SET title=? WHERE id=?',
+                        ('Straße synthetic GUI',pid))
+                    ui.db.db.commit()
+                    window.procedure_search_var.set('STRASSE')
+                    unicode_hits=window.open_search_hits()
+                    if unicode_hits is None or len(unicode_hits.hits)!=1:
+                        raise RuntimeError('PROCEDURES_GUI_UNICODE_SEARCH_FAILED')
+                    if unicode_hits.hits[0]['field']!='Titlu procedură':
+                        raise RuntimeError('PROCEDURES_GUI_UNICODE_FIELD_FAILED')
+                    unicode_hits.hits_tree.selection_set('0')
+                    if unicode_hits.go_to_hit() is None:
+                        raise RuntimeError('PROCEDURES_GUI_UNICODE_NAVIGATION_FAILED')
+                    unicode_hits.destroy()
+                    ui.db.db.execute(
+                        'UPDATE procedures SET title=? WHERE id=?',
+                        (original_title,pid))
+                    ui.db.db.commit()
                     window.procedure_search_var.set('')
                 ui.root.after(620,check_search_hits)
                 def check_procedure_audit():
