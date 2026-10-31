@@ -189,11 +189,33 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                 steps.see(str(sid))
             top.lift()
             return hit
+        def open_hit_reference():
+            """Open the selected hit's linked document after fresh scope checks."""
+            chosen=table.selection()
+            if not chosen:
+                return None
+            hit=hits[int(chosen[0])]
+            if hit["step_id"] is None:
+                messagebox.showinfo("Document asociat",
+                    "Rezultatul descrie procedura, nu un pas cu document.",
+                    parent=popup)
+                return None
+            # go_to_hit revalidates the procedure and step against current SQLite.
+            # open_reference separately revalidates the article's vehicle.
+            if go_to_hit() is None:
+                return None
+            return open_reference()
+
         table.bind("<Double-1>",go_to_hit)
-        ttk.Button(box,text="Deschide potrivirea selectată",command=go_to_hit
-                   ).pack(anchor="w",pady=(9,0))
+        actions=ttk.Frame(box)
+        actions.pack(anchor="w",pady=(9,0))
+        ttk.Button(actions,text="Deschide potrivirea selectată",command=go_to_hit
+                   ).pack(side="left",padx=(0,8))
+        ttk.Button(actions,text="Documentul pasului găsit",command=open_hit_reference
+                   ).pack(side="left")
         popup.hits_tree=table
         popup.go_to_hit=go_to_hit
+        popup.open_hit_reference=open_hit_reference
         popup.hits=hits
         return popup
 
@@ -410,6 +432,9 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                     messagebox.showerror("Atașament invalid",str(exc),parent=display)
             ttk.Button(display,text="Deschide atașament verificat SHA256",
                        command=open_attachment).pack(pady=8)
+        display.reference_article_id=article["id"]
+        display.reference_text_widget=area
+        return display
 
     def open_procedure_audit():
         """Read-only, vehicle-scoped verification of steps and managed files."""
@@ -529,6 +554,7 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
     top.steps_tree=steps
     top.open_reference_picker=choose_reference
     top.open_schematic_reference=open_schematic_reference
+    top.open_step_reference=open_reference
     top.open_procedure_audit=open_procedure_audit
     refresh_proc(selected_procedure_id)
     if selected_procedure_id is not None and selected_step_id is not None:
