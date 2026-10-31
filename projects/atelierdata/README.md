@@ -170,3 +170,26 @@ de navigare. Interogarea nu schimbă SQLite și nu extrage date proprietare.
 
 Teste: `python -m unittest discover -s projects/atelierdata -p 'test_procedure_usage.py' -v`
 și testul integrat Windows `python projects/atelierdata/atelierdata.py --ui-smoke`.
+
+
+## Căutare detaliată → documentul pasului (2026-10-31)
+
+În **Proceduri**, introdu un termen literal și deschide **„Rezultate detaliate → pas”**.
+Selectează un rezultat care identifică un pas și apasă **„Documentul pasului găsit”**.
+Aplicația verifică din nou existența procedurii, pasului și documentului,
+precum și apartenența acestora la **același vehicul**, înainte de a afișa
+conținutul local și proveniența documentului. Rezultatele de tip antet
+de procedură nu au automat un document de pas. Atașamentele externe sunt
+deschise separat și numai după verificarea SHA256.
+
+O protecție suplimentară în `list_steps` împiedică afișarea titlurilor
+documentelor altui vehicul dacă o bază SQLite importată conține o referință
+inconsistentă. Referința greșită rămâne detectabilă prin **Audit documente**,
+dar nu divulgă titlul în lista de pași sau în fișa textuală.
+
+Verificare: `test_repair_procedures.py` include regresia de izolare a
+titlurilor; `atelierdata.py --ui-smoke` navighează efectiv dintr-un rezultat
+de căutare într-un document sintetic. Ambele rulează în workflow-ul Windows,
+inclusiv în executabilul PyInstaller. Datele reale trebuie să fie introduse
+de utilizator sau obținute cu drept de utilizare; nu sunt distribuite date
+proprietare și nu sunt inventate proceduri de reparație.
