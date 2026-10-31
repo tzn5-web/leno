@@ -104,9 +104,12 @@ def list_procedure_hits(store, vehicle_id, search, limit=DEFAULT_LIMIT, offset=0
         seen += 1
         return len(results) >= limit
 
+    procedure_field_labels = {label for _, label in PROCEDURE_FIELDS}
     for procedure in procedures:
         pid = procedure["id"]
         for key, label in PROCEDURE_FIELDS:
+            if field is not None and field != label:
+                continue
             value = procedure[key] or ""
             if needle in value.casefold():
                 if collect({
@@ -118,6 +121,9 @@ def list_procedure_hits(store, vehicle_id, search, limit=DEFAULT_LIMIT, offset=0
                     return results
         if len(results) >= limit:
             return results[:limit]
+        # A metadata-only filter must not fetch step/document bodies.
+        if field in procedure_field_labels:
+            continue
         rows = store.db.execute("""
             SELECT s.id, s.step_number, s.instruction, s.safety_note,
                    a.title AS article_title, a.category AS article_category,
@@ -127,9 +133,11 @@ def list_procedure_hits(store, vehicle_id, search, limit=DEFAULT_LIMIT, offset=0
                 ON a.id=s.article_id AND a.vehicle_id=?
              WHERE s.procedure_id=?
              ORDER BY s.step_number,s.id
-        """, (procedure["vehicle_id"], pid)).fetchall()
+        """, (procedure["vehicle_id"], pid))
         for step in rows:
             for key, label in STEP_FIELDS:
+                if field is not None and field != label:
+                    continue
                 value = step[key] or ""
                 if needle in value.casefold():
                     doc_field = key.startswith("article_")
