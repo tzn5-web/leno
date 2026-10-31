@@ -75,3 +75,29 @@ folosirea arhivei `part_0016` și fără publicarea fișierelor proprietare.
 identificate. Următoarea direcție de investigare este localizarea statică a
 rutinei care citește fișierele, cu dovezi de referințe și flux de date, nu
 presupunerea unui algoritm pe baza entropiei.
+
+
+## Observație nouă: familii de prefixe binare (2026-10-31)
+
+S-a executat local `idf_prefix_family_audit.py` asupra **tuturor celor
+81 de fișiere .IDF**, citind doar prima fereastră de 64 KiB din primul
+fragment al fiecăruia. Pentru fiecare prim fragment, scriptul a
+reverificat **SHA256 complet**, comparat cu inventarul privat. Niciun
+fragment din pachetul 0016 nu a fost necesar.
+
+**Rezultat real:** 81/81 prime fragmente SHA256 PASS;
+**78 de prefixe distincte de 16 octeți**; **3 perechi** de fișiere cu
+aceiași primi 16 octeți. Lungimile exacte ale prefixelor comune ale
+celor trei perechi sunt **20, 38 și 20 octeți** (comparate până la 64 KiB).
+Aceste potriviri nu sunt compatibile cu ipoteza că *fiecare* antet
+ar fi complet independent și aleator, dar nu demonstrează formatul,
+algoritmul de compresie, criptarea, relația logică dintre fișiere sau
+vreun decodor. Datele binare, prefixele efective și lista privată
+a perechilor **nu sunt publicate**.
+
+`idf_prefix_family_audit.py` produce numai agregate în raportul public,
+iar `--private-details` poate scrie numele perechilor într-un fișier
+local privat, fără a exporta octeți originali. Autotestul sintetic
+`IDF_PREFIX_FAMILY_SELF_TEST=PASS` a fost executat local și integrat în CI.
+Pentru confirmare Ghidra este încă necesar un traseu de control real
+de la deschiderea fișierului la parsarea antetului, fără ocolirea licenței.
