@@ -90,7 +90,7 @@ def correlate(idf_report, api_report, expected_sha256):
                         api_code_functions.add(entry)
     return {
         "schema": "atelierdata-ghidra-idf-api-correlation-v1",
-        "source_sha256_verified_in_reports": True,
+        "source_sha256_claims_match": True,
         "idf_reference_count": idf_refs,
         "api_reference_count": api_refs,
         "idf_referencing_functions": len(idf_functions),
