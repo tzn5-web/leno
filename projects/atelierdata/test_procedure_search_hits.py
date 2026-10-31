@@ -53,8 +53,9 @@ class ProcedureSearchHitTests(unittest.TestCase):
         self.assertEqual(len(second), 18)
         self.assertTrue(all(h["field"] == "Avertisment pas" for h in first + second))
         self.assertEqual(self.db.db.total_changes, before)
-        with self.assertRaises(ValueError):
-            list_procedure_hits(self.db, self.car, "GLOBAL-KEY", field="invalid")
+        for invalid in ("invalid", [], {}, True, 3):
+            with self.subTest(field=repr(invalid)), self.assertRaises(ValueError):
+                list_procedure_hits(self.db, self.car, "GLOBAL-KEY", field=invalid)
 
     def test_field_only_on_later_page_is_searchable_from_first_page(self):
         # The first 250 hits are instructions; warning hits only start later.
