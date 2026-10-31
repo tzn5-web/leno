@@ -28,6 +28,7 @@ jobs:
           python -m py_compile projects/atelierdata/catalog_search.py projects/atelierdata/test_catalog_search.py
           python -m py_compile projects/atelierdata/pe_loadlibrary_literals.py projects/atelierdata/test_pe_loadlibrary_literals.py
           python -m py_compile projects/atelierdata/pe_static_call_alignment.py
+          python -m py_compile projects/atelierdata/idf_stride_evidence.py projects/atelierdata/test_idf_stride_evidence.py
           python -m py_compile projects/atelierdata/idf_prefix_family_audit.py
           python projects/atelierdata/idf_prefix_family_audit.py --self-test
           if ($LASTEXITCODE -ne 0) { throw "IDF_PREFIX_FAMILY_SELF_TEST_FAILED" }
