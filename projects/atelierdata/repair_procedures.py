@@ -83,23 +83,46 @@ def update_procedure(store, procedure_id, system, title, summary="",precautions=
     store.db.commit()
 
 
-def list_procedures(store,vehicle_id=None,search=""):
+def list_procedures(store, vehicle_id=None, search=""):
+    """Search sourced procedure metadata, steps and same-vehicle article text.
+
+    Search is literal: %, _ and backslash are not SQL wildcard operators.
+    Corrupt cross-vehicle references must never reveal foreign article data.
+    No database writes, external requests, or inferred technical values.
+    """
+    if not isinstance(search, str) or len(search) > 200 or "\0" in search:
+        raise ValueError("Invalid procedure search")
     sql=("SELECT p.*,v.make,v.model,v.engine FROM procedures p "
          "JOIN vehicles v ON v.id=p.vehicle_id WHERE 1=1")
     args=[]
     if vehicle_id is not None:
-        sql+=" AND p.vehicle_id=?";args.append(vehicle_id)
+        if isinstance(vehicle_id,bool) or not isinstance(vehicle_id,int) or vehicle_id<=0:
+            raise ValueError("Invalid vehicle id")
+        sql+=" AND p.vehicle_id=?"
+        args.append(vehicle_id)
     if search:
-        sql+=(" AND (p.title LIKE ? OR p.system LIKE ? OR p.summary LIKE ?"
-              " OR p.precautions LIKE ? OR p.source LIKE ?"
-              " OR EXISTS (SELECT 1 FROM procedure_steps s"
-              " LEFT JOIN articles a ON a.id=s.article_id"
-              " WHERE s.procedure_id=p.id AND (s.instruction LIKE ?"
-              " OR s.safety_note LIKE ? OR a.title LIKE ?)))")
-        args.extend(["%"+search+"%"]*8)
-    return store.db.execute(sql+" ORDER BY v.make,v.model,p.system,p.title,p.id",args).fetchall()
-
-
+        pattern=("%"+search.replace("\\","\\\\").replace("%","\\%")
+                 .replace("_","\\_")+"%")
+        sql+=(""" AND (
+            p.title LIKE ? ESCAPE '\' OR p.system LIKE ? ESCAPE '\'
+            OR p.summary LIKE ? ESCAPE '\' OR p.precautions LIKE ? ESCAPE '\'
+            OR p.source LIKE ? ESCAPE '\'
+            OR EXISTS (
+                SELECT 1 FROM procedure_steps s
+                LEFT JOIN articles a
+                  ON a.id=s.article_id AND a.vehicle_id=p.vehicle_id
+                WHERE s.procedure_id=p.id
+                  AND (s.instruction LIKE ? ESCAPE '\'
+                    OR s.safety_note LIKE ? ESCAPE '\'
+                    OR a.title LIKE ? ESCAPE '\'
+                    OR a.category LIKE ? ESCAPE '\'
+                    OR a.source LIKE ? ESCAPE '\'
+                    OR a.content LIKE ? ESCAPE '\')
+            ))""")
+        args.extend([pattern]*11)
+    return store.db.execute(
+        sql+" ORDER BY v.make,v.model,p.system,p.title,p.id",args
+    ).fetchall()
 
 def list_reference_articles(store, procedure_id, search=""):
     """Documents available to a step, scoped strictly to the procedure's vehicle.
