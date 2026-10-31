@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from repair_export import export_procedure_html,export_procedures_json
 from procedure_audit import audit_procedure, get_step_reference
+from procedure_audit_export import export_procedure_audit_json
 from procedure_search_hits import list_procedure_hits
 from repair_procedures import (
     add_step, create_procedure, delete_procedure, delete_step, get_procedure,
@@ -495,9 +496,33 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         table.bind("<Double-1>",go_to_step)
         ttk.Button(pane,text="Mergi la pasul selectat",command=go_to_step
                    ).pack(anchor="w",pady=(8,0))
+        def export_audit_report(destination=None, notify=True):
+            """Re-check current SQLite/attachments before exporting the audit."""
+            if destination is None:
+                destination=filedialog.asksaveasfilename(
+                    parent=audit,defaultextension=".json",
+                    filetypes=[("Raport audit JSON","*.json")])
+            if not destination:
+                return None
+            try:
+                payload=export_procedure_audit_json(
+                    app.db,pid,destination,vehicle_id=vehicle_id)
+                if notify:
+                    messagebox.showinfo("Audit exportat",
+                                        "Raportul JSON a fost salvat.",parent=audit)
+                return payload
+            except Exception as exc:
+                if not notify:
+                    raise
+                messagebox.showerror("Export audit eșuat",str(exc),parent=audit)
+                return None
+
+        ttk.Button(pane,text="Exportă raport audit JSON",
+                   command=export_audit_report).pack(anchor="w",pady=(7,0))
         audit.audit_report=report
         audit.issues_tree=table
         audit.go_to_step=go_to_step
+        audit.export_audit_report=export_audit_report
         return audit
 
     def export_html():
