@@ -214,3 +214,25 @@ nu validitatea tehnică, dreptul de utilizare ori compatibilitatea cu mașina.
 Verificare: `python -m unittest discover -s projects/atelierdata -p 'test_procedure_audit_export.py' -v`;
 testul integrat `atelierdata.py --ui-smoke` generează și citește un raport
 JSON din fereastra Windows și verifică faptul că SQLite nu a fost modificat.
+
+## Export audit HTML imprimabil, fără conexiune (2026-10-31)
+
+În **Proceduri → Audit documente** există **„Exportă raport audit HTML”**.
+Fișierul .html/.htm conține un instantaneu al constatărilor curente,
+identificarea vehiculului, proveniența procedurii, numărul pașilor, verificările
+SHA256, codurile de eroare și avertismentele per pas. Este un document
+imprimabil și funcționează offline, fără JavaScript, resurse externe sau
+atașamente incluse. Datele provenite din SQLite sunt escapate pentru HTML;
+o politică CSP blochează încărcarea resurselor externe.
+
+La fiecare export verificările se refac din SQLite și din fișierele gestionate.
+Scrierea este atomică, nu modifică SQLite și nu poate suprascrie baza de date
+sau fișiere din depozitul intern documents/. Procedurile și documentele
+altor vehicule nu pot fi exportate prin selectarea unei proceduri diferite.
+Raportul **nu** certifică siguranța intervenției, corectitudinea valorilor,
+dreptul de utilizare sau aplicabilitatea la vehicul.
+
+Teste sintetice: test_procedure_audit_html.py (inclusiv XSS, date ale altui
+vehicul, refuz suprascriere, verificări actualizate și integritatea SQLite).
+atelierdata.py --ui-smoke verifică și butonul HTML din GUI Windows,
+atât în Python, cât și în executabilul PyInstaller.
