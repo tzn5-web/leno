@@ -13,9 +13,9 @@ from pathlib import Path
 
 SCHEMA = "atelierdata-windows-path-gate-v1"
 ROOT = "Autodata__3.45"
-INVALID = re.compile(r'[<>:"\\\\|?*\\x00-\\x1f]')
-RESERVED = re.compile(r'^(?:CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])(?:\\..*)?$', re.I)
-LINE = re.compile(r'^\\s*(\\d+)\\s+(.+?)\\s*$')
+INVALID = re.compile(r'[<>:"\\|?*\x00-\x1f]')
+RESERVED = re.compile(r'^(?:CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])(?:\..*)?$', re.I)
+LINE = re.compile(r'^\s*(\d+)\s+(.+?)\s*$')
 
 def load_paths(inventory: Path) -> list[tuple[str, int]]:
     inventory = Path(inventory)
@@ -94,7 +94,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         report = audit_paths(load_paths(args.inventory))
-        payload = json.dumps(report, ensure_ascii=False, indent=2) + "\\n"
+        payload = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
         if args.output:
             if args.output.resolve() == args.inventory.resolve():
                 raise ValueError("Output must not overwrite input inventory")
