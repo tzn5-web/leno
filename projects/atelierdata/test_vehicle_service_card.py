@@ -16,7 +16,7 @@ class ServiceCardTests(unittest.TestCase):
         self.n=self.db.add_vehicle("Nissan","Micra","CR12DE","2006","Benzină")
 
     def field(self,section,label):
-        return next(i for i,row in enumerate(FIELD_DATA) if row[:2]==(section,label))
+        return next(i for i,row in enumerate(FIELD_DATA) if tuple(row[:2])==(section,label))
 
     def test_all_categories_available_without_invented_specs(self):
         profile=card(self.db,self.m)
