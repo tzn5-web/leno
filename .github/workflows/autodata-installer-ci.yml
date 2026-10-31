@@ -76,7 +76,7 @@ jobs:
           if (-not (Test-Path -LiteralPath $iscc)) { throw 'ISCC.exe not found' }
           & $iscc 'tools/autodata-installer/installer.iss'
           if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compile failed' }
-          $out = Join-Path $env:AUTODATA_OUTPUT_DIR 'Autodata_3_45_Licensed_Setup.exe'
+          $out = Join-Path $env:AUTODATA_OUTPUT_DIR 'Autodata_Original_Licensed_Setup.exe'
           if (-not (Test-Path -LiteralPath $out)) { throw 'Expected test EXE missing' }
           Write-Host 'INNO_TEMPLATE_COMPILE=PASS'
           Write-Host 'NOTE: fixture is synthetic; test EXE is not uploaded or distributed'
