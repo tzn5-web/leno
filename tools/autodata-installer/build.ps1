@@ -97,7 +97,7 @@ New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
     & $compiler $iss
     if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed.' }
 
-    $exe = Join-Path $env:AUTODATA_OUTPUT_DIR 'Autodata_3_45_Licensed_Setup.exe'
+    $exe = Join-Path $env:AUTODATA_OUTPUT_DIR 'Autodata_Original_Licensed_Setup.exe'
     if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
         throw 'Compiled setup EXE was not found.'
     }
