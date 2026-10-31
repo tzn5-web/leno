@@ -112,6 +112,28 @@ class DocumentLibraryTests(unittest.TestCase):
         self.assertEqual(list_library(self.db)[0]["display_title"],"Electrică revizuită")
         self.assertEqual(len(list_library(self.db,only_indexed=True)),1)
 
+    def test_unicode_literal_search_provenance_and_vehicle_scope(self):
+        """Library search must agree with procedure Unicode casefold matching."""
+        owned=self.import_sample(
+            title="Straße %_ synthetic guide",
+            source_name="Große synthetic publisher",
+            applicability_note="İstanbul synthetic applicability")
+        foreign=self.import_sample(
+            vehicle=self.skoda,title="Unrelated synthetic document",
+            source_name="OTHER TEST SOURCE",
+            applicability_note="Other vehicle only")
+        before=self.db.db.total_changes
+        for needle in ("STRASSE", "GROSSE", "İSTANBUL", "%_", "_ synthetic"):
+            with self.subTest(needle=needle):
+                rows=list_library(self.db,query=needle)
+                self.assertEqual([row["attachment_id"] for row in rows],[owned])
+                self.assertEqual(list_library(self.db,make="Skoda",query=needle),[])
+        self.assertEqual(
+            [row["attachment_id"] for row in list_library(self.db,query="OTHER TEST")],
+            [foreign])
+        self.assertEqual(list_library(self.db,query="STRASSE%"),[])
+        self.assertEqual(self.db.db.total_changes,before)
+
     def test_complete_backup_restores_metadata_and_bytes(self):
         a=self.import_sample()
         archive=self.root/"bundle.zip"
