@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from repair_export import export_procedure_html,export_procedures_json
-from procedure_audit import audit_procedure, get_step_reference
+from procedure_audit import audit_procedure, get_step_reference, resolve_step_attachment
 from procedure_audit_export import export_procedure_audit_json
 from procedure_audit_html import export_procedure_audit_html
 from procedure_search_hits import (DEFAULT_LIMIT, PROCEDURE_FIELDS, STEP_FIELDS,
@@ -516,9 +516,11 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
     def open_reference():
         selected=steps.selection()
         if not selected:return
+        selected_step_id=int(selected[0])
+        selected_procedure_id=state["pid"]
         try:
             article=get_step_reference(
-                app.db,int(selected[0]),vehicle_id,state["pid"])
+                app.db,selected_step_id,vehicle_id,selected_procedure_id)
         except ValueError as exc:
             return messagebox.showerror("Referință invalidă",str(exc),parent=top)
         if article is None:
@@ -534,6 +536,11 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         area.insert("1.0",f"SURSĂ: {article['source']}\n\n{article['content']}\n\n"
                   f"ATAȘAMENTE ({len(linked)}):\n{attachments}")
         area.configure(state="disabled")
+        def resolve_attachment(attachment_id):
+            return resolve_step_attachment(
+                app.db,selected_step_id,vehicle_id,selected_procedure_id,
+                attachment_id)
+        display.resolve_attachment=resolve_attachment
         if linked:
             def open_attachment():
                 import os,sys,subprocess
@@ -542,8 +549,7 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                     minvalue=1,maxvalue=len(linked),parent=display)
                 if choice is None:return
                 try:
-                    from atelierdata_extensions import resolve_document
-                    path=resolve_document(app.db,linked[choice-1]["id"])
+                    path=resolve_attachment(linked[choice-1]["id"])
                     if sys.platform=="win32":os.startfile(str(path))
                     else:subprocess.Popen(["xdg-open",str(path)])
                 except Exception as exc:
