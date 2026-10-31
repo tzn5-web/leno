@@ -18,6 +18,7 @@ def fixture():
     report = {
         "schema": "atelierdata-ghidra-loadlibrary-private-v1",
         "source_sha256": digest,
+        "source_md5": hashlib.md5(pe).hexdigest(),
         "ghidra_executable_md5_verified": True,
         "candidate_count": 1,
         "recognized_instruction_pairs": 1,
@@ -68,6 +69,11 @@ class EvidenceReplayTests(unittest.TestCase):
     def test_rejects_missing_candidate(self):
         self.triage["candidates"] = []
         with self.assertRaises(ValueError):
+            replay(self.path, self.sha, self.triage, self.report)
+
+    def test_rejects_wrong_ghidra_binary_md5(self):
+        self.report["source_md5"] = "0" * 32
+        with self.assertRaisesRegex(ValueError, "Mismatched original identity"):
             replay(self.path, self.sha, self.triage, self.report)
 
     def test_rejects_tampered_ghidra_report(self):
