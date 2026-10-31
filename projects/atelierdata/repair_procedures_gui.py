@@ -229,9 +229,9 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
             choices=("Toate câmpurile",*(
                 label for _,label in (*PROCEDURE_FIELDS,*STEP_FIELDS)
                 if any(hit["field"]==label for hit in hits)))
-            field_choice.configure(values=choices)
-            if field_filter.get() not in choices:
-                field_filter.set("Toate câmpurile")
+            field_choice.configure(values=("Toate câmpurile",*(label for _,label in (*PROCEDURE_FIELDS,*STEP_FIELDS))))
+            # Preserve a selected field across pages, even when this page
+            # contains no matches in that field. Reset only by user choice.
             refresh_hit_filter()
             return True
 
