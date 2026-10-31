@@ -49,6 +49,31 @@ class ProcedureSearchHitTests(unittest.TestCase):
         self.assertEqual([h["step_id"] for h in other_hits], [self.other_sid])
         self.assertEqual(self.db.db.total_changes, before)
 
+    def test_unicode_casefold_hits_match_sql_candidates(self):
+        # SQLite LIKE alone misses ß -> ss and İ -> i + combining dot.
+        self.db.db.execute(
+            "UPDATE procedures SET title=? WHERE id=?",
+            ("Straße synthetic procedure", self.pid))
+        self.db.db.execute(
+            "UPDATE procedure_steps SET safety_note=? WHERE id=?",
+            ("İSTANBUL synthetic warning", self.sid))
+        self.db.db.execute(
+            "UPDATE articles SET title=? WHERE id=?",
+            ("Große synthetic diagram", self.doc))
+        self.db.db.commit()
+        before = self.db.db.total_changes
+        for term, label, step_id in (
+            ("STRASSE", "Titlu procedură", None),
+            ("i\u0307stanbul", "Avertisment pas", self.sid),
+            ("GROSSE", "Titlu document", self.sid),
+        ):
+            with self.subTest(term=term):
+                found = list_procedure_hits(self.db, self.car, term)
+                self.assertEqual([(h["field"], h["step_id"]) for h in found],
+                                 [(label, step_id)])
+                self.assertEqual(list_procedure_hits(self.db, self.other, term), [])
+        self.assertEqual(self.db.db.total_changes, before)
+
     def test_metadata_field_skips_step_document_queries(self):
         # A metadata-only search must not read large step/article bodies.
         statements = []
