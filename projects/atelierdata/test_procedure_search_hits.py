@@ -170,6 +170,50 @@ class ProcedureSearchHitTests(unittest.TestCase):
         self.assertEqual(len(self.hits("MATCH-KEY", limit=3)), 3)
         self.assertEqual(self.db.db.total_changes, before)
 
+    def test_pagination_preserves_order_scope_and_is_read_only(self):
+        # More than one GUI page of synthetic, vehicle-scoped results.
+        self.db.db.executemany(
+            "INSERT INTO procedure_steps(procedure_id,step_number,instruction,safety_note)"
+            " VALUES(?,?,?,?)",
+            [(self.pid, n, "PAGED-KEY synthetic", "")
+             for n in range(2, 263)])
+        self.db.db.commit()
+        before = self.db.db.total_changes
+        first = list_procedure_hits(self.db, self.car, "PAGED-KEY", limit=250)
+        second = list_procedure_hits(
+            self.db, self.car, "PAGED-KEY", limit=250, offset=250)
+        whole = list_procedure_hits(self.db, self.car, "PAGED-KEY", limit=1000)
+        self.assertEqual(len(first), 250)
+        self.assertEqual(len(second), 11)
+        self.assertEqual(first + second, whole)
+        self.assertEqual(len({h["step_id"] for h in whole}), 261)
+        self.assertEqual(list_procedure_hits(
+            self.db, self.car, "PAGED-KEY", limit=10, offset=1000000), [])
+        self.assertEqual(list_procedure_hits(
+            self.db, self.other, "PAGED-KEY", limit=250), [])
+        self.assertEqual(self.db.db.total_changes, before)
+
+    def test_pagination_across_fields_and_boundaries(self):
+        self.db.db.execute(
+            "UPDATE procedures SET title=?,source=? WHERE id=?",
+            ("PAGE-TERM title", "PAGE-TERM provenance", self.pid))
+        self.db.db.execute(
+            "UPDATE procedure_steps SET instruction=?,safety_note=? WHERE id=?",
+            ("PAGE-TERM step", "PAGE-TERM warning", self.sid))
+        self.db.db.commit()
+        full = self.hits("PAGE-TERM")
+        self.assertEqual(len(full), 4)
+        self.assertEqual(list_procedure_hits(
+            self.db, self.car, "PAGE-TERM", limit=2, offset=2), full[2:])
+        self.assertEqual(list_procedure_hits(
+            self.db, self.car, "PAGE-TERM", limit=1, offset=3), full[-1:])
+        self.assertEqual(list_procedure_hits(
+            self.db, self.car, "PAGE-TERM", limit=1, offset=4), [])
+        for bad in (-1, 1000001, True, 1.2, "1", None):
+            with self.subTest(offset=repr(bad)), self.assertRaises(ValueError):
+                list_procedure_hits(
+                    self.db, self.car, "PAGE-TERM", offset=bad)
+
     def test_reject_invalid_search_vehicle_and_limit(self):
         for bad in ("", "  ", "\0", "x"*201, None, 7):
             with self.subTest(query=repr(bad)):
