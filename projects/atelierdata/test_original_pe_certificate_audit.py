@@ -105,7 +105,10 @@ class CertificateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             manifest = fixture(root)
-            (root / BLOCKED).symlink_to(root / "autodata_part_0001.zip")
+            try:
+                (root / BLOCKED).symlink_to(root / "autodata_part_0001.zip")
+            except OSError:
+                self.skipTest("Symlink creation unavailable on this Windows runner")
             with self.assertRaisesRegex(ValueError, "Blocked package"):
                 assess(manifest, root)
 
