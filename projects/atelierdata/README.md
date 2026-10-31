@@ -2,6 +2,28 @@
 
 Proiectul conține cod original pentru un catalog auto offline pe Windows, **nu** o copie 1:1 a Autodata și **nu** conține datele proprietare Autodata. Nu pretinde decodarea bazei .IDF.
 
+## Biblioteca tehnică offline — documente cu proveniență
+
+**Nou în interfața Windows:** butonul **Bibliotecă tehnică offline**. Acesta oferă o bibliotecă locală de documente tehnice *ale utilizatorului sau păstrate cu permisiune*, legate de vehiculul exact din baza SQLite: `make`, `model`, `engine`, `years`, `variant`. Identitatea motorizării nu este dedusă din denumirea fișierului.
+
+- Import explicit, local, numai PDF/PNG/JPG/JPEG/TXT, în limita existentă de 32 MiB pentru fiecare fișier. Fișierele nu sunt descărcate automat de pe site-urile catalogului.
+- Pentru fiecare document: tip (manual atelier, schemă, procedură, buletin etc.), titlu, sursă/autor, URL HTTPS opțional, limbă, piață, revizie, notă de aplicabilitate și **dreptul de păstrare declarat**.
+- Importul unui document nou este respins dacă dreptul de păstrare rămâne `neconfirmat`. Afirmarea unui drept de către utilizator nu reprezintă validare juridică independentă.
+- Căutare locală în documente și filtrare după marcă, categorie, an și text. Atașamentele mai vechi apar și ele, chiar dacă nu au încă metadate; acestea pot fi completate ulterior.
+- Deschiderea unui fișier trece prin verificarea **SHA-256** deja existentă și refuză fișiere lipsă/corupte. Nu se execută fișiere din arhiva Autodata.
+- Metadatele se salvează în `library_documents`, cu cheie străină spre `attachments` și ștergere în cascadă. Backupul ZIP existent include automat și tabela în snapshotul SQLite; restaurarea păstrează documentele și proveniența.
+- În catalogul **Surse tehnice online** a apărut și **„Salvează referință la vehicul”**: creează numai o notă cu URL, fără a importa conținutul sau a crea în mod fals o procedură de atelier; respinge sursele necorespunzătoare mărcii.
+
+### Testare și limite
+
+```powershell
+python -m unittest discover -s projects/atelierdata -p "test_document_library.py" -v
+python -m unittest discover -s projects/atelierdata -p "test_technical_source_references.py" -v
+python projects/atelierdata/document_library_gui_smoke.py
+```
+
+Aceste teste utilizează doar vehicule, PDF-uri și date **sintetice**, plus o fereastră Tkinter locală. Testele sunt incluse în workflow-ul Windows `.github/workflows/atelierdata-windows.yml`. Un PASS al lor nu dovedește acoperirea manualelor reale sau valabilitatea valorilor tehnice. **Verificați un run GitHub Actions reușit înainte să numiți noul EXE testat.**
+
 ## Surse tehnice gratuite și oficiale — 31.10.2026
 
 Nou în GUI: butonul **Surse tehnice online**. Catalogul conține **26 de surse** pentru Opel, Mitsubishi, BMW, Nissan, Škoda, Volkswagen, Audi, Ford, Renault, Dacia, Toyota și alte mărci. Filtrează după marcă (preselectată din vehiculul activ), tip (proceduri, scheme, diagnoză, documente, rechemări) și acces (gratuit, cont gratuit, mixt, neoficial, cu plată). Căutarea în catalog este **complet locală**; accesarea internetului are loc doar când utilizatorul apasă „Deschide sursa”.
