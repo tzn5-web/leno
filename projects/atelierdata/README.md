@@ -193,3 +193,24 @@ de căutare într-un document sintetic. Ambele rulează în workflow-ul Windows,
 inclusiv în executabilul PyInstaller. Datele reale trebuie să fie introduse
 de utilizator sau obținute cu drept de utilizare; nu sunt distribuite date
 proprietare și nu sunt inventate proceduri de reparație.
+
+
+## Export raport audit procedură JSON (2026-10-31)
+
+În **Proceduri → Audit documente**, butonul **„Exportă raport audit JSON”**
+recalculează verificările pentru procedura curentă și salvează un raport
+UTF-8 cu schema `atelierdata-procedure-audit-v1`. Sunt incluse identificarea
+vehiculului, proveniența procedurii, numărul de pași, numărul atașamentelor
+verificate, codurile de eroare/avertisment și referințele la pașii afectați.
+Nu se exportă conținutul fișierelor atașate și nu se adaugă valori tehnice.
+
+Exportul este atomic și nu modifică SQLite. Se refuză exportul către fișierul
+bazei de date, către depozitul intern `documents/`, către extensii altele
+decât `.json` sau către o procedură aparținând altui vehicul. Raportul
+este un instantaneu; la export verificările se refac pentru a evita
+rezultate învechite. SHA256 dovedește numai integritatea fișierului stocat,
+nu validitatea tehnică, dreptul de utilizare ori compatibilitatea cu mașina.
+
+Verificare: `python -m unittest discover -s projects/atelierdata -p 'test_procedure_audit_export.py' -v`;
+testul integrat `atelierdata.py --ui-smoke` generează și citește un raport
+JSON din fereastra Windows și verifică faptul că SQLite nu a fost modificat.
