@@ -156,10 +156,12 @@ def open_schematics_window(app, editor_class, selected_article_id=None, vehicle_
     window.attachments_tree=attachments
 
     title = tk.StringVar(value="Selectează o schemă")
+    window.schematic_title_var=title
     ttk.Label(body,textvariable=title,font=("Segoe UI Semibold",13)).pack(anchor="w",pady=(0,6))
     details = tk.Text(body,height=4,wrap="word",state="disabled",
                       font=("Segoe UI",10),bg="#1a2a42",fg="#eef5ff",relief="flat")
     details.pack(fill="x",pady=(0,8))
+    window.schematic_details_text=details
     frame=ttk.Frame(body)
     frame.pack(fill="both",expand=True)
     canvas=tk.Canvas(frame,bg="#0e1624",highlightthickness=0)
@@ -182,19 +184,31 @@ def open_schematics_window(app, editor_class, selected_article_id=None, vehicle_
         details.config(state="disabled")
 
     def refresh_schematics(prefer=None):
-        schematics.delete(*schematics.get_children())
+        # A search filter must not leave a previously selected, now hidden
+        # document and its preview active in the right-hand pane.
+        previous = state["article_id"]
         try:
             rows = list_schematic_articles(app.db,vehicle_id,q.get())
+            invalid_search = False
         except ValueError:
             rows = []
-            title.set("Căutare invalidă (maximum 200 caractere)")
+            invalid_search = True
+        schematics.delete(*schematics.get_children())
         for row in rows:
             schematics.insert("","end",iid=str(row["id"]),
                               text=f"[{row['category']}] {row['title']}")
-        if prefer is not None and schematics.exists(str(prefer)):
-            schematics.selection_set(str(prefer))
-            schematics.see(str(prefer))
+        chosen = prefer if prefer is not None else previous
+        if chosen is not None and schematics.exists(str(chosen)):
+            schematics.selection_set(str(chosen))
+            schematics.see(str(chosen))
             select_article()
+        else:
+            state["article_id"] = None
+            attachments.delete(*attachments.get_children())
+            clear_image()
+            set_details("")
+            title.set("Căutare invalidă (maximum 200 caractere)"
+                      if invalid_search else "Selectează o schemă")
 
     def clear_image():
         state["image"]=None
@@ -217,6 +231,8 @@ def open_schematics_window(app, editor_class, selected_article_id=None, vehicle_
         if (article is None or article["vehicle_id"]!=vehicle_id
                 or article["category"] not in SCHEME_CATEGORIES):
             state["article_id"]=None
+            title.set("Selectează o schemă")
+            set_details("")
             return
         title.set(article["title"])
         set_details(f"Categorie: {article['category']}\nSursă: {article['source'] or 'neprecizată'}"
