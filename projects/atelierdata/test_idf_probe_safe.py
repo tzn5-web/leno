@@ -89,6 +89,18 @@ class ProbeSafetyTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Symbolic"):
                 probe_idf(link)
 
+    def test_synthetic_fixed_stride_is_evidence_not_decoder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            payload = (b"ABCDEFGH" + b"0123456789abc") * 24
+            (root / "stride.IDF").write_bytes(payload)
+            report = probe_idf(root)
+            entry = report["samples"][0]
+            self.assertGreaterEqual(entry["motif_run_count"], 20)
+            self.assertEqual(entry["motif_stride_bytes"], 21)
+            self.assertFalse(entry["decoded"])
+            self.assertFalse(report["idf_decoder_proven"])
+
     def test_empty_idf(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
