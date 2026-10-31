@@ -52,7 +52,11 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
     ttk.Label(left,text="PROCEDURI").pack(anchor="w",pady=(0,5))
     search=tk.StringVar()
     field=ttk.Entry(left,textvariable=search)
-    field.pack(fill="x",padx=(0,12),pady=(0,8))
+    field.pack(fill="x",padx=(0,12),pady=(0,4))
+    ttk.Label(left,text="Căutare literală: proceduri, pași, avertismente și documente.",
+              wraplength=290).pack(anchor="w",pady=(0,8))
+    search_notice=tk.StringVar(value="")
+    ttk.Label(left,textvariable=search_notice,wraplength=290).pack(anchor="w")
     procedures=ttk.Treeview(left,show="tree")
     procedures.pack(fill="both",expand=True,padx=(0,12))
     ttk.Label(right,text="PAȘI ÎN ORDINEA EXECUȚIEI").pack(anchor="w",pady=(0,5))
@@ -76,7 +80,13 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         detail.configure(state="disabled")
 
     def refresh_proc(prefer=None):
-        candidates=list_procedures(app.db,vehicle_id,search.get())
+        try:
+            candidates=list_procedures(app.db,vehicle_id,search.get())
+        except ValueError as exc:
+            candidates=[]
+            search_notice.set("Căutare invalidă: "+str(exc))
+        else:
+            search_notice.set(f"{len(candidates)} proceduri găsite")
         procedures.delete(*procedures.get_children())
         for row in candidates:
             procedures.insert("","end",iid=str(row["id"]),
@@ -439,6 +449,8 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
 
     # Expose read-only widget handles for the packaged Windows GUI smoke test.
     top.procedures_tree=procedures
+    top.procedure_search_var=search
+    top.procedure_search_notice=search_notice
     top.steps_tree=steps
     top.open_reference_picker=choose_reference
     top.open_schematic_reference=open_schematic_reference
