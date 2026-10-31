@@ -4,6 +4,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 from idf_stride_evidence import analyze, strongest_stride
 
 
@@ -62,6 +63,17 @@ class IDFStrideTests(unittest.TestCase):
             (root / 'autodata_part_0001.zip').unlink()
             with self.assertRaises(FileNotFoundError):
                 analyze(manifest, root, ('FAS.IDF',))
+
+    def test_blocked_part_0016_is_rejected_before_open(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            manifest = manifest_and_parts(root, [('FAS.IDF', b'synthetic')])
+            manifest['files'][0]['chunks'][0]['package'] = 'autodata_part_0016.zip'
+            with patch('idf_stride_evidence.zipfile.ZipFile',
+                       side_effect=AssertionError('Blocked ZIP must never be opened')) as opener:
+                with self.assertRaisesRegex(ValueError, 'Blocked package part_0016'):
+                    analyze(manifest, root, ('FAS.IDF',))
+                opener.assert_not_called()
 
     def test_no_repetition(self):
         self.assertIsNone(strongest_stride(b'123456789'))
