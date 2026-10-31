@@ -14,6 +14,7 @@ from maintenance_plans import (ensure_schema as ensure_maintenance_schema,
                                add_plan, log_service)
 from maintenance_gui import open_maintenance_window
 from vpic_catalog_gui import open_vehicle_catalog
+from technical_sources_gui import open_sources_window
 
 CATEGORIES = ("Date tehnice","Întreținere","Motor","Distribuție","Cupluri de strângere",
               "Diagnosticare / DTC","Scheme electrice","Siguranțe și relee","Frâne / ABS",
@@ -220,7 +221,8 @@ class App:
                  ('Restaurare ZIP',self.restore_full),('Specificații',self.specifications),
                  ('Proceduri',self.procedures),('Scheme / imagini',self.schematics),
                  ('Diagnosticare DTC',self.diagnostics),('Întreținere',self.maintenance),
-                 ('Catalog public NHTSA',self.public_catalog),('Analiză IDF',self.analyze)]
+                 ('Catalog public NHTSA',self.public_catalog),('Surse tehnice online',self.online_sources),
+                 ('Analiză IDF',self.analyze)]
         for col in range(4):
             bar.columnconfigure(col,weight=1)
         for i,(name,cmd) in enumerate(actions):
@@ -379,6 +381,9 @@ class App:
 
     def public_catalog(self):
         return open_vehicle_catalog(self)
+
+    def online_sources(self):
+        return open_sources_window(self)
 
     def maintenance(self):
         return open_maintenance_window(self,Editor)
