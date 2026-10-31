@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image
 from atelierdata import Store
 from atelierdata_extensions import attach_document, resolve_document
-from procedure_audit import audit_procedure, get_step_reference
+from procedure_audit import audit_procedure, get_step_reference, resolve_step_attachment
 from repair_procedures import add_step, create_procedure, update_step
 
 
@@ -52,6 +52,46 @@ class ProcedureAuditTests(unittest.TestCase):
             self.store, self.step, self.car, self.proc)["id"], self.diagram
         )
         self.assertEqual(resolve_document(self.store, attachment_id).suffix, ".png")
+
+    def test_attachment_open_rechecks_live_step_vehicle_and_integrity(self):
+        """A stale GUI popup must not open an old or foreign attachment."""
+        owned = attach_document(self.store, self.diagram, self._image())
+        other_article = self.store.add_article(
+            self.car, "Note atelier", "Different owned document", "TEST", "OWNED")
+        wrong = attach_document(self.store, other_article, self._image())
+        foreign_article = self.store.add_article(
+            self.other_car, "Note atelier", "Other vehicle", "TEST", "FOREIGN")
+        foreign = attach_document(self.store, foreign_article, self._image())
+        before = self.store.db.total_changes
+        verified = resolve_step_attachment(
+            self.store, self.step, self.car, self.proc, owned)
+        self.assertEqual(verified, resolve_document(self.store, owned))
+        for bad in (wrong, foreign, 987654, True, 1.0, "1", None):
+            with self.subTest(attachment=repr(bad)), self.assertRaises(ValueError):
+                resolve_step_attachment(
+                    self.store, self.step, self.car, self.proc, bad)
+        with self.assertRaises(ValueError):
+            resolve_step_attachment(
+                self.store, self.step, self.other_car, self.proc, owned)
+        self.assertEqual(self.store.db.total_changes, before)
+        update_step(self.store, self.step, "Relinked synthetic step",
+                    article_id=other_article)
+        with self.assertRaisesRegex(ValueError, "nu mai aparține"):
+            resolve_step_attachment(
+                self.store, self.step, self.car, self.proc, owned)
+        self.assertEqual(resolve_step_attachment(
+            self.store, self.step, self.car, self.proc, wrong),
+            resolve_document(self.store, wrong))
+        update_step(self.store, self.step, "Unlinked synthetic step")
+        with self.assertRaisesRegex(ValueError, "nu mai are document"):
+            resolve_step_attachment(
+                self.store, self.step, self.car, self.proc, wrong)
+        update_step(self.store, self.step, "Restored synthetic step",
+                    article_id=self.diagram)
+        verified.write_bytes(b"modified after opening popup")
+        with self.assertRaisesRegex(ValueError, "corupt"):
+            resolve_step_attachment(
+                self.store, self.step, self.car, self.proc, owned)
 
     def test_missing_image_warning_and_source_provenance(self):
         report = audit_procedure(self.store, self.proc)
