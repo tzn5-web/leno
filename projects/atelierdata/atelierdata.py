@@ -4,6 +4,7 @@ from pathlib import Path
 from atelierdata_extensions import integrity_check,export_records,attach_document,list_documents,resolve_document
 from atelierdata_backup import backup_bundle,restore_bundle
 from backup_verification import verify_backup_bundle
+from idf_probe_safe import probe_idf
 from technical_specs import (ensure_schema,add_spec,update_spec,remove_spec,get_spec,
                              list_specs,import_specs,export_specs)
 from repair_procedures import (ensure_schema as ensure_procedures_schema,
@@ -149,26 +150,6 @@ def import_records(store,path):
         result['inserted']=0
         raise
     return result
-
-def probe_idf(root):
-    root=Path(root);items=[]
-    def add(name,size,prefix):
-        if not prefix:return
-        freq=collections.Counter(prefix)
-        entropy=-sum((n/len(prefix))*math.log2(n/len(prefix)) for n in freq.values())
-        items.append({'name':name,'bytes':size,'sample_entropy':round(entropy,4),
-                      'header_hex':prefix[:16].hex(),'decoded':False})
-    if root.is_file() and root.suffix.lower()=='.zip':
-        with zipfile.ZipFile(root) as z:
-            for member in z.infolist():
-                if member.filename.lower().endswith('.idf'):
-                    with z.open(member) as stream:add(member.filename,member.file_size,stream.read(65536))
-    elif root.is_dir():
-        for file in root.rglob('*.IDF'):
-            if not file.is_symlink():
-                with file.open('rb') as stream:add(str(file.relative_to(root)),file.stat().st_size,stream.read(65536))
-    else:raise ValueError("Alege director sau ZIP")
-    return {'count':len(items),'samples':items,'warning':'Formatul IDF nu este decodat. Entropia mare nu probează criptarea.'}
 
 def self_test():
     with tempfile.TemporaryDirectory() as tmp:
