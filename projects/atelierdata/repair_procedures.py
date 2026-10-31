@@ -156,9 +156,14 @@ def delete_procedure(store,pid):
 
 
 def list_steps(store,procedure_id):
-    return store.db.execute("SELECT s.*,a.title AS reference_title FROM procedure_steps s "
-        "LEFT JOIN articles a ON a.id=s.article_id "
-        "WHERE s.procedure_id=? ORDER BY s.step_number,s.id",(procedure_id,)).fetchall()
+    # A damaged/imported database may contain an article_id from another vehicle.
+    # Never display its title or content through the procedure step list.
+    return store.db.execute(
+        "SELECT s.*,a.title AS reference_title FROM procedure_steps s "
+        "JOIN procedures p ON p.id=s.procedure_id "
+        "LEFT JOIN articles a ON a.id=s.article_id AND a.vehicle_id=p.vehicle_id "
+        "WHERE s.procedure_id=? ORDER BY s.step_number,s.id",
+        (procedure_id,)).fetchall()
 
 
 def _article_reference(store, procedure_id, article_id):
