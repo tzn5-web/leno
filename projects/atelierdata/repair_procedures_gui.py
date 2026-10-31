@@ -131,8 +131,18 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
 
     def open_search_hits():
         """List exact match locations and jump to a verified same-vehicle step."""
+        term=search.get()
+        page_state={"offset":0,"has_more":False}
+
+        def fetch_page():
+            batch=list_procedure_hits(
+                app.db,vehicle_id,term,limit=DEFAULT_LIMIT+1,
+                offset=page_state["offset"])
+            page_state["has_more"]=len(batch)>DEFAULT_LIMIT
+            return batch[:DEFAULT_LIMIT]
+
         try:
-            hits=list_procedure_hits(app.db,vehicle_id,search.get())
+            hits=fetch_page()
         except ValueError as exc:
             messagebox.showinfo("Căutare detaliată",str(exc),parent=top)
             return None
@@ -158,6 +168,10 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                                   values=("Toate câmpurile",*available_fields),
                                   state="readonly",width=29)
         field_choice.pack(side="left")
+        ttk.Button(filter_row,text="◀ Pagina precedentă",
+                   command=lambda:change_hits_page(-1)).pack(side="left",padx=(12,4))
+        ttk.Button(filter_row,text="Pagina următoare ▶",
+                   command=lambda:change_hits_page(1)).pack(side="left")
         columns=("procedure","step","field","excerpt","source")
         table=ttk.Treeview(box,columns=columns,show="headings",selectmode="browse")
         for key,title,width in zip(columns,
@@ -182,12 +196,45 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                     hit["procedure_title"],
                     hit["step_number"] if hit["step_number"] is not None else "—",
                     hit["field"],hit["excerpt"],hit["source"]))
+            first=page_state["offset"]+1 if hits else 0
+            last=page_state["offset"]+len(hits)
+            more="; există rezultate pe pagina următoare" if page_state["has_more"] else ""
             count_notice.set(
+                f"Pagina {page_state['offset']//DEFAULT_LIMIT+1}: "
                 f"{len(visible_indices)} din {len(hits)} potriviri afișate "
-                f"(maxim {DEFAULT_LIMIT}) pentru «{search.get()}»")
+                f"(pozițiile {first}–{last}{more}) pentru «{term}»")
             return tuple(visible_indices)
         field_choice.bind("<<ComboboxSelected>>",refresh_hit_filter)
         refresh_hit_filter()
+
+        def change_hits_page(direction):
+            """Load another bounded result page without changing SQLite."""
+            if direction not in (-1,1) or isinstance(direction,bool):
+                raise ValueError("Invalid page direction")
+            if direction<0 and page_state["offset"]==0:
+                return False
+            if direction>0 and not page_state["has_more"]:
+                return False
+            old_offset=page_state["offset"]
+            old_more=page_state["has_more"]
+            page_state["offset"]=old_offset+direction*DEFAULT_LIMIT
+            try:
+                new_hits=fetch_page()
+            except ValueError as exc:
+                page_state["offset"]=old_offset
+                page_state["has_more"]=old_more
+                messagebox.showerror("Căutare detaliată",str(exc),parent=popup)
+                return False
+            hits[:]=new_hits
+            choices=("Toate câmpurile",*(
+                label for _,label in (*PROCEDURE_FIELDS,*STEP_FIELDS)
+                if any(hit["field"]==label for hit in hits)))
+            field_choice.configure(values=choices)
+            if field_filter.get() not in choices:
+                field_filter.set("Toate câmpurile")
+            refresh_hit_filter()
+            return True
+
         def move_hit_selection(direction):
             """Navigate only the visible subset, preserving original hit IDs."""
             chosen=table.selection()
@@ -266,6 +313,8 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         popup.bind("<Alt-Left>",lambda _event:move_hit_selection(-1))
         popup.bind("<Alt-Right>",lambda _event:move_hit_selection(1))
         popup.move_hit_selection=move_hit_selection
+        popup.change_hits_page=change_hits_page
+        popup.search_page_state=page_state
         popup.search_field_filter=field_filter
         popup.refresh_hit_filter=refresh_hit_filter
         popup.visible_hit_indices=lambda:tuple(visible_indices)
