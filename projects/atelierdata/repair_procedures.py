@@ -177,7 +177,7 @@ def list_steps(store,procedure_id):
     # A damaged/imported database may contain an article_id from another vehicle.
     # Never display its title or content through the procedure step list.
     return store.db.execute(
-        "SELECT s.*,a.title AS reference_title FROM procedure_steps s "
+        "SELECT s.*,a.title AS reference_title,a.source AS reference_source FROM procedure_steps s "
         "JOIN procedures p ON p.id=s.procedure_id "
         "LEFT JOIN articles a ON a.id=s.article_id AND a.vehicle_id=p.vehicle_id "
         "WHERE s.procedure_id=? ORDER BY s.step_number,s.id",
@@ -315,5 +315,7 @@ def procedure_text(store,pid):
             line+="\n    ATENȚIE: "+step["safety_note"]
         if step["reference_title"]:
             line+="\n    DOCUMENT ASOCIAT: "+step["reference_title"]
+            if step["reference_source"]:
+                line+="\n    SURSĂ DOCUMENT: "+step["reference_source"]
         body.append(line)
     return header+"\n\n"+"\n\n".join(body)
