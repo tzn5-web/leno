@@ -197,7 +197,7 @@ def analyze(data, expected_sha):
                   method='Raw FF15/FF25 patterns matching PE import IAT VAs; no disassembly or control-flow validation',
                   limitations='Matches may be incidental bytes; zero matches does not exclude indirect calls, Delphi runtime wrappers, dynamic imports, or a data loader.')
     return public, dict(schema='atelierdata-pe-iat-private-v1', sha256=digest,
-                         candidates=private, imported_symbols=list(pe['imports'].values()),
+                         md5=hashlib.md5(data).hexdigest(), candidates=private, imported_symbols=list(pe['imports'].values()),
                          literal_locations=private_literals)
 
 
