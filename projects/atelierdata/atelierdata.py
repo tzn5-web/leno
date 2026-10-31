@@ -1013,8 +1013,11 @@ def main():
                 raise RuntimeError('GUI_SMOKE_FAILED: '+'; '.join(gui_errors))
         return 0
     if args.probe_idf:
+        output_path=Path(args.output)
+        if output_path.is_symlink() or output_path.resolve()==Path(args.probe_idf).resolve():
+            raise ValueError('IDF report cannot overwrite its source or a symbolic link')
         report=probe_idf(args.probe_idf)
-        Path(args.output).write_text(json.dumps(report,indent=2,ensure_ascii=False),encoding='utf8')
+        output_path.write_text(json.dumps(report,indent=2,ensure_ascii=False),encoding='utf8')
         print('IDF_PROBE=PASS count='+str(report['count']));return 0
     if args.verify_backup:
         result=verify_backup_bundle(args.verify_backup)
