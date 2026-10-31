@@ -10,7 +10,7 @@ from document_library import import_local_file,ACCESS_RIGHTS,DOCUMENT_TYPES
 
 EXTENSIONS={".pdf",".png",".jpg",".jpeg",".txt"}
 MAX_FILES=500
-MAX_INPUT_SIZE=32*1024*1024
+MAX_INPUT_SIZE=128*1024*1024
 
 def _sha(path):
     h=hashlib.sha256()
@@ -60,8 +60,9 @@ def bulk_import_folder(store,vehicle_id,folder,source_name,rights_basis,category
             if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(root):
                 raise ValueError("Fișier nepermis sau legătură simbolică")
             size=path.stat().st_size
-            if not 0<size<=MAX_INPUT_SIZE:
-                raise ValueError("Fișier gol sau mai mare de 32 MiB")
+            max_size=MAX_INPUT_SIZE if path.suffix.lower()==".pdf" else 32*1024*1024
+            if not 0<size<=max_size:
+                raise ValueError("Fișier gol sau mai mare decât limita permisă")
             _check_signature(path)
             key=_sha(path)+path.suffix.lower()
             if key in present:
