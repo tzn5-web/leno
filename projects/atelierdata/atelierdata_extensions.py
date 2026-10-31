@@ -10,7 +10,8 @@ import tempfile
 from pathlib import Path
 
 _ALLOWED = {'.pdf', '.png', '.jpg', '.jpeg', '.txt'}
-_MAX_SIZE = 32 * 1024 * 1024
+_MAX_SIZE = 128 * 1024 * 1024  # PDFs; still reject oversized images
+_MAX_IMAGE_SIZE = 32 * 1024 * 1024
 _SAFE_NAME = re.compile(r'^[0-9a-f]{64}\.(?:pdf|png|jpe?g|txt)$')
 
 
@@ -53,8 +54,9 @@ def attach_document(store, article_id, source):
         raise ValueError('Accept numai PDF, PNG, JPG, JPEG și TXT')
     if store.get_article(article_id) is None:
         raise ValueError('Documentul nu există')
-    if source.stat().st_size > _MAX_SIZE:
-        raise ValueError('Fișierul depășește 32 MiB')
+    limit = _MAX_SIZE if source.suffix.lower()=='.pdf' else _MAX_IMAGE_SIZE
+    if source.stat().st_size > limit:
+        raise ValueError('Fișierul depășește limita: '+str(limit//(1024*1024))+' MiB')
     folder = store.path.parent / 'documents'
     folder.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix='.pending-', dir=str(folder))
@@ -67,8 +69,8 @@ def attach_document(store, article_id, source):
                 if not block:
                     break
                 total += len(block)
-                if total > _MAX_SIZE:
-                    raise ValueError('Fișierul depășește 32 MiB')
+                if total > limit:
+                    raise ValueError('Fișierul depășește limita: '+str(limit//(1024*1024))+' MiB')
                 digest.update(block)
                 out.write(block)
             out.flush()
