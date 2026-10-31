@@ -78,8 +78,14 @@ class Store:
         values=[]
         if vid is not None:query+=" AND vehicle_id=?";values.append(vid)
         if category!='Toate':query+=" AND category=?";values.append(category)
+        if search is not None and not isinstance(search,str):
+            raise ValueError("Căutarea trebuie să fie text")
         if search:
-            query+=" AND (title LIKE ? OR content LIKE ?)";values.extend(['%'+search+'%']*2)
+            if len(search)>200 or '\0' in search:
+                raise ValueError("Căutarea este prea lungă sau invalidă")
+            literal='%'+search.replace('\\','\\\\').replace('%','\\%').replace('_','\\_')+'%'
+            query+=" AND (title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\')"
+            values.extend([literal,literal])
         return self.db.execute(query+" ORDER BY category,title",values).fetchall()
     def get_article(self,aid):
         return self.db.execute("SELECT * FROM articles WHERE id=?",(aid,)).fetchone()
