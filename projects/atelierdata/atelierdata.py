@@ -707,6 +707,17 @@ def main():
                         raise RuntimeError('PROCEDURES_AUDIT_JSON_WRONG_VEHICLE_OR_CONTENT')
                     if ui.db.db.total_changes!=changes_before:
                         raise RuntimeError('PROCEDURES_AUDIT_JSON_MUTATED_SQLITE')
+                    audit_html_file=Path(folder)/'gui-audit-report.html'
+                    output=audit.export_audit_printable(audit_html_file,notify=False)
+                    if output!=audit_html_file or not audit_html_file.is_file():
+                        raise RuntimeError('PROCEDURES_AUDIT_HTML_EXPORT_FAILED')
+                    printable=audit_html_file.read_text(encoding='utf-8')
+                    if ('default-src \'none\'' not in printable or
+                        'SYNTHETIC' not in printable or
+                        'Erori: 0' not in printable):
+                        raise RuntimeError('PROCEDURES_AUDIT_HTML_WRONG_CONTENT')
+                    if ui.db.db.total_changes!=changes_before:
+                        raise RuntimeError('PROCEDURES_AUDIT_HTML_MUTATED_SQLITE')
 
                 ui.root.after(1650,check_procedure_audit)
             ui.root.after(520,check_procedures_window)
