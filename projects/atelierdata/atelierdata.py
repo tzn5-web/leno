@@ -18,6 +18,8 @@ from catalog_search import search_catalog,open_search_window
 from technical_sources_gui import open_sources_window
 from document_library import ensure_schema as ensure_library_schema
 from document_library_gui import open_document_library
+from workshop_atlas import ensure_schema as ensure_atlas_schema
+from workshop_atlas_gui import open_workshop_atlas
 
 CATEGORIES = ("Date tehnice","Întreținere","Motor","Distribuție","Cupluri de strângere",
               "Diagnosticare / DTC","Scheme electrice","Siguranțe și relee","Frâne / ABS",
@@ -56,6 +58,7 @@ class Store:
         ensure_dtc_schema(self)
         ensure_maintenance_schema(self)
         ensure_library_schema(self)
+        ensure_atlas_schema(self)
     def add_vehicle(self,make,model,engine='',years='',fuel='',variant=''):
         if not make.strip() or not model.strip():raise ValueError("Marca și modelul sunt obligatorii")
         cur=self.db.execute("INSERT INTO vehicles(make,model,engine,years,fuel,variant) VALUES(?,?,?,?,?,?)",
@@ -227,6 +230,7 @@ class App:
                  ('Diagnosticare DTC',self.diagnostics),('Întreținere',self.maintenance),
                  ('Catalog public NHTSA',self.public_catalog),('Surse tehnice online',self.online_sources),
                  ('Bibliotecă tehnică offline',self.local_library),
+                 ('Atlas tehnic',self.workshop_atlas),
                  ('Căutare globală',self.global_search),
                  ('Analiză IDF',self.analyze)]
         for col in range(4):
@@ -393,6 +397,9 @@ class App:
 
     def local_library(self):
         return open_document_library(self)
+
+    def workshop_atlas(self):
+        return open_workshop_atlas(self)
 
     def maintenance(self):
         return open_maintenance_window(self,Editor)
