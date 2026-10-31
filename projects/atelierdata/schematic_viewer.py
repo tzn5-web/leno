@@ -206,7 +206,8 @@ def open_schematics_window(app, editor_class, selected_article_id=None, vehicle_
             set_details("")
             return
         article=app.db.get_article(state["article_id"])
-        if article is None or article["vehicle_id"]!=vehicle_id:
+        if (article is None or article["vehicle_id"]!=vehicle_id
+                or article["category"] not in SCHEME_CATEGORIES):
             state["article_id"]=None
             return
         title.set(article["title"])
@@ -266,6 +267,7 @@ def open_schematics_window(app, editor_class, selected_article_id=None, vehicle_
                                    max(1,canvas.winfo_width()-15),max(1,canvas.winfo_height()-15))
             render()
         except Exception as exc:
+            clear_image()
             messagebox.showerror("Fișier invalid",str(exc),parent=window)
     def preview_selection(event=None):
         selection=attachments.selection()
@@ -275,7 +277,9 @@ def open_schematics_window(app, editor_class, selected_article_id=None, vehicle_
             "WHERE t.id=? AND a.id=? AND a.vehicle_id=? AND a.category IN (?,?)",
             (int(selection[0]),state["article_id"],vehicle_id,*SCHEME_CATEGORIES)
         ).fetchone()
-        if row is None:return
+        if row is None:
+            clear_image()
+            return
         if Path(row["path"]).suffix.lower() in IMAGE_EXT:
             open_selected()
         else:
