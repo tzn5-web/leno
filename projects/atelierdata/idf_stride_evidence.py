@@ -64,6 +64,10 @@ def first_verified_chunk(manifest, directory, name):
     package = chunk["package"]
     if not re.fullmatch(r"autodata_part_\d{4}\.zip", package):
         raise ValueError("Unexpected ZIP package name")
+    # Google Drive flagged this particular package; never open it, even when
+    # a manifest points to it or its digest is known. No abuse bypass.
+    if package.casefold() == "autodata_part_0016.zip":
+        raise ValueError("Blocked package part_0016 must not be accessed")
     archive_path = directory / package
     if archive_path.is_symlink():
         raise ValueError("Symlink ZIP refused")
