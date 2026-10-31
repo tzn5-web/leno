@@ -29,11 +29,23 @@ STEP_FIELDS = (
 def _excerpt(value, needle, radius=85):
     """Bound text displayed in the results table, preserving the match."""
     value = str(value or "").replace("\r", " ").replace("\n", " ")
-    index = value.casefold().find(needle.casefold())
-    if index < 0:
+    # Unicode casefold can expand a character (for example ß -> ss).
+    # Map folded positions back to the original string before slicing,
+    # otherwise an excerpt may omit the beginning of the actual match.
+    folded_parts = []
+    original_positions = []
+    for position, character in enumerate(value):
+        folded = character.casefold()
+        folded_parts.append(folded)
+        original_positions.extend([position] * len(folded))
+    folded_needle = str(needle).casefold()
+    index = "".join(folded_parts).find(folded_needle)
+    if index < 0 or not folded_needle:
         return value[:radius * 2]
-    start = max(0, index - radius)
-    end = min(len(value), index + len(needle) + radius)
+    match_start = original_positions[index]
+    match_end = original_positions[index + len(folded_needle) - 1] + 1
+    start = max(0, match_start - radius)
+    end = min(len(value), match_end + radius)
     return ("…" if start else "") + value[start:end] + ("…" if end < len(value) else "")
 
 
