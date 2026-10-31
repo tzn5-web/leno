@@ -20,6 +20,7 @@ from document_library import ensure_schema as ensure_library_schema
 from document_library_gui import open_document_library
 from workshop_atlas import ensure_schema as ensure_atlas_schema
 from workshop_atlas_gui import open_workshop_atlas
+from vehicle_service_card_gui import open_vehicle_service_card
 
 CATEGORIES = ("Date tehnice","Întreținere","Motor","Distribuție","Cupluri de strângere",
               "Diagnosticare / DTC","Scheme electrice","Siguranțe și relee","Frâne / ABS",
@@ -231,6 +232,7 @@ class App:
                  ('Catalog public NHTSA',self.public_catalog),('Surse tehnice online',self.online_sources),
                  ('Bibliotecă tehnică offline',self.local_library),
                  ('Atlas tehnic',self.workshop_atlas),
+                 ('Fișa tehnică vehicul',self.vehicle_service_card),
                  ('Căutare globală',self.global_search),
                  ('Analiză IDF',self.analyze)]
         for col in range(4):
@@ -400,6 +402,9 @@ class App:
 
     def workshop_atlas(self):
         return open_workshop_atlas(self)
+
+    def vehicle_service_card(self):
+        return open_vehicle_service_card(self)
 
     def maintenance(self):
         return open_maintenance_window(self,Editor)
