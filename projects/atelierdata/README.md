@@ -2,6 +2,24 @@
 
 Proiectul conține cod original pentru un catalog auto offline pe Windows, **nu** o copie 1:1 a Autodata și **nu** conține datele proprietare Autodata. Nu pretinde decodarea bazei .IDF.
 
+## Surse tehnice gratuite și oficiale — 31.10.2026
+
+Nou în GUI: butonul **Surse tehnice online**. Catalogul conține **21 de surse** pentru Opel, Mitsubishi, BMW, Nissan, Škoda, Volkswagen, Audi, Ford, Renault, Dacia, Toyota și alte mărci. Filtrează după marcă (preselectată din vehiculul activ), tip (proceduri, scheme, diagnoză, documente, rechemări) și acces (gratuit, cont gratuit, mixt, neoficial, cu plată). Căutarea în catalog este **complet locală**; accesarea internetului are loc doar când utilizatorul apasă „Deschide sursa”.
+
+Exemple verificate:
+- [Operation CHARM](https://charm.li/): manuale de atelier gratuite, în special 1982–2013, acoperire și versiune de piață variabile;
+- [AUTODOC CLUB România](https://club.autodoc24.ro/manuals): proceduri și tutoriale gratuite pentru utilizatori înregistrați;
+- [Auto-Data.net](https://www.auto-data.net/ro/): specificații generale, **nu** cupluri de strângere garantate;
+- [MMC Manuals Lancer X / 4A91 1.5](https://www.mmc-manuals.ru/Mitsubishi_Lancer_X%3A_Service_Manuals): pagini publice, statutul reutilizării materialelor trebuie verificat;
+- [Škoda manuale oficiale în română](https://manual.skoda-auto.com/599/ro-RO), [BMW manuale utilizator](https://www.bmw.co.uk/en/topics/owners/bmw-owners-manual.html), [Toyota manuale România](https://www.toyota.ro/support/owners-manuals);
+- [BMW AOS](https://aos-q2.bmwgroup.com/), [Škoda erWin](https://skoda.erwin-store.com/erwin/showInfoTour.do), [Nissan TechInfo](https://www.nissan-techinfo.com/help), [Stellantis Service Box](https://public.servicebox-parts.com/), [Renault ASOS](https://asos.asdh.aws.renault.com/offers/documentation), [Toyota TechDoc](https://www.toyota-tech.eu/): **documentația profesională este în general condiționată de cont și/sau abonament**;
+- [AndrOBD](https://f-droid.org/packages/com.fr3ts0n.ecu.gui.androbd/), [Carmin](https://play.google.com/store/apps/details?id=com.min.car): aplicații suplimentare, Carmin include reclame/cumpărături.
+- [NHTSA](https://www.nhtsa.gov/recalls): date SUA, neechivalente cu rechemările UE.
+
+**Limitări:** catalogul este un director de linkuri cu proveniență, nu descarcă sau copiază automat manualele de pe site-uri, nu ocolește abonamente și nu garantează acoperirea fiecărui motor. Un manual public gratuit nu este neapărat reutilizabil legal într-o aplicație distribuită. Înregistrările tehnice în SQLite necesită în continuare import/introducere autorizată cu sursă verificată. Nu trimitem automat VIN sau informații private către site-uri.
+
+Implementare: `technical_sources.py`, `technical_sources_gui.py`, `test_technical_sources.py`. Teste: `python -m unittest discover -s projects/atelierdata -p "test_technical_sources.py" -v`. Build Windows: `.github/workflows/atelierdata-windows.yml`; **nu declarați EXE verificat până la rezultatul PASS și verificarea artefactului**.
+
 **Funcțional:** interfață originală cu selectare marcă/model/motor, SQLite local, 16 categorii tehnice, căutare în documente, adăugare/editare/ștergere vehicule și proceduri, import CSV/JSON și backup SQLite, analiză statică a antetelor IDF.
 
 **Nu este încă implementat:** date complete reale pe toate mărcile, diagrame și ilustrații originale, decodare IDF, echivalență completă cu Autodata. Înregistrările se populează prin importul legal al propriilor date sau al unui export autorizat. Pentru date Autodata comerciale, se poate evalua [API-ul oficial Autodata](https://developer.autodata-group.com/) cu abonament/licență și chei corespunzătoare.
