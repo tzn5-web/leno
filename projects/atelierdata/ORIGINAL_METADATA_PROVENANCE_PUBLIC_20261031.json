@@ -1,0 +1,36 @@
+{
+  "schema": "atelierdata-original-metadata-provenance-v1",
+  "scope": "four_sha256_verified_members_of_authorized_part_0004",
+  "verified_member_count": 4,
+  "archive_label_version": "3.45",
+  "product_code": "CDA3.44",
+  "internal_version": "9.200",
+  "metadata_key_count": 3,
+  "label_product_code_match": false,
+  "version_observation": "LABEL_PRODUCT_CODE_DIFFER_NOT_PROOF_OF_DEFECT",
+  "xml_metadata": {
+    "distributors": {
+      "root_tag": "Distributors",
+      "element_count": 319,
+      "distinct_tag_count": 7
+    },
+    "countries": {
+      "root_tag": "Countries",
+      "element_count": 97,
+      "distinct_tag_count": 5
+    },
+    "translations": {
+      "root_tag": "AllText",
+      "element_count": 2168,
+      "distinct_tag_count": 2
+    }
+  },
+  "original_executed": false,
+  "blocked_package_accessed": false,
+  "license_validated": false,
+  "installer_validated": false,
+  "publisher_authenticity_validated": false,
+  "idf_decoded": false,
+  "windows_runtime_tested": false,
+  "conclusion": "Metadata is intact against owner manifest; version difference alone cannot establish a broken installation."
+}
