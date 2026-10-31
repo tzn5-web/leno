@@ -18,6 +18,8 @@ PART_RE = re.compile(r"autodata_part_[0-9]{4}\.zip\Z")
 HEX64_RE = re.compile(r"[0-9a-fA-F]{64}\Z")
 CHUNK_SIZE = 1024 * 1024
 PE_LIMIT = 32 * 1024 * 1024
+# Mandatory exclusion at the lowest-level archive reader; cannot be overridden.
+BLOCKED_PACKAGE = "autodata_part_0016.zip"
 
 
 def safe_path(value: str) -> bool:
@@ -146,6 +148,11 @@ def audit(manifest_path: Path, parts_dir: Path) -> dict:
     verified_entries = set()
     captured = {}
     for package in packages:
+        if package == BLOCKED_PACKAGE:
+            # Do not stat, open, parse or extract the malware-flagged package.
+            # Its mere presence does not authorize inspection.
+            missing.append(package)
+            continue
         file = parts_dir / package
         if not file.is_file() or file.is_symlink():
             missing.append(package)
