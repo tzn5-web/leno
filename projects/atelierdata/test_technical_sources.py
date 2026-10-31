@@ -33,8 +33,19 @@ class SourcesTests(unittest.TestCase):
         self.assertNotIn("bmw_aos",found)
 
     def test_mitsubishi_4a91_keyword(self):
+        # A keyword can also occur in a source's warning that the document
+        # is NOT a workshop manual. Do not assume search results are service
+        # procedures, and do not make this test brittle when sources grow.
         hits=search_sources(query="4A91",make="Mitsubishi")
-        self.assertEqual([x.key for x in hits],["mmc_lancer"])
+        by_key={item.key:item for item in hits}
+        self.assertIn("mmc_lancer",by_key)
+        self.assertIn("mitsubishi_owners",by_key)
+        owner=by_key["mitsubishi_owners"]
+        self.assertIn("Manual utilizare",owner.categories)
+        self.assertNotIn("Proceduri",owner.categories)
+        self.assertNotIn("Scheme",owner.categories)
+        self.assertIn("nu substitui",owner.notes.casefold())
+        self.assertEqual(owner.access,"gratis")
 
     def test_category_and_access_filter(self):
         q=search_sources(make="Skoda",category="Proceduri",access="cu_plata")
