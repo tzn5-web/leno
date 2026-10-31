@@ -238,7 +238,7 @@ def open_document_library(app):
                      state="readonly").pack(fill="x")
         ttk.Label(frame,text=("Nu selecta un drept fără bază reală. "
                   "Manualele online nu se descarcă automat. Se importă doar fișierele deja "
-                  "aflate în folderul tău; maximum 500 fișiere, 32 MiB fiecare."),
+                  "aflate în folderul tău; maximum 500 fișiere, PDF până la 128 MiB, imagini până la 32 MiB."),
                   wraplength=485).pack(anchor="w",pady=(12,8))
         def proceed():
             if not provider.get().strip():
