@@ -8,6 +8,8 @@ class IdentityTests(unittest.TestCase):
     def test_wrapper_has_own_version_not_vendor_guess(self):
         text=(ROOT/"installer.iss").read_text(encoding="utf-8-sig")
         self.assertIn("AppVersion=0.1.0",text)
+        self.assertIn("OutputBaseFilename=Autodata_Original_Licensed_Setup",text)
+        self.assertNotIn("AppVersion=3.45",text)
         self.assertIn("edition unverified",text)
         self.assertIn("DestDir: \"{app}\\ADCDA2\"",text)
         self.assertIn('WorkingDir: "{app}\\ADCDA2"',text)
