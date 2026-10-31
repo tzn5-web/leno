@@ -43,7 +43,9 @@ def scan_block(block, refs):
                     if idx < 0:
                         break
                     pos = base + idx
-                    if pos >= 0 and pos < size:
+                    # Do not count matches already wholly contained in the
+                    # preceding chunk's overlap. Retain boundary-crossing hits.
+                    if pos >= 0 and pos < size and pos + len(pattern) > offset:
                         addr = block.getStart().add(pos)
                         xrefs = []
                         for ref in refs.getReferencesTo(addr):
