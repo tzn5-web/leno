@@ -32,11 +32,33 @@ def _identity(report, expected_sha256):
         raise ValueError("Ghidra report must declare no target execution")
 
 
+_IDF_CAP_FLAGS = ("block_scan_cap_reached", "keyword_match_cap_reached",
+                  "keyword_xref_cap_reached", "short_memory_read")
+
+
+def _idf_coverage(report):
+    # Older private Ghidra reports did not record caps. Never silently treat
+    # those reports as complete just because no truncation flag was emitted.
+    keys = _IDF_CAP_FLAGS + ("keyword_scan_coverage_complete",)
+    present = [key in report for key in keys]
+    if not any(present):
+        return "unknown"
+    if not all(present):
+        raise ValueError("Incomplete IDF coverage metadata")
+    if any(type(report[key]) is not bool for key in keys):
+        raise ValueError("Invalid IDF coverage flag")
+    complete = not any(report[key] for key in _IDF_CAP_FLAGS)
+    if report["keyword_scan_coverage_complete"] is not complete:
+        raise ValueError("Contradictory IDF coverage metadata")
+    return "complete" if complete else "capped"
+
+
 def correlate(idf_report, api_report, expected_sha256):
     if not isinstance(expected_sha256, str) or not _SHA.fullmatch(expected_sha256):
         raise ValueError("Expected lowercase SHA256 required")
     _identity(idf_report, expected_sha256)
     _identity(api_report, expected_sha256)
+    idf_coverage = _idf_coverage(idf_report)
     if api_report.get("schema") != "atelierdata-ghidra-file-api-xrefs-v1":
         raise ValueError("Unsupported API report")
     hits = idf_report.get("keyword_hits")
@@ -100,6 +122,8 @@ def correlate(idf_report, api_report, expected_sha256):
         "schema": "atelierdata-ghidra-idf-api-correlation-v1",
         "source_sha256_claims_match": True,
         "idf_reference_count": idf_refs,
+        "idf_coverage_status": idf_coverage,
+        "idf_coverage_incomplete_or_unknown": idf_coverage != "complete",
         "api_reference_count": api_refs,
         "api_scan_or_reference_coverage_truncated": scan_truncated or bool(truncated_symbol_refs),
         "api_symbols_with_truncated_references": truncated_symbol_refs,
@@ -110,7 +134,9 @@ def correlate(idf_report, api_report, expected_sha256):
         "shared_idf_and_api_call_or_jump_functions": len(idf_functions & api_code_functions),
         "target_executed": False,
         "idf_decoder_proven": False,
-        "limitations": ("Static, potentially truncated Ghidra xrefs. A shared function is a "
+        "limitations": ("Static, potentially truncated Ghidra xrefs. Older IDF reports "
+                        "without explicit scan coverage have unknown completeness. "
+                        "A shared function is a "
                         "triage candidate, not proof of file access or decoding. "
                         "Dynamically resolved calls and indirect edges may be missed.")
     }
