@@ -87,7 +87,7 @@ def list_procedure_hits(store, vehicle_id, search, limit=DEFAULT_LIMIT, offset=0
     if isinstance(offset, bool) or not isinstance(offset, int) or not 0 <= offset <= 1000000:
         raise ValueError("Invalid search offset")
     valid_fields = {label for _, label in (*PROCEDURE_FIELDS, *STEP_FIELDS)}
-    if field is not None and field not in valid_fields:
+    if field is not None and (not isinstance(field, str) or field not in valid_fields):
         raise ValueError('Invalid search field')
     # Reuse the canonical literal SQL search and its vehicle/length validation.
     procedures = list_procedures(store, vehicle_id, search)
