@@ -189,14 +189,25 @@ def list_library(store,make="",model="",engine="",year="",category="",query="",
                                       and isinstance(needle, str)
                                       and needle.casefold() in value.casefold()),
             deterministic=True)
+        # Search the provenance and edition metadata displayed by the GUI,
+        # not only the document title. Old attachments without indexed metadata
+        # remain searchable through their original article fields.
         sql+=(""" AND (atelierdata_library_contains(v.make, ?)
          OR atelierdata_library_contains(v.model, ?)
          OR atelierdata_library_contains(v.engine, ?)
          OR atelierdata_library_contains(art.title, ?)
+         OR atelierdata_library_contains(art.category, ?)
+         OR atelierdata_library_contains(art.source, ?)
+         OR atelierdata_library_contains(lib.document_type, ?)
          OR atelierdata_library_contains(lib.display_title, ?)
          OR atelierdata_library_contains(lib.source_name, ?)
+         OR atelierdata_library_contains(lib.source_url, ?)
+         OR atelierdata_library_contains(lib.language, ?)
+         OR atelierdata_library_contains(lib.market, ?)
+         OR atelierdata_library_contains(lib.revision, ?)
+         OR atelierdata_library_contains(lib.rights_basis, ?)
          OR atelierdata_library_contains(lib.applicability_note, ?))""")
-        params.extend([q]*7)
+        params.extend([q]*15)
     sql+=" ORDER BY v.make,v.model,v.engine,COALESCE(lib.display_title,art.title),att.id"
     rows=[dict(r) for r in store.db.execute(sql,params)]
     # A model year is not identical to a year range. Filter the vehicle's exact
