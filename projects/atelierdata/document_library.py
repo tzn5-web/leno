@@ -181,7 +181,7 @@ def list_library(store,make="",model="",engine="",year="",category="",query="",
     q=_clean(query,"Căutare",limit=150)
     if q:
         like="%"+q.replace("\\","\\\\").replace("%","\\%").replace("_","\\_")+"%"
-        sql+=(""" AND (v.make LIKE ? ESCAPE '\' OR v.model LIKE ? ESCAPE '\'
+        sql+=(r""" AND (v.make LIKE ? ESCAPE '\' OR v.model LIKE ? ESCAPE '\'
          OR v.engine LIKE ? ESCAPE '\' OR art.title LIKE ? ESCAPE '\'
          OR COALESCE(lib.display_title,'') LIKE ? ESCAPE '\'
          OR COALESCE(lib.source_name,'') LIKE ? ESCAPE '\'
