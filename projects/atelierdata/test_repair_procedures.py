@@ -50,6 +50,29 @@ class ProcedureTests(unittest.TestCase):
         self.db.delete_article(document)
         self.assertIsNone(list_steps(self.db,self.pid)[0]["article_id"])
 
+    def test_document_reference_ids_reject_lossy_conversions(self):
+        """A bool/float must never silently link an unrelated document."""
+        document = self.db.add_article(
+            self.vid, "Scheme electrice", "Synthetic reference",
+            "Synthetic only", "USER-OWNED-TEST")
+        sid = add_step(self.db, self.pid, "Neutral synthetic step",
+                       article_id=document)
+        before = self.db.db.total_changes
+        invalid = (True, False, float(document) + 0.9, str(document) + ".0",
+                   "1e0", "0", -1, [], {})
+        for bad in invalid:
+            with self.subTest(article_id=repr(bad)):
+                with self.assertRaises(ValueError):
+                    add_step(self.db, self.pid, "Invalid link", article_id=bad)
+                with self.assertRaises(ValueError):
+                    update_step(self.db, sid, "Invalid link", article_id=bad)
+        self.assertEqual(len(list_steps(self.db, self.pid)), 1)
+        self.assertEqual(list_steps(self.db, self.pid)[0]["article_id"], document)
+        self.assertEqual(self.db.db.total_changes, before)
+        # A valid decimal text ID remains supported for importers.
+        update_step(self.db, sid, "Valid link", article_id=f" {document} ")
+        self.assertEqual(list_steps(self.db, self.pid)[0]["article_id"], document)
+
     def test_corrupt_cross_vehicle_link_never_leaks_reference_title(self):
         """An invalid imported reference must not expose another vehicle's data."""
         foreign_title="PRIVATE FOREIGN VEHICLE SCHEMATIC"
