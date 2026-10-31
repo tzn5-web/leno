@@ -20,6 +20,8 @@ For exactly **19,658** consecutive 21-byte rows (**412,818 bytes**) at the start
 | Common 8-byte value count | 178 distinct | Same set and row order in the two source files |
 | Region boundary | 412,818 | First 8-byte field mismatch is exactly at the next 21-byte-row start (offset 412,818, i.e. 19,658 × 21) |
 
+**Additional group-order check:** All **178** distinct 8-byte values form **exactly 178 contiguous runs**, with no token reappearing in a separate run (longest run: **960** rows). The first run has one row, the next has 262; neither run length nor token meaning is yet identified. This strengthens the empirical grouping hypothesis, but does not establish vehicle/model semantics.
+
 Byte equality at lag 21 in 64 KiB windows: SGINT starts at **0.379944** (offset 0), **0.379562** (offset 262144), and falls to **0.003801** starting exactly at offset **412818**. SGOPS shows **0.380279**, **0.379684**, and **0.004243** respectively. This identifies an **empirical fixed-width section boundary**, not a complete file format or semantic schema.
 
 **Do not assume:** 8-byte field = an automotive model ID, 13-byte field = a decoded technical value, or any particular encryption algorithm. These are observed byte regions only.
