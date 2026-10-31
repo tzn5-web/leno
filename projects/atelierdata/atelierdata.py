@@ -675,7 +675,7 @@ def main():
                         window.move_selected_step(-1)
                         if window.steps_tree.get_children()!=(str(temporary_step),str(step_id)):
                             raise RuntimeError('PROCEDURES_GUI_REORDER_UP_FAILED')
-                        if tuple(window.steps_tree.item(key,'values')[0]
+                        if tuple(str(window.steps_tree.item(key,'values')[0])
                                  for key in window.steps_tree.get_children())!=('1','2'):
                             raise RuntimeError('PROCEDURES_GUI_REORDER_NUMBERS_FAILED')
                         window.move_selected_step(1)
