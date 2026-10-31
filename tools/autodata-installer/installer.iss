@@ -1,4 +1,4 @@
-; Licensed Autodata 3.45 file installer template.
+; Private licensed-file wrapper for original Autodata archive. Vendor edition is NOT verified.
 ; Requires AUTODATA_STAGED to point to a directory created by prepare_payload.py.
 ; No keygens, emulators, registry hacks or license bypasses are bundled.
 #define SourceDir GetEnv("AUTODATA_STAGED")
@@ -12,11 +12,11 @@
 
 [Setup]
 AppId=Autodata345LicensedFileInstaller
-AppName=Autodata 3.45 (Licensed Files)
-AppVersion=3.45
-AppPublisher=Local licensed installation
+AppName=Autodata Original (licensed files; edition unverified)
+AppVersion=0.1.0
+AppPublisher=Private licensed-file packaging (not vendor software)
 DefaultDirName={autopf}\Autodata 3.45
-DefaultGroupName=Autodata 3.45
+DefaultGroupName=Autodata Original
 OutputDir={#OutputDir}
 OutputBaseFilename=Autodata_3_45_Licensed_Setup
 Compression=lzma2
@@ -35,7 +35,7 @@ ChangesEnvironment=no
 Source: "{#SourceDir}\ADCDA2\*"; DestDir: "{app}\ADCDA2"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\Autodata 3.45"; Filename: "{app}\ADCDA2\ADBCD.exe"; WorkingDir: "{app}\ADCDA2"
+Name: "{autoprograms}\Autodata Original"; Filename: "{app}\ADCDA2\ADBCD.exe"; WorkingDir: "{app}\ADCDA2"
 
 [Messages]
 BeveledLabel=Requires genuine licensing; activation is not automated.
