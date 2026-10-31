@@ -89,6 +89,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "DOCUMENT_LIBRARY_GUI_SMOKE_FAILED" }
           python projects/atelierdata/vehicle_service_card_gui_smoke.py
           if ($LASTEXITCODE -ne 0) { throw "VEHICLE_SERVICE_CARD_GUI_SMOKE_FAILED" }
+          python -m py_compile projects/atelierdata/schematic_gui_smoke.py
+          if ($LASTEXITCODE -ne 0) { throw "SCHEMATIC_GUI_SYNTAX_FAILED" }
+          python projects/atelierdata/schematic_gui_smoke.py
+          if ($LASTEXITCODE -ne 0) { throw "SCHEMATIC_GUI_SMOKE_FAILED" }
       - name: Build one-file Windows EXE
         shell: pwsh
         run: |
