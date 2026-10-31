@@ -4,7 +4,8 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
+from types import SimpleNamespace
 
 from original_windows_authenticode_gate import (
     BLOCKED_NAME, POWERSHELL, assess, evaluate_signature,
@@ -112,6 +113,22 @@ class WindowsSignatureGateTests(unittest.TestCase):
         self.assertIn("$env:ATELIERDATA_SIGNATURE_TARGET", POWERSHELL)
         self.assertNotIn("Invoke-Expression", POWERSHELL)
         self.assertNotIn("Start-Process", POWERSHELL)
+
+    @unittest.skipUnless(os.name == "nt", "Windows system trust test")
+    def test_windows_powershell_binary_ignores_untrusted_path(self):
+        with tempfile.TemporaryDirectory() as d:
+            fake = Path(d) / "powershell.exe"
+            fake.write_bytes(b"FAKE-DO-NOT-RUN")
+            response = SimpleNamespace(returncode=0, stdout='{"status":"NotSigned"}')
+            with patch.dict(os.environ, {"PATH": d}):
+                with patch("original_windows_authenticode_gate.subprocess.run",
+                           return_value=response) as invoke:
+                    read_windows_signature(Path(d) / "dummy.exe")
+            command = invoke.call_args.args[0]
+            expected = (Path(os.environ["SystemRoot"]) / "System32" /
+                        "WindowsPowerShell" / "v1.0" / "powershell.exe")
+            self.assertEqual(Path(command[0]), expected)
+            self.assertNotEqual(Path(command[0]), fake)
 
     @unittest.skipUnless(os.name == "nt", "Windows native trust test")
     def test_windows_native_unsigned_fixture_never_passes(self):
