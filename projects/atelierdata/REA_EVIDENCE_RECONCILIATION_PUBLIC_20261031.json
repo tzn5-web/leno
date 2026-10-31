@@ -1,0 +1,28 @@
+{
+  "delay_directory_declared_bytes": 1104,
+  "delay_full_descriptors_within_declared_bytes": 34,
+  "delay_trailing_bytes": 16,
+  "idf_decoder_proven": false,
+  "idf_loader_proven": false,
+  "limitations": "Reconciles previously produced REA JSON; not a new REA/Ghidra execution. Without --source-pe, SHA256 is an evidence assertion, not an independent byte check. Malformed delay rows are not verified imports, and cannot establish IDF handling.",
+  "original_executed": false,
+  "original_pe_independently_verified": false,
+  "rea_delay_import_functions_verified": 0,
+  "rea_delay_rows": 17,
+  "rea_delay_rows_invalid_attributes": 17,
+  "rea_delay_rows_outside_declared_directory": 1,
+  "rea_delay_rows_without_dll_name": 17,
+  "rea_evidence_internal_consistency": "PASS",
+  "rea_issues_by_code": {
+    "malformed_entry": 1,
+    "name_unreadable": 17,
+    "thunk_unreadable": 16,
+    "unsupported_form": 18
+  },
+  "rea_total_issues": 52,
+  "schema": "atelierdata-rea-evidence-reconciliation-public-v1",
+  "source_bytes_reported": 18102272,
+  "source_sha256": "a505bbc4f8678713f352faa8fc70337d9edbe5e0ebd23ba305ca3bccd0f6fce4",
+  "static_import_dll_count": 4,
+  "static_import_function_count": 17
+}
