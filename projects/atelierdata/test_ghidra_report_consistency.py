@@ -16,7 +16,8 @@ def fixture():
     }
     ghidra = {
         "schema": "atelierdata-ghidra-loadlibrary-private-v1",
-        "source_sha256": "a" * 64, "ghidra_executable_md5_verified": True,
+        "source_sha256": "a" * 64, "source_md5": "b" * 32,
+        "ghidra_executable_md5_verified": True,
         "target_executed": False, "cfg_reachability_proven": False,
         "idf_decoder_proven": False, "candidate_count": 2,
         "recognized_instruction_pairs": 1, "verified_literal_pointers": 1,
@@ -53,6 +54,18 @@ class GhidraConsistencyTests(unittest.TestCase):
         triage, ghidra = fixture()
         ghidra["source_sha256"] = "c" * 64
         with self.assertRaises(ValueError):
+            validate(triage, ghidra)
+
+    def test_ghidra_md5_mismatch_rejected(self):
+        triage, ghidra = fixture()
+        ghidra["source_md5"] = "c" * 32
+        with self.assertRaisesRegex(ValueError, "Mismatched original identity"):
+            validate(triage, ghidra)
+
+    def test_missing_ghidra_md5_rejected(self):
+        triage, ghidra = fixture()
+        del ghidra["source_md5"]
+        with self.assertRaisesRegex(ValueError, "Mismatched original identity"):
             validate(triage, ghidra)
 
     def test_aggregate_tampering_rejected(self):
