@@ -88,6 +88,60 @@ class CorrelationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "truncation"):
             correlate(idf, api, SHA)
 
+    def test_legacy_idf_report_coverage_is_unknown(self):
+        idf, api = fixtures()
+        result = correlate(idf, api, SHA)
+        self.assertEqual(result["idf_coverage_status"], "unknown")
+        self.assertTrue(result["idf_coverage_incomplete_or_unknown"])
+
+    def test_new_idf_report_complete_coverage(self):
+        idf, api = fixtures()
+        idf.update(block_scan_cap_reached=False,
+                   keyword_match_cap_reached=False,
+                   keyword_xref_cap_reached=False,
+                   short_memory_read=False,
+                   keyword_scan_coverage_complete=True)
+        result = correlate(idf, api, SHA)
+        self.assertEqual(result["idf_coverage_status"], "complete")
+        self.assertFalse(result["idf_coverage_incomplete_or_unknown"])
+
+    def test_reached_keyword_cap_marks_incomplete(self):
+        idf, api = fixtures()
+        idf.update(block_scan_cap_reached=False,
+                   keyword_match_cap_reached=True,
+                   keyword_xref_cap_reached=False,
+                   short_memory_read=False,
+                   keyword_scan_coverage_complete=False)
+        result = correlate(idf, api, SHA)
+        self.assertEqual(result["idf_coverage_status"], "capped")
+        self.assertTrue(result["idf_coverage_incomplete_or_unknown"])
+
+    def test_partial_idf_coverage_metadata_rejected(self):
+        idf, api = fixtures()
+        idf["block_scan_cap_reached"] = False
+        with self.assertRaisesRegex(ValueError, "Incomplete IDF coverage"):
+            correlate(idf, api, SHA)
+
+    def test_invalid_idf_coverage_flag_rejected(self):
+        idf, api = fixtures()
+        idf.update(block_scan_cap_reached=0,
+                   keyword_match_cap_reached=False,
+                   keyword_xref_cap_reached=False,
+                   short_memory_read=False,
+                   keyword_scan_coverage_complete=True)
+        with self.assertRaisesRegex(ValueError, "Invalid IDF coverage"):
+            correlate(idf, api, SHA)
+
+    def test_contradictory_idf_coverage_metadata_rejected(self):
+        idf, api = fixtures()
+        idf.update(block_scan_cap_reached=False,
+                   keyword_match_cap_reached=False,
+                   keyword_xref_cap_reached=False,
+                   short_memory_read=False,
+                   keyword_scan_coverage_complete=False)
+        with self.assertRaisesRegex(ValueError, "Contradictory IDF coverage"):
+            correlate(idf, api, SHA)
+
     def test_report_load_rejects_symlink_when_supported(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
