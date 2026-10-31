@@ -35,6 +35,25 @@ class ProcedureTests(unittest.TestCase):
         self.assertEqual([r["step_number"] for r in list_steps(self.db,self.pid)],[1,2])
         self.assertFalse(self.db.db.execute("PRAGMA foreign_key_check").fetchall())
 
+    def test_step_order_rejects_bool_float_and_other_coercions(self):
+        first = add_step(self.db, self.pid, "Synthetic first step")
+        second = add_step(self.db, self.pid, "Synthetic second step")
+        before = self.db.db.total_changes
+        original = [(r["id"], r["step_number"]) for r in list_steps(self.db, self.pid)]
+        for invalid in (True, False, 1.0, -1.0, "1", None, [], {}):
+            with self.subTest(direction=repr(invalid)), self.assertRaises(ValueError):
+                move_step(self.db, first, invalid)
+        for invalid in (True, False, 1.0, "1", [], {}):
+            with self.subTest(position=repr(invalid)), self.assertRaises(ValueError):
+                add_step(self.db, self.pid, "Invalid synthetic insertion", position=invalid)
+        self.assertEqual(
+            [(r["id"], r["step_number"]) for r in list_steps(self.db, self.pid)],
+            original)
+        self.assertEqual(self.db.db.total_changes, before)
+        self.assertTrue(move_step(self.db, second, -1))
+        self.assertEqual([r["id"] for r in list_steps(self.db, self.pid)], [second, first])
+        self.assertFalse(self.db.db.execute("PRAGMA foreign_key_check").fetchall())
+
     def test_document_link_same_vehicle_only(self):
         document=self.db.add_article(self.vid,"Scheme electrice","Diagramă demo",
                                 "Nu este o schemă reală","Date test")
