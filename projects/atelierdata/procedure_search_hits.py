@@ -28,7 +28,10 @@ STEP_FIELDS = (
 
 def _excerpt(value, needle, radius=85):
     """Bound text displayed in the results table, preserving the match."""
-    value = str(value or "").replace("\r", " ").replace("\n", " ")
+    value = str(value or "")
+    # Search the original text before flattening line breaks. SQLite matches
+    # literal multiline text; normalizing first would lose that match and
+    # return an unrelated prefix instead of the matching excerpt.
     # Unicode casefold can expand a character (for example ß -> ss).
     # Map folded positions back to the original string before slicing,
     # otherwise an excerpt may omit the beginning of the actual match.
@@ -41,12 +44,12 @@ def _excerpt(value, needle, radius=85):
     folded_needle = str(needle).casefold()
     index = "".join(folded_parts).find(folded_needle)
     if index < 0 or not folded_needle:
-        return value[:radius * 2]
+        return value[:radius * 2].replace("\\r", " ").replace("\\n", " ")
     match_start = original_positions[index]
     match_end = original_positions[index + len(folded_needle) - 1] + 1
     start = max(0, match_start - radius)
     end = min(len(value), match_end + radius)
-    return ("…" if start else "") + value[start:end] + ("…" if end < len(value) else "")
+    excerpt = value[start:end].replace("\\r", " ").replace("\\n", " ")\n    return ("…" if start else "") + excerpt + ("…" if end < len(value) else "")
 
 
 def filter_hit_indices(hits, field=None):
