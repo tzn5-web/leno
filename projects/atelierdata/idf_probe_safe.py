@@ -23,7 +23,7 @@ MAX_COMPRESSION_RATIO = 10000
 
 
 def _entry_name(name):
-    if not isinstance(name, str) or not name or "\\x00" in name or "\\" in name:
+    if not isinstance(name, str) or not name or "\x00" in name or "\\" in name:
         raise ValueError("Unsafe ZIP entry name")
     path = PurePosixPath(name)
     if path.is_absolute() or any(part in (".", "..") for part in name.split("/")):
