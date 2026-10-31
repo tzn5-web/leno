@@ -17,7 +17,7 @@ _SHA = re.compile(r"[0-9a-f]{64}\Z")
 
 
 _FUNCTION_ADDRESS = re.compile(
-    r"(?:(?P<space>[A-Za-z][A-Za-z0-9_]*):)?(?P<value>(?:0[xX])?[0-9A-Fa-f]{1,16})\\Z"
+    r"(?:(?P<space>[A-Za-z][A-Za-z0-9_]*):)?(?P<value>(?:0[xX])?[0-9A-Fa-f]{1,16})\Z"
 )
 
 
