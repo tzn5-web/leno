@@ -20,7 +20,7 @@ def scan_block(block, refs):
     size = int(min(block.getSize(), MAX_SCAN_BYTES))
     found = {}
     if not block.isInitialized() or size <= 0:
-        return found
+        return found, 0
     # Chunked scan avoids memory spikes; overlap covers matches on boundaries.
     offset = 0
     overlap = 128
@@ -64,7 +64,7 @@ def scan_block(block, refs):
                     at = idx + 1
         carry = data[-overlap:]
         offset += count
-    return {key: val for key, val in found.items() if val}
+    return {key: val for key, val in found.items() if val}, offset
 
 
 def main():
@@ -79,15 +79,27 @@ def main():
     refs = currentProgram.getReferenceManager()
     blocks = []
     observations = {}
+    block_scan_cap_reached = False
+    keyword_match_cap_reached = False
+    keyword_xref_cap_reached = False
+    short_memory_read = False
     for block in currentProgram.getMemory().getBlocks():
         if not block.isInitialized():
             continue
+        planned = int(min(block.getSize(), MAX_SCAN_BYTES))
+        found, scanned = scan_block(block, refs)
         blocks.append({'name': str(block.getName()),
                        'size': int(block.getSize()),
-                       'scanned_bytes': int(min(block.getSize(), MAX_SCAN_BYTES))})
-        found = scan_block(block, refs)
+                       'requested_scan_bytes': planned,
+                       'scanned_bytes': int(scanned)})
+        block_scan_cap_reached |= int(block.getSize()) > MAX_SCAN_BYTES
+        short_memory_read |= scanned < planned
         if found:
             observations[str(block.getName())] = found
+            for matches in found.values():
+                keyword_match_cap_reached |= len(matches) >= MAX_MATCHES_PER_TERM
+                for match in matches:
+                    keyword_xref_cap_reached |= len(match['references_from']) >= MAX_XREFS_PER_MATCH
     result = {
         'tool': 'Ghidra static analysis, AtelierData_IDF_Xrefs.py',
         'program_name': str(currentProgram.getName()),
@@ -95,11 +107,20 @@ def main():
         'source_sha256': imported_sha256.lower(),
         'ghidra_import_sha256_verified': True,
         'keyword_hit_types': ['ascii', 'utf16le'],
+        'block_scan_cap_reached': bool(block_scan_cap_reached),
+        'keyword_match_cap_reached': bool(keyword_match_cap_reached),
+        'keyword_xref_cap_reached': bool(keyword_xref_cap_reached),
+        'short_memory_read': bool(short_memory_read),
+        'keyword_scan_coverage_complete': not any((
+            block_scan_cap_reached, keyword_match_cap_reached,
+            keyword_xref_cap_reached, short_memory_read)),
+        'coverage_note': ('A reached cap is treated as incomplete evidence, even if '
+                          'the exact number of omitted matches is unknown.'),
         'executed_target_binary': False,
         'idf_decoder_proven': False,
         'blocks': blocks,
         'keyword_hits': observations,
-        'limitations': ('Static API-name/IDF keyword hits and containing functions only. '
+        'limitations': ('Static, potentially capped API-name/IDF keyword hits and containing functions only. '
                         'A string reference is not an API invocation. No proof of IDF loader, '
                         'compression algorithm, decryption, or legal right to copy data.')
     }
