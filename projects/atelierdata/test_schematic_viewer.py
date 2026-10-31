@@ -7,7 +7,8 @@ from PIL import Image
 from atelierdata import Store
 from atelierdata_extensions import attach_document, resolve_document
 from schematic_viewer import (clamp_zoom, fit_zoom, image_metadata,
-                              list_schematic_articles, MAX_IMAGE_PIXELS)
+                              list_schematic_articles, resolve_schematic_attachment,
+                              MAX_IMAGE_PIXELS)
 
 class SchematicViewerTests(unittest.TestCase):
     def setUp(self):
@@ -28,6 +29,68 @@ class SchematicViewerTests(unittest.TestCase):
         self.assertEqual({x["title"] for x in found},
                          {"Diagramă inventată","Panou fictiv"})
         self.assertEqual(len(list_schematic_articles(self.store,self.vehicle,"inventată")),1)
+    def test_literal_unicode_search_and_provenance(self):
+        source_id=self.store.add_article(
+            self.vehicle,"Scheme electrice","Straße 100%_",
+            "Notă de test cu İSTANBUL","Licență TEST")
+        self.store.add_article(
+            self.second,"Scheme electrice","STRASSE 100%_",
+            "Notă de test","Licență TEST")
+        for query in ("STRASSE", "100%_", "istanbul", "LICENȚĂ"):
+            with self.subTest(query=query):
+                before=self.store.db.total_changes
+                matches=list_schematic_articles(self.store,self.vehicle,query)
+                self.assertEqual([row["id"] for row in matches],[source_id])
+                self.assertEqual(self.store.db.total_changes,before)
+        self.assertEqual(list_schematic_articles(self.store,self.vehicle,"100%X"),[])
+        self.assertEqual(list_schematic_articles(self.store,self.vehicle,"100_X"),[])
+        for bad in (None, 1, True, "x"*201, "bad\\0search"):
+            with self.subTest(invalid=repr(bad)):
+                with self.assertRaises(ValueError):
+                    list_schematic_articles(self.store,self.vehicle,bad)
+        for bad_vehicle in (True, 1.0, "1", None, 0):
+            with self.assertRaises(ValueError):
+                list_schematic_articles(self.store,bad_vehicle)
+
+    def test_attachment_open_rechecks_membership_and_hash(self):
+        source=self.root/"synthetic.png"
+        Image.new("RGB",(20,12),(1,2,3)).save(source)
+        attachment=attach_document(self.store,self.article,source)
+        self.assertEqual(
+            image_metadata(resolve_schematic_attachment(
+                self.store,self.vehicle,self.article,attachment))["width"],20)
+        other=self.store.add_article(
+            self.second,"Scheme electrice","Foreign diagram","","TEST")
+        ordinary=self.store.add_article(
+            self.vehicle,"Motor","Not a schematic","","TEST")
+        for vehicle,article in ((self.second,self.article),
+                                (self.vehicle,other),
+                                (self.vehicle,ordinary)):
+            with self.subTest(vehicle=vehicle,article=article):
+                with self.assertRaises(ValueError):
+                    resolve_schematic_attachment(
+                        self.store,vehicle,article,attachment)
+        for bad in (True, 1.0, "1", None, 0):
+            with self.assertRaises(ValueError):
+                resolve_schematic_attachment(
+                    self.store,self.vehicle,self.article,bad)
+        # The attachment can be moved while the GUI window remains open.
+        self.store.db.execute(
+            "UPDATE attachments SET article_id=? WHERE id=?",(other,attachment))
+        self.store.db.commit()
+        with self.assertRaises(ValueError):
+            resolve_schematic_attachment(
+                self.store,self.vehicle,self.article,attachment)
+        self.store.db.execute(
+            "UPDATE attachments SET article_id=? WHERE id=?",(self.article,attachment))
+        self.store.db.commit()
+        verified=resolve_schematic_attachment(
+            self.store,self.vehicle,self.article,attachment)
+        verified.write_bytes(b"modified")
+        with self.assertRaises(ValueError):
+            resolve_schematic_attachment(
+                self.store,self.vehicle,self.article,attachment)
+
     def test_image_validity_verified_storage(self):
         source=self.root/"drawing.png"
         Image.new("RGB",(640,320),(20,40,80)).save(source)
