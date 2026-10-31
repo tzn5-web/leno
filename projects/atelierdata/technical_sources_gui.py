@@ -9,6 +9,7 @@ from tkinter import ttk, messagebox
 import webbrowser
 
 from technical_sources import SOURCES, search_sources, makes, categories, ACCESS, normalize
+from technical_source_references import save_source_reference
 
 ACCESS_NAMES={
     "gratis":"Gratuit",
@@ -148,8 +149,27 @@ def open_sources_window(app):
         except Exception as exc:
             messagebox.showerror("Browser",str(exc),parent=win)
 
+    def save_reference():
+        item=selected()
+        if item is None:
+            return messagebox.showinfo("Selectare","Alege o sursă.",parent=win)
+        if app.vid is None:
+            return messagebox.showinfo("Vehicul necesar",
+                "Selectează întâi un vehicul exact în AtelierData.",parent=win)
+        try:
+            result=save_source_reference(app.db,app.vid,item.key)
+            app.refresh()
+            messagebox.showinfo("Referință salvată",
+                ("Referința a fost salvată pentru vehiculul selectat."
+                 if result["created"] else "Referința era deja salvată."),
+                parent=win)
+        except Exception as exc:
+            messagebox.showerror("Referință respinsă",str(exc),parent=win)
+
     controls_frame=ttk.Frame(frame)
     controls_frame.pack(fill="x",pady=(3,0))
+    ttk.Button(controls_frame,text="Salvează referință la vehicul",
+               command=save_reference).pack(side="left",padx=(0,8))
     ttk.Button(controls_frame,text="Deschide sursa în browser",
                command=open_browser).pack(side="left",padx=(0,8))
     ttk.Button(controls_frame,text="Toate mărcile",
