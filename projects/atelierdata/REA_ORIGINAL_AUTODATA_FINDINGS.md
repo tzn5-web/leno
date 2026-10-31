@@ -123,3 +123,24 @@ proprietare. Exemplu de rulare numai pe o copie privată autorizată:
 python projects/atelierdata/pe_static_call_alignment.py --self-test
 python projects/atelierdata/pe_static_call_alignment.py --pe /private/ADBCD.exe --output /private/pe-summary.json
 ```
+
+
+## LoadLibrary literal argument triage — verified original (2026-10-31)
+
+A new independent **read-only PE32 parser** was run on the privately held, owner-supplied original `ADBCD.exe`, with SHA256 verified first: `a505bbc4f8678713f352faa8fc70337d9edbe5e0ebd23ba305ca3bccd0f6fce4`. No original executable or DLL was launched. The script only accepts direct adjacent x86 byte patterns `PUSH imm32; CALL dword ptr [LoadLibraryA IAT]`, resolves the immediate to a bounded ASCII DLL string, and produces a public **aggregate-only** JSON. Detailed addresses and strings stay private.
+
+**Direct result:** 14 raw PUSH/CALL candidates, 13 resolving to 13 distinct DLL name literals, one unresolved. These are **byte-pattern candidates**, not proven reachable runtime calls. A GNU objdump disassembly explicitly started at the candidate instruction boundary shows a contiguous run of PUSH/CALL instructions, but the linear disassembly from the beginning of the section disagrees at the first PUSH. That is precisely why Ghidra function/CFG validation is still required.
+
+**New and actionable runtime-family clue:** among the 13 literal candidates are `pbvm90.dll` and `libjcc.dll`, and the former is a PowerBuilder 9 virtual machine DLL. [PowerBuilder 9 documentation](https://pblib.com/knowledge-base/powerbuilder-runtime-files-pb-docs-90/) explicitly identifies `PBVM90.DLL` as the core runtime and `LIBJCC.DLL` as its dependency. This supports **PowerBuilder 9 runtime compatibility as a working hypothesis**. It does not prove these calls execute, that PowerBuilder handles the IDF format, or that any particular .IDF decoder has been identified. A separate source lists the [PowerBuilder 9 Runtime Packager](https://pblib.com/knowledge-base/powerbuilder-runtime-packager-pb-docs-90/). **Do not download arbitrary DLLs or run the suspicious original to test the hypothesis.**
+
+Reproducible code (no original files committed):
+- `projects/atelierdata/pe_loadlibrary_literals.py`: SHA256 gate, strict PE32 import parsing, bounded static DLL argument matching, separate aggregate/private outputs.
+- `projects/atelierdata/test_pe_loadlibrary_literals.py`: **four locally passing synthetic tests** (valid PE, privacy split, bad SHA/PE, invalid pointers and output collisions), also added to the Windows CI test discovery.
+- `tools/ghidra/AtelierData_LoadLibrary_Argument_Check.java`: Ghidra script prepared to verify program MD5, instruction boundaries, operand bytes, referenced IAT slot and pointed-to strings. **Not executed in Ghidra during this run**; Java/Ghidra compatibility and CFG reachability remain unverified.
+
+Private execution command (run only with an authorized local copy):
+```powershell
+python projects/atelierdata/pe_loadlibrary_literals.py --pe C:\PRIVATE\ADBCD.exe --expected-sha256 a505bbc4f8678713f352faa8fc70337d9edbe5e0ebd23ba305ca3bccd0f6fce4 --public-output C:\PRIVATE\loadlibrary-summary.json --private-output C:\PRIVATE\loadlibrary-details.json
+```
+
+**Boundary:** The reported 14/13 counts are verified locally on the original. The new GitHub Actions run and Ghidra script have not been confirmed successful; do not report them as PASS until inspected. The blocked ZIP 0016 was not accessed or bypassed.
