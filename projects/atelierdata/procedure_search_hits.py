@@ -44,12 +44,12 @@ def _excerpt(value, needle, radius=85):
     folded_needle = str(needle).casefold()
     index = "".join(folded_parts).find(folded_needle)
     if index < 0 or not folded_needle:
-        return value[:radius * 2].replace("\\r", " ").replace("\\n", " ")
+        return value[:radius * 2].replace("\r", " ").replace("\n", " ")
     match_start = original_positions[index]
     match_end = original_positions[index + len(folded_needle) - 1] + 1
     start = max(0, match_start - radius)
     end = min(len(value), match_end + radius)
-    excerpt = value[start:end].replace("\\r", " ").replace("\\n", " ")\n    return ("…" if start else "") + excerpt + ("…" if end < len(value) else "")
+    excerpt = value[start:end].replace("\r", " ").replace("\n", " ")\n    return ("…" if start else "") + excerpt + ("…" if end < len(value) else "")
 
 
 def filter_hit_indices(hits, field=None):
