@@ -185,12 +185,21 @@ def list_steps(store,procedure_id):
 
 
 def _article_reference(store, procedure_id, article_id):
-    if article_id in (None,""):
+    if article_id is None or article_id == "":
         return None
-    try:
-        article_id=int(article_id)
-    except (TypeError,ValueError) as exc:
-        raise ValueError("Article reference must be an integer") from exc
+    # bool and float are accepted by int(), but can silently resolve to a
+    # different article (True -> 1, 1.9 -> 1). Only exact positive IDs qualify.
+    if isinstance(article_id, bool):
+        raise ValueError("Article reference must be a positive integer")
+    if isinstance(article_id, str):
+        candidate = article_id.strip()
+        if not candidate.isascii() or not candidate.isdecimal():
+            raise ValueError("Article reference must be a positive integer")
+        article_id = int(candidate)
+    elif not isinstance(article_id, int):
+        raise ValueError("Article reference must be a positive integer")
+    if article_id <= 0:
+        raise ValueError("Article reference must be a positive integer")
     parent=store.db.execute("SELECT vehicle_id FROM procedures WHERE id=?",(procedure_id,)).fetchone()
     if parent is None:
         raise ValueError("Procedure does not exist")
