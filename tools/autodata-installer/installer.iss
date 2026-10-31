@@ -11,14 +11,13 @@
 #endif
 
 [Setup]
-AppId=Autodata345LicensedFileInstaller
+AppId=AutodataOriginalLicensedFileInstaller
 AppName=Autodata Original (licensed files; edition unverified)
 AppVersion=0.1.0
-AppPublisher=Private licensed-file packaging (not vendor software)
 DefaultDirName={autopf}\Autodata Original
 DefaultGroupName=Autodata Original
 OutputDir={#OutputDir}
-OutputBaseFilename=Autodata_3_45_Licensed_Setup
+OutputBaseFilename=Autodata_Original_Licensed_Setup
 Compression=lzma2
 SolidCompression=yes
 DiskSpanning=no
