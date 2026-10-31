@@ -118,6 +118,26 @@ class BackupVerificationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "attachments differ"):
             verify_backup_bundle(self._zip(members=members))
 
+    def test_real_atelierdata_backup_bundle_is_compatible(self):
+        from atelierdata import Store
+        from atelierdata_backup import backup_bundle
+        from atelierdata_extensions import attach_document
+        store = Store(self.root / "real-application.sqlite3")
+        try:
+            vid = store.add_vehicle("Synthetic", "Workshop Test")
+            aid = store.add_article(vid, "Note atelier", "Authorized synthetic note")
+            source = self.root / "authorized-test.pdf"
+            source.write_bytes(b"%PDF-1.4\n%%EOF\n")
+            attach_document(store, aid, source)
+            archive = self.root / "real-application-backup.zip"
+            backup_bundle(store, archive)
+            report = verify_backup_bundle(archive)
+            self.assertTrue(report["verified"])
+            self.assertEqual(report["documents"], 1)
+            self.assertEqual(report["attachment_references"], 1)
+        finally:
+            store.close()
+
     def test_cli_verifies_without_creating_default_database(self):
         archive = self._zip()
         isolated_home = self.root / "isolated-localappdata"
