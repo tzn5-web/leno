@@ -728,7 +728,8 @@ def main():
                         'INSERT INTO procedure_steps'
                         '(procedure_id,step_number,instruction,safety_note)'
                         ' VALUES(?,?,?,?)',
-                        [(pid,n,'PAGED-UI synthetic step','')
+                        [(pid,n,'PAGED-UI synthetic step',
+                          'PAGED-UI warning' if n>=252 else '')
                          for n in range(2,263)])
                     ui.db.db.commit()
                     window.procedure_search_var.set('PAGED-UI')
@@ -737,6 +738,16 @@ def main():
                         raise RuntimeError('PROCEDURES_GUI_FIRST_PAGE_FAILED')
                     if not pages.search_page_state['has_more']:
                         raise RuntimeError('PROCEDURES_GUI_MORE_RESULTS_NOT_DETECTED')
+                    # The warning field first appears after the first 250 hits.
+                    # Selecting it must query all SQLite hits, not just page one.
+                    pages.search_field_filter.set('Avertisment pas')
+                    if not pages.apply_field_filter() or len(pages.hits)!=11:
+                        raise RuntimeError('PROCEDURES_GUI_GLOBAL_FIELD_FILTER_FAILED')
+                    if any(hit['field']!='Avertisment pas' for hit in pages.hits):
+                        raise RuntimeError('PROCEDURES_GUI_GLOBAL_FIELD_SCOPE_FAILED')
+                    pages.search_field_filter.set('Toate câmpurile')
+                    if not pages.apply_field_filter() or len(pages.hits)!=250:
+                        raise RuntimeError('PROCEDURES_GUI_GLOBAL_FIELD_RESET_FAILED')
                     if not pages.change_hits_page(1) or len(pages.hits)!=11:
                         raise RuntimeError('PROCEDURES_GUI_NEXT_PAGE_FAILED')
                     if pages.search_page_state['offset']!=250:
