@@ -92,7 +92,7 @@ drept instalator final Autodata 3.45.
 - **Analiză statică originală:** `autodata-colab-20261030`, notebookul și instrumentele IDF/REA/Ghidra. Șablonul `tools/autodata-oneclick/` din acea ramură este **arhivat logic** pentru referință, nu o a doua linie de construire. Nu îl mai dezvoltați ca instalator concurent.
 - **Aplicație independentă:** `atelierdata-20261030`, explicit în afara scopului acestui instalator.
 - **Versiune:** numele arhivei spune 3.45, dar `COMMON/VERINFO.DAT` raportează `ProductCode=CDA3.44` și `VersionNo=9.200`. Eticheta afișată de șablon nu certifică versiunea produsului. `AppVersion=0.1.0` descrie numai șablonul de împachetare.
-- **Cale implicită:** `{autopf}\Autodata 3.45\ADCDA2` era doar o alegere de șablon, iar `C:\ADCDA2` din șablonul concurent era o altă ipoteză. Niciuna nu a fost verificată ca necesară pentru programul original. Instalația în Windows rămâne nevalidată, iar directorul trebuie ales pe baza instrucțiunilor legitime și a testului izolat.
+- **Cale implicită:** șablonul principal propune `{autopf}\Autodata Original\ADCDA2`, iar șablonul concurent propunea `C:\ADCDA2`. **Niciuna dintre aceste căi nu a fost confirmată drept cerință a programului original.** Instalarea Windows rămâne nevalidată; calea trebuie aleasă pe baza instrucțiunilor legitime și a unui test izolat.
 - **Stare:** fără instalator original complet construit/testat; 100 din 139 fișiere logice verificabile, 39 indisponibile din ZIP-ul 0016; cinci DLL-uri `ADCDA2` lipsă pentru construirea completă; activarea autentică și compatibilitatea Windows nevalidate.
 - **Niciun bypass:** nu descărcați/reîmpachetați `autodata_part_0016.zip` prin ocolirea protecției Drive; nu folosiți keygen, dongle emulator sau patchuri de activare.
 
