@@ -116,7 +116,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $installer = Join-Path $env:RUNNER_TEMP 'autodata-ci-dist/Autodata_3_45_Licensed_Setup.exe'
+          $installer = Join-Path $env:RUNNER_TEMP 'autodata-ci-dist/Autodata_Original_Licensed_Setup.exe'
           $testDir = Join-Path $env:RUNNER_TEMP 'autodata-ci-installed-synthetic'
           $install = Start-Process -FilePath $installer -ArgumentList @(
             '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$testDir"
