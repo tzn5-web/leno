@@ -560,7 +560,7 @@ def main():
                                       'Referință sintetică','Doar test','TEST')
             pid=create_procedure(ui.db,vehicle,'Sistem sintetic','Procedură GUI TEST',
                                  source='TEST ONLY')
-            step_id=add_step(ui.db,pid,'Pas fictiv pentru smoke-test',
+            step_id=add_step(ui.db,pid,'Pas fictiv 100%_ pentru smoke-test',
                      safety_note='Nu este o instrucțiune reală',article_id=article)
             second_article=ui.db.add_article(vehicle,'Note atelier',
                           'Referință secundară sintetică','Date fictive','TEST OWNED')
@@ -593,6 +593,18 @@ def main():
                     raise RuntimeError('PROCEDURES_GUI_NOT_OPENED')
                 if len(window.procedures_tree.get_children())!=1:
                     raise RuntimeError('PROCEDURES_GUI_ROWS_MISSING')
+                window.procedure_search_var.set('%_')
+                if window.procedures_tree.get_children()!=(str(pid),):
+                    raise RuntimeError('PROCEDURES_GUI_LITERAL_SEARCH_MISSING')
+                window.procedure_search_var.set('NOT_PRESENT_%_')
+                if window.procedures_tree.get_children():
+                    raise RuntimeError('PROCEDURES_GUI_LITERAL_SEARCH_WILDCARD_LEAK')
+                window.procedure_search_var.set('x'*201)
+                if window.procedures_tree.get_children() or 'invalid' not in window.procedure_search_notice.get().lower():
+                    raise RuntimeError('PROCEDURES_GUI_INVALID_SEARCH_NOT_HANDLED')
+                window.procedure_search_var.set('')
+                if window.procedures_tree.get_children()!=(str(pid),):
+                    raise RuntimeError('PROCEDURES_GUI_SEARCH_RESET_FAILED')
                 window.procedures_tree.selection_set(str(pid))
                 window.procedures_tree.event_generate('<<TreeviewSelect>>')
                 def check_steps():
