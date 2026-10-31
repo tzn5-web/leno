@@ -13,8 +13,9 @@ stdcall-decorated aliases. It records references, mnemonics and containing
 functions. The IDF script checks the imported-program SHA256 against the
 analyst's independently verified hash. The API script additionally reads
 the **local original PE** in bounded read-only mode, verifies its SHA256,
-and matches both imported-program SHA256 and MD5 to that file. This is an
-identity check, not proof of a loader or decoder.
+and compares Ghidra's **reported** imported-program SHA256 and MD5 with
+those of that file. These are Ghidra import metadata checks, not an
+independent reconstruction of all mapped bytes or proof of a loader/decoder.
 
 Run both scripts as **post-analysis scripts** in a private Ghidra project,
 passing two arguments to `AtelierData_IDF_Xrefs.py`: the private output
