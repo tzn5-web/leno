@@ -30,6 +30,9 @@ jobs:
           python -m py_compile projects/atelierdata/idf_static_evidence.py projects/atelierdata/rea_resource_audit.py projects/atelierdata/pe_file_io_xrefs.py projects/atelierdata/test_pe_file_io_xrefs.py projects/atelierdata/pe_entrypoint_layout.py projects/atelierdata/test_pe_entrypoint_layout.py projects/atelierdata/pe_delay_import_audit.py projects/atelierdata/test_pe_delay_import_audit.py projects/atelierdata/pe_iat_evidence_validate.py projects/atelierdata/test_pe_iat_evidence_validate.py tools/ghidra/AtelierData_IDF_Xrefs.py
           python -m py_compile projects/atelierdata/ghidra_report_consistency.py projects/atelierdata/test_ghidra_report_consistency.py projects/atelierdata/test_article_search_literal.py
           python -m py_compile projects/atelierdata/ghidra_evidence_replay.py projects/atelierdata/test_ghidra_evidence_replay.py
+          python -m py_compile projects/atelierdata/ghidra_iat_consistency.py projects/atelierdata/test_ghidra_iat_consistency.py
+          python -m unittest discover -s projects/atelierdata -p 'test_ghidra_iat_consistency.py' -v
+          if ($LASTEXITCODE -ne 0) { throw "GHIDRA_IAT_CONSISTENCY_TEST_FAILED" }
           python -m unittest discover -s projects/atelierdata -p 'test_ghidra_evidence_replay.py' -v
           if ($LASTEXITCODE -ne 0) { throw "GHIDRA_EVIDENCE_REPLAY_TEST_FAILED" }
           python -m unittest discover -s projects/atelierdata -p 'test_ghidra_report_consistency.py' -v
