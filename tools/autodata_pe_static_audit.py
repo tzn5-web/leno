@@ -9,7 +9,7 @@ def inspect(path):
     data=Path(path).read_bytes()
     if data[:2]!=b"MZ":raise ValueError("MZ header absent")
     pe=struct.unpack_from("<I",data,0x3c)[0]
-    if data[pe:pe+4]!=b"PE\\x00\\x00".replace(b"\\x00",b"\x00"):
+    if data[pe:pe+4]!=b"PE"+bytes((0,0)):
         raise ValueError("PE signature absent")
     coff=pe+4
     machine,n=struct.unpack_from("<HH",data,coff)
