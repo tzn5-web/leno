@@ -185,3 +185,36 @@ python projects/atelierdata/ghidra_iat_consistency.py --private-triage C:\PRIVAT
 ```
 
 **Proof boundary:** the Java script was changed but **has not yet been run against the original in Ghidra** in this update. Python tests use synthetic PE bytes, not private application code. Neither MD5 matching nor instruction/IAT cross-reference matching proves an IDF decoder, a reachable loader, or any legal right to extract proprietary data. No protected ZIP, PE, IDF or private report was committed.
+
+
+## 2026-10-31: independent replay of Ghidra IAT evidence
+
+The earlier `ghidra_iat_consistency.py` checked internal consistency of two
+private JSON reports, but did **not** itself open the source PE. Consequently,
+a modified triage report could potentially be internally consistent with a
+modified Ghidra report without corresponding to the original executable.
+
+New `ghidra_iat_source_replay.py` closes this provenance gap **when run
+privately with the authorized original**: it refuses symbolic-link and
+oversized PE inputs, reads the executable as inert bytes, independently
+verifies the caller-supplied SHA256, rebuilds the entire PE-IAT private triage
+(including MD5, candidate offsets, import symbols and literal probes), requires
+exact equality with the supplied private triage, and only then invokes the
+Ghidra IAT consistency validator. Public output contains only aggregate counts
+and explicit replay flags; no private address, source bytes or .IDF content.
+The target is never executed.
+
+Run in a **private** workspace (do not upload original PE or private JSON to
+public CI):
+
+```powershell
+python projects/atelierdata/ghidra_iat_source_replay.py --pe C:\\PRIVATE\\ADBCD.exe --expected-sha256 a505bbc4f8678713f352faa8fc70337d9edbe5e0ebd23ba305ca3bccd0f6fce4 --private-triage C:\\PRIVATE\\iat-private.json --private-ghidra C:\\PRIVATE\\ghidra-iat-private.json --public-output C:\\PRIVATE\\iat-public-replayed.json
+```
+
+Ten synthetic-only regression cases cover success, redaction, tampered IAT
+candidate, MD5, literal offsets, changed source PE, wrong expected SHA256,
+forged Ghidra IAT, oversized/missing PE and symlink refusal. They are
+integrated into the Windows workflow. **Their CI result and actual private
+Ghidra execution are not yet confirmed in this update.** This work strengthens
+the audit chain; it does not establish an .IDF decoder, a runtime-reachable
+file loader or any right to use proprietary data. ZIP 0016 remains blocked.
