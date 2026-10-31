@@ -30,3 +30,19 @@ The latter command may report missing parts if the directory is incomplete; **do
 3. Verify official licensing and Windows compatibility through a legitimate vendor distribution, rather than keygens or emulators.
 4. A working `.IDF` parser **has not been proven**. No proprietary vehicle procedures/diagrams have been extracted.
 5. Re-test a newly built AtelierData executable separately; it is not an Autodata 1:1 replacement.
+
+
+## Extended direct verification (2026-10-31)
+
+A later read-only verification fetched **packages 0001–0015** through the authorized Google Drive connector. For all 15 ZIP files, **every declared ZIP member's size and SHA256 matched INVENTAR.json**: **124 chunk entries** and **2,271,754,801 uncompressed bytes** verified. Only 0016 remains inaccessible (403). This is verified integrity of all *accessible chunks*, **not** a complete original installation or functional Windows launch.
+
+Using exclusively those 15 verified packages, all **81 reconstructed .IDF files** (combined **2,231,509,692 bytes**) were assembled one-at-a-time in anonymous temporary scratch storage, their source chunks re-verified SHA256, and three 64 KiB windows per file analyzed. **70/81** had entropy >=7.95 bits/byte in each window; **0/81** started with recognizable ZIP/GZIP/zlib headers tested. Neither result identifies a cipher or decoder. No file contents were exported or published, and no original executable ran.
+
+New reproducible scripts:
+- `projects/atelierdata/split_archive_manifest_audit.py`: manifest, ZIP and SHA256 verification.
+- `projects/atelierdata/full_idf_chunk_audit.py`: verified temporary reconstruction and aggregate IDF statistics, optional local private per-file metadata.
+Both have synthetic-data self-tests added to Windows CI. No private ZIP, .IDF, executable, installation key or report containing payload bytes is added to GitHub.
+
+The original `COMMON/VERINFO.DAT` (in verified package 0004) contains `ProductCode=CDA3.44`, `VersionNo=9.200`, and `ExpiryDate=42004`, whereas the supplied archive name refers to 3.45. This **metadata discrepancy merits investigation**, but the expiry field's encoding/meaning and impact on launch have **not** been established. Do not infer or attempt to bypass licensing from these strings. The three bundled Chilkat DLLs in package 0004 are PE32 x86, consistent with the main PE32 x86 executable.
+
+**Remaining critical blocker:** package 0016 contains 39 non-IDF entries, including `SentinelKeyW.DLL`, `cw3220mt.dll`, `gdiplus.dll`, `libeay32.dll`, `ssleay32.dll` and legacy installers/license helpers, and remains inaccessible. A complete install and runtime test were not performed.
