@@ -18,6 +18,8 @@ from idf_stride_evidence import strongest_stride
 SAMPLE_BYTES = 65536
 MAX_IDF_FILES = 256
 MAX_ZIP_ENTRIES = 4096
+MAX_DIRECTORY_ENTRIES = 100000
+BLOCKED_ARCHIVE_NAMES = frozenset({"autodata_part_0016.zip"})
 MAX_FILE_BYTES = 256 * 1024 * 1024
 MAX_TOTAL_BYTES = 1024 * 1024 * 1024
 MAX_COMPRESSION_RATIO = 10000
@@ -73,6 +75,10 @@ def _summarize(name, size, digest, sample):
 def probe_idf(root):
     """Inspect local .IDF files or ZIP members; fail closed on unsafe inputs."""
     root = Path(root)
+    # A Drive safety block must never be bypassed by invoking the generic
+    # probe instead of the manifest-based IDF investigator. Check before IO.
+    if root.name.casefold() in BLOCKED_ARCHIVE_NAMES:
+        raise ValueError("Blocked package part_0016 must not be accessed")
     if root.is_symlink():
         raise ValueError("Symbolic link input forbidden")
     items = []
@@ -118,12 +124,17 @@ def probe_idf(root):
         items.append(_summarize(root.name, size, digest, sample))
     elif root.is_dir():
         base = root.resolve(strict=True)
-        for path in root.rglob("*"):
+        for entry_number, path in enumerate(root.rglob("*"), 1):
+            # Bound directory walks even if most entries are not IDF files.
+            if entry_number > MAX_DIRECTORY_ENTRIES:
+                raise ValueError("IDF directory entry limit exceeded")
             if path.suffix.lower() != ".idf":
                 continue
             if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(base):
                 raise ValueError("Unsafe IDF path")
             size = path.stat().st_size
+            if size > MAX_FILE_BYTES:
+                raise ValueError("IDF file exceeds size limit")
             total_bytes += size
             if total_bytes > MAX_TOTAL_BYTES or len(items) >= MAX_IDF_FILES:
                 raise ValueError("IDF probe resource limit exceeded")
