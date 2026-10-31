@@ -59,16 +59,15 @@ def search_catalog(store, term, vehicle_id=None, limit=100, offset=0):
     for kind, table, alias, ident, title, excerpt, source, fields, extra in _SOURCES:
         join = '' if kind == 'vehicle' else f' JOIN vehicles v ON v.id={alias}.vehicle_id'
         clauses = [f"{field} LIKE ? ESCAPE '\\'" for field in fields]
-        parameters.extend([pattern] * len(fields))
+        term_args = [pattern] * len(fields)
         if extra:
             clauses.append(extra)
-            parameters.extend([pattern, pattern])
+            term_args.extend([pattern, pattern])
         where = ' OR '.join(clauses)
         if vehicle_id is not None:
             where = f'v.id=? AND ({where})'
-            # Vehicle filter placeholder occurs before LIKE placeholders.
-            parameters[-(len(fields) + (2 if extra else 0)):] = (
-                [vehicle_id] + parameters[-(len(fields) + (2 if extra else 0)):])
+            parameters.append(vehicle_id)
+        parameters.extend(term_args)
         selects.append(
             f"SELECT '{kind}' AS kind,{ident} AS record_id,v.id AS vehicle_id,"
             f"v.make AS make,v.model AS model,v.engine AS engine,"
@@ -131,6 +130,8 @@ def open_search_window(app):
 
     def run_search(_event=None):
         try:
+            if scoped.get() and app.vid is None:
+                raise ValueError('Selectează un vehicul sau dezactivează filtrul.')
             rows = search_catalog(app.db, query.get(), app.vid if scoped.get() else None)
         except ValueError as exc:
             messagebox.showerror('Căutare invalidă', str(exc), parent=window)
@@ -187,7 +188,7 @@ def open_search_window(app):
             app.specifications()
         else:
             app.detail.set(row['title'])
-        window.lift()
+        window.destroy()
 
     field.bind('<Return>', run_search)
     tree.bind('<<TreeviewSelect>>', preview)
