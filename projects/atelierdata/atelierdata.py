@@ -651,6 +651,25 @@ def main():
                             raise RuntimeError('PROCEDURES_SCHEMATIC_IMAGE_NOT_RENDERED')
                     ui.root.after(220,check_navigation_image)
                 ui.root.after(950,check_navigation)
+                def check_search_hits():
+                    window.procedure_search_var.set('100%_')
+                    hits=window.open_search_hits()
+                    if hits is None or not hits.winfo_exists():
+                        raise RuntimeError('PROCEDURES_SEARCH_HITS_WINDOW_NOT_OPENED')
+                    rows=hits.hits_tree.get_children()
+                    if len(rows)!=1 or hits.hits[0]['step_id']!=step_id:
+                        raise RuntimeError('PROCEDURES_SEARCH_HITS_WRONG_STEP')
+                    if hits.hits[0]['source']!='TEST ONLY':
+                        raise RuntimeError('PROCEDURES_SEARCH_HITS_PROVENANCE_MISSING')
+                    hits.hits_tree.selection_set(rows[0])
+                    result=hits.go_to_hit()
+                    if result is None or window.procedures_tree.selection()!=(str(pid),):
+                        raise RuntimeError('PROCEDURES_SEARCH_HITS_NAVIGATION_FAILED')
+                    if window.steps_tree.selection()!=(str(step_id),):
+                        raise RuntimeError('PROCEDURES_SEARCH_HITS_STEP_NOT_SELECTED')
+                    hits.destroy()
+                    window.procedure_search_var.set('')
+                ui.root.after(620,check_search_hits)
                 def check_procedure_audit():
                     window.procedures_tree.selection_set(str(pid))
                     window.procedures_tree.event_generate('<<TreeviewSelect>>')
