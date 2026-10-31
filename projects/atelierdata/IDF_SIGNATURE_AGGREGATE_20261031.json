@@ -1,0 +1,15 @@
+{
+  "csv_rows": 84,
+  "idf_decoder_proven": false,
+  "idf_header_records": 81,
+  "input_csv_sha256_verified": true,
+  "known_magic_at_nonzero_offset": {},
+  "known_magic_at_offset_zero": {},
+  "limitations": "First 64 bytes only; matching signatures or zlib-compatible headers may be coincidental. No format, encryption, compression or decoder established. CSV hash verification does not independently verify original IDF files.",
+  "no_known_magic_in_first64": 81,
+  "sample_entropy_ge_7_9": 75,
+  "schema": "atelierdata-idf-signature-aggregate-v1",
+  "shorter_than_64_byte_headers": 2,
+  "target_executed": false,
+  "zlib_header_compatible_at_zero": 0
+}
