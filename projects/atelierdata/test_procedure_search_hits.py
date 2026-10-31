@@ -6,7 +6,7 @@ from pathlib import Path
 
 from atelierdata import Store
 from repair_procedures import create_procedure, add_step
-from procedure_search_hits import list_procedure_hits, next_hit_index
+from procedure_search_hits import filter_hit_indices, list_procedure_hits, next_hit_index
 
 
 class ProcedureSearchHitTests(unittest.TestCase):
@@ -37,6 +37,35 @@ class ProcedureSearchHitTests(unittest.TestCase):
     def hits(self, query, vehicle=None, limit=250):
         return list_procedure_hits(
             self.db, self.car if vehicle is None else vehicle, query, limit=limit)
+
+    def test_field_filter_stable_indices_and_no_mutation(self):
+        hits = self.hits("OWN")
+        original = [dict(hit) for hit in hits]
+        all_indices = filter_hit_indices(hits)
+        self.assertEqual(all_indices, list(range(len(hits))))
+        doc_indices = filter_hit_indices(hits, "Conținut document")
+        self.assertEqual([hits[i]["field"] for i in doc_indices],
+                         ["Conținut document"])
+        self.assertEqual(filter_hit_indices(hits, "Inexistent"), [])
+        self.assertEqual(hits, original)
+        self.assertTrue(all(isinstance(i, int) for i in all_indices))
+
+    def test_field_filter_navigation_skips_hidden_rows(self):
+        self.db.db.execute(
+            "UPDATE procedures SET title=?,source=? WHERE id=?",
+            ("FILTER-KEY title", "FILTER-KEY source", self.pid))
+        self.db.db.execute(
+            "UPDATE procedure_steps SET instruction=?,safety_note=? WHERE id=?",
+            ("FILTER-KEY instruction", "FILTER-KEY warning", self.sid))
+        self.db.db.commit()
+        before = self.db.db.total_changes
+        hits = self.hits("FILTER-KEY")
+        indices = filter_hit_indices(hits, "Instrucțiune pas")
+        self.assertEqual(len(indices), 1)
+        self.assertEqual(hits[indices[0]]["step_id"], self.sid)
+        self.assertEqual(hits[indices[0]]["field"], "Instrucțiune pas")
+        self.assertEqual(indices[next_hit_index(len(indices), 0, 1)], indices[0])
+        self.assertEqual(self.db.db.total_changes, before)
 
     def test_result_navigation_wrap_and_empty(self):
         self.assertIsNone(next_hit_index(0))

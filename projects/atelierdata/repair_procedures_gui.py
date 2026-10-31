@@ -5,7 +5,8 @@ from repair_export import export_procedure_html,export_procedures_json
 from procedure_audit import audit_procedure, get_step_reference
 from procedure_audit_export import export_procedure_audit_json
 from procedure_audit_html import export_procedure_audit_html
-from procedure_search_hits import DEFAULT_LIMIT, list_procedure_hits, next_hit_index
+from procedure_search_hits import (DEFAULT_LIMIT, PROCEDURE_FIELDS, STEP_FIELDS,
+                                   filter_hit_indices, list_procedure_hits, next_hit_index)
 from repair_procedures import (
     add_step, create_procedure, delete_procedure, delete_step, get_procedure,
     list_procedures, list_steps, list_reference_articles, move_step, procedure_text, update_procedure, update_step
@@ -142,10 +143,21 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         popup.transient(top)
         box=ttk.Frame(popup,padding=12)
         box.pack(fill="both",expand=True)
-        ttk.Label(box,text=f"{len(hits)} potriviri afișate (maxim {DEFAULT_LIMIT}) pentru «{search.get()}»",
+        count_notice=tk.StringVar()
+        ttk.Label(box,textvariable=count_notice,
                   font=("Segoe UI Semibold",12)).pack(anchor="w",pady=(0,7))
         ttk.Label(box,text="Rezultatele sunt din documentația locală, cu proveniență și vehicul verificate."
                   ).pack(anchor="w",pady=(0,7))
+        filter_row=ttk.Frame(box)
+        filter_row.pack(fill="x",pady=(0,7))
+        ttk.Label(filter_row,text="Câmp:").pack(side="left",padx=(0,7))
+        field_filter=tk.StringVar(value="Toate câmpurile")
+        available_fields=[label for _,label in (*PROCEDURE_FIELDS,*STEP_FIELDS)
+                          if any(hit["field"]==label for hit in hits)]
+        field_choice=ttk.Combobox(filter_row,textvariable=field_filter,
+                                  values=("Toate câmpurile",*available_fields),
+                                  state="readonly",width=29)
+        field_choice.pack(side="left")
         columns=("procedure","step","field","excerpt","source")
         table=ttk.Treeview(box,columns=columns,show="headings",selectmode="browse")
         for key,title,width in zip(columns,
@@ -154,18 +166,37 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
             table.heading(key,text=title)
             table.column(key,width=width,minwidth=40,stretch=True)
         table.pack(fill="both",expand=True)
-        for index,hit in enumerate(hits):
-            table.insert("","end",iid=str(index),values=(
-                hit["procedure_title"],
-                hit["step_number"] if hit["step_number"] is not None else "—",
-                hit["field"],hit["excerpt"],hit["source"]))
+        visible_indices=[]
+        def refresh_hit_filter(event=None):
+            """Rebuild displayed rows using stable original hit IDs."""
+            nonlocal visible_indices
+            selected=field_filter.get()
+            visible_indices=filter_hit_indices(
+                hits,None if selected=="Toate câmpurile" else selected)
+            existing=table.get_children()
+            if existing:
+                table.delete(*existing)
+            for index in visible_indices:
+                hit=hits[index]
+                table.insert("","end",iid=str(index),values=(
+                    hit["procedure_title"],
+                    hit["step_number"] if hit["step_number"] is not None else "—",
+                    hit["field"],hit["excerpt"],hit["source"]))
+            count_notice.set(
+                f"{len(visible_indices)} din {len(hits)} potriviri afișate "
+                f"(maxim {DEFAULT_LIMIT}) pentru «{search.get()}»")
+            return tuple(visible_indices)
+        field_choice.bind("<<ComboboxSelected>>",refresh_hit_filter)
+        refresh_hit_filter()
         def move_hit_selection(direction):
-            """Select the next or previous search hit without altering SQLite."""
+            """Navigate only the visible subset, preserving original hit IDs."""
             chosen=table.selection()
-            current=int(chosen[0]) if chosen else None
-            index=next_hit_index(len(hits),current,direction)
-            if index is None:
+            current=(visible_indices.index(int(chosen[0]))
+                     if chosen and int(chosen[0]) in visible_indices else None)
+            position=next_hit_index(len(visible_indices),current,direction)
+            if position is None:
                 return None
+            index=visible_indices[position]
             iid=str(index)
             table.selection_set(iid)
             table.focus(iid)
@@ -235,6 +266,9 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         popup.bind("<Alt-Left>",lambda _event:move_hit_selection(-1))
         popup.bind("<Alt-Right>",lambda _event:move_hit_selection(1))
         popup.move_hit_selection=move_hit_selection
+        popup.search_field_filter=field_filter
+        popup.refresh_hit_filter=refresh_hit_filter
+        popup.visible_hit_indices=lambda:tuple(visible_indices)
         popup.hits_tree=table
         popup.go_to_hit=go_to_hit
         popup.open_hit_reference=open_hit_reference

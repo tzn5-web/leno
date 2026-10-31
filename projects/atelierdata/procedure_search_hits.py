@@ -37,6 +37,17 @@ def _excerpt(value, needle, radius=85):
     return ("…" if start else "") + value[start:end] + ("…" if end < len(value) else "")
 
 
+def filter_hit_indices(hits, field=None):
+    """Stable indices for one matching field, or all fields when unfiltered.
+
+    The original result list is never mutated: the GUI can use these indices
+    as stable row identifiers while navigating a filtered subset.
+    """
+    if field is None:
+        return list(range(len(hits)))
+    return [index for index, hit in enumerate(hits) if hit["field"] == field]
+
+
 def next_hit_index(hit_count, current_index=None, direction=1):
     """Return the next/previous displayed search row, wrapping at the ends.
 

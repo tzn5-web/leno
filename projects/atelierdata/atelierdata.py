@@ -691,6 +691,20 @@ def main():
                         raise RuntimeError('PROCEDURES_MULTI_HITS_FIELDS_MISSING')
                     if len(multi.hits_tree.get_children()) != len(multi.hits):
                         raise RuntimeError('PROCEDURES_MULTI_HITS_ROWS_MISSING')
+                    multi.search_field_filter.set('Instrucțiune pas')
+                    visible=multi.refresh_hit_filter()
+                    if not visible or any(multi.hits[i]['field']!='Instrucțiune pas'
+                                          for i in visible):
+                        raise RuntimeError('PROCEDURES_HITS_FIELD_FILTER_FAILED')
+                    if multi.hits_tree.get_children()!=tuple(str(i) for i in visible):
+                        raise RuntimeError('PROCEDURES_HITS_FIELD_FILTER_ROWS_FAILED')
+                    filtered=multi.move_hit_selection(1)
+                    if filtered is None or filtered['field']!='Instrucțiune pas':
+                        raise RuntimeError('PROCEDURES_HITS_FIELD_FILTER_NAVIGATION_FAILED')
+                    multi.search_field_filter.set('Toate câmpurile')
+                    multi.refresh_hit_filter()
+                    if len(multi.hits_tree.get_children())!=len(multi.hits):
+                        raise RuntimeError('PROCEDURES_HITS_FIELD_FILTER_RESET_FAILED')
                     first=multi.move_hit_selection(1)
                     if first is None or multi.hits_tree.selection()!=('0',):
                         raise RuntimeError('PROCEDURES_MULTI_HITS_NEXT_SELECTION_FAILED')
