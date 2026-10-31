@@ -146,3 +146,10 @@ python projects/atelierdata/pe_loadlibrary_literals.py --pe C:\PRIVATE\ADBCD.exe
 ```
 
 **Boundary:** The reported 14/13 counts are verified locally on the original. The new GitHub Actions run and Ghidra script have not been confirmed successful; do not report them as PASS until inspected. The blocked ZIP 0016 was not accessed or bypassed.
+
+
+## SHA256-gated fixed-stride evidence and Ghidra direct-call graph preparation (2026-10-31)
+
+Real read-only local inspection of the owner-supplied `SGOPS.IDF`, `SGINT.IDF` and `FAS.IDF` (entire first chunk of each independently SHA256-verified) revealed long, constant-stride repetitions of an identical eight-byte token: 960 occurrences at 21-byte intervals in both SGOPS and SGINT, with matching token and offsets, and 870 occurrences at 19-byte intervals in FAS. These are **static structural observations**, not a demonstrated format, record decoder, decryption algorithm or source of usable vehicle data. See [IDF_STRIDE_EVIDENCE_20261031.md](IDF_STRIDE_EVIDENCE_20261031.md) and the synthetic-only regression tests.
+
+The private Ghidra LoadLibrary script now also computes bounded membership in the **direct-call graph from Ghidra-declared entry-point functions**. It does not resolve dynamic or indirect calls, and a missing path is not proof of unreachability. **Ghidra has not been executed for this new code in this run**; no new Ghidra counts are asserted. No private data or binaries were published.
