@@ -70,35 +70,46 @@ def next_hit_index(hit_count, current_index=None, direction=1):
     return (current_index + direction) % hit_count
 
 
-def list_procedure_hits(store, vehicle_id, search, limit=DEFAULT_LIMIT):
+def list_procedure_hits(store, vehicle_id, search, limit=DEFAULT_LIMIT, offset=0):
     """Find literal matches with exact step IDs and verified vehicle provenance.
 
     Each matching procedure metadata field yields a hit without a step ID.
     Each matching step field yields its own hit, so warnings and document
     provenance are not hidden by an earlier match in the same step. Document
     fields are included only when article.vehicle_id == procedure.vehicle_id.
+    Offset-based pages preserve deterministic order and the same vehicle scope.
     No schema changes, commits, downloads or writes are performed.
     """
     if not isinstance(search, str) or not search.strip():
         raise ValueError("Introduce un termen de căutare")
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
         raise ValueError("Limită invalidă")
+    if isinstance(offset, bool) or not isinstance(offset, int) or not 0 <= offset <= 1000000:
+        raise ValueError("Invalid search offset")
     # Reuse the canonical literal SQL search and its vehicle/length validation.
     procedures = list_procedures(store, vehicle_id, search)
     needle = search.casefold()
     results = []
+    seen = 0
+
+    def collect(hit):
+        nonlocal seen
+        if seen >= offset:
+            results.append(hit)
+        seen += 1
+        return len(results) >= limit
+
     for procedure in procedures:
         pid = procedure["id"]
         for key, label in PROCEDURE_FIELDS:
             value = procedure[key] or ""
             if needle in value.casefold():
-                results.append({
+                if collect({
                     "procedure_id": pid, "procedure_title": procedure["title"],
                     "step_id": None, "step_number": None,
                     "field": label, "excerpt": _excerpt(value, search),
                     "source": procedure["source"],
-                })
-                if len(results) >= limit:
+                }):
                     return results
         if len(results) >= limit:
             return results[:limit]
@@ -117,13 +128,12 @@ def list_procedure_hits(store, vehicle_id, search, limit=DEFAULT_LIMIT):
                 value = step[key] or ""
                 if needle in value.casefold():
                     doc_field = key.startswith("article_")
-                    results.append({
+                    if collect({
                         "procedure_id": pid, "procedure_title": procedure["title"],
                         "step_id": step["id"], "step_number": step["step_number"],
                         "field": label, "excerpt": _excerpt(value, search),
                         "source": step["article_source"] if doc_field else procedure["source"],
-                    })
-                    if len(results) >= limit:
+                    }):
                         return results
             if len(results) >= limit:
                 return results[:limit]
