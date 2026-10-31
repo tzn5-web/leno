@@ -69,6 +69,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "REA_RESOURCE_AUDIT_TEST_FAILED" }
           python projects/atelierdata/idf_static_evidence.py --self-test
           if ($LASTEXITCODE -ne 0) { throw "IDF_STATIC_EVIDENCE_TEST_FAILED" }
+          python -m py_compile projects/atelierdata/idf_probe_safe.py projects/atelierdata/test_idf_probe_safe.py
+          python -m unittest discover -s projects/atelierdata -p 'test_idf_probe_safe.py' -v
+          if ($LASTEXITCODE -ne 0) { throw "IDF_PROBE_SAFE_TEST_FAILED" }
           python -m unittest discover -s projects/atelierdata -p 'test_*.py' -v
           if ($LASTEXITCODE -ne 0) { throw "ATELIERDATA_REGRESSION_TEST_FAILED" }
           $searchDb = Join-Path $env:RUNNER_TEMP 'atelierdata-search-ci.sqlite3'
@@ -103,6 +106,17 @@ jobs:
           if ($search.ExitCode -ne 0) { throw "PACKAGED_SEARCH_CLI_FAILED exit=$($search.ExitCode)" }
           $ui = Start-Process -FilePath $exePath -ArgumentList '--ui-smoke' -Wait -PassThru
           if ($ui.ExitCode -ne 0) { throw "PACKAGED_GUI_TEST_FAILED exit=$($ui.ExitCode)" }
+          $probeZip = Join-Path $env:RUNNER_TEMP 'atelierdata-synthetic-idf.zip'
+          $probeJson = Join-Path $env:RUNNER_TEMP 'atelierdata-synthetic-idf-report.json'
+          python -c "import zipfile,sys;z=zipfile.ZipFile(sys.argv[1],'w');z.writestr('SYNTHETIC.IDF',b'synthetic-not-proprietary');z.close()" $probeZip
+          if ($LASTEXITCODE -ne 0) { throw "SYNTHETIC_IDF_ZIP_CREATION_FAILED" }
+          $probe = Start-Process -FilePath $exePath -ArgumentList @('--probe-idf', $probeZip, '--output', $probeJson) -Wait -PassThru
+          if ($probe.ExitCode -ne 0) { throw "PACKAGED_IDF_PROBE_FAILED exit=$($probe.ExitCode)" }
+          $probeReport = Get-Content -Raw $probeJson | ConvertFrom-Json
+          if ($probeReport.schema -ne 'atelierdata-idf-probe-v2' -or $probeReport.count -ne 1 -or $probeReport.idf_decoder_proven -ne $false) {
+            throw "PACKAGED_IDF_PROBE_REPORT_INVALID"
+          }
+          Write-Host "PACKAGED_IDF_PROBE_SYNTHETIC=PASS"
           Write-Host "GUI_SMOKE_TEST=PASS"
           if (-not (Test-Path ".\dist\AtelierData.exe")) { throw "EXE_MISSING" }
           $file = Get-Item ".\dist\AtelierData.exe"
