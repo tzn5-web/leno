@@ -134,6 +134,39 @@ class DocumentLibraryTests(unittest.TestCase):
         self.assertEqual(list_library(self.db,query="STRASSE%"),[])
         self.assertEqual(self.db.db.total_changes,before)
 
+    def test_search_all_provenance_edition_fields_and_legacy_articles(self):
+        """The GUI search must find every displayed provenance field, literally."""
+        owned=self.import_sample(
+            title="Unrelated synthetic title",
+            source_name="SYNTHETIC PUBLISHER",
+            source_url="https://example.org/revision%_2026",
+            language="ro-RO",market="EU-TEST",revision="REV-ß-42",
+            rights_basis="permisiune_scrisa",
+            applicability_note="APP-İstanbul")
+        other=self.import_sample(
+            vehicle=self.skoda,title="Unrelated second title",
+            source_name="OTHER SOURCE",revision="OTHER-REV")
+        legacy_article=self.db.add_article(
+            self.mitsubishi,"Scheme electrice","Legacy attachment",
+            "Synthetic legacy note","LEGACY-PROVENANCE-UNIQUE")
+        legacy=attach_document(self.db,legacy_article,self.pdf)
+        before=self.db.db.total_changes
+        for needle in ("SYNTHETIC PUBLISHER","revision%_2026","ro-RO",
+                       "EU-TEST","REV-SS-42","permisiune_scrisa",
+                       "APP-İSTANBUL","Manual de atelier"):
+            with self.subTest(needle=needle):
+                rows=list_library(self.db,make="Mitsubishi",query=needle)
+                self.assertEqual([r["attachment_id"] for r in rows],[owned])
+        self.assertEqual(
+            [r["attachment_id"] for r in list_library(self.db,query="LEGACY-PROVENANCE-UNIQUE")],
+            [legacy])
+        self.assertEqual(list_library(self.db,make="Skoda",query="REV-SS-42"),[])
+        self.assertEqual(list_library(self.db,query="revision%_missing"),[])
+        self.assertEqual(self.db.db.total_changes,before)
+        self.assertEqual(
+            [r["attachment_id"] for r in list_library(self.db,make="Skoda",query="OTHER-REV")],
+            [other])
+
     def test_complete_backup_restores_metadata_and_bytes(self):
         a=self.import_sample()
         archive=self.root/"bundle.zip"
