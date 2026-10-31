@@ -6,6 +6,8 @@ on:
     paths:
       - 'notebooks/autodata_3_45_static_audit.ipynb'
       - 'tests/test_autodata_static_notebook.py'
+      - 'tests/test_autodata_idf_record_probe.py'
+      - 'tools/autodata_idf_record_probe.py'
       - '.github/workflows/autodata-static-audit-tests.yml'
   workflow_dispatch:
 permissions:
@@ -21,3 +23,5 @@ jobs:
           python-version: '3.11'
       - name: Static syntax and safe synthetic ZIP/hash tests
         run: python tests/test_autodata_static_notebook.py
+      - name: Verify synthetic IDF 21-byte field hypothesis
+        run: python tests/test_autodata_idf_record_probe.py
