@@ -100,6 +100,7 @@ public class AtelierData_IAT_Instruction_Check extends GhidraScript {
             }
             Map<String,Object> check = new LinkedHashMap<>();
             check.put("address", address.toString());
+            check.put("instruction_va", va);
             check.put("symbol", item.get("symbol").getAsString());
             check.put("in_memory", inMemory);
             check.put("recognized_instruction", valid);
