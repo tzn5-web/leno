@@ -74,6 +74,25 @@ class ProcedureSearchHitTests(unittest.TestCase):
                 self.assertEqual(list_procedure_hits(self.db, self.other, term), [])
         self.assertEqual(self.db.db.total_changes, before)
 
+    def test_multiline_unicode_excerpt_preserves_matching_warning(self):
+        # SQLite matches across the line break; the GUI excerpt must point
+        # to that location, not to the unrelated beginning of the warning.
+        warning = "x" * 240 + "Straße\nWARN" + "z" * 100
+        self.db.db.execute(
+            "UPDATE procedure_steps SET safety_note=? WHERE id=?",
+            (warning, self.sid))
+        self.db.db.commit()
+        before = self.db.db.total_changes
+        hits = list_procedure_hits(
+            self.db, self.car, "STRASSE\nwarn", field="Avertisment pas")
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0]["step_id"], self.sid)
+        self.assertIn("Straße WARN", hits[0]["excerpt"])
+        self.assertTrue(hits[0]["excerpt"].startswith("…"))
+        self.assertEqual(list_procedure_hits(
+            self.db, self.other, "STRASSE\nwarn"), [])
+        self.assertEqual(self.db.db.total_changes, before)
+
     def test_metadata_field_skips_step_document_queries(self):
         # A metadata-only search must not read large step/article bodies.
         statements = []
