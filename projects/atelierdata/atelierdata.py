@@ -3,6 +3,7 @@ import argparse,csv,json,os,sqlite3,sys,tempfile,math,collections,zipfile
 from pathlib import Path
 from atelierdata_extensions import integrity_check,export_records,attach_document,list_documents,resolve_document
 from atelierdata_backup import backup_bundle,restore_bundle
+from backup_verification import verify_backup_bundle
 from technical_specs import (ensure_schema,add_spec,update_spec,remove_spec,get_spec,
                              list_specs,import_specs,export_specs)
 from repair_procedures import (ensure_schema as ensure_procedures_schema,
@@ -585,6 +586,7 @@ def main():
     ap.add_argument('--export-procedure-html')
     ap.add_argument('--procedure-id',type=int)
     ap.add_argument('--backup-zip')
+    ap.add_argument('--verify-backup',help='Verifică ZIP fără restaurare sau modificarea bazei locale')
     ap.add_argument('--restore-zip')
     ap.add_argument('--restore-dir')
     args=ap.parse_args()
@@ -969,6 +971,10 @@ def main():
         report=probe_idf(args.probe_idf)
         Path(args.output).write_text(json.dumps(report,indent=2,ensure_ascii=False),encoding='utf8')
         print('IDF_PROBE=PASS count='+str(report['count']));return 0
+    if args.verify_backup:
+        result=verify_backup_bundle(args.verify_backup)
+        print('VERIFY_BACKUP=PASS '+json.dumps(result,ensure_ascii=False))
+        return 0
     database=Path(args.db_path) if args.db_path else db_path()
     if args.restore_zip:
         if not args.restore_dir:ap.error('--restore-zip necesită --restore-dir')
