@@ -12,7 +12,7 @@ import json
 import zipfile
 from pathlib import Path
 
-from original_archive_preflight import inspect_pe, load_manifest
+from original_archive_preflight import BLOCKED_PACKAGE, inspect_pe, load_manifest
 
 MAX_PE_BYTES = 32 * 1024 * 1024
 READ_CHUNK = 1024 * 1024
@@ -48,6 +48,10 @@ def _verified_pe(row: dict, parts_dir: Path, known_names: tuple[str, ...]) -> tu
     if len(chunks) != 1:
         return "multi_chunk_not_inspected", None
     chunk = chunks[0]
+    # Mandatory denylist is enforced before any filesystem probe or ZIP read.
+    # Drive download metadata and local file presence cannot authorize this part.
+    if chunk["package"] == BLOCKED_PACKAGE:
+        return "package_unavailable", None
     if chunk["bytes"] > MAX_PE_BYTES:
         return "oversize_not_inspected", None
     zip_path = parts_dir / chunk["package"]
