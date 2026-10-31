@@ -48,7 +48,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -PayloadRoot "D:
 ```
 
 Dacă toate cele 105 fișiere există, au dimensiunile și hashurile pe fragmente identice cu inventarul privat, iar Defender nu raportează detecții,
-rezultatul este `Autodata_3_45_Licensed_Setup.exe`. Acest EXE **doar
+rezultatul este `Autodata_Original_Licensed_Setup.exe`. Acest EXE **doar
 copiază fișierele aplicației și creează scurtătura**. Scanarea și verificarea SHA-256 nu dovedesc autenticitatea furnizorului sau validitatea licenței. Nu instalează automat
 drivere Sentinel, nu importă registrul și nu activează licența: acești
 pași necesită instrucțiunile oficiale verificate și metode legitime.
