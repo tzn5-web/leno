@@ -133,11 +133,13 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         """List exact match locations and jump to a verified same-vehicle step."""
         term=search.get()
         page_state={"offset":0,"has_more":False}
+        field_filter=tk.StringVar(value="Toate câmpurile")
 
         def fetch_page():
             batch=list_procedure_hits(
                 app.db,vehicle_id,term,limit=DEFAULT_LIMIT+1,
-                offset=page_state["offset"])
+                offset=page_state["offset"],
+                field=None if field_filter.get()=="Toate câmpurile" else field_filter.get())
             page_state["has_more"]=len(batch)>DEFAULT_LIMIT
             return batch[:DEFAULT_LIMIT]
 
@@ -161,7 +163,6 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         filter_row=ttk.Frame(box)
         filter_row.pack(fill="x",pady=(0,7))
         ttk.Label(filter_row,text="Câmp:").pack(side="left",padx=(0,7))
-        field_filter=tk.StringVar(value="Toate câmpurile")
         available_fields=[label for _,label in (*PROCEDURE_FIELDS,*STEP_FIELDS)
                           if any(hit["field"]==label for hit in hits)]
         field_choice=ttk.Combobox(filter_row,textvariable=field_filter,
