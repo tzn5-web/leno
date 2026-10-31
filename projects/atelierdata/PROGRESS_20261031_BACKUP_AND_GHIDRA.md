@@ -14,14 +14,14 @@ Nine synthetic-only unit tests passed in an isolated local Python 3 environment 
 
 ## Ghidra evidence enhancement — prepared, not executed on original
 
-`tools/ghidra/AtelierData_IDF_Xrefs.py` now requires an independently computed **MD5 of the authorized source PE**, and refuses to scan when the imported Ghidra program's executable MD5 differs. It scans bounded ASCII/UTF-16LE keyword candidates, including `.IDF`, `CreateFileA/W`, `ReadFile`, `SetFilePointer`, `GetProcAddress`, `LoadLibraryA/W`, and the previously observed `pbvm90.dll`/`libjcc.dll` strings. For Ghidra-created references it records the owning function and entry point in a **private-only** JSON report.
+`tools/ghidra/AtelierData_IDF_Xrefs.py` now requires an independently computed **SHA256 of the authorized source PE**, and refuses to scan when the imported Ghidra program's executable SHA256 differs. It scans bounded ASCII/UTF-16LE keyword candidates, including `.IDF`, `CreateFileA/W`, `ReadFile`, `SetFilePointer`, `GetProcAddress`, `LoadLibraryA/W`, and the previously observed `pbvm90.dll`/`libjcc.dll` strings. For Ghidra-created references it records the owning function and entry point in a **private-only** JSON report.
 
-This creates a focused static workflow for locating functions that reference file-I/O API names, rather than merely counting strings. **String xrefs are not proof of API calls, reachability, a decoder, encryption, or licensing behavior.** Ghidra was **not run on the original PE** in this update. Do not publish its address-bearing report.
+The Ghidra Program API documents `getExecutableSHA256()`; the script compares this imported-program metadata against the independently established SHA256 reference. This is an identity consistency gate, not an independent rehash of the source file by Ghidra. See https://ghidra.re/ghidra_docs/api/ghidra/program/model/listing/Program.html.\n\nThis creates a focused static workflow for locating functions that reference file-I/O API names, rather than merely counting strings. **String xrefs are not proof of API calls, reachability, a decoder, encryption, or licensing behavior.** Ghidra was **not run on the original PE** in this update. Do not publish its address-bearing report.
 
 Example only, in a private authorized Ghidra workspace:
 
 ```text
--postScript AtelierData_IDF_Xrefs.py C:\PRIVATE\idf-xrefs-private.json <MD5-computed-independently-from-verified-ADBCD.exe>
+-postScript AtelierData_IDF_Xrefs.py C:\PRIVATE\idf-xrefs-private.json a505bbc4f8678713f352faa8fc70337d9edbe5e0ebd23ba305ca3bccd0f6fce4
 ```
 
 The known SHA256 reference for `ADBCD.exe` is `a505bbc4f8678713f352faa8fc70337d9edbe5e0ebd23ba305ca3bccd0f6fce4`, as recorded in the original private inventory. No original binary was available for independent rehashing during this update. No private PE, IDF, ZIP, or Ghidra report was added to this public repository; blocked package 0016 was not accessed.
