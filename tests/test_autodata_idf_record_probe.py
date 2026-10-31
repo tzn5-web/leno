@@ -11,7 +11,7 @@ ROWS=19658
 WIDTH=21
 
 def make_record(i, source):
-    key=(i % 178).to_bytes(8, "little")
+    key=(i // 111).to_bytes(8, "little")
     # Deterministic differing payloads, all 13 bytes.
     payload=(i * 277 + source).to_bytes(13, "little")
     return key+payload
@@ -30,6 +30,8 @@ def test_synthetic():
         assert result["shared_prefix_length"]==ROWS*WIDTH,result
         assert result["fixed_21_byte_records_in_shared_prefix"]==ROWS,result
         assert result["distinct_8byte_field_values"]==178,result
+        assert result["contiguous_8byte_value_runs"]==178,result
+        assert result["each_token_in_one_contiguous_run"] is True,result
         assert result["identical_8byte_field_count"]==ROWS,result
         assert result["same_13byte_region_count"]==0,result
         assert result["original_executable_executed"] is False
