@@ -18,6 +18,20 @@ def _sha(path):
         for chunk in iter(lambda:f.read(1024*1024),b""):h.update(chunk)
     return h.hexdigest()
 
+def _check_signature(path):
+    suffix=path.suffix.lower()
+    with path.open("rb") as f:
+        first=f.read(4096)
+    if suffix==".pdf" and not first.lstrip().startswith(b"%PDF-"):
+        raise ValueError("Semnătură PDF invalidă")
+    if suffix==".png" and not first.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise ValueError("Semnătură PNG invalidă")
+    if suffix in (".jpg",".jpeg") and not first.startswith(b"\xff\xd8\xff"):
+        raise ValueError("Semnătură JPEG invalidă")
+    if suffix==".txt":
+        if b"\x00" in first or first.startswith((b"MZ",b"PK\x03\x04")):
+            raise ValueError("Fișier TXT nu pare text")
+
 def bulk_import_folder(store,vehicle_id,folder,source_name,rights_basis,category="Alt document",
                        language="",market="",include_subfolders=True):
     if rights_basis not in ACCESS_RIGHTS or rights_basis=="neconfirmat":
@@ -48,6 +62,7 @@ def bulk_import_folder(store,vehicle_id,folder,source_name,rights_basis,category
             size=path.stat().st_size
             if not 0<size<=MAX_INPUT_SIZE:
                 raise ValueError("Fișier gol sau mai mare de 32 MiB")
+            _check_signature(path)
             key=_sha(path)+path.suffix.lower()
             if key in present:
                 report["duplicates"]+=1
