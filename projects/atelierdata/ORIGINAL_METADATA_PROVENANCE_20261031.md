@@ -26,3 +26,7 @@ Reproduce in an authorized private environment:
     python projects/atelierdata/original_metadata_provenance_audit.py --manifest C:\PRIVATE\INVENTAR.json --parts-dir C:\PRIVATE\ZIP_PARTS --output C:\PRIVATE\metadata-public.json
 
 Original installation remains **NOT READY**: installation and activation-related materials are only named in blocked part 0016; vendor authenticity, license entitlement and Windows runtime compatibility are not established. All 81 IDF files remain undecoded. SHA256 against the owner's manifest does not prove publisher authenticity.
+
+## Whole-package cross-check (same authorized source)
+
+In addition to the four metadata members, a separate streaming SHA256 pass checked **all 55 non-directory members** of authorized `autodata_part_0004.zip` against the owner manifest: **55/55 matched**, covering **185,459,865 uncompressed bytes**, with zero size/hash errors. The ZIP container itself is 185,468,051 bytes; its observed SHA256 is `7a1131054b8f4e6f683284b82d18b816702a8017421d51460d9cc6fb9be992aa`. The locally retrieved `INVENTAR.json` SHA256 is `ec867e0fae97523caff4677e7684b03a2e30832856de67239861986221a804ca`. These are source-instance checksums, **not** independent vendor signatures. No data from package 0016 was accessed.
