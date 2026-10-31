@@ -694,6 +694,20 @@ def main():
                         raise RuntimeError('PROCEDURES_AUDIT_SHA256_CHECK_FAILED')
                     if audit.issues_tree.get_children():
                         raise RuntimeError('PROCEDURES_AUDIT_UNEXPECTED_FINDINGS')
+                    import json
+                    audit_file=Path(folder)/'gui-audit-report.json'
+                    changes_before=ui.db.db.total_changes
+                    exported=audit.export_audit_report(audit_file,notify=False)
+                    if exported is None or exported['audit']['procedure_id']!=pid:
+                        raise RuntimeError('PROCEDURES_AUDIT_JSON_EXPORT_FAILED')
+                    if not audit_file.exists():
+                        raise RuntimeError('PROCEDURES_AUDIT_JSON_MISSING')
+                    stored=json.loads(audit_file.read_text(encoding='utf-8'))
+                    if stored!=exported or stored['vehicle']['make']!='SYNTHETIC':
+                        raise RuntimeError('PROCEDURES_AUDIT_JSON_WRONG_VEHICLE_OR_CONTENT')
+                    if ui.db.db.total_changes!=changes_before:
+                        raise RuntimeError('PROCEDURES_AUDIT_JSON_MUTATED_SQLITE')
+
                 ui.root.after(1650,check_procedure_audit)
             ui.root.after(520,check_procedures_window)
             def check_schematics_window():
