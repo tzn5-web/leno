@@ -1,0 +1,52 @@
+{
+  "headers_shorter_than_32_bytes": 1,
+  "idf_decoding_proven": false,
+  "idf_records": 81,
+  "limitations": "Derived from a prior private static-audit CSV; source IDF bytes and original file SHA256 are not independently rechecked by this tool. Matching prefixes indicate shared bytes, not a decoded record format; high entropy does not establish encryption.",
+  "original_file_sha256_reverified": false,
+  "original_files_executed": false,
+  "prefix_clusters_by_bytes": {
+    "4": {
+      "eligible_headers": 81,
+      "files_in_groups": 8,
+      "group_sizes": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "multi_file_groups": 4
+    },
+    "8": {
+      "eligible_headers": 81,
+      "files_in_groups": 6,
+      "group_sizes": [
+        2,
+        2,
+        2
+      ],
+      "multi_file_groups": 3
+    },
+    "16": {
+      "eligible_headers": 80,
+      "files_in_groups": 6,
+      "group_sizes": [
+        2,
+        2,
+        2
+      ],
+      "multi_file_groups": 3
+    },
+    "32": {
+      "eligible_headers": 80,
+      "files_in_groups": 2,
+      "group_sizes": [
+        2
+      ],
+      "multi_file_groups": 1
+    }
+  },
+  "sample_entropy_at_least_7_9": 75,
+  "schema": "atelierdata-idf-header-family-aggregate-v1",
+  "source_csv_sha256": "1a9831ffbb2a0d94f1ee51087ecfd97a622336358f75215f018efea82b50c0e7"
+}
