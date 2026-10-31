@@ -27,6 +27,9 @@ jobs:
           python -m py_compile projects/atelierdata/idf_static_evidence.py projects/atelierdata/rea_resource_audit.py projects/atelierdata/pe_file_io_xrefs.py projects/atelierdata/test_pe_file_io_xrefs.py projects/atelierdata/pe_entrypoint_layout.py projects/atelierdata/test_pe_entrypoint_layout.py projects/atelierdata/pe_delay_import_audit.py projects/atelierdata/test_pe_delay_import_audit.py projects/atelierdata/pe_iat_evidence_validate.py projects/atelierdata/test_pe_iat_evidence_validate.py tools/ghidra/AtelierData_IDF_Xrefs.py
           python -m py_compile projects/atelierdata/catalog_search.py projects/atelierdata/test_catalog_search.py
           python -m py_compile projects/atelierdata/pe_static_call_alignment.py
+          python -m py_compile projects/atelierdata/idf_prefix_family_audit.py
+          python projects/atelierdata/idf_prefix_family_audit.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw "IDF_PREFIX_FAMILY_SELF_TEST_FAILED" }
           python projects/atelierdata/pe_static_call_alignment.py --self-test
           if ($LASTEXITCODE -ne 0) { throw "PE_CALL_ALIGNMENT_SELF_TEST_FAILED" }
           python -m py_compile projects/atelierdata/split_archive_manifest_audit.py
