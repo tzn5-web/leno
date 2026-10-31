@@ -69,7 +69,13 @@ def scan_block(block, refs):
 
 def main():
     args = getScriptArgs()
-    if len(args) != 2 or not args[0] or not re.match(r'^[0-9a-fA-F]{32}
+    if len(args) != 2 or not args[0] or not re.match(r'^[0-9a-fA-F]{32}$', args[1]):
+        raise ValueError('Expected: private-output.json independently-computed-PE-MD5')
+    destination = args[0]
+    expected_md5 = args[1].lower()
+    imported_md5 = currentProgram.getExecutableMD5()
+    if imported_md5 is None or imported_md5.lower() != expected_md5:
+        raise ValueError('Ghidra imported PE MD5 differs from independently verified source')
     refs = currentProgram.getReferenceManager()
     blocks = []
     observations = {}
@@ -93,44 +99,8 @@ def main():
         'idf_decoder_proven': False,
         'blocks': blocks,
         'keyword_hits': observations,
-        'limitations': ('Static API-name/IDF keyword hits and containing functions only. ' 
+        'limitations': ('Static API-name/IDF keyword hits and containing functions only. '
                         'A string reference is not an API invocation. No proof of IDF loader, '
-                        'compression algorithm, decryption, or legal right to copy data.')
-    }
-    with open(destination, 'w') as stream:
-        json.dump(result, stream, indent=2, sort_keys=True)
-    print('ATELIERDATA_GHIDRA_STATIC_REPORT=' + destination)
-
-
-main()
-, args[1]):
-        raise ValueError('Expected: private-output.json independently-computed-PE-MD5')
-    destination = args[0]
-    expected_md5 = args[1].lower()
-    imported_md5 = currentProgram.getExecutableMD5()
-    if imported_md5 is None or imported_md5.lower() != expected_md5:
-        raise ValueError('Ghidra imported PE MD5 differs from independently verified source')
-    refs = currentProgram.getReferenceManager()
-    blocks = []
-    observations = {}
-    for block in currentProgram.getMemory().getBlocks():
-        if not block.isInitialized():
-            continue
-        blocks.append({'name': str(block.getName()),
-                       'size': int(block.getSize()),
-                       'scanned_bytes': int(min(block.getSize(), MAX_SCAN_BYTES))})
-        found = scan_block(block, refs)
-        if found:
-            observations[str(block.getName())] = found
-    result = {
-        'tool': 'Ghidra static analysis, AtelierData_IDF_Xrefs.py',
-        'program_name': str(currentProgram.getName()),
-        'language_id': str(currentProgram.getLanguageID()),
-        'executed_target_binary': False,
-        'idf_decoder_proven': False,
-        'blocks': blocks,
-        'keyword_hits': observations,
-        'limitations': ('Static keyword hits and xrefs only. No proof of IDF loader, '
                         'compression algorithm, decryption, or legal right to copy data.')
     }
     with open(destination, 'w') as stream:
