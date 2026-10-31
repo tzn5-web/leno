@@ -83,12 +83,29 @@ def update_procedure(store, procedure_id, system, title, summary="",precautions=
     store.db.commit()
 
 
-def list_procedures(store, vehicle_id=None, search=""):
-    """Search sourced procedure metadata, steps and same-vehicle article text.
+def _casefold_contains(value, needle):
+    """SQLite UDF: Unicode-aware, literal substring matching (no wildcards).
 
-    Search is literal: %, _ and backslash are not SQL wildcard operators.
-    Corrupt cross-vehicle references must never reveal foreign article data.
-    No database writes, external requests, or inferred technical values.
+    SQLite LIKE ignores Unicode case folding for most non-ASCII characters.
+    Keep candidate selection consistent with the casefold-based hit highlighter.
+    """
+    return int(isinstance(value, str) and isinstance(needle, str)
+               and needle.casefold() in value.casefold())
+
+
+def _register_literal_search(store):
+    # Two-argument function avoids storing per-query search state on a shared
+    # SQLite connection; it never mutates database content or schema.
+    store.db.create_function("atelierdata_literal_contains", 2,
+                             _casefold_contains, deterministic=True)
+
+
+def list_procedures(store, vehicle_id=None, search=""):
+    """Find sourced procedures by literal Unicode-casefolded text.
+
+    Metadata, steps and documents are searched only for the requested vehicle
+    when vehicle_id is provided. Cross-vehicle document links are ignored.
+    This is a read-only query; '%' and '_' have no wildcard meaning.
     """
     if not isinstance(search, str) or len(search) > 200 or "\0" in search:
         raise ValueError("Invalid procedure search")
@@ -101,34 +118,34 @@ def list_procedures(store, vehicle_id=None, search=""):
         sql+=" AND p.vehicle_id=?"
         args.append(vehicle_id)
     if search:
-        pattern=("%"+search.replace("\\","\\\\").replace("%","\\%")
-                 .replace("_","\\_")+"%")
+        _register_literal_search(store)
         sql+=(""" AND (
-            p.title LIKE ? ESCAPE '\\' OR p.system LIKE ? ESCAPE '\\'
-            OR p.summary LIKE ? ESCAPE '\\' OR p.precautions LIKE ? ESCAPE '\\'
-            OR p.source LIKE ? ESCAPE '\\'
-            OR EXISTS (
+            atelierdata_literal_contains(p.title, ?) OR
+            atelierdata_literal_contains(p.system, ?) OR
+            atelierdata_literal_contains(p.summary, ?) OR
+            atelierdata_literal_contains(p.precautions, ?) OR
+            atelierdata_literal_contains(p.source, ?) OR EXISTS (
                 SELECT 1 FROM procedure_steps s
                 LEFT JOIN articles a
                   ON a.id=s.article_id AND a.vehicle_id=p.vehicle_id
                 WHERE s.procedure_id=p.id
-                  AND (s.instruction LIKE ? ESCAPE '\\'
-                    OR s.safety_note LIKE ? ESCAPE '\\'
-                    OR a.title LIKE ? ESCAPE '\\'
-                    OR a.category LIKE ? ESCAPE '\\'
-                    OR a.source LIKE ? ESCAPE '\\'
-                    OR a.content LIKE ? ESCAPE '\\')
+                  AND (atelierdata_literal_contains(s.instruction, ?)
+                    OR atelierdata_literal_contains(s.safety_note, ?)
+                    OR atelierdata_literal_contains(a.title, ?)
+                    OR atelierdata_literal_contains(a.category, ?)
+                    OR atelierdata_literal_contains(a.source, ?)
+                    OR atelierdata_literal_contains(a.content, ?))
             ))""")
-        args.extend([pattern]*11)
+        args.extend([search]*11)
     return store.db.execute(
         sql+" ORDER BY v.make,v.model,p.system,p.title,p.id",args
     ).fetchall()
 
-def list_reference_articles(store, procedure_id, search=""):
-    """Documents available to a step, scoped strictly to the procedure's vehicle.
 
-    The returned data are only user-entered article metadata; no remote content.
-    Search treats %, _ and backslash as literal characters.
+def list_reference_articles(store, procedure_id, search=""):
+    """Same-vehicle reference picker with literal Unicode-aware search.
+
+    Only user-entered article metadata are returned, without remote access.
     """
     if get_procedure(store, procedure_id) is None:
         raise ValueError("Procedure does not exist")
@@ -139,10 +156,11 @@ def list_reference_articles(store, procedure_id, search=""):
              "WHERE p.id=?")
     args = [procedure_id]
     if search:
-        pattern = "%" + search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
-        query += (" AND (a.title LIKE ? ESCAPE '\\' OR a.category LIKE ? ESCAPE '\\'"
-                  " OR a.source LIKE ? ESCAPE '\\')")
-        args.extend((pattern, pattern, pattern))
+        _register_literal_search(store)
+        query += (" AND (atelierdata_literal_contains(a.title, ?)"
+                  " OR atelierdata_literal_contains(a.category, ?)"
+                  " OR atelierdata_literal_contains(a.source, ?))")
+        args.extend((search, search, search))
     return store.db.execute(query + " ORDER BY a.category,a.title,a.id", args).fetchall()
 
 
