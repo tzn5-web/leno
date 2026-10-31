@@ -38,6 +38,42 @@ class ProcedureSearchHitTests(unittest.TestCase):
         return list_procedure_hits(
             self.db, self.car if vehicle is None else vehicle, query, limit=limit)
 
+    def test_metadata_field_skips_step_document_queries(self):
+        # A metadata-only search must not read large step/article bodies.
+        statements = []
+        self.db.db.set_trace_callback(statements.append)
+        try:
+            hits = list_procedure_hits(
+                self.db, self.car, "GENERAL-ALERT",
+                field="Avertisment general")
+        finally:
+            self.db.db.set_trace_callback(None)
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0]["procedure_id"], self.pid)
+        self.assertFalse(any(
+            statement.lstrip().upper().startswith("SELECT S.ID")
+            for statement in statements))
+
+    def test_streamed_filtered_pages_match_full_result(self):
+        self.db.db.executemany(
+            "INSERT INTO procedure_steps(procedure_id,step_number,instruction,safety_note)"
+            " VALUES(?,?,?,?)",
+            [(self.pid, n, "STREAM-PAGE step", "STREAM-PAGE warning")
+             for n in range(2, 264)])
+        self.db.db.commit()
+        before = self.db.db.total_changes
+        all_hits = list_procedure_hits(
+            self.db, self.car, "STREAM-PAGE",
+            limit=1000, field="Avertisment pas")
+        paged = (
+            list_procedure_hits(self.db, self.car, "STREAM-PAGE",
+                                limit=250, field="Avertisment pas") +
+            list_procedure_hits(self.db, self.car, "STREAM-PAGE",
+                                limit=250, offset=250, field="Avertisment pas"))
+        self.assertEqual(paged, all_hits)
+        self.assertEqual(len(paged), 262)
+        self.assertEqual(self.db.db.total_changes, before)
+
     def test_global_field_filter_before_paging(self):
         self.db.db.executemany(
             "INSERT INTO procedure_steps(procedure_id,step_number,instruction,safety_note) VALUES(?,?,?,?)",
