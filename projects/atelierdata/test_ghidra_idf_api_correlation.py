@@ -73,6 +73,21 @@ class CorrelationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "IDF xref"):
             correlate(idf, api, SHA)
 
+    def test_truncated_evidence_is_explicit(self):
+        idf, api = fixtures()
+        api["symbol_scan_truncated"] = True
+        api["api_symbols"]["ReadFile"][0]["references_truncated"] = True
+        result = correlate(idf, api, SHA)
+        self.assertTrue(result["api_scan_or_reference_coverage_truncated"])
+        self.assertEqual(result["api_symbols_with_truncated_references"], 1)
+        self.assertFalse(result["idf_decoder_proven"])
+
+    def test_invalid_truncation_flag_is_rejected(self):
+        idf, api = fixtures()
+        api["api_symbols"]["ReadFile"][0]["references_truncated"] = "false"
+        with self.assertRaisesRegex(ValueError, "truncation"):
+            correlate(idf, api, SHA)
+
     def test_report_load_rejects_symlink_when_supported(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
