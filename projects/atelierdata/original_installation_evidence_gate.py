@@ -31,7 +31,8 @@ def assess(manifest_path: Path, parts_dir: Path,
     if len(manifest["files"]) != len({row["path"] for row in manifest["files"]}):
         raise ValueError("Duplicate manifest file paths")
 
-    blocked = set(blocked_packages)
+    # The malware-flagged part is non-overridable, including CLI overrides.
+    blocked = set(DEFAULT_BLOCKED) | set(blocked_packages)
     if any(not name.startswith("autodata_part_") or
            not name.endswith(".zip") or "/" in name or "\\" in name
            for name in blocked):
@@ -107,7 +108,7 @@ def main() -> int:
     parser.add_argument("--blocked-package", action="append",
                         help="Explicitly excluded ZIP; defaults to part_0016")
     args = parser.parse_args()
-    blocked = tuple(args.blocked_package) if args.blocked_package else DEFAULT_BLOCKED
+    blocked = tuple(dict.fromkeys(DEFAULT_BLOCKED + tuple(args.blocked_package or ())))
     try:
         report = assess(args.manifest, args.parts_dir, blocked)
     except (ValueError, OSError, KeyError, TypeError) as exc:
