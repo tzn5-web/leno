@@ -10,7 +10,7 @@
 
 The command returns an aggregate JSON summary, never document bytes. It does not open an application database or mutate the original ZIP. It does **not** verify copyright ownership or decode proprietary data. The existing backup/restore format is unchanged.
 
-Nine synthetic-only unit tests passed in an isolated local Python 3 environment with lightweight dependency stubs (ZIP integrity, altered documents/SQLite, traversal, malformed manifest, duplicate entries, mismatched references, symlink and valid archive). A tenth test covers the actual CLI path and verifies that no default catalog is created; this test is **committed but requires the full application in CI**. The new module and tests are integrated in `.github/workflows/atelierdata-windows.yml`; **Windows CI and the new packaged EXE are not yet verified in this report**.
+Nine synthetic-only unit tests passed in an isolated local Python 3 environment with lightweight dependency stubs (ZIP integrity, altered documents/SQLite, traversal, malformed manifest, duplicate entries, mismatched references, symlink and valid archive). Two additional integration tests cover the actual CLI path (no default catalog created) and verification of a ZIP produced by the real AtelierData Store and managed-document backup code. Both are **committed but require the full application in CI**. The new module and tests are integrated in `.github/workflows/atelierdata-windows.yml`; **Windows CI and the new packaged EXE are not yet verified in this report**.
 
 ## Ghidra evidence enhancement — prepared, not executed on original
 
