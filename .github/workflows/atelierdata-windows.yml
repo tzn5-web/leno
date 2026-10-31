@@ -117,6 +117,16 @@ jobs:
             throw "PACKAGED_IDF_PROBE_REPORT_INVALID"
           }
           Write-Host "PACKAGED_IDF_PROBE_SYNTHETIC=PASS"
+          $singleIdf = Join-Path $env:RUNNER_TEMP 'atelierdata-synthetic-single.idf'
+          $singleReport = Join-Path $env:RUNNER_TEMP 'atelierdata-synthetic-single-report.json'
+          [System.IO.File]::WriteAllBytes($singleIdf, [System.Text.Encoding]::ASCII.GetBytes('synthetic-single-file-not-proprietary'))
+          $singleProbe = Start-Process -FilePath $exePath -ArgumentList @('--probe-idf', $singleIdf, '--output', $singleReport) -Wait -PassThru
+          if ($singleProbe.ExitCode -ne 0) { throw "PACKAGED_SINGLE_IDF_PROBE_FAILED exit=$($singleProbe.ExitCode)" }
+          $singleEvidence = Get-Content -Raw $singleReport | ConvertFrom-Json
+          if ($singleEvidence.schema -ne 'atelierdata-idf-probe-v2' -or $singleEvidence.count -ne 1 -or $singleEvidence.idf_decoder_proven -ne $false) {
+            throw "PACKAGED_SINGLE_IDF_REPORT_INVALID"
+          }
+          Write-Host "PACKAGED_SINGLE_IDF_PROBE_SYNTHETIC=PASS"
           Write-Host "GUI_SMOKE_TEST=PASS"
           if (-not (Test-Path ".\dist\AtelierData.exe")) { throw "EXE_MISSING" }
           $file = Get-Item ".\dist\AtelierData.exe"
