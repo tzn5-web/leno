@@ -1,6 +1,9 @@
 """Synthetic user-owned backup verification tests; no original binaries or IDF."""
 import hashlib
 import json
+import os
+import subprocess
+import sys
 import sqlite3
 import tempfile
 import unittest
@@ -114,6 +117,18 @@ class BackupVerificationTests(unittest.TestCase):
         members["manifest.json"] = json.dumps(manifest).encode()
         with self.assertRaisesRegex(ValueError, "attachments differ"):
             verify_backup_bundle(self._zip(members=members))
+
+    def test_cli_verifies_without_creating_default_database(self):
+        archive = self._zip()
+        isolated_home = self.root / "isolated-localappdata"
+        env = os.environ.copy()
+        env["LOCALAPPDATA"] = str(isolated_home)
+        command = [sys.executable, str(Path(__file__).with_name("atelierdata.py")),
+                   "--verify-backup", str(archive)]
+        result = subprocess.run(command, capture_output=True, text=True, env=env, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("VERIFY_BACKUP=PASS", result.stdout)
+        self.assertFalse(isolated_home.exists())
 
     def test_symlink_zip_rejected_when_supported(self):
         target = self._zip()
