@@ -1,79 +1,141 @@
 #@category AtelierData
-# Ghidra headless Jython 2.7. Read-only imported API/symbol cross-reference triage.
-# Output contains private addresses: keep in private Drive, never public GitHub.
+# Ghidra headless Jython 2.7: read-only API-symbol reference triage.
+# Private report only. Never executes imported binaries or decodes .IDF.
+# Args: <original-pe> <expected-sha256> <private-output.json>
+import hashlib
 import json
+import os
 import re
 
-API_NAMES = ('CreateFileA', 'CreateFileW', 'ReadFile', 'SetFilePointer',
-             'SetFilePointerEx', 'GetFileSize', 'GetFileSizeEx',
-             'CreateFileMappingA', 'CreateFileMappingW', 'MapViewOfFile',
-             'LoadLibraryA', 'LoadLibraryW', 'GetProcAddress',
-             'CloseHandle', 'FindFirstFileA', 'FindFirstFileW')
-MAX_SYMBOLS_PER_NAME = 32
-MAX_REFS_PER_SYMBOL = 256
+API_NAMES = (
+    "CreateFileA", "CreateFileW", "ReadFile", "SetFilePointer",
+    "SetFilePointerEx", "GetFileSize", "GetFileSizeEx", "CloseHandle",
+    "GetFileAttributesA", "GetFileAttributesW", "FindFirstFileA",
+    "FindFirstFileW", "FindNextFileA", "FindNextFileW",
+    "CreateFileMappingA", "CreateFileMappingW", "MapViewOfFile",
+    "GetProcAddress", "LoadLibraryA", "LoadLibraryW",
+    "LoadLibraryExA", "LoadLibraryExW"
+)
+MAX_PE_BYTES = 64 * 1024 * 1024
+MAX_SYMBOLS = 300000
+MAX_REFS = 50000
+MAX_REFS_PER_SYMBOL = 128
+
+
+def checked_paths():
+    args = getScriptArgs()
+    if len(args) != 3:
+        raise ValueError("Usage: original-pe expected-sha256 private-report.json")
+    source, expected, output = args
+    if not re.match(r"^[0-9a-fA-F]{64}$", expected):
+        raise ValueError("Expected SHA256 must be 64 hex characters")
+    expected = expected.lower()
+    if os.path.islink(source) or os.path.islink(output):
+        raise ValueError("Linked input or output paths are not permitted")
+    source, output = os.path.realpath(source), os.path.realpath(output)
+    if source == output or not os.path.isfile(source):
+        raise ValueError("Original PE missing or output aliases input")
+    if os.path.getsize(source) < 256 or os.path.getsize(source) > MAX_PE_BYTES:
+        raise ValueError("Original PE outside size limit")
+    sha, md5 = hashlib.sha256(), hashlib.md5()
+    with open(source, "rb") as stream:
+        while True:
+            block = stream.read(65536)
+            if not block:
+                break
+            sha.update(block)
+            md5.update(block)
+    if sha.hexdigest() != expected:
+        raise ValueError("Original PE SHA256 mismatch")
+    imported_sha = currentProgram.getExecutableSHA256()
+    imported_md5 = currentProgram.getExecutableMD5()
+    if not imported_sha or imported_sha.lower() != expected:
+        raise ValueError("Ghidra imported PE SHA256 mismatch")
+    if not imported_md5 or imported_md5.lower() != md5.hexdigest():
+        raise ValueError("Ghidra imported PE MD5 mismatch")
+    if not os.path.isdir(os.path.dirname(output)):
+        raise ValueError("Private output parent must exist")
+    return expected, output
+
+
+def canonical_api(symbol_name):
+    # Imported symbols can have __imp_, leading underscores or stdcall @N.
+    name = str(symbol_name)
+    if name.startswith("__imp_"):
+        name = name[6:]
+    name = name.lstrip("_")
+    name = re.sub(r"@[0-9]+$", "", name)
+    return name if name in API_NAMES else None
 
 
 def collect():
-    table = currentProgram.getSymbolTable()
-    manager = currentProgram.getReferenceManager()
+    symbols = currentProgram.getSymbolTable().getAllSymbols(False)
+    refs = currentProgram.getReferenceManager()
+    funcs = currentProgram.getFunctionManager()
     listing = currentProgram.getListing()
-    functions = currentProgram.getFunctionManager()
     found = {}
-    for name in API_NAMES:
+    scanned = 0
+    recorded = 0
+    truncated = False
+    while symbols.hasNext():
         monitor.checkCanceled()
-        symbols = []
-        for symbol in table.getSymbols(name):
-            if len(symbols) >= MAX_SYMBOLS_PER_NAME:
+        scanned += 1
+        if scanned > MAX_SYMBOLS:
+            truncated = True
+            break
+        sym = symbols.next()
+        api = canonical_api(sym.getName())
+        if api is None:
+            continue
+        addr = sym.getAddress()
+        row = {
+            "address": str(addr), "original_symbol_name": str(sym.getName()),
+            "external_address": bool(addr.isExternalAddress()),
+            "symbol_type": str(sym.getSymbolType()),
+            "references": [], "references_truncated": False
+        }
+        for ref in refs.getReferencesTo(addr):
+            monitor.checkCanceled()
+            if len(row["references"]) >= MAX_REFS_PER_SYMBOL or recorded >= MAX_REFS:
+                row["references_truncated"] = True
+                truncated = True
                 break
-            address = symbol.getAddress()
-            # A matching name alone does not prove an imported API.
-            refs = []
-            for ref in manager.getReferencesTo(address):
-                if len(refs) >= MAX_REFS_PER_SYMBOL:
-                    break
-                source = ref.getFromAddress()
-                function = functions.getFunctionContaining(source)
-                instruction = listing.getInstructionAt(source)
-                refs.append({
-                    'source_address': str(source),
-                    'reference_type': str(ref.getReferenceType()),
-                    'instruction_mnemonic': (str(instruction.getMnemonicString()) if instruction else None),
-                    'function_entry': (str(function.getEntryPoint()) if function else None)
-                })
-            symbols.append({
-                'address': str(address),
-                'external_address': bool(address.isExternalAddress()),
-                'symbol_type': str(symbol.getSymbolType()),
-                'parent_namespace': str(symbol.getParentNamespace().getName()),
-                'references': refs,
-                'references_truncated': len(refs) == MAX_REFS_PER_SYMBOL
+            src = ref.getFromAddress()
+            fn = funcs.getFunctionContaining(src)
+            ins = listing.getInstructionContaining(src)
+            row["references"].append({
+                "source_address": str(src),
+                "function_entry": str(fn.getEntryPoint()) if fn else None,
+                "instruction_mnemonic": str(ins.getMnemonicString()).upper() if ins else None,
+                "reference_type": str(ref.getReferenceType())
             })
-        if symbols:
-            found[name] = symbols
-    return found
+            recorded += 1
+        found.setdefault(api, []).append(row)
+    return found, scanned, recorded, truncated
 
 
 def main():
-    args = getScriptArgs()
-    if len(args) != 2 or not args[0] or not re.match(r'^[0-9a-fA-F]{64}$', args[1]):
-        raise ValueError('Expected: private-report.json independently-verified-PE-SHA256')
-    digest = currentProgram.getExecutableSHA256()
-    if digest is None or digest.lower() != args[1].lower():
-        raise ValueError('Imported executable SHA256 mismatch')
-    result = {
-        'schema': 'atelierdata-ghidra-file-api-xrefs-v1',
-        'source_sha256': digest.lower(),
-        'target_executed': False,
-        'idf_decoder_proven': False,
-        'api_symbols': collect(),
-        'limitations': ('Ghidra symbol references and containing functions only. '
-                        'IAT indirection, dynamically resolved APIs, and missed '
-                        'references can make this incomplete. Shared function '
-                        'references do not establish a file decoder.')
+    expected, output = checked_paths()
+    found, scanned, recorded, truncated = collect()
+    report = {
+        "schema": "atelierdata-ghidra-file-api-xrefs-v1",
+        "source_sha256": expected,
+        "ghidra_program_sha256_verified": True,
+        "ghidra_program_md5_verified": True,
+        "target_executed": False,
+        "idf_decoder_proven": False,
+        "private_only": True,
+        "symbols_scanned": scanned,
+        "symbol_scan_truncated": truncated,
+        "references_recorded": recorded,
+        "api_symbols": found,
+        "limitations": "Existing Ghidra symbol references only; decorated names included. IAT indirection, dynamic resolution and reachability are not proven."
     }
-    with open(args[0], 'w') as stream:
-        json.dump(result, stream, sort_keys=True, indent=2)
-    print('ATELIERDATA_PRIVATE_FILE_API_XREFS=' + args[0])
+    if os.path.islink(output):
+        raise ValueError("Private output changed to symlink")
+    with open(output, "w") as stream:
+        json.dump(report, stream, indent=2, sort_keys=True)
+    println("ATELIERDATA_FILE_API_XREFS_PRIVATE=WRITTEN refs=" + str(recorded))
 
 
 main()
