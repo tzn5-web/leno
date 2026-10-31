@@ -40,8 +40,9 @@ def _excerpt(value, needle, radius=85):
 def list_procedure_hits(store, vehicle_id, search, limit=DEFAULT_LIMIT):
     """Find literal matches with exact step IDs and verified vehicle provenance.
 
-    A matching procedure metadata field yields a hit without a step ID.
-    Each matching step yields one hit for its first matching field. Document
+    Each matching procedure metadata field yields a hit without a step ID.
+    Each matching step field yields its own hit, so warnings and document
+    provenance are not hidden by an earlier match in the same step. Document
     fields are included only when article.vehicle_id == procedure.vehicle_id.
     No schema changes, commits, downloads or writes are performed.
     """
@@ -64,7 +65,8 @@ def list_procedure_hits(store, vehicle_id, search, limit=DEFAULT_LIMIT):
                     "field": label, "excerpt": _excerpt(value, search),
                     "source": procedure["source"],
                 })
-                break
+                if len(results) >= limit:
+                    return results
         if len(results) >= limit:
             return results[:limit]
         rows = store.db.execute("""
@@ -88,7 +90,8 @@ def list_procedure_hits(store, vehicle_id, search, limit=DEFAULT_LIMIT):
                         "field": label, "excerpt": _excerpt(value, search),
                         "source": step["article_source"] if doc_field else procedure["source"],
                     })
-                    break
+                    if len(results) >= limit:
+                        return results
             if len(results) >= limit:
                 return results[:limit]
     return results
