@@ -45,6 +45,8 @@ def load_paths(inventory: Path) -> list[tuple[str, int]]:
 def audit_paths(rows: list[tuple[str, int]], max_relative_utf16: int = 240) -> dict:
     if not isinstance(max_relative_utf16, int) or not 32 <= max_relative_utf16 <= 32767:
         raise ValueError("Invalid path length limit")
+    if not rows:
+        raise ValueError("Inventory is empty")
     issues = collections.Counter()
     seen: set[str] = set()
     total = 0
