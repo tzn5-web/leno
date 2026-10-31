@@ -151,7 +151,7 @@ def open_schematics_window(app, editor_class, selected_article_id=None, vehicle_
     attachments=ttk.Treeview(sidebar,show="tree",height=8,selectmode="browse")
     attachments.pack(fill="both",expand=False,padx=(0,7))
     state={"article_id":None, "image":None, "image_path":None, "zoom":1.0,
-           "photo":None}
+           "photo":None, "invalid_search":False}
     window.schematics_tree=schematics
     window.attachments_tree=attachments
 
@@ -193,6 +193,7 @@ def open_schematics_window(app, editor_class, selected_article_id=None, vehicle_
         except ValueError:
             rows = []
             invalid_search = True
+        state["invalid_search"] = invalid_search
         schematics.delete(*schematics.get_children())
         for row in rows:
             schematics.insert("","end",iid=str(row["id"]),
@@ -224,7 +225,8 @@ def open_schematics_window(app, editor_class, selected_article_id=None, vehicle_
         attachments.delete(*attachments.get_children())
         state["article_id"]=int(selected[0]) if selected else None
         if state["article_id"] is None:
-            title.set("Selectează o schemă")
+            title.set("Căutare invalidă (maximum 200 caractere)"
+                      if state["invalid_search"] else "Selectează o schemă")
             set_details("")
             return
         article=app.db.get_article(state["article_id"])
