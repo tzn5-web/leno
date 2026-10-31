@@ -206,13 +206,17 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                 f"(pozițiile {first}–{last}{more}) pentru «{term}»")
             return tuple(visible_indices)
         def apply_field_filter(event=None):
+            old_offset=page_state["offset"]
+            old_more=page_state["has_more"]
             page_state["offset"]=0
-            page_state["has_more"]=False
             try:
-                hits[:]=fetch_page()
+                new_hits=fetch_page()
             except ValueError as exc:
+                page_state["offset"]=old_offset
+                page_state["has_more"]=old_more
                 messagebox.showerror("Căutare detaliată",str(exc),parent=popup)
                 return False
+            hits[:]=new_hits
             refresh_hit_filter()
             return True
         field_choice.bind("<<ComboboxSelected>>",apply_field_filter)
