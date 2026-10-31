@@ -8,6 +8,7 @@ from tkinter import ttk,messagebox,simpledialog
 import tkinter as tk
 from vehicle_service_card import FIELD_DATA,SECTIONS,card,add_value,edit_value,delete_value
 from vehicle_service_card_export import export_vehicle_card_html
+from vehicle_service_card_evidence import search_evidence
 
 def open_vehicle_service_card(app):
     vid=app.vid
@@ -179,12 +180,57 @@ def open_vehicle_service_card(app):
         except Exception as exc:
             messagebox.showerror("Export",str(exc),parent=win)
 
+    def open_local_evidence():
+        choice=selected()
+        if choice is None:
+            return messagebox.showinfo("Parametru necesar","Selectează un parametru din fișă.",parent=win)
+        field_index,entry=choice
+        try:
+            hits=search_evidence(app.db,vid,field_index)
+        except Exception as exc:
+            return messagebox.showerror("Căutare PDF",str(exc),parent=win)
+        if not hits:
+            return messagebox.showinfo("Nicio dovadă locală",
+                 "Nu există fragmente potrivite în PDF-urile indexate ale vehiculului. "
+                 "Importă un manual autorizat în Bibliotecă, apoi indexează PDF-ul în Atlas.",
+                 parent=win)
+        evidence=tk.Toplevel(win);evidence.title("Dovezi PDF — verificare manuală")
+        evidence.geometry("930x510");evidence.transient(win)
+        area=ttk.Frame(evidence,padding=10);area.pack(fill="both",expand=True)
+        ttk.Label(area,text=("Fragmente din PDF-urile LOCALE ale motorizării selectate. "
+            "Acestea nu sunt valori confirmate automat; verifică documentul/pagina."),
+            wraplength=880).pack(anchor="w")
+        cols=("document","page","term","excerpt")
+        result=ttk.Treeview(area,columns=cols,show="headings")
+        for key,label,width in (
+            ("document","Document",230),("page","Pagina",65),
+            ("term","Potrivire",130),("excerpt","Fragment",480)):
+            result.heading(key,text=label)
+            result.column(key,width=width,stretch=True)
+        result.pack(fill="both",expand=True,pady=10)
+        for i,item in enumerate(hits):
+            result.insert("","end",iid=str(i),
+                          values=(item["article_title"],item["page_number"],
+                                  item["matched_term"],item["excerpt"].replace("\n"," ")[:170]))
+        def copy_reference():
+            item=result.selection()
+            if not item:return
+            row=hits[int(item[0])]
+            text=(f"{row['article_title']} — pagina {row['page_number']}\n"
+                  f"Fragment de verificat: {row['excerpt']}")
+            evidence.clipboard_clear();evidence.clipboard_append(text)
+            messagebox.showinfo("Copiat","Sursa și fragmentul au fost copiate.",parent=evidence)
+        ttk.Button(area,text="Copiază referința selectată",
+                   command=copy_reference).pack(side="left")
+        ttk.Button(area,text="Închide",command=evidence.destroy).pack(side="right")
+
     buttons=ttk.Frame(root);buttons.pack(fill="x",pady=(6,0))
     ttk.Button(buttons,text="Adaugă / editează valoare",command=edit_dialog).pack(side="left")
     ttk.Button(buttons,text="+ Variantă alternativă",command=add_alternative).pack(side="left",padx=8)
     ttk.Button(buttons,text="Șterge valoare",command=delete_selected).pack(side="left")
     ttk.Button(buttons,text="Reîncarcă",command=refresh).pack(side="left",padx=8)
     ttk.Button(buttons,text="Exportă fișa HTML",command=save_printable).pack(side="left")
+    ttk.Button(buttons,text="Dovezi în PDF local",command=open_local_evidence).pack(side="left",padx=8)
     ttk.Button(buttons,text="Închide",command=win.destroy).pack(side="right")
     tree.bind("<<TreeviewSelect>>",view_selected)
     search.trace_add("write",lambda *_:refresh())
