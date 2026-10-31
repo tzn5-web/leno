@@ -51,6 +51,34 @@ public class AtelierData_LoadLibrary_Argument_Check extends GhidraScript {
         JsonArray candidates = input.getAsJsonArray("candidates");
         if (candidates == null || candidates.size() > MAX_CANDIDATES)
             throw new IllegalArgumentException("Invalid candidate count");
+        // Conservative, bounded direct-call graph from Ghidra-declared entry points.
+        // Indirect/dynamic calls are not resolved; absence from this graph is not
+        // proof of unreachable code. These are static edges, not runtime traces.
+        Set<Function> entryGraph = new HashSet<>();
+        ArrayDeque<Function> pending = new ArrayDeque<>();
+        ghidra.program.model.address.AddressIterator entryAddresses =
+            currentProgram.getSymbolTable().getExternalEntryPointIterator();
+        int entryRoots = 0;
+        while (entryAddresses.hasNext()) {
+            monitor.checkCancelled();
+            Function root = currentProgram.getFunctionManager()
+                .getFunctionContaining(entryAddresses.next());
+            if (root != null && entryGraph.add(root)) {
+                pending.add(root);
+                entryRoots++;
+            }
+        }
+        final int MAX_GRAPH_FUNCTIONS = 20000;
+        while (!pending.isEmpty() && entryGraph.size() < MAX_GRAPH_FUNCTIONS) {
+            monitor.checkCancelled();
+            Function function = pending.removeFirst();
+            for (Function called : function.getCalledFunctions(monitor)) {
+                if (called != null && !called.isExternal() && entryGraph.add(called))
+                    pending.addLast(called);
+            }
+        }
+        boolean graphComplete = pending.isEmpty();
+        int graphMatchedCandidates = 0;
         int recognized = 0, literalVerified = 0, iatReferenced = 0;
         List<Map<String,Object>> rows = new ArrayList<>();
         for (JsonElement element : candidates) {
@@ -96,6 +124,9 @@ public class AtelierData_LoadLibrary_Argument_Check extends GhidraScript {
             row.put("literal_pointer_verified",literalMatches);
             row.put("ghidra_reference_to_iat",refToIat);
             row.put("containing_function",owner == null ? null : owner.getName());
+            boolean inEntryGraph = exact && owner != null && entryGraph.contains(owner);
+            row.put("in_ghidra_entrypoint_direct_call_graph",inEntryGraph);
+            if (inEntryGraph) graphMatchedCandidates++;
             rows.add(row);
         }
         Map<String,Object> report = new LinkedHashMap<>();
@@ -108,9 +139,15 @@ public class AtelierData_LoadLibrary_Argument_Check extends GhidraScript {
         report.put("iat_references",iatReferenced);
         report.put("target_executed",false);
         report.put("cfg_reachability_proven",false);
+        report.put("ghidra_declared_entry_roots_with_functions",entryRoots);
+        report.put("direct_call_graph_functions_visited",entryGraph.size());
+        report.put("direct_call_graph_complete_within_budget",graphComplete);
+        report.put("verified_candidates_in_direct_call_graph",graphMatchedCandidates);
+        report.put("direct_call_graph_limitations",
+            "Static direct edges only; no indirect calls, loader callbacks or runtime reachability proof.");
         report.put("idf_decoder_proven",false);
         report.put("candidates",rows);
-        report.put("limitations","Static instruction boundaries and references only; not proof of runtime reachability.");
+        report.put("limitations","Static instruction boundaries and bounded Ghidra direct-call graph only; not proof of runtime reachability.");
         try (Writer writer = new FileWriter(args[1])) {
             new GsonBuilder().setPrettyPrinting().create().toJson(report,writer);
         }
