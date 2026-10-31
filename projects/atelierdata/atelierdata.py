@@ -697,7 +697,9 @@ def main():
                     if len(multi.hits_tree.get_children()) != len(multi.hits):
                         raise RuntimeError('PROCEDURES_MULTI_HITS_ROWS_MISSING')
                     multi.search_field_filter.set('Instrucțiune pas')
-                    visible=multi.refresh_hit_filter()
+                    if not multi.apply_field_filter():
+                        raise RuntimeError('PROCEDURES_HITS_GLOBAL_FILTER_QUERY_FAILED')
+                    visible=multi.visible_hit_indices()
                     if not visible or any(multi.hits[i]['field']!='Instrucțiune pas'
                                           for i in visible):
                         raise RuntimeError('PROCEDURES_HITS_FIELD_FILTER_FAILED')
@@ -707,7 +709,8 @@ def main():
                     if filtered is None or filtered['field']!='Instrucțiune pas':
                         raise RuntimeError('PROCEDURES_HITS_FIELD_FILTER_NAVIGATION_FAILED')
                     multi.search_field_filter.set('Toate câmpurile')
-                    multi.refresh_hit_filter()
+                    if not multi.apply_field_filter():
+                        raise RuntimeError('PROCEDURES_HITS_GLOBAL_FILTER_RESET_FAILED')
                     if len(multi.hits_tree.get_children())!=len(multi.hits):
                         raise RuntimeError('PROCEDURES_HITS_FIELD_FILTER_RESET_FAILED')
                     first=multi.move_hit_selection(1)
