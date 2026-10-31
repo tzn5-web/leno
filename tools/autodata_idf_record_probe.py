@@ -42,6 +42,18 @@ def probe(folder: Path, max_bytes: int = 2 * 1024 * 1024) -> dict:
                      for x,y in zip(a[i+KEY_LENGTH:i+BLOCK],b[i+KEY_LENGTH:i+BLOCK]))
     payload_bytes=row_count*(BLOCK-KEY_LENGTH)
     unique_keys=len(set(keys_a))
+    runs=1 if keys_a else 0
+    run_lengths=[]
+    if keys_a:
+        active_length=1
+        for i in range(1,len(keys_a)):
+            if keys_a[i]!=keys_a[i-1]:
+                run_lengths.append(active_length)
+                runs+=1
+                active_length=1
+            else:
+                active_length+=1
+        run_lengths.append(active_length)
     followup=[]
     for start in [0,boundary,max(boundary+65536,131072),1048576]:
         if start+4096+BLOCK>limit:
@@ -63,6 +75,9 @@ def probe(folder: Path, max_bytes: int = 2 * 1024 * 1024) -> dict:
         "different_field_width":BLOCK-KEY_LENGTH,
         "identical_8byte_field_count":len(keys_a),
         "distinct_8byte_field_values":unique_keys,
+        "contiguous_8byte_value_runs":runs,
+        "each_token_in_one_contiguous_run":runs==unique_keys,
+        "longest_run_records":max(run_lengths) if run_lengths else 0,
         "same_byte_fraction_in_13byte_regions":round(values_equal/payload_bytes,8) if payload_bytes else None,
         "same_13byte_region_count":sum(a[i+KEY_LENGTH:i+BLOCK]==b[i+KEY_LENGTH:i+BLOCK] for i in range(0,boundary,BLOCK)),
         "lag_21":followup,
