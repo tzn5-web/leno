@@ -2,6 +2,26 @@
 
 Proiectul conține cod original pentru un catalog auto offline pe Windows, **nu** o copie 1:1 a Autodata și **nu** conține datele proprietare Autodata. Nu pretinde decodarea bazei .IDF.
 
+## Fișă tehnică vehicul — afișare tip Autodata
+
+**Implementat în cod (31.10.2026):** butonul **„Fișa tehnică vehicul”** afișează datele de service într-o fereastră cu grupe de parametri, la selectarea unui vehicul și a codului motor. Sunt definite **36 de câmpuri** pentru:
+
+- Identificare motor, cilindree, putere, distribuție, normă de poluare;
+- Ulei motor: grad SAE, aprobare ACEA/API/OEM, cantitate cu/fără filtru, cod filtru, interval;
+- Antigel: standard chimic/omologare (nu doar culoare), concentrație, capacitate circuit, interval și termostat;
+- Anvelope: dimensiuni față/spate, presiuni pentru sarcină normală și maximă, jante/PCD/ET, cuplu roți;
+- Transmisie: cod cutie, tip și capacitate ulei; frâne, bujii, climă, combustibil și rezervor.
+
+Valorile provin **exclusiv** din `technical_specs` (baza deja existentă, inclusă în backup și import/export) și fiecare are o sursă și condiții. Sunt acceptate alternative explicite pentru același parametru, cu condițiile fiecărei variante. Câmpurile fără surse afișează **NECONFIRMAT**, nu o valoare dedusă. Codul motor afișat din fișa utilizatorului este marcat explicit ca **neverificat** până este confirmat în documentație.
+
+Din această fereastră sunt disponibile **Adaugă/editează valoare**, **Variantă alternativă**, **Dovezi în PDF local**, **Exportă fișa HTML**, **Diagrame / locații** și **Manuale / PDF**. PDF-urile trebuie importate în biblioteca locală și indexate din Atlas înainte ca opțiunea „Dovezi în PDF” să găsească fragmente și pagini. Rezultatele sunt indicii pentru verificare; nu se completează automat valori din fragmente de text sau din alte motorizări.
+
+Exportul HTML conține toate cele 36 de câmpuri, condițiile, sursele și marcajul **NECONFIRMAT** pentru valorile lipsă. Poate fi tipărit sau salvat ca PDF folosind browserul local.
+
+**Nu este încă o bază complet populată pentru toate mărcile.** Cuplurile, antigelul, presiunile și uleiul corecte depind de motorizare, an, piață, transmisie, dimensiunile exacte ale roților și condiții de operare. Absența unei valori nu trebuie interpretată ca specificație universală. Catalogul de 26 de surse permite găsirea documentelor, nu constituie un import automat al datelor lor.
+
+Fișiere: `vehicle_service_card.py`, `vehicle_service_card_gui.py`, `vehicle_service_card_export.py`, `vehicle_service_card_evidence.py`. Teste: `test_vehicle_service_card.py`, `test_vehicle_service_card_export.py`, `test_vehicle_service_card_evidence.py`, `vehicle_service_card_gui_smoke.py`.
+
 ## Biblioteca tehnică offline — documente cu proveniență
 
 **Nou în interfața Windows:** butonul **Bibliotecă tehnică offline**. Acesta oferă o bibliotecă locală de documente tehnice *ale utilizatorului sau păstrate cu permisiune*, legate de vehiculul exact din baza SQLite: `make`, `model`, `engine`, `years`, `variant`. Identitatea motorizării nu este dedusă din denumirea fișierului.
