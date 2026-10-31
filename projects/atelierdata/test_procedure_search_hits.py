@@ -38,6 +38,24 @@ class ProcedureSearchHitTests(unittest.TestCase):
         return list_procedure_hits(
             self.db, self.car if vehicle is None else vehicle, query, limit=limit)
 
+    def test_global_field_filter_before_paging(self):
+        self.db.db.executemany(
+            "INSERT INTO procedure_steps(procedure_id,step_number,instruction,safety_note) VALUES(?,?,?,?)",
+            [(self.pid, n, "GLOBAL-KEY instruction", "GLOBAL-KEY warning")
+             for n in range(2, 270)])
+        self.db.db.commit()
+        before = self.db.db.total_changes
+        first = list_procedure_hits(self.db, self.car, "GLOBAL-KEY",
+                                    limit=250, field="Avertisment pas")
+        second = list_procedure_hits(self.db, self.car, "GLOBAL-KEY",
+                                     limit=250, offset=250, field="Avertisment pas")
+        self.assertEqual(len(first), 250)
+        self.assertEqual(len(second), 18)
+        self.assertTrue(all(h["field"] == "Avertisment pas" for h in first + second))
+        self.assertEqual(self.db.db.total_changes, before)
+        with self.assertRaises(ValueError):
+            list_procedure_hits(self.db, self.car, "GLOBAL-KEY", field="invalid")
+
     def test_field_filter_stable_indices_and_no_mutation(self):
         hits = self.hits("OWN")
         original = [dict(hit) for hit in hits]
