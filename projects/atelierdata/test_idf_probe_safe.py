@@ -24,6 +24,34 @@ class ProbeSafetyTests(unittest.TestCase):
             self.assertEqual(result["samples"][0]["sampled_bytes"], 65536)
             self.assertFalse(result["idf_decoder_proven"])
 
+    def test_single_idf_file_digest_and_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "one.IDF"
+            data = b"single-synthetic-idf" * 100
+            path.write_bytes(data)
+            result = probe_idf(path)
+            self.assertEqual(result["count"], 1)
+            self.assertEqual(result["total_idf_bytes_hashed"], len(data))
+            self.assertEqual(result["samples"][0]["name"], "one.IDF")
+            self.assertEqual(result["samples"][0]["sha256_computed"],
+                             hashlib.sha256(data).hexdigest())
+            self.assertFalse(result["idf_decoder_proven"])
+
+    def test_single_idf_empty_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "empty.idf"
+            path.touch()
+            result = probe_idf(path)
+            self.assertEqual(result["count"], 1)
+            self.assertEqual(result["samples"][0]["sample_entropy"], 0.0)
+
+    def test_single_file_wrong_extension_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "original.exe"
+            path.write_bytes(b"not-executed")
+            with self.assertRaisesRegex(ValueError, "directory or ZIP"):
+                probe_idf(path)
+
     def test_zip_stream_and_case(self):
         with tempfile.TemporaryDirectory() as tmp:
             archive = Path(tmp) / "sample.zip"
