@@ -715,6 +715,35 @@ def main():
                     if again is None or multi.hits_tree.selection()!=('0',):
                         raise RuntimeError('PROCEDURES_MULTI_HITS_FORWARD_WRAP_FAILED')
                     multi.destroy()
+                    # Exercise actual GUI paging beyond the 250-result boundary.
+                    ui.db.db.executemany(
+                        'INSERT INTO procedure_steps'
+                        '(procedure_id,step_number,instruction,safety_note)'
+                        ' VALUES(?,?,?,?)',
+                        [(pid,n,'PAGED-UI synthetic step','')
+                         for n in range(2,263)])
+                    ui.db.db.commit()
+                    window.procedure_search_var.set('PAGED-UI')
+                    pages=window.open_search_hits()
+                    if pages is None or len(pages.hits)!=250:
+                        raise RuntimeError('PROCEDURES_GUI_FIRST_PAGE_FAILED')
+                    if not pages.search_page_state['has_more']:
+                        raise RuntimeError('PROCEDURES_GUI_MORE_RESULTS_NOT_DETECTED')
+                    if not pages.change_hits_page(1) or len(pages.hits)!=11:
+                        raise RuntimeError('PROCEDURES_GUI_NEXT_PAGE_FAILED')
+                    if pages.search_page_state['offset']!=250:
+                        raise RuntimeError('PROCEDURES_GUI_PAGE_OFFSET_FAILED')
+                    if pages.change_hits_page(1):
+                        raise RuntimeError('PROCEDURES_GUI_PAST_LAST_PAGE')
+                    if not pages.change_hits_page(-1) or len(pages.hits)!=250:
+                        raise RuntimeError('PROCEDURES_GUI_PREVIOUS_PAGE_FAILED')
+                    if pages.change_hits_page(-1):
+                        raise RuntimeError('PROCEDURES_GUI_BEFORE_FIRST_PAGE')
+                    pages.destroy()
+                    ui.db.db.execute(
+                        'DELETE FROM procedure_steps WHERE procedure_id=?'
+                        ' AND instruction=?',(pid,'PAGED-UI synthetic step'))
+                    ui.db.db.commit()
                     window.procedure_search_var.set('100%_')
                     hits=window.open_search_hits()
                     if hits is None or not hits.winfo_exists():
