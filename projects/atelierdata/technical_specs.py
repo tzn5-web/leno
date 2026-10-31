@@ -105,10 +105,13 @@ def list_specs(store,vehicle_id=None,search="",system=None):
         query+=" AND s.vehicle_id=?";args.append(vehicle_id)
     if system:
         query+=" AND s.system=?";args.append(system)
+    if not isinstance(search, str) or len(search) > 200 or '\0' in search:
+        raise ValueError("Căutare invalidă (maximum 200 caractere)")
     if search:
-        q="%"+search+"%"
-        query+=" AND (s.system LIKE ? OR s.parameter LIKE ? OR s.value LIKE ? OR s.conditions LIKE ?)"
-        args.extend([q]*4)
+        q = "%" + search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        query += (" AND (s.system LIKE ? ESCAPE '\\' OR s.parameter LIKE ? ESCAPE '\\'"
+                  " OR s.value LIKE ? ESCAPE '\\' OR s.conditions LIKE ? ESCAPE '\\')")
+        args.extend([q] * 4)
     return store.db.execute(query+" ORDER BY v.make,v.model,v.engine,s.system,s.parameter,s.id",args).fetchall()
 
 def _load_input(path):
