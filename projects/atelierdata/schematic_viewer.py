@@ -56,7 +56,7 @@ def list_schematic_articles(store, vehicle_id, search=""):
     """Vehicle-scoped, literal Unicode search; never interpret SQL wildcards."""
     if type(vehicle_id) is not int or vehicle_id <= 0:
         raise ValueError("Invalid schematic vehicle ID")
-    if not isinstance(search, str) or len(search) > 200 or "\\0" in search:
+    if not isinstance(search, str) or len(search) > 200 or "\0" in search:
         raise ValueError("Invalid schematic search")
     query = ("SELECT id,vehicle_id,category,title,content,source FROM articles WHERE "
              "vehicle_id=? AND category IN (?,?)")
