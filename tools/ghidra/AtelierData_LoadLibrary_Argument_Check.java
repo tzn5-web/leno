@@ -132,6 +132,9 @@ public class AtelierData_LoadLibrary_Argument_Check extends GhidraScript {
         Map<String,Object> report = new LinkedHashMap<>();
         report.put("schema","atelierdata-ghidra-loadlibrary-private-v1");
         report.put("source_sha256",input.get("sha256").getAsString());
+        // Bind this Ghidra report to the actual imported binary, not only to
+        // a Boolean assertion copied from the private input report.
+        report.put("source_md5",programMd5.toLowerCase(Locale.ROOT));
         report.put("ghidra_executable_md5_verified",true);
         report.put("candidate_count",candidates.size());
         report.put("recognized_instruction_pairs",recognized);
