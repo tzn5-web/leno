@@ -748,7 +748,7 @@ def main():
                     pages.search_field_filter.set('Toate câmpurile')
                     if not pages.apply_field_filter() or len(pages.hits)!=250:
                         raise RuntimeError('PROCEDURES_GUI_GLOBAL_FIELD_RESET_FAILED')
-                    if not pages.change_hits_page(1) or len(pages.hits)!=11:
+                    if not pages.change_hits_page(1) or len(pages.hits)!=22:
                         raise RuntimeError('PROCEDURES_GUI_NEXT_PAGE_FAILED')
                     if pages.search_page_state['offset']!=250:
                         raise RuntimeError('PROCEDURES_GUI_PAGE_OFFSET_FAILED')
