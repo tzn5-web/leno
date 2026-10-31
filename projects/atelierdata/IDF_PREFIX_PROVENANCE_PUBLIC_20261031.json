@@ -1,0 +1,26 @@
+{
+  "schema": "atelierdata-idf-prefix-provenance-v1",
+  "selected_authorized_packages": 1,
+  "single_chunk_idf_sha256_verified": 19,
+  "verified_idf_bytes": 161112171,
+  "multipart_idf_not_analyzed": 0,
+  "compared_pairs": 171,
+  "shared_prefix_pairs_at_least_bytes": {
+    "4": 1,
+    "8": 1,
+    "16": 1,
+    "20": 1,
+    "32": 0,
+    "64": 0
+  },
+  "longest_shared_sample_prefix_bytes": 20,
+  "known_container_magic_hits": 0,
+  "entropy_sample_bytes": 4096,
+  "mean_sample_entropy_bits_per_byte": 7.8225,
+  "sha256_compared_to": "owner_provided_manifest_not_vendor_signature",
+  "raw_headers_in_public_report": false,
+  "original_executed": false,
+  "idf_decoded": false,
+  "license_or_vendor_authenticity_verified": false,
+  "interpretation": "Matching prefixes are format clues only; neither high entropy nor repeated headers establish encryption, a decoder, or a license."
+}
