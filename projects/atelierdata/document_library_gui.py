@@ -14,6 +14,7 @@ from document_library import (
     DOCUMENT_TYPES,ACCESS_RIGHTS,ensure_schema,import_local_file,
     list_library,set_metadata,verified_library_file)
 from technical_sources import normalize
+from document_bulk_import import bulk_import_folder
 
 RIGHTS_LABEL={
     "neconfirmat":"Drepturi neconfirmate — numai inventar",
@@ -212,6 +213,53 @@ def open_document_library(app):
         except Exception as exc:
             messagebox.showerror("Import respins",str(exc),parent=win)
 
+    def import_folder():
+        if app.vid is None:
+            return messagebox.showinfo("Vehicul necesar",
+                "Selectează vehiculul și motorul înainte de importul unui director.",parent=win)
+        folder=filedialog.askdirectory(parent=win,title="Alege un dosar cu PDF, imagini și TXT")
+        if not folder:return
+        dialog=tk.Toplevel(win)
+        dialog.title("Import privat de documente — confirmare sursă")
+        dialog.geometry("550x430");dialog.transient(win);dialog.grab_set()
+        frame=ttk.Frame(dialog,padding=17);frame.pack(fill="both",expand=True)
+        ttk.Label(frame,text="Importul asociază TOATE fișierele vehiculului selectat.",
+                  wraplength=490).pack(anchor="w")
+        ttk.Label(frame,text="Furnizorul / proveniența documentelor (obligatoriu):").pack(anchor="w",pady=(10,1))
+        provider=tk.StringVar()
+        ttk.Entry(frame,textvariable=provider).pack(fill="x")
+        ttk.Label(frame,text="Tip inițial (poate fi modificat ulterior):").pack(anchor="w",pady=(10,1))
+        kind=tk.StringVar(value="Alt document")
+        ttk.Combobox(frame,textvariable=kind,values=DOCUMENT_TYPES,state="readonly").pack(fill="x")
+        ttk.Label(frame,text="Drept de păstrare declarat:").pack(anchor="w",pady=(10,1))
+        rights=tk.StringVar(value="document_propriu")
+        ttk.Combobox(frame,textvariable=rights,
+                     values=[r for r in ACCESS_RIGHTS if r!="neconfirmat"],
+                     state="readonly").pack(fill="x")
+        ttk.Label(frame,text=("Nu selecta un drept fără bază reală. "
+                  "Manualele online nu se descarcă automat. Se importă doar fișierele deja "
+                  "aflate în folderul tău; maximum 500 fișiere, 32 MiB fiecare."),
+                  wraplength=485).pack(anchor="w",pady=(12,8))
+        def proceed():
+            if not provider.get().strip():
+                return messagebox.showerror("Sursă lipsă","Completează proveniența.",parent=dialog)
+            if not messagebox.askyesno("Confirmă importul",
+                    "Confirmi că ai dreptul să păstrezi local fișierele selectate și că "
+                    "se aplică vehiculului/motorului selectat?",parent=dialog):
+                return
+            try:
+                result=bulk_import_folder(app.db,app.vid,folder,provider.get(),
+                                          rights.get(),category=kind.get())
+                dialog.destroy()
+                refresh();app.refresh()
+                messagebox.showinfo("Import dosar",
+                    f"Importate: {result['imported']}\nDuplicate: {result['duplicates']}\n"
+                    f"Respingeri: {len(result['failed'])}\n"
+                    "Fișierele respinse rămân în folderul inițial.",parent=win)
+            except Exception as exc:
+                messagebox.showerror("Import dosar eșuat",str(exc),parent=dialog)
+        ttk.Button(frame,text="Importă fișierele autorizate",command=proceed).pack(pady=12)
+
     def edit_metadata():
         row=selected()
         if not row:
@@ -248,6 +296,7 @@ def open_document_library(app):
     actions=ttk.Frame(outer)
     actions.pack(fill="x",pady=(4,1))
     ttk.Button(actions,text="Importă fișier local",command=import_file).pack(side="left",padx=(0,7))
+    ttk.Button(actions,text="Importă dosar local",command=import_folder).pack(side="left",padx=(0,7))
     ttk.Button(actions,text="Editează proveniența",command=edit_metadata).pack(side="left",padx=(0,7))
     ttk.Button(actions,text="Deschide verificat",command=open_verified).pack(side="left",padx=(0,7))
     ttk.Button(actions,text="Închide",command=win.destroy).pack(side="right")
