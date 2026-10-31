@@ -30,7 +30,7 @@ def main():
         assert "autodoc" in opel_ids
         assert "stellantis_servicebox" in opel_ids
         assert "charm" not in opel_ids
-        ui.sources_search.set("Mitsubishi")
+        ui.sources_search.set("NO_MATCH_SENTINEL_TEST_999")
         assert len(ui.sources_tree.get_children())==0
         ui.sources_search.set("")
         ui.sources_make.set("Mitsubishi")
