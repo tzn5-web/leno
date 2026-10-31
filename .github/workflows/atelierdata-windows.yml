@@ -31,6 +31,11 @@ jobs:
           python -m py_compile projects/atelierdata/ghidra_report_consistency.py projects/atelierdata/test_ghidra_report_consistency.py projects/atelierdata/test_article_search_literal.py
           python -m py_compile projects/atelierdata/ghidra_evidence_replay.py projects/atelierdata/test_ghidra_evidence_replay.py
           python -m py_compile projects/atelierdata/ghidra_iat_consistency.py projects/atelierdata/test_ghidra_iat_consistency.py
+          python -m py_compile projects/atelierdata/ghidra_idf_api_correlation.py projects/atelierdata/test_ghidra_idf_api_correlation.py tools/ghidra/AtelierData_File_API_Xrefs.py projects/atelierdata/test_restore_preflight.py
+          python -m unittest discover -s projects/atelierdata -p 'test_ghidra_idf_api_correlation.py' -v
+          if ($LASTEXITCODE -ne 0) { throw "GHIDRA_IDF_API_CORRELATION_TEST_FAILED" }
+          python -m unittest discover -s projects/atelierdata -p 'test_restore_preflight.py' -v
+          if ($LASTEXITCODE -ne 0) { throw "RESTORE_PREFLIGHT_TEST_FAILED" }
           python -m py_compile projects/atelierdata/backup_verification.py projects/atelierdata/test_backup_verification.py
           python -m unittest discover -s projects/atelierdata -p 'test_backup_verification.py' -v
           if ($LASTEXITCODE -ne 0) { throw "BACKUP_VERIFICATION_TEST_FAILED" }
