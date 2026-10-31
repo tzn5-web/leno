@@ -100,6 +100,14 @@ class EvidenceGateTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "refuse inspection"):
                 assess(manifest, root)
 
+    def test_default_malware_block_cannot_be_overridden(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            manifest = fixture(root)
+            (root / BLOCKED).write_bytes(b"DO-NOT-OPEN")
+            with self.assertRaisesRegex(ValueError, "Blocked package present"):
+                assess(manifest, root, blocked_packages=(TWO,))
+
     def test_missing_unblocked_package_is_not_acceptable_partial(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
