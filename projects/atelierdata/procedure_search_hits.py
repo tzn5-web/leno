@@ -80,6 +80,10 @@ def list_procedure_hits(store, vehicle_id, search, limit=DEFAULT_LIMIT, offset=0
     Offset-based pages preserve deterministic order and the same vehicle scope.
     No schema changes, commits, downloads or writes are performed.
     """
+    # Search hits are exposed by the Windows dialog for one selected vehicle.
+    # Never allow an omitted/invalid vehicle to silently query every vehicle.
+    if isinstance(vehicle_id, bool) or not isinstance(vehicle_id, int) or vehicle_id <= 0:
+        raise ValueError("Invalid vehicle id")
     if not isinstance(search, str) or not search.strip():
         raise ValueError("Introduce un termen de căutare")
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
