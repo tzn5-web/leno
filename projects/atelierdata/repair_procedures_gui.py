@@ -205,7 +205,17 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                 f"{len(visible_indices)} din {len(hits)} potriviri afișate "
                 f"(pozițiile {first}–{last}{more}) pentru «{term}»")
             return tuple(visible_indices)
-        field_choice.bind("<<ComboboxSelected>>",refresh_hit_filter)
+        def apply_field_filter(event=None):
+            page_state["offset"]=0
+            page_state["has_more"]=False
+            try:
+                hits[:]=fetch_page()
+            except ValueError as exc:
+                messagebox.showerror("Căutare detaliată",str(exc),parent=popup)
+                return False
+            refresh_hit_filter()
+            return True
+        field_choice.bind("<<ComboboxSelected>>",apply_field_filter)
         refresh_hit_filter()
 
         def change_hits_page(direction):
@@ -318,6 +328,7 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         popup.search_page_state=page_state
         popup.search_field_filter=field_filter
         popup.refresh_hit_filter=refresh_hit_filter
+        popup.apply_field_filter=apply_field_filter
         popup.visible_hit_indices=lambda:tuple(visible_indices)
         popup.hits_tree=table
         popup.go_to_hit=go_to_hit
