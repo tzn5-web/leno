@@ -104,20 +104,20 @@ def list_procedures(store, vehicle_id=None, search=""):
         pattern=("%"+search.replace("\\","\\\\").replace("%","\\%")
                  .replace("_","\\_")+"%")
         sql+=(""" AND (
-            p.title LIKE ? ESCAPE '\' OR p.system LIKE ? ESCAPE '\'
-            OR p.summary LIKE ? ESCAPE '\' OR p.precautions LIKE ? ESCAPE '\'
-            OR p.source LIKE ? ESCAPE '\'
+            p.title LIKE ? ESCAPE '\\' OR p.system LIKE ? ESCAPE '\\'
+            OR p.summary LIKE ? ESCAPE '\\' OR p.precautions LIKE ? ESCAPE '\\'
+            OR p.source LIKE ? ESCAPE '\\'
             OR EXISTS (
                 SELECT 1 FROM procedure_steps s
                 LEFT JOIN articles a
                   ON a.id=s.article_id AND a.vehicle_id=p.vehicle_id
                 WHERE s.procedure_id=p.id
-                  AND (s.instruction LIKE ? ESCAPE '\'
-                    OR s.safety_note LIKE ? ESCAPE '\'
-                    OR a.title LIKE ? ESCAPE '\'
-                    OR a.category LIKE ? ESCAPE '\'
-                    OR a.source LIKE ? ESCAPE '\'
-                    OR a.content LIKE ? ESCAPE '\')
+                  AND (s.instruction LIKE ? ESCAPE '\\'
+                    OR s.safety_note LIKE ? ESCAPE '\\'
+                    OR a.title LIKE ? ESCAPE '\\'
+                    OR a.category LIKE ? ESCAPE '\\'
+                    OR a.source LIKE ? ESCAPE '\\'
+                    OR a.content LIKE ? ESCAPE '\\')
             ))""")
         args.extend([pattern]*11)
     return store.db.execute(
