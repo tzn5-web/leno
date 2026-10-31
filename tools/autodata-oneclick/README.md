@@ -1,3 +1,9 @@
+# Arhivat ca șablon concurent — nu folosi pentru o instalare finală
+
+**31.10.2026:** Aceasta este o implementare istorică, păstrată pentru comparație. Proiectul canonic pentru instalarea programului Autodata original este **[`tools/autodata-installer/`](https://github.com/tzn5-web/leno/tree/autodata-installer-20261030/tools/autodata-installer)**, pe ramura `autodata-installer-20261030`. Nu sunt validate nici versiunea exactă a programului, nici cele cinci DLL-uri inaccesibile din ZIP-ul 0016, licența, calea implicită de instalare sau lansarea aplicației. **Nu rulați acest builder concurent ca soluție finală.** Această ramură rămâne pentru analiza statică originală `.IDF`, REA și Ghidra, nu pentru alt instalator.
+
+---
+
 # Autodata 3.45 One-Click — Windows installer project
 
 Goal: package a VERIFIED, LAWFULLY LICENSED Autodata 3.45 installation in ONE Windows Setup.exe, with shortcuts and an uninstaller. Original Autodata program binaries remain proprietary; they are not recompiled.
