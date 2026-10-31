@@ -78,7 +78,7 @@ class Store:
         values=[]
         if vid is not None:query+=" AND vehicle_id=?";values.append(vid)
         if category!='Toate':query+=" AND category=?";values.append(category)
-        if search is not None and not isinstance(search,str):
+        if not isinstance(search,str):
             raise ValueError("Căutarea trebuie să fie text")
         if search:
             if len(search)>200 or '\0' in search:
