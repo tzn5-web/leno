@@ -1,4 +1,4 @@
-# Autodata 3.45 — proiect de instalator Windows cu licență validă
+# Autodata originală — instalator privat cu verificări de sursă și licență
 
 ## Stare verificată (30 octombrie 2026)
 
@@ -28,7 +28,8 @@ un instalator complet funcțional nu a fost construit.
 - `installer.iss`: reîmpachetează fișierele autorizate într-un **singur EXE**
   folosind Inno Setup 6, cu dezinstalare și scurtătură Windows.
 - `verify_original_manifest.py`: verifică fiecare fragment SHA-256 al celor 105 fișiere ADCDA2 față de `INVENTAR.json` privat, fără să ruleze executabile.
-- `build.ps1`: refuză compilarea fără `INVENTAR.json`, confirmarea dreptului de utilizare și scanarea Microsoft Defender fără detecții raportate. Nu execută fișierele aplicației.
+- `build.ps1`: refuză compilarea fără `INVENTAR.json`, `-ReviewRecord` privat cu verificările reale de proveniență, licență, instrucțiuni, dependințe Sentinel și discrepanța 3.44/3.45, confirmarea dreptului de utilizare și scanarea Microsoft Defender fără detecții raportate. Nu execută fișierele aplicației.
+- `release_gate.py`: verifică faptul că atestările obligatorii au fost înregistrate; un `true` declarat de utilizator nu este dovada independentă a licenței. Nu setați aceste valori fără verificări reale.
 - `tests/`: teste unitare cu date **sintetice**, fără binare Autodata.
 - `.github/workflows/autodata-installer-ci.yml`: verifică în GitHub Actions
   scripturile și compilarea unui EXE de test cu date sintetice. Nu publică
@@ -43,7 +44,7 @@ Din directorul `tools/autodata-installer`:
 
 ```powershell
 python prepare_payload.py --source "D:\Autodata_3.45" --staging "D:\Autodata_stage" --dry-run
-powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -PayloadRoot "D:\Autodata_3.45" -Inventory "D:\INVENTAR.json" -AuthorizedUseConfirmed -OutputDir "D:\Autodata_Setup"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -PayloadRoot "D:\Autodata_3.45" -Inventory "D:\INVENTAR.json" -ReviewRecord "D:\Private\autodata_review.json" -AuthorizedUseConfirmed -OutputDir "D:\Autodata_Setup"
 ```
 
 Dacă toate cele 105 fișiere există, au dimensiunile și hashurile pe fragmente identice cu inventarul privat, iar Defender nu raportează detecții,
@@ -84,3 +85,17 @@ GitHub.
 
 Până la îndeplinirea acestor condiții, nu trebuie prezentat niciun EXE
 drept instalator final Autodata 3.45.
+
+## Coordonare definitivă a proiectelor (31 octombrie 2026)
+
+- **Proiectul canonic pentru instalarea programului original:** această ramură `autodata-installer-20261030`, director `tools/autodata-installer/`.
+- **Analiză statică originală:** `autodata-colab-20261030`, notebookul și instrumentele IDF/REA/Ghidra. Șablonul `tools/autodata-oneclick/` din acea ramură este **arhivat logic** pentru referință, nu o a doua linie de construire. Nu îl mai dezvoltați ca instalator concurent.
+- **Aplicație independentă:** `atelierdata-20261030`, explicit în afara scopului acestui instalator.
+- **Versiune:** numele arhivei spune 3.45, dar `COMMON/VERINFO.DAT` raportează `ProductCode=CDA3.44` și `VersionNo=9.200`. Eticheta afișată de șablon nu certifică versiunea produsului. `AppVersion=0.1.0` descrie numai șablonul de împachetare.
+- **Cale implicită:** `{autopf}\Autodata 3.45\ADCDA2` era doar o alegere de șablon, iar `C:\ADCDA2` din șablonul concurent era o altă ipoteză. Niciuna nu a fost verificată ca necesară pentru programul original. Instalația în Windows rămâne nevalidată, iar directorul trebuie ales pe baza instrucțiunilor legitime și a testului izolat.
+- **Stare:** fără instalator original complet construit/testat; 100 din 139 fișiere logice verificabile, 39 indisponibile din ZIP-ul 0016; cinci DLL-uri `ADCDA2` lipsă pentru construirea completă; activarea autentică și compatibilitatea Windows nevalidate.
+- **Niciun bypass:** nu descărcați/reîmpachetați `autodata_part_0016.zip` prin ocolirea protecției Drive; nu folosiți keygen, dongle emulator sau patchuri de activare.
+
+## Cum interpretăm testele
+
+Un PASS al testelor automate cu fișiere sintetice verifică numai validatoarele, scriptul PowerShell și compilarea șablonului Inno Setup. Nu confirmă instalarea, pornirea, licența sau identitatea versiunii Autodata. Buildul privat necesită o sursă completă, autorizată și verificată separat.
