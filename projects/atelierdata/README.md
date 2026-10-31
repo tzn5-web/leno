@@ -255,3 +255,31 @@ Teste sintetice: test_procedure_audit_html.py (inclusiv XSS, date ale altui
 vehicul, refuz suprascriere, verificări actualizate și integritatea SQLite).
 atelierdata.py --ui-smoke verifică și butonul HTML din GUI Windows,
 atât în Python, cât și în executabilul PyInstaller.
+
+
+## Căutare globală în catalog (2026-10-31)
+
+Butonul **Căutare globală** interoghează în mod local șase tipuri de
+înregistrări: vehicule, documente, proceduri (inclusiv pașii), specificații
+tehnice, DTC și planuri de întreținere. Fiecare rezultat indică vehiculul
+și sursa înregistrării. Căutarea este literală: caracterele `%`,
+`_` și `\` nu devin wildcard SQL; termenul este parametrizat,
+limitat la 200 de caractere, iar rezultatele sunt paginate și ordonate
+determinist. Nu se fac cereri de rețea și nu se modifică baza de date.
+Rezultatele pot fi filtrate după vehicul; dublu-click deschide vehiculul,
+documentul sau modulul relevant. Pentru specificații se deschide modulul,
+fără selecție automată a rândului.
+
+Interfața CLI pentru testare/integrare:
+
+```powershell
+python projects/atelierdata/atelierdata.py --db-path .\work\atelierdata.sqlite3 --search-all "frâne" --search-limit 100
+python projects/atelierdata/atelierdata.py --db-path .\work\atelierdata.sqlite3 --search-all "P0123" --search-vehicle-id 1
+python -m unittest discover -s projects/atelierdata -p "test_catalog_search.py" -v
+```
+
+Teste sintetice locale: **5/5 PASS**, acoperind toate cele șase tipuri,
+literalitatea metacaracterelor, izolarea vehiculelor, paginarea și
+respingerea parametrilor invalizi. Aceste teste sunt integrate și în
+Windows CI; un nou artifact EXE se declară validat numai după PASS-ul
+workflow-ului asociat commitului curent.
