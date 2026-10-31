@@ -50,6 +50,26 @@ class ProcedureTests(unittest.TestCase):
         self.db.delete_article(document)
         self.assertIsNone(list_steps(self.db,self.pid)[0]["article_id"])
 
+    def test_corrupt_cross_vehicle_link_never_leaks_reference_title(self):
+        """An invalid imported reference must not expose another vehicle's data."""
+        foreign_title="PRIVATE FOREIGN VEHICLE SCHEMATIC"
+        other_article=self.db.add_article(
+            self.other,"Scheme electrice",foreign_title,"Sensitive synthetic demo",
+            "OTHER VEHICLE ONLY")
+        step_id=add_step(self.db,self.pid,"Neutral test step")
+        self.db.db.execute(
+            "UPDATE procedure_steps SET article_id=? WHERE id=?",
+            (other_article,step_id))
+        self.db.db.commit()
+        row=list_steps(self.db,self.pid)[0]
+        self.assertEqual(row["article_id"],other_article)
+        self.assertIsNone(row["reference_title"])
+        self.assertNotIn(foreign_title,procedure_text(self.db,self.pid))
+        self.assertNotIn(foreign_title,
+                         str([(r["reference_title"],r["instruction"])
+                              for r in list_steps(self.db,self.pid)]))
+        self.assertEqual(self.db.db.execute("PRAGMA quick_check").fetchone()[0],"ok")
+
     def test_procedure_provenance_and_vehicle_cascade(self):
         self.assertEqual(get_procedure(self.db,self.pid)["source"],"Date sintetice de test")
         self.assertEqual(len(list_procedures(self.db,self.vid,search="Exercițiu")),1)
