@@ -11,6 +11,7 @@ from tkinter import ttk, messagebox, simpledialog
 from workshop_atlas import (KINDS,ensure_schema,list_facts,record_fact,delete_fact,
                             add_marker,list_markers,delete_marker)
 from document_library import verified_library_file,list_library
+from pdf_text_index import index_pdf,search_pdf_text
 
 FIELDS=(
  ("system","Sistem (ex.: Frâne)"),
@@ -318,12 +319,70 @@ def open_workshop_atlas(app):
         if rows and messagebox.askyesno("Ștergere marcaj",
                  f"Ștergi ultimul marcaj: {rows[-1]['label']}?",parent=top):
             delete_marker(app.db,vid,rows[-1]["id"]);show_page()
+    def index_current_pdf():
+        row=docrows.get(docchoice.get())
+        if not row or Path(row["path"]).suffix.lower()!=".pdf":
+            return messagebox.showinfo("PDF necesar","Selectează un document PDF.",parent=top)
+        try:
+            result=index_pdf(app.db,vid,row["attachment_id"])
+            panel.set(f"Indexat local: {result['pages_with_text']}/{result['pages_total']} pagini "
+                      f"cu text, {result['characters']} caractere. PDF-urile scanate necesită OCR separat.")
+        except Exception as exc:
+            messagebox.showerror("Index PDF",str(exc),parent=top)
+
+    def search_pdf_index():
+        term=simpledialog.askstring("Caută în PDF-uri",
+                "Cuvinte din PDF-urile indexate ale vehiculului selectat:",parent=top)
+        if not term:return
+        try:hits=search_pdf_text(app.db,vid,term)
+        except Exception as exc:
+            return messagebox.showerror("Căutare PDF",str(exc),parent=top)
+        if not hits:
+            return messagebox.showinfo("Căutare PDF","Nu există rezultate în PDF-urile indexate.",parent=top)
+        result_window=tk.Toplevel(top)
+        result_window.title(f"Rezultate PDF: {term}")
+        result_window.geometry("990x540")
+        result_window.transient(top)
+        frame=ttk.Frame(result_window,padding=11);frame.pack(fill="both",expand=True)
+        cols=("doc","page","excerpt")
+        result_tree=ttk.Treeview(frame,columns=cols,show="headings",selectmode="browse")
+        for key,label,width in (("doc","Document",260),("page","Pagina",80),
+                                ("excerpt","Text găsit (scurt)",580)):
+            result_tree.heading(key,text=label)
+            result_tree.column(key,width=width,stretch=True)
+        result_tree.pack(fill="both",expand=True)
+        for i,row in enumerate(hits):
+            result_tree.insert("","end",iid=str(i),values=(
+                row["article_title"],row["page_number"],row["excerpt"].replace("\n"," ")[:170]))
+        def goto():
+            selection=result_tree.selection()
+            if not selection:return
+            hit=hits[int(selection[0])]
+            key=next((name for name,item in docrows.items()
+                      if item["attachment_id"]==hit["attachment_id"]),None)
+            if key is None:
+                reload_docs()
+                key=next((name for name,item in docrows.items()
+                          if item["attachment_id"]==hit["attachment_id"]),None)
+            if key is None:
+                return messagebox.showerror("Document lipsă",
+                    "Documentul indexat nu este în biblioteca vehiculului.",parent=result_window)
+            docchoice.set(key)
+            page.set(hit["page_number"])
+            show_page()
+            notebook.select(diagrams_tab)
+            result_window.destroy()
+        ttk.Button(frame,text="Deschide pagina în atlas",command=goto).pack(pady=6)
+        result_tree.bind("<Double-1>",lambda event:goto())
+
     nav=ttk.Frame(diagrams_tab);nav.pack(fill="x",pady=(3,1))
     ttk.Button(nav,text="Documente actualizate",command=lambda:(reload_docs(),show_page())).pack(side="left")
     ttk.Button(nav,text="◀ Pagina",command=lambda:change_page(-1)).pack(side="left",padx=6)
     ttk.Button(nav,text="Pagina ▶",command=lambda:change_page(1)).pack(side="left")
     ttk.Button(nav,text="Adaugă punct / locație",command=mark_mode).pack(side="left",padx=8)
     ttk.Button(nav,text="Șterge ultimul punct",command=delete_last_marker).pack(side="left")
+    ttk.Button(nav,text="Indexează textul PDF",command=index_current_pdf).pack(side="left",padx=(8,3))
+    ttk.Button(nav,text="Caută în PDF-uri",command=search_pdf_index).pack(side="left",padx=(3,8))
     ttk.Button(nav,text="Închide",command=top.destroy).pack(side="right")
 
     refresh_facts();reload_docs()
