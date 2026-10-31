@@ -38,3 +38,12 @@ Local sample set: 66 ZIP entries whose file name ends in `.IDF` or `.IDF.chunkNN
 6. `autodata_part_0016.zip` remains blocked by Google Drive's provider malware assessment; no retries using abuse bypass or mirror distribution.
 
 Success means demonstrably parsed data fields with validations and documented uncertainty; the manifest's hash PASS and graphical similarity are not sufficient.
+
+## AI-assisted reverse engineering options (research update)
+
+- **GhidrAssist** https://github.com/symgraph/GhidrAssist integrates LLM explanations of decompiled functions in Ghidra; local Ollama or other compatible hosted model can be used. The model's hypotheses must be checked against real data.
+- **GhidrAssistMCP** https://github.com/symgraph/GhidrAssistMCP exposes Ghidra analysis tools via MCP to AI agents.
+- **ghidra-headless-mcp** https://github.com/mrphrazer/ghidra-headless-mcp describes a headless workflow; despite read-only program mode, its scripting execution interface is **not a general sandbox**. Such tooling should run in an isolated environment and should not be given broad host execution privileges.
+- **ghidra-mcp** https://github.com/bethington/ghidra-mcp provides many static and dynamic features. Only static read-only endpoints are appropriate for this task; debugger/launch/pcode-emulation operations are **out of scope**.
+
+Recommended investigation: first correlate `ADBCD.exe` PE imports and file-reading references to IDF filenames in **static decompiled code**, then use the observations to draft candidate record/transform layout; validate it on multiple independent IDFs. Avoid sending proprietary binary samples to public AI tools without permission, or triggering any program's execution.
