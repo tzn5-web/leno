@@ -69,13 +69,13 @@ def scan_block(block, refs):
 
 def main():
     args = getScriptArgs()
-    if len(args) != 2 or not args[0] or not re.match(r'^[0-9a-fA-F]{32}$', args[1]):
-        raise ValueError('Expected: private-output.json independently-computed-PE-MD5')
+    if len(args) != 2 or not args[0] or not re.match(r'^[0-9a-fA-F]{64}$', args[1]):
+        raise ValueError('Expected: private-output.json independently-verified-PE-SHA256')
     destination = args[0]
-    expected_md5 = args[1].lower()
-    imported_md5 = currentProgram.getExecutableMD5()
-    if imported_md5 is None or imported_md5.lower() != expected_md5:
-        raise ValueError('Ghidra imported PE MD5 differs from independently verified source')
+    expected_sha256 = args[1].lower()
+    imported_sha256 = currentProgram.getExecutableSHA256()
+    if imported_sha256 is None or imported_sha256.lower() != expected_sha256:
+        raise ValueError('Ghidra imported PE SHA256 differs from independently verified source')
     refs = currentProgram.getReferenceManager()
     blocks = []
     observations = {}
@@ -92,8 +92,8 @@ def main():
         'tool': 'Ghidra static analysis, AtelierData_IDF_Xrefs.py',
         'program_name': str(currentProgram.getName()),
         'language_id': str(currentProgram.getLanguageID()),
-        'source_md5': imported_md5.lower(),
-        'ghidra_import_md5_verified': True,
+        'source_sha256': imported_sha256.lower(),
+        'ghidra_import_sha256_verified': True,
         'keyword_hit_types': ['ascii', 'utf16le'],
         'executed_target_binary': False,
         'idf_decoder_proven': False,
