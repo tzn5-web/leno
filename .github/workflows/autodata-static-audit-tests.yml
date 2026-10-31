@@ -7,6 +7,8 @@ on:
       - 'notebooks/autodata_3_45_static_audit.ipynb'
       - 'tests/test_autodata_static_notebook.py'
       - 'tests/test_autodata_idf_record_probe.py'
+      - 'tests/test_autodata_idf_cross_index.py'
+      - 'tools/autodata_idf_cross_index.py'
       - 'tools/autodata_idf_record_probe.py'
       - '.github/workflows/autodata-static-audit-tests.yml'
   workflow_dispatch:
@@ -27,3 +29,5 @@ jobs:
         run: python tests/test_autodata_static_notebook.py
       - name: Verify synthetic IDF 21-byte field hypothesis
         run: python tests/test_autodata_idf_record_probe.py
+      - name: Verify synthetic 17/19/21 byte IDF joins
+        run: python tests/test_autodata_idf_cross_index.py
