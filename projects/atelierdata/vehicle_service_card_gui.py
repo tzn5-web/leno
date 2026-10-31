@@ -231,6 +231,8 @@ def open_vehicle_service_card(app):
     ttk.Button(buttons,text="Reîncarcă",command=refresh).pack(side="left",padx=8)
     ttk.Button(buttons,text="Exportă fișa HTML",command=save_printable).pack(side="left")
     ttk.Button(buttons,text="Dovezi în PDF local",command=open_local_evidence).pack(side="left",padx=8)
+    ttk.Button(buttons,text="Diagrame / locații",command=lambda:app.workshop_atlas()).pack(side="left",padx=5)
+    ttk.Button(buttons,text="Manuale / PDF",command=lambda:app.local_library()).pack(side="left",padx=5)
     ttk.Button(buttons,text="Închide",command=win.destroy).pack(side="right")
     tree.bind("<<TreeviewSelect>>",view_selected)
     search.trace_add("write",lambda *_:refresh())
