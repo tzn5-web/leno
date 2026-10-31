@@ -229,7 +229,8 @@ def add_step(store,procedure_id,instruction,safety_note="",article_id=None,posit
     current=[s["id"] for s in list_steps(store,procedure_id)]
     if position is None:
         position=len(current)+1
-    if not isinstance(position,int) or not 1 <= position <= len(current)+1:
+    # bool is a subclass of int: True must not silently mean position 1.
+    if type(position) is not int or not 1 <= position <= len(current)+1:
         raise ValueError("Invalid step position")
     try:
         store.db.execute("BEGIN IMMEDIATE")
@@ -274,7 +275,8 @@ def delete_step(store,step_id):
 
 
 def move_step(store,step_id,delta):
-    if delta not in (-1,1):
+    # Membership equality would accept True and 1.0 as the direction +1.
+    if type(delta) is not int or delta not in (-1,1):
         raise ValueError("Direction must be +1 or -1")
     old=store.db.execute("SELECT procedure_id FROM procedure_steps WHERE id=?",(step_id,)).fetchone()
     if old is None:
