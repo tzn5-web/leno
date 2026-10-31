@@ -56,6 +56,30 @@ class ProcedureSearchHitTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             list_procedure_hits(self.db, self.car, "GLOBAL-KEY", field="invalid")
 
+    def test_field_only_on_later_page_is_searchable_from_first_page(self):
+        # The first 250 hits are instructions; warning hits only start later.
+        self.db.db.executemany(
+            "INSERT INTO procedure_steps(procedure_id,step_number,instruction,safety_note)"
+            " VALUES(?,?,?,?)",
+            [(self.pid, n, "LATE-FIELD instruction",
+              "LATE-FIELD warning" if n >= 252 else "")
+             for n in range(2, 263)])
+        self.db.db.commit()
+        before = self.db.db.total_changes
+        first = list_procedure_hits(self.db, self.car, "LATE-FIELD", limit=250)
+        self.assertEqual(len(first), 250)
+        self.assertNotIn("Avertisment pas", {hit["field"] for hit in first})
+        warnings = list_procedure_hits(
+            self.db, self.car, "LATE-FIELD", limit=250, field="Avertisment pas")
+        self.assertEqual(len(warnings), 11)
+        self.assertTrue(all(hit["field"] == "Avertisment pas" for hit in warnings))
+        self.assertEqual(list_procedure_hits(
+            self.db, self.car, "LATE-FIELD", field="Avertisment pas",
+            offset=11), [])
+        self.assertEqual(list_procedure_hits(
+            self.db, self.other, "LATE-FIELD", field="Avertisment pas"), [])
+        self.assertEqual(self.db.db.total_changes, before)
+
     def test_field_filter_stable_indices_and_no_mutation(self):
         hits = self.hits("OWN")
         original = [dict(hit) for hit in hits]
