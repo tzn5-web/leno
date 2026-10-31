@@ -13,6 +13,7 @@ import math
 import stat
 import zipfile
 from pathlib import Path, PurePosixPath
+from idf_stride_evidence import strongest_stride
 
 SAMPLE_BYTES = 65536
 MAX_IDF_FILES = 256
@@ -60,9 +61,13 @@ def _summarize(name, size, digest, sample):
     else:
         counts = collections.Counter(sample)
         entropy = -sum((n / len(sample)) * math.log2(n / len(sample)) for n in counts.values())
+    motif = strongest_stride(sample)
     return {"name": name, "bytes": size, "sha256_computed": digest,
             "sampled_bytes": len(sample), "sample_entropy": round(entropy, 4),
-            "header_hex": sample[:16].hex(), "decoded": False}
+            "header_hex": sample[:16].hex(), "motif_run_count": motif["count"] if motif else 0,
+            "motif_stride_bytes": motif["stride"] if motif else None,
+            "motif_start_offset": motif["start"] if motif else None,
+            "decoded": False}
 
 
 def probe_idf(root):
