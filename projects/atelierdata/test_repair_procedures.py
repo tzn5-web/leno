@@ -104,6 +104,22 @@ class ProcedureTests(unittest.TestCase):
         self.assertEqual(len(list_procedures(self.db,self.vid,search="Date sintetice")),1)
         self.assertEqual(len(list_procedures(self.db,self.vid,search="NO-MATCH")),0)
 
+    def test_unicode_reference_picker_and_literal_wildcards(self):
+        owned = self.db.add_article(
+            self.vid, "Scheme electrice", "Große %_ synthetic drawing",
+            "Synthetic content", "OWN-LICENSE")
+        foreign = self.db.add_article(
+            self.other, "Scheme electrice", "Große %_ synthetic drawing",
+            "Other vehicle content", "FOREIGN-LICENSE")
+        before = self.db.db.total_changes
+        for term in ("GROSSE", "%_", "grosse %_"):
+            with self.subTest(term=term):
+                found = list_reference_articles(self.db, self.pid, term)
+                self.assertEqual([row["id"] for row in found], [owned])
+                self.assertNotIn(foreign, [row["id"] for row in found])
+        self.assertEqual(list_reference_articles(self.db, self.pid, "%X"), [])
+        self.assertEqual(self.db.db.total_changes, before)
+
     def test_document_reference_picker_scope_source_and_literal_search(self):
         owned=self.db.add_article(self.vid,"Scheme electrice","Schema %_ DEMO",
                                   "No real schematic","OWNED-LICENCE")
