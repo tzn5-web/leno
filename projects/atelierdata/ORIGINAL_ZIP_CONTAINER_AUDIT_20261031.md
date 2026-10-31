@@ -12,7 +12,16 @@ The private owner-provided `INVENTAR.json` was parsed locally, without publicati
 
 The manifest places **all seven specifically named installation/registration redistributable entries** (`Install-x32.cmd`, `Install-x64.cmd`, `RegSvr.bat`, `vcredist_x86.exe`, `vcredist_x64.exe`, and the two Sentinel Protection Installer variants) in **part 0016**. The manifest alone cannot authenticate or characterize these files. No installer was executed, and the blocked part was not downloaded or inspected.
 
-**Important distinction:** the new ZIP-container tool was tested against **synthetic ZIPs**, not the 15 original ZIP payloads in this iteration. The previously published full SHA256 recheck of accessible original fragments remains separate evidence; this new audit neither repeats nor upgrades it.
+## Direct ZIP verification on authorized originals
+
+After the synthetic tests, the owner-provided ZIPs **0001 and 0015** were downloaded normally from Drive and inspected read-only. Part 0016 was not requested. The new ZIP metadata audit reported **2 structurally accepted, 13 not present in this run, 1 blocked, 0 rejected**.
+
+| ZIP part | Local/central ZIP metadata | Entries | Declared uncompressed bytes | Independent streamed SHA256 vs owner manifest |
+| --- | --- | ---: | ---: | --- |
+| 0001 | No structural errors | 22 | 181,576,893 | 22/22 matching |
+| 0015 | No structural errors | 5 | 188,064,901 | 5/5 matching |
+
+**27/27 actual ZIP members were independently streamed and SHA256-matched to the owner-provided manifest** in this run, totaling **369,641,794 uncompressed bytes**. The hash recheck was a separate read-only Python streaming loop; the new ZIP metadata tool itself intentionally does not decompress or hash member payloads. The 13 remaining authorized parts were not downloaded in this iteration. Earlier reports separately document their prior verification. These checks establish consistency with the user-provided manifest, not vendor authenticity or license entitlement.
 
 ## Reproduce privately, with authorized local ZIP copies only
 
