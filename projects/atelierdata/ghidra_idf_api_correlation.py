@@ -16,6 +16,28 @@ MAX_ITEMS = 200000
 _SHA = re.compile(r"[0-9a-f]{64}\Z")
 
 
+_FUNCTION_ADDRESS = re.compile(
+    r"(?:(?P<space>[A-Za-z][A-Za-z0-9_]*):)?(?P<value>(?:0[xX])?[0-9A-Fa-f]{1,16})\\Z"
+)
+
+
+def _function_key(value):
+    """Normalize numeric Ghidra function addresses without merging spaces.
+
+    Ghidra may render one PE32 address as 00401000, 0x401000 or
+    RAM:00401000. EXTERNAL:401000 must not match RAM:401000.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, str) or len(value) > 80:
+        raise ValueError("Invalid Ghidra function address")
+    match = _FUNCTION_ADDRESS.fullmatch(value)
+    if not match:
+        raise ValueError("Invalid Ghidra function address")
+    return ((match.group("space") or "ram").casefold(),
+            int(match.group("value"), 16))
+
+
 def load_private(path):
     path = Path(path)
     if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_REPORT:
@@ -92,9 +114,7 @@ def correlate(idf_report, api_report, expected_sha256):
                         raise ValueError("Too many IDF references")
                     entry = ref.get("function_entry")
                     if entry is not None:
-                        if not isinstance(entry, str) or len(entry) > 80:
-                            raise ValueError("Invalid IDF function address")
-                        idf_functions.add(entry)
+                        idf_functions.add(_function_key(entry))
     for api_name, symbols in api_symbols.items():
         if not isinstance(api_name, str) or len(api_name) > 100 or not isinstance(symbols, list):
             raise ValueError("Invalid API symbol list")
@@ -113,11 +133,10 @@ def correlate(idf_report, api_report, expected_sha256):
                     raise ValueError("Too many API references")
                 entry = ref.get("function_entry")
                 if entry is not None:
-                    if not isinstance(entry, str) or len(entry) > 80:
-                        raise ValueError("Invalid API function address")
-                    api_functions.add(entry)
+                    key = _function_key(entry)
+                    api_functions.add(key)
                     if ref.get("instruction_mnemonic") in ("CALL", "JMP"):
-                        api_code_functions.add(entry)
+                        api_code_functions.add(key)
     return {
         "schema": "atelierdata-ghidra-idf-api-correlation-v1",
         "source_sha256_claims_match": True,
