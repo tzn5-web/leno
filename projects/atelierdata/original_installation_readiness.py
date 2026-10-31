@@ -11,7 +11,7 @@ from collections import defaultdict
 import json
 from pathlib import Path, PurePosixPath
 
-from original_archive_preflight import load_manifest
+from original_archive_preflight import BLOCKED_PACKAGE, load_manifest
 from original_runtime_dependency_audit import audit as runtime_audit
 
 ROOT = 'Autodata__3.45/'
@@ -50,6 +50,9 @@ def analyze_manifest(manifest: dict, available: set[str]) -> dict:
         raise ValueError('Package count mismatch')
     if not available <= packages:
         raise ValueError('Unknown package name supplied as available')
+    # The flagged package must never be counted as accessible, even when
+    # supplied by a caller or present on disk. No filesystem access is needed.
+    available = set(available) - {BLOCKED_PACKAGE}
 
     idf = [x for x in rows.values() if x['path'].lower().endswith('.idf')]
     idf_available = [x for x in idf if _package_for(x) <= available]
@@ -135,7 +138,8 @@ def build_report(manifest_path: Path, parts_dir: Path | None = None) -> dict:
         directory = Path(parts_dir).resolve(strict=True)
         if not directory.is_dir():
             raise ValueError('Expected ZIP directory')
-        available = {p for p in packages if (directory / p).is_file() and not (directory / p).is_symlink()}
+        available = {p for p in packages if p != BLOCKED_PACKAGE
+                     and (directory / p).is_file() and not (directory / p).is_symlink()}
     result = analyze_manifest(manifest, available)
     if parts_dir is not None and result['main_executable']['status'] != 'package_unavailable':
         runtime = runtime_audit(manifest_path, parts_dir)
