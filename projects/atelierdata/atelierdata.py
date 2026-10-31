@@ -901,6 +901,48 @@ def main():
                         raise RuntimeError('PROCEDURES_AUDIT_HTML_MUTATED_SQLITE')
 
                 ui.root.after(1650,check_procedure_audit)
+                def check_step_attachment_popup():
+                    # GUI integration: an already-open document popup must
+                    # reject a file after its step has been relinked.
+                    window.procedure_search_var.set('')
+                    window.procedures_tree.selection_set(str(pid))
+                    window.procedures_tree.event_generate('<<TreeviewSelect>>')
+                    window.refresh_steps(step_id)
+                    window.steps_tree.selection_set(str(step_id))
+                    popup=window.open_step_reference()
+                    if popup is None or not popup.winfo_exists():
+                        raise RuntimeError('PROCEDURES_ATTACHMENT_POPUP_NOT_OPENED')
+                    attachment=ui.db.db.execute(
+                        'SELECT id FROM attachments WHERE article_id=?',
+                        (article,)).fetchone()
+                    if attachment is None:
+                        raise RuntimeError('PROCEDURES_ATTACHMENT_FIXTURE_MISSING')
+                    aid=attachment['id']
+                    before=ui.db.db.total_changes
+                    resolved=popup.resolve_attachment(aid)
+                    if not resolved.is_file() or resolved.suffix!='.png':
+                        raise RuntimeError('PROCEDURES_ATTACHMENT_VERIFY_FAILED')
+                    if ui.db.db.total_changes!=before:
+                        raise RuntimeError('PROCEDURES_ATTACHMENT_READ_MUTATED_DB')
+                    from repair_procedures import update_step
+                    current=ui.db.db.execute(
+                        'SELECT instruction,safety_note FROM procedure_steps WHERE id=?',
+                        (step_id,)).fetchone()
+                    update_step(ui.db,step_id,current['instruction'],
+                                current['safety_note'],second_article)
+                    try:
+                        try:
+                            popup.resolve_attachment(aid)
+                        except ValueError:
+                            pass
+                        else:
+                            raise RuntimeError('PROCEDURES_STALE_ATTACHMENT_ALLOWED')
+                    finally:
+                        update_step(ui.db,step_id,current['instruction'],
+                                    current['safety_note'],article)
+                        window.refresh_steps(step_id)
+                        popup.destroy()
+                ui.root.after(1820,check_step_attachment_popup)
             ui.root.after(520,check_procedures_window)
             def check_schematics_window():
                 from PIL import Image
