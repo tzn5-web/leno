@@ -4,6 +4,7 @@ from __future__ import annotations
 from repair_export import export_procedure_html,export_procedures_json
 from procedure_audit import audit_procedure, get_step_reference
 from procedure_audit_export import export_procedure_audit_json
+from procedure_audit_html import export_procedure_audit_html
 from procedure_search_hits import list_procedure_hits
 from repair_procedures import (
     add_step, create_procedure, delete_procedure, delete_step, get_procedure,
@@ -519,10 +520,34 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
 
         ttk.Button(pane,text="Exportă raport audit JSON",
                    command=export_audit_report).pack(anchor="w",pady=(7,0))
+        def export_audit_printable(destination=None, notify=True):
+            """Re-audit on demand and write inert, printable HTML offline."""
+            if destination is None:
+                destination=filedialog.asksaveasfilename(
+                    parent=audit,defaultextension=".html",
+                    filetypes=[("Raport audit HTML imprimabil","*.html")])
+            if not destination:
+                return None
+            try:
+                target=export_procedure_audit_html(
+                    app.db,pid,destination,vehicle_id=vehicle_id)
+                if notify:
+                    messagebox.showinfo("Audit exportat",
+                                        "Raportul HTML a fost salvat.",parent=audit)
+                return target
+            except Exception as exc:
+                if not notify:
+                    raise
+                messagebox.showerror("Export HTML eșuat",str(exc),parent=audit)
+                return None
+
+        ttk.Button(pane,text="Exportă raport audit HTML",
+                   command=export_audit_printable).pack(anchor="w",pady=(7,0))
         audit.audit_report=report
         audit.issues_tree=table
         audit.go_to_step=go_to_step
         audit.export_audit_report=export_audit_report
+        audit.export_audit_printable=export_audit_printable
         return audit
 
     def export_html():
