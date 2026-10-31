@@ -91,6 +91,35 @@ class ProcedureSearchHitTests(unittest.TestCase):
         hits = self.hits("SIMULATED-STEP")
         self.assertEqual([h["step_id"] for h in hits], [self.sid, second])
 
+    def test_multiple_fields_per_step_are_visible_with_provenance(self):
+        # A single step may match an instruction, warning, diagram and source.
+        # Every match must remain navigable, in deterministic field order.
+        self.db.db.execute(
+            "UPDATE procedures SET system=?,title=? WHERE id=?",
+            ("MATCH-KEY system", "MATCH-KEY procedure", self.pid))
+        self.db.db.execute(
+            "UPDATE procedure_steps SET instruction=?,safety_note=? WHERE id=?",
+            ("MATCH-KEY instruction", "MATCH-KEY warning", self.sid))
+        self.db.db.execute(
+            "UPDATE articles SET title=?,category=?,content=?,source=? WHERE id=?",
+            ("MATCH-KEY title", "MATCH-KEY category",
+             "MATCH-KEY content", "MATCH-KEY provenance", self.doc))
+        self.db.db.commit()
+        before = self.db.db.total_changes
+        hits = self.hits("MATCH-KEY")
+        self.assertEqual([h["field"] for h in hits], [
+            "Titlu procedură", "Sistem", "Instrucțiune pas",
+            "Avertisment pas", "Titlu document", "Categorie document",
+            "Conținut document", "Proveniență document"])
+        self.assertEqual([h["step_id"] for h in hits[:2]], [None, None])
+        self.assertTrue(all(h["step_id"] == self.sid for h in hits[2:]))
+        self.assertEqual([h["source"] for h in hits[2:4]],
+                         ["OWN-PROVENANCE"] * 2)
+        self.assertEqual([h["source"] for h in hits[4:]],
+                         ["MATCH-KEY provenance"] * 4)
+        self.assertEqual(len(self.hits("MATCH-KEY", limit=3)), 3)
+        self.assertEqual(self.db.db.total_changes, before)
+
     def test_reject_invalid_search_vehicle_and_limit(self):
         for bad in ("", "  ", "\0", "x"*201, None, 7):
             with self.subTest(query=repr(bad)):
