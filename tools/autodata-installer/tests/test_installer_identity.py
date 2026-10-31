@@ -15,7 +15,7 @@ class IdentityTests(unittest.TestCase):
     def test_no_installer_executes_binaries_or_changes_license_state(self):
         text=(ROOT/"installer.iss").read_text(encoding="utf-8-sig")
         for section in ("Run","Registry","Drivers"):
-            self.assertIsNone(re.search(rf"^\\[{section}\\]\\s*$",text,re.M))
+            self.assertIsNone(re.search(r"^\[" + section + r"\]\s*$", text, re.M))
 
     def test_build_requires_private_review_and_real_manifest(self):
         text=(ROOT/"build.ps1").read_text(encoding="utf-8-sig")
