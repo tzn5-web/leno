@@ -7,6 +7,9 @@ on:
       - 'tools/ghidra/**'
       - '.github/workflows/atelierdata-windows.yml'
   workflow_dispatch:
+permissions:
+  contents: read
+  statuses: write
 concurrency:
   group: atelierdata-windows-${{ github.ref }}
   cancel-in-progress: true
@@ -181,3 +184,32 @@ jobs:
             dist/README_IMPORTANTE.txt
           if-no-files-found: error
           retention-days: 14
+      # A commit status exposes the final build result to read-only GitHub
+      # integrations and links back to the actual run and downloadable EXE.
+      - name: Publish verified Windows EXE status
+        if: ${{ success() }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createCommitStatus({
+              ...context.repo,
+              sha: context.sha,
+              state: 'success',
+              context: 'atelierdata/windows-exe',
+              description: 'Tests, GUI smoke, PyInstaller and artifact upload passed',
+              target_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            });
+      - name: Publish Windows build failure status
+        if: ${{ failure() }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createCommitStatus({
+              ...context.repo,
+              sha: context.sha,
+              state: 'failure',
+              context: 'atelierdata/windows-exe',
+              description: 'Windows CI failed; inspect the linked job logs',
+              target_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            });
+
