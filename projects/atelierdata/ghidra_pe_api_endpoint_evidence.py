@@ -6,6 +6,7 @@ Only callers can publish aggregate counts; never serialize returned addresses.
 """
 from __future__ import annotations
 
+import re
 import struct
 
 from ghidra_api_callsite_replay import _raw_offset
@@ -21,13 +22,20 @@ def _trusted_windows_api_import(dll, families):
     dll = dll.upper()
     if dll in ("KERNEL32.DLL", "KERNELBASE.DLL"):
         return True
-    if not dll.endswith(".DLL"):
+    # A prefix is not an API-set contract: arbitrary PE import DLL names
+    # such as api-ms-win-core-file-malicious.dll must not be trusted.
+    match = re.fullmatch(
+        r"API-MS-WIN-CORE-(FILE|MEMORY|LIBRARYLOADER)-L[0-9]+-[0-9]+-[0-9]+\\.DLL",
+        dll,
+    )
+    if match is None:
         return False
-    if "dynamic_lookup" in families:
-        return dll.startswith("API-MS-WIN-CORE-LIBRARYLOADER-")
-    if "file_mapping" in families and dll.startswith("API-MS-WIN-CORE-MEMORY-"):
-        return True
-    return dll.startswith("API-MS-WIN-CORE-FILE-")
+    contract_family = match.group(1)
+    if contract_family == "LIBRARYLOADER":
+        return "dynamic_lookup" in families
+    if contract_family == "MEMORY":
+        return "file_mapping" in families
+    return bool({"file_open", "file_read", "file_position"}.intersection(families))
 
 
 def _same_executable_section(pe, function, site):
@@ -55,6 +63,7 @@ def pe_backed_api_endpoints(binary, pe, api_report):
     discarded entirely. Ghidra instruction boundaries are still assertions.
     """
     sites = {}
+    tainted_sites = set()
     for api_name, symbols in api_report["api_symbols"].items():
         families = tuple(name for name, members in FAMILIES.items()
                          if api_name in members)
@@ -62,17 +71,24 @@ def pe_backed_api_endpoints(binary, pe, api_report):
             continue
         for symbol in symbols:
             for ref in symbol["references"]:
+                # Any conflicting or incomplete Ghidra claim at a known
+                # physical callsite disqualifies the site. Otherwise one
+                # valid row could conceal another contradictory row.
+                source = ref.get("source_address")
+                if source is None:
+                    continue
+                site = _address(source)
                 if (ref.get("reference_type") != "UNCONDITIONAL_CALL" or
                         ref.get("reference_is_call_or_jump") is not True or
                         ref.get("instruction_mnemonic") != "CALL" or
                         type(ref.get("instruction_length")) is not int or
                         ref["instruction_length"] != 6 or
-                        ref.get("source_address") is None or
                         ref.get("instruction_start_address") is None or
                         ref.get("function_entry") is None):
+                    tainted_sites.add(site)
                     continue
-                site = _address(ref["source_address"])
                 if site != _address(ref["instruction_start_address"]):
+                    tainted_sites.add(site)
                     continue
                 function = _address(ref["function_entry"])
                 sites.setdefault(site, set()).add((api_name, function, families))
@@ -80,7 +96,7 @@ def pe_backed_api_endpoints(binary, pe, api_report):
     endpoints = {family: set() for family in FAMILIES}
     matched = conflicts = 0
     for site, candidates in sites.items():
-        if len(candidates) != 1:
+        if site in tainted_sites or len(candidates) != 1:
             conflicts += 1
             continue
         api_name, function, families = next(iter(candidates))
