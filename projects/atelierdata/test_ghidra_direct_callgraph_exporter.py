@@ -34,6 +34,9 @@ class Address:
     def isExternalAddress(self):
         return self.external
 
+    def getOffset(self):
+        return int(self.value, 16)
+
     def __str__(self):
         return self.value
 
@@ -70,6 +73,16 @@ class Instruction:
     def getReferencesFrom(self):
         return self.refs
 
+    def getMnemonicString(self):
+        return 'CALL'
+
+    def getLength(self):
+        return 5
+
+    def getBytes(self):
+        # Synthetic x86 E8 rel32 from 0x401020 to 0x402000.
+        return [0xe8, 0xdb, 0x0f, 0x00, 0x00]
+
 
 class Function:
     def __init__(self, address):
@@ -104,6 +117,16 @@ class Listing:
         return Iterator(self.instructions if body == self.source.getEntryPoint() else [])
 
 
+class MemoryBlock:
+    def isExecute(self):
+        return True
+
+
+class Memory:
+    def getBlock(self, address):
+        return MemoryBlock()
+
+
 class Program:
     def __init__(self, manager, listing):
         self.manager, self.listing = manager, listing
@@ -113,6 +136,9 @@ class Program:
 
     def getListing(self):
         return self.listing
+
+    def getMemory(self):
+        return Memory()
 
 
 class Monitor:
