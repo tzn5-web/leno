@@ -12,6 +12,38 @@ from ghidra_api_callsite_replay import _raw_offset
 from ghidra_idf_callgraph_triage import FAMILIES, _address
 
 
+def _trusted_windows_api_import(dll, families):
+    """A matching export name alone is not evidence of a Windows file API.
+
+    An arbitrary DLL can export ReadFile/GetProcAddress. API-set forwarder
+    contracts are accepted only for their corresponding Windows API family.
+    """
+    dll = dll.upper()
+    if dll in ("KERNEL32.DLL", "KERNELBASE.DLL"):
+        return True
+    if "dynamic_lookup" in families:
+        return dll.startswith("API-MS-WIN-CORE-LIBRARYLOADER-") and dll.endswith(".DLL")
+    return dll.startswith("API-MS-WIN-CORE-FILE-") and dll.endswith(".DLL")
+
+
+def _same_executable_section(pe, function, site):
+    """Require a candidate caller entry before its callsite in one backed section.
+
+    This is a conservative provenance filter, not a function-boundary proof.
+    """
+    if function > site:
+        return False
+    base = pe["image_base"]
+    first, last = function - base, site - base
+    for section in pe["sections"]:
+        backed = min(section["raw_size"], section["vsize"])
+        start = section["rva"]
+        if (section["executable"] and backed >= 6 and
+                start <= first <= last and last + 6 <= start + backed):
+            return True
+    return False
+
+
 def pe_backed_api_endpoints(binary, pe, api_report):
     """Return API-family function sets backed by exact FF 15 IAT bytes.
 
@@ -51,14 +83,16 @@ def pe_backed_api_endpoints(binary, pe, api_report):
         mapped = _raw_offset(binary, pe, site, 6)
         function_mapped = _raw_offset(binary, pe, function, 1)
         if (mapped is None or not mapped[1] or
-                function_mapped is None or not function_mapped[1]):
+                function_mapped is None or not function_mapped[1] or
+                not _same_executable_section(pe, function, site)):
             continue
         offset = mapped[0]
         if binary[offset:offset + 2] != b"\xff\x15":
             continue
         iat_address = struct.unpack_from("<I", binary, offset + 2)[0]
         imported = pe["imports"].get(iat_address)
-        if imported is None or imported["symbol"] != api_name:
+        if (imported is None or imported["symbol"] != api_name or
+                not _trusted_windows_api_import(imported["dll"], families)):
             continue
         matched += 1
         for family in families:
