@@ -739,6 +739,10 @@ def main():
                             raise RuntimeError('PROCEDURES_GUI_EXPORT_SAFETY_INDEX_MISSING')
                         if 'Referință secundară sintetică' in printable:
                             raise RuntimeError('PROCEDURES_GUI_EXPORT_FOREIGN_TITLE_LEAK')
+                        if (printable.count("type='checkbox'") != 1
+                                or "id='parcurs-1'" not in printable
+                                or 'Nu se salvează și nu confirmă siguranța lucrării.' not in printable):
+                            raise RuntimeError('PROCEDURES_GUI_EXPORT_CHECKLIST_MISSING')
                         export_path=Path(folder)/'gui-redacted-procedure.json'
                         export_procedures_json(ui.db,export_path,vehicle)
                         payload=json.loads(export_path.read_text(encoding='utf-8'))
