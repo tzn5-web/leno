@@ -217,18 +217,20 @@ class DocumentLibraryTests(unittest.TestCase):
         before=self.db.db.total_changes
         with self.assertRaisesRegex(ValueError,"Drepturi neconfirmate"):
             verified_library_file(self.db,attachment,
-                vehicle_id=self.mitsubishi,article_id=article)
+                vehicle_id=self.mitsubishi,article_id=article,
+                require_declared_rights=True)
         self.assertEqual(self.db.db.total_changes,before)
         set_metadata(self.db,attachment,"Manual de atelier","Synthetic","TEST",
                      rights_basis="neconfirmat")
         before=self.db.db.total_changes
         with self.assertRaisesRegex(ValueError,"doar în inventar"):
-            verified_library_file(self.db,attachment)
+            verified_library_file(self.db,attachment,require_declared_rights=True)
         self.assertEqual(self.db.db.total_changes,before)
         set_metadata(self.db,attachment,"Manual de atelier","Synthetic","TEST",
                      rights_basis="document_propriu")
-        self.assertEqual(verified_library_file(self.db,attachment).read_bytes(),
-                         self.pdf.read_bytes())
+        self.assertEqual(verified_library_file(
+            self.db,attachment,require_declared_rights=True).read_bytes(),
+            self.pdf.read_bytes())
         self.assertEqual(self.db.db.execute("PRAGMA quick_check").fetchone()[0],"ok")
 
     def test_complete_backup_restores_metadata_and_bytes(self):

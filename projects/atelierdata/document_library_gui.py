@@ -290,7 +290,7 @@ def open_document_library(app):
         try:
             path=verified_library_file(
                 app.db,row["attachment_id"],vehicle_id=row["vehicle_id"],
-                article_id=row["article_id"])
+                article_id=row["article_id"],require_declared_rights=True)
             if sys.platform=="win32":
                 os.startfile(str(path))
             else:

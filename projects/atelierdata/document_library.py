@@ -227,12 +227,15 @@ def list_library(store,make="",model="",engine="",year="",category="",query="",
         rows=[x for x in rows if matches(x["years"])]
     return rows
 
-def verified_library_file(store,attachment_id,vehicle_id=None,article_id=None):
+def verified_library_file(store,attachment_id,vehicle_id=None,article_id=None,
+                          require_declared_rights=False):
     """Recheck a selected row immediately before opening a local document.
 
     A GUI result can become stale if the attachment is reassigned after search.
     Check both the expected vehicle and article; the SHA256 file check remains
     in resolve_document(). No document bytes are exposed on mismatch.
+    The GUI launcher opts into requiring current rights metadata; legacy
+    internal indexing still verifies bytes without changing its contract.
     """
     if vehicle_id is not None and (type(vehicle_id) is not int or vehicle_id <= 0):
         raise ValueError("Invalid vehicle ID")
@@ -243,16 +246,17 @@ def verified_library_file(store,attachment_id,vehicle_id=None,article_id=None):
         raise ValueError("Documentul nu aparține vehiculului selectat")
     if article_id is not None and attachment["article_id"]!=article_id:
         raise ValueError("Documentul nu mai aparține articolului selectat")
-    # Older attachments and records explicitly marked "neconfirmat" are
-    # inventory entries, not authorized documents to launch. Read the current
-    # declaration instead of trusting the possibly stale GUI search row.
-    # sqlite_master also handles pre-library databases without any schema write.
-    indexed=store.db.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='library_documents'"
-    ).fetchone()
-    rights=(store.db.execute(
-        "SELECT rights_basis FROM library_documents WHERE attachment_id=?",
-        (attachment_id,)).fetchone() if indexed else None)
-    if rights is None or rights["rights_basis"] not in ACCESS_RIGHTS[1:]:
-        raise ValueError("Drepturi neconfirmate: document disponibil doar în inventar")
+    if type(require_declared_rights) is not bool:
+        raise ValueError("Invalid rights-check flag")
+    if require_declared_rights:
+        # The user-facing launcher must not trust a stale GUI search row.
+        # Older/unconfirmed records are inventory-only in that interface.
+        indexed=store.db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='library_documents'"
+        ).fetchone()
+        rights=(store.db.execute(
+            "SELECT rights_basis FROM library_documents WHERE attachment_id=?",
+            (attachment_id,)).fetchone() if indexed else None)
+        if rights is None or rights["rights_basis"] not in ACCESS_RIGHTS[1:]:
+            raise ValueError("Drepturi neconfirmate: document disponibil doar în inventar")
     return resolve_document(store,attachment_id)
