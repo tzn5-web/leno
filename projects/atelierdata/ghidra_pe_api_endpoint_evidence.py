@@ -21,9 +21,13 @@ def _trusted_windows_api_import(dll, families):
     dll = dll.upper()
     if dll in ("KERNEL32.DLL", "KERNELBASE.DLL"):
         return True
+    if not dll.endswith(".DLL"):
+        return False
     if "dynamic_lookup" in families:
-        return dll.startswith("API-MS-WIN-CORE-LIBRARYLOADER-") and dll.endswith(".DLL")
-    return dll.startswith("API-MS-WIN-CORE-FILE-") and dll.endswith(".DLL")
+        return dll.startswith("API-MS-WIN-CORE-LIBRARYLOADER-")
+    if "file_mapping" in families and dll.startswith("API-MS-WIN-CORE-MEMORY-"):
+        return True
+    return dll.startswith("API-MS-WIN-CORE-FILE-")
 
 
 def _same_executable_section(pe, function, site):
