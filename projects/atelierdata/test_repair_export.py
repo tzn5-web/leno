@@ -107,6 +107,45 @@ class RepairExportTests(unittest.TestCase):
         self.assertEqual(self.store.db.total_changes, before)
         self.assertEqual(self.store.db.execute("PRAGMA quick_check").fetchone()[0], "ok")
 
+    def test_missing_document_source_is_flagged_before_work_without_sqlite_writes(self):
+        """A valid vehicle-scoped link may still lack a usable source citation."""
+        self.store.db.execute(
+            "UPDATE articles SET source='   ' WHERE id=?", (self.article,))
+        self.store.db.execute(
+            "UPDATE procedure_steps SET article_id=?, safety_note='' "
+            "WHERE procedure_id=? AND step_number=2",
+            (self.article, self.procedure))
+        self.store.db.execute(
+            "UPDATE procedure_steps SET safety_note='' "
+            "WHERE procedure_id=? AND step_number=1", (self.procedure,))
+        self.store.db.execute(
+            "UPDATE procedures SET precautions='' WHERE id=?", (self.procedure,))
+        self.store.db.commit()
+        before=self.store.db.total_changes
+        rendered=procedure_html(self.store,self.procedure)
+        index=rendered.split("aria-label='Index documente asociate'",1)[1].split("</aside>",1)[0]
+        safety=rendered.split("aria-label='Avertismente și referințe'",1)[1].split("</aside>",1)[0]
+        self.assertIn("Sursă document nespecificată — verifică proveniența",index)
+        self.assertEqual(index.count("Sursă document nespecificată"),1)
+        self.assertIn("Pasul 1</a>: Sursă document nespecificată",safety)
+        self.assertIn("Pasul 2</a>: Sursă document nespecificată",safety)
+        self.assertEqual(rendered.count("<strong>Sursă document nespecificată"),2)
+        self.assertNotIn("<script",rendered)
+        self.assertEqual(self.store.db.total_changes,before)
+
+        # A supplied source removes only this warning; its HTML stays inert.
+        self.store.db.execute(
+            "UPDATE articles SET source=? WHERE id=?",
+            ("<svg onload=alert(1)>",self.article))
+        self.store.db.commit()
+        before=self.store.db.total_changes
+        rendered=procedure_html(self.store,self.procedure)
+        self.assertNotIn("Sursă document nespecificată",rendered)
+        self.assertIn("Sursă document: &lt;svg onload=alert(1)&gt;",rendered)
+        self.assertNotIn("<svg",rendered)
+        self.assertEqual(self.store.db.total_changes,before)
+        self.assertEqual(self.store.db.execute("PRAGMA quick_check").fetchone()[0],"ok")
+
     def test_document_index_groups_steps_and_redacts_foreign_references(self):
         """Offline document index links every use without exposing other vehicles."""
         self.store.db.execute(
