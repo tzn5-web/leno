@@ -68,8 +68,13 @@ class Store:
            (make.strip(),model.strip(),engine.strip(),years.strip(),fuel.strip(),variant.strip()))
         self.db.commit();return cur.lastrowid
     def list_vehicles(self,search=''):
+        if not isinstance(search,str) or len(search)>200 or '\0' in search:
+            raise ValueError("Căutarea vehiculelor trebuie să fie text de maximum 200 caractere")
         q='%'+search.replace('\\','\\\\').replace('%','\\%').replace('_','\\_')+'%'
-        return self.db.execute("SELECT * FROM vehicles WHERE make LIKE ? ESCAPE '\\' OR model LIKE ? ESCAPE '\\' OR engine LIKE ? ESCAPE '\\' ORDER BY make,model,engine", (q,q,q)).fetchall()
+        return self.db.execute(
+            "SELECT * FROM vehicles WHERE make LIKE ? ESCAPE '\\' "
+            "OR model LIKE ? ESCAPE '\\' OR engine LIKE ? ESCAPE '\\' "
+            "ORDER BY make,model,engine,id", (q,q,q)).fetchall()
     def add_article(self,vehicle_id,category,title,content='',source=''):
         if not title.strip():raise ValueError("Titlu lipsă")
         cur=self.db.execute("INSERT INTO articles(vehicle_id,category,title,content,source) VALUES(?,?,?,?,?)",
