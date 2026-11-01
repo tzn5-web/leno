@@ -126,6 +126,43 @@ class DelayImportAuditTests(unittest.TestCase):
         self.assertEqual(public["issue_counts"]["directory_unmapped"], 1)
         self.assertEqual(private["descriptors"], [])
 
+    def test_dll_name_terminator_in_raw_padding_is_not_mapped(self):
+        blob = bytearray(delay_fixture())
+        # .idata starts at RVA 0x2100, file offset 0x500. The DLL
+        # name begins at RVA 0x2150. Map only its first ten bytes,
+        # leaving its NUL byte in the raw-file alignment padding.
+        idata_section = 0x98 + 224 + 40
+        struct.pack_into("<I", blob, idata_section + 8, 0x5a)
+        public, private = analyze_delay_imports(
+            bytes(blob), hashlib.sha256(blob).hexdigest())
+        self.assertEqual(public["state"], "PARTIAL")
+        self.assertEqual(public["issue_counts"]["dll_name_unmapped"], 1)
+        self.assertIsNone(private["descriptors"][0]["dll"])
+
+    def test_symbol_name_terminator_in_raw_padding_is_not_mapped(self):
+        blob = bytearray(delay_fixture())
+        # The imported name is at RVA 0x2192, with its NUL byte
+        # at RVA 0x219d. Keep the hint, thunk, and all preceding
+        # name bytes mapped, but not the final terminator.
+        idata_section = 0x98 + 224 + 40
+        struct.pack_into("<I", blob, idata_section + 8, 0x9d)
+        public, private = analyze_delay_imports(
+            bytes(blob), hashlib.sha256(blob).hexdigest())
+        self.assertEqual(public["state"], "PARTIAL")
+        self.assertEqual(public["issue_counts"]["thunk_unmapped"], 1)
+        self.assertEqual(public["resolved_symbol_count"], 0)
+        self.assertEqual(private["descriptors"][0]["dll"], "USER32.dll")
+        self.assertEqual(private["descriptors"][0]["symbols"], [])
+
+    def test_symbol_name_null_inside_virtual_extent_is_accepted(self):
+        blob = bytearray(delay_fixture())
+        idata_section = 0x98 + 224 + 40
+        struct.pack_into("<I", blob, idata_section + 8, 0x9e)
+        public, private = analyze_delay_imports(
+            bytes(blob), hashlib.sha256(blob).hexdigest())
+        self.assertEqual(public["state"], "PARSED")
+        self.assertEqual(private["descriptors"][0]["symbols"], ["MessageBoxA"])
+
     def test_sha256_and_output_separation(self):
         blob = delay_fixture()
         with self.assertRaisesRegex(ValueError, "SHA256 mismatch"):
