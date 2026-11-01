@@ -95,7 +95,7 @@ def _api_functions(report):
                 # A DATA xref or unknown legacy flow is not a proven API call.
                 if ref.get('reference_is_call_or_jump') is not True:
                     continue
-                if ref.get('reference_type') not in ('UNCONDITIONAL_CALL', 'COMPUTED_CALL'):
+                if ref.get('reference_type') != 'UNCONDITIONAL_CALL':
                     continue
                 fn = _address(ref['function_entry'])
                 for family in families:
