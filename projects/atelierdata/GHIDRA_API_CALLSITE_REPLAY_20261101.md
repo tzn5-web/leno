@@ -79,3 +79,22 @@ Ghidra-reported containing function is not independently proven by this gate.
 Neither the loader nor any .IDF record format is identified. This change
 must be run on a privately held, SHA256-verified original before it can
 support any original-specific conclusion. CI runs synthetic fixtures only.
+
+
+## Additional independently checked IDF xref operand candidates (2026-11-01)
+
+The static replay now reports two separate **aggregate-only** counters:
+`idf_xrefs_with_raw_push_or_mov_literal_va` counts unique PE32 source/literal
+pairs where a Ghidra-reported string xref starts in a file-backed executable
+section and the raw bytes match `PUSH imm32` or `MOV r32, imm32` with the
+exact verified .IDF literal VA. `matching_api_sites_in_idf_raw_pointer_functions`
+counts corroborated IAT callsites in functions also associated with one of
+those narrow raw pointer candidates.
+
+These are **byte-pattern corroborations**, not independent disassembly,
+instruction boundaries, reachable call graphs, a proven IDF loader or decoder.
+Other valid addressing modes are intentionally omitted; a zero count is not
+proof that no IDF references exist. The original Ghidra-reported shared-function
+counter remains separate and is not upgraded to independent evidence.
+Synthetic tests cover a matching operand, a wrong operand, a non-executable
+source, duplicate reports and redaction. No private input is used in CI.
