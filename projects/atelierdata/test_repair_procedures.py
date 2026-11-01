@@ -124,6 +124,10 @@ class ProcedureTests(unittest.TestCase):
         self.assertEqual(row["article_id"],other_article)
         self.assertIsNone(row["reference_title"])
         self.assertNotIn(foreign_title,procedure_text(self.db,self.pid))
+        detail=procedure_text(self.db,self.pid)
+        self.assertIn("AVERTISMENT REFERINȚĂ:",detail)
+        self.assertIn("verifică auditul",detail)
+        self.assertNotIn("DOCUMENT ASOCIAT:",detail)
         self.assertNotIn(foreign_title,
                          str([(r["reference_title"],r["instruction"])
                               for r in list_steps(self.db,self.pid)]))
