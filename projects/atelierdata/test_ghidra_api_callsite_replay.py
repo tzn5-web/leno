@@ -56,6 +56,9 @@ def fixtures():
         "api_symbols": {"ReadFile": [{"references": [{
             "source_address": "RAM:00401020", "function_entry": "0x401000",
             "reference_type": "UNCONDITIONAL_CALL",
+            "instruction_start_address": "RAM:00401020",
+            "instruction_length": 6,
+            "instruction_mnemonic": "CALL",
             "reference_is_call_or_jump": True}]}]}
     }
     return data, sha, idf, api
@@ -88,6 +91,43 @@ class ReplayTests(unittest.TestCase):
         ref.pop("reference_type")
         ref.pop("reference_is_call_or_jump")
         self.assertEqual(replay(data, sha, idf, api)["reported_api_flow_sites_with_address_inspected"], 0)
+
+    def test_legacy_flow_reference_without_instruction_evidence_is_excluded(self):
+        data, sha, idf, api = fixtures()
+        ref = api["api_symbols"]["ReadFile"][0]["references"][0]
+        ref.pop("instruction_start_address")
+        result = replay(data, sha, idf, api)
+        self.assertEqual(result["raw_indirect_import_sites_with_matching_api_name"], 0)
+        self.assertEqual(result["references_missing_ghidra_instruction_boundary_evidence"], 1)
+
+    def test_reference_from_middle_of_instruction_is_excluded(self):
+        data, sha, idf, api = fixtures()
+        ref = api["api_symbols"]["ReadFile"][0]["references"][0]
+        ref["instruction_start_address"] = "RAM:0040101f"
+        result = replay(data, sha, idf, api)
+        self.assertEqual(result["raw_indirect_import_sites_with_matching_api_name"], 0)
+        self.assertEqual(result["references_with_inconsistent_ghidra_instruction_boundary_evidence"], 1)
+
+    def test_non_six_byte_or_wrong_mnemonic_is_excluded(self):
+        data, sha, idf, api = fixtures()
+        ref = api["api_symbols"]["ReadFile"][0]["references"][0]
+        ref["instruction_length"] = 5
+        self.assertEqual(replay(data, sha, idf, api)["references_with_inconsistent_ghidra_instruction_boundary_evidence"], 1)
+        ref["instruction_length"] = 6
+        ref["instruction_mnemonic"] = "JMP"
+        self.assertEqual(replay(data, sha, idf, api)["references_with_inconsistent_ghidra_instruction_boundary_evidence"], 1)
+
+    def test_missing_explicit_flow_boolean_is_not_assumed_true(self):
+        data, sha, idf, api = fixtures()
+        ref = api["api_symbols"]["ReadFile"][0]["references"][0]
+        ref.pop("reference_is_call_or_jump")
+        self.assertEqual(replay(data, sha, idf, api)["raw_indirect_import_sites_with_matching_api_name"], 0)
+
+    def test_conditional_flow_type_is_not_indirect_ff15_evidence(self):
+        data, sha, idf, api = fixtures()
+        ref = api["api_symbols"]["ReadFile"][0]["references"][0]
+        ref["reference_type"] = "CONDITIONAL_CALL"
+        self.assertEqual(replay(data, sha, idf, api)["raw_indirect_import_sites_with_matching_api_name"], 0)
 
     def test_raw_import_name_mismatch_is_not_corroborated(self):
         data, sha, idf, api = fixtures()
