@@ -54,6 +54,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "GHIDRA_VERIFIED_IDF_TRIAGE_SYNTAX_FAILED" }
           python -m unittest discover -s projects/atelierdata -p 'test_ghidra_verified_idf_triage.py' -v
           if ($LASTEXITCODE -ne 0) { throw "GHIDRA_VERIFIED_IDF_TRIAGE_TEST_FAILED" }
+          python -m unittest discover -s projects/atelierdata -p 'test_ghidra_verified_idf_distance_tiers.py' -v
+          if ($LASTEXITCODE -ne 0) { throw "GHIDRA_VERIFIED_IDF_DISTANCE_TIERS_TEST_FAILED" }
           python -m unittest discover -s projects/atelierdata -p 'test_vehicle_search_literal.py' -v
           if ($LASTEXITCODE -ne 0) { throw "VEHICLE_LITERAL_SEARCH_TEST_FAILED" }
           python -m unittest discover -s projects/atelierdata -p 'test_restore_preflight.py' -v
