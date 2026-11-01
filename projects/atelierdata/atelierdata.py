@@ -686,7 +686,9 @@ def main():
                         raise RuntimeError('PROCEDURES_GUI_EXPORT_VALID_CATEGORY_MISSING')
                     if ("Index documente asociate" not in exported_html
                             or "Referință secundară sintetică" not in exported_html
-                            or "href='#pas-1'" not in exported_html):
+                            or "href='#pas-1'" not in exported_html
+                            or "id='document-1'" not in exported_html
+                            or "href='#document-1'" not in exported_html):
                         raise RuntimeError('PROCEDURES_GUI_DOCUMENT_INDEX_MISSING')
                     # Packaged Windows GUI regression: move a synthetic step
                     # both ways, verify the visible order and SQLite numbering.
@@ -745,7 +747,9 @@ def main():
                                 or "Pasul 1</a>: Avertisment de siguranță / Referință indisponibilă" not in printable):
                             raise RuntimeError('PROCEDURES_GUI_EXPORT_SAFETY_INDEX_MISSING')
                         if ('Referință secundară sintetică' in printable
-                                or 'Tip document: Note atelier' in printable):
+                                or 'Tip document: Note atelier' in printable
+                                or "id='document-1'" in printable
+                                or "href='#document-1'" in printable):
                             raise RuntimeError('PROCEDURES_GUI_EXPORT_FOREIGN_METADATA_LEAK')
                         if (printable.count("type='checkbox'") != 1
                                 or "id='parcurs-1'" not in printable
