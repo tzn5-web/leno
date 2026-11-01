@@ -122,8 +122,10 @@ def list_procedures(store, vehicle_id=None, search=""):
          "JOIN vehicles v ON v.id=p.vehicle_id WHERE 1=1")
     args=[]
     if vehicle_id is not None:
-        if isinstance(vehicle_id,bool) or not isinstance(vehicle_id,int) or vehicle_id<=0:
-            raise ValueError("Invalid vehicle id")
+        # Keep search scoping consistent with the strict IDs used for edits.
+        # SQLite must never coerce bool, floats, text or int subclasses into
+        # another vehicle's ID when resolving sourced repair instructions.
+        _require_id(vehicle_id, "vehicle")
         sql+=" AND p.vehicle_id=?"
         args.append(vehicle_id)
     if search:
