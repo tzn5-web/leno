@@ -16,8 +16,24 @@ from pathlib import Path
 from ghidra_callgraph_source_replay import replay
 from ghidra_api_callsite_replay import _idf_functions as replay_idf_literals
 from ghidra_idf_api_correlation import load_private
-from ghidra_idf_callgraph_triage import analyze, load_graph
+from ghidra_idf_callgraph_triage import (
+    FAMILIES, MAX_HOPS, _api_functions, _edges,
+    _reverse_distances_to_targets, analyze, load_graph,
+)
 from pe_file_io_xrefs import MAX_PE, parse_pe32
+
+
+
+def _ram_source_addresses(functions):
+    """Only PE32 RAM function entries may participate in verified-source hops."""
+    return {value for space, value in functions
+            if space == 'ram' and 0 <= value <= 0xffffffff}
+
+
+def _hop_histogram(starts, distances):
+    """Address-free shortest-path counts; missing paths are never inferred absent."""
+    return {str(hop): sum(distances.get(source) == hop for source in starts)
+            for hop in range(MAX_HOPS + 1)}
 
 
 def analyze_verified(binary, expected_sha256, idf_report, api_report, graph_report):
@@ -35,8 +51,35 @@ def analyze_verified(binary, expected_sha256, idf_report, api_report, graph_repo
             verified['duplicate_call_sites_ignored'] != summary['duplicate_call_sites_ignored'] or
             verified['callgraph_coverage_truncated'] != summary['callgraph_coverage_truncated']):
         raise ValueError('Ghidra triage and independent PE replay disagree')
+    # The baseline callgraph histogram uses ALL Ghidra-claimed .IDF xrefs.
+    # A byte-mismatched literal must not count as a corroborated source.
+    # API endpoint functions remain Ghidra assertions, not independently
+    # replayed file-I/O instructions; label this narrower tier explicitly.
+    adjacency, _, _ = _edges(graph_report)
+    endpoints = _api_functions(api_report)
+    direct_targets = set().union(
+        *(endpoints[family] for family in FAMILIES if family != 'dynamic_lookup'))
+    direct_distances = _reverse_distances_to_targets(adjacency, direct_targets)
+    dynamic_distances = _reverse_distances_to_targets(
+        adjacency, endpoints['dynamic_lookup'])
+    literal_sources = _ram_source_addresses(literal_functions)
+    pointer_sources = _ram_source_addresses(pointer_functions)
+    boundary_sources = _ram_source_addresses(boundary_functions)
     summary.update({
         'schema': 'atelierdata-ghidra-idf-verified-triage-v1',
+        'idf_report_derived_hops_include_unverified_literal_xrefs': True,
+        'api_endpoint_calls_independently_replayed': False,
+        'verified_literal_source_function_count': len(literal_sources),
+        'verified_raw_pointer_source_function_count': len(pointer_sources),
+        'verified_boundary_pointer_source_function_count': len(boundary_sources),
+        'verified_literal_sources_by_shortest_ghidra_file_io_hops':
+            _hop_histogram(literal_sources, direct_distances),
+        'verified_raw_pointer_sources_by_shortest_ghidra_file_io_hops':
+            _hop_histogram(pointer_sources, direct_distances),
+        'verified_boundary_pointer_sources_by_shortest_ghidra_file_io_hops':
+            _hop_histogram(boundary_sources, direct_distances),
+        'verified_literal_sources_by_shortest_ghidra_dynamic_lookup_hops':
+            _hop_histogram(literal_sources, dynamic_distances),
         'original_pe_sha256_independently_verified': True,
         'original_pe_md5_matches_private_ghidra': True,
         'all_reported_call_edges_replayed_against_original_pe': True,
@@ -59,6 +102,10 @@ def analyze_verified(binary, expected_sha256, idf_report, api_report, graph_repo
             'checked against original PE mappings, but containing functions '
             'and raw PUSH/MOV pointer candidates are not independently '
             'disassembled or shown reachable. '
+            'The legacy IDF-source hop histogram uses unverified Ghidra xrefs; '
+            'separate verified-literal/pointer tiers exclude unmatched source bytes. '
+            'File-I/O API endpoint references are still Ghidra metadata, not '
+            'independently replayed instructions. '
             'Static byte matches are not independently replayed dataflow. '
             'No runtime reachability, IDF parser, decryption or licensed data '
             'access is demonstrated. Truncated coverage and indirect calls '
