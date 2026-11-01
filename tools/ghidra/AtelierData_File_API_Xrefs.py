@@ -107,7 +107,10 @@ def collect():
                 "source_address": str(src),
                 "function_entry": str(fn.getEntryPoint()) if fn else None,
                 "instruction_mnemonic": str(ins.getMnemonicString()).upper() if ins else None,
-                "reference_type": str(ref.getReferenceType())
+                "reference_type": str(ref.getReferenceType()),
+                "reference_is_call_or_jump": bool(
+                    ref.getReferenceType().isCall() or
+                    ref.getReferenceType().isJump())
             })
             recorded += 1
         found.setdefault(api, []).append(row)
