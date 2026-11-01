@@ -260,3 +260,20 @@ def verified_library_file(store,attachment_id,vehicle_id=None,article_id=None,
         if rights is None or rights["rights_basis"] not in ACCESS_RIGHTS[1:]:
             raise ValueError("Drepturi neconfirmate: document disponibil doar în inventar")
     return resolve_document(store,attachment_id)
+
+
+def inspect_library_entry(store, attachment_id, vehicle_id=None, article_id=None):
+    """Read-only GUI preflight: current scope, declared rights, and SHA256.
+
+    A successful check describes only the instant of verification; it is not
+    a legal, technical-applicability, or malware-safety certification. The
+    document is never launched or modified by this function.
+    """
+    try:
+        verified_library_file(
+            store, attachment_id, vehicle_id=vehicle_id, article_id=article_id,
+            require_declared_rights=True)
+    except (ValueError, FileNotFoundError, OSError) as exc:
+        return {"ok": False, "message": str(exc)}
+    return {"ok": True, "message":
+            "SHA256 valid la momentul verificării; drepturile sunt doar declarate."}
