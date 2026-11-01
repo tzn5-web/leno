@@ -107,6 +107,8 @@ def collect():
                 "source_address": str(src),
                 "function_entry": str(fn.getEntryPoint()) if fn else None,
                 "instruction_mnemonic": str(ins.getMnemonicString()).upper() if ins else None,
+                "instruction_start_address": str(ins.getAddress()) if ins else None,
+                "instruction_length": int(ins.getLength()) if ins else None,
                 "reference_type": str(ref.getReferenceType()),
                 "reference_is_call_or_jump": bool(
                     ref.getReferenceType().isCall() or
