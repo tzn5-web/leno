@@ -710,6 +710,21 @@ def main():
                             raise RuntimeError('PROCEDURES_GUI_INVALID_REFERENCE_WARNING_MISSING')
                         if 'Referință secundară sintetică' in shown:
                             raise RuntimeError('PROCEDURES_GUI_FOREIGN_REFERENCE_TITLE_LEAK')
+                        # Verify the same warning/redaction in offline exports
+                        # while the real Windows procedure editor is open.
+                        from repair_export import procedure_html
+                        printable=procedure_html(ui.db,pid)
+                        if 'AVERTISMENT REFERINȚĂ' not in printable:
+                            raise RuntimeError('PROCEDURES_GUI_EXPORT_WARNING_MISSING')
+                        if 'Referință secundară sintetică' in printable:
+                            raise RuntimeError('PROCEDURES_GUI_EXPORT_FOREIGN_TITLE_LEAK')
+                        export_path=Path(folder)/'gui-redacted-procedure.json'
+                        export_procedures_json(ui.db,export_path,vehicle)
+                        payload=json.loads(export_path.read_text(encoding='utf-8'))
+                        exported=payload['procedures'][0]['steps'][0]
+                        if (exported['reference_status']!='invalid_or_unavailable'
+                                or exported['reference_article_id'] is not None):
+                            raise RuntimeError('PROCEDURES_GUI_EXPORT_FOREIGN_ID_LEAK')
                     finally:
                         ui.db.db.execute(
                             'UPDATE articles SET vehicle_id=? WHERE id=?',
