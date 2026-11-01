@@ -94,6 +94,10 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual(result["matching_api_sites_in_idf_raw_pointer_functions"], 1)
         self.assertFalse(result["instruction_boundaries_independently_verified"])
         self.assertNotIn("00401030", json.dumps(result))
+        # Duplicated Ghidra rows must not inflate physical pointer evidence.
+        idf["keyword_hits"][".rdata"]["MODELS.IDF:ascii"][0]["references_from"].append(copy.deepcopy(ref))
+        repeated = replay(modified, new_sha, idf, api)
+        self.assertEqual(repeated["idf_xrefs_with_raw_push_or_mov_literal_va"], 1)
 
     def test_raw_idf_pointer_evidence_rejects_wrong_operand_and_data_source(self):
         data, sha, idf, api = fixtures()
