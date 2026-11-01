@@ -77,7 +77,11 @@ def main():
     if imported_sha256 is None or imported_sha256.lower() != expected_sha256:
         raise ValueError('Ghidra imported PE SHA256 differs from independently verified source')
     imported_md5 = currentProgram.getExecutableMD5()
-    if not imported_md5 or not re.match(r'^[0-9a-fA-F]{32}    blocks = []
+    imported_md5 = str(imported_md5) if imported_md5 is not None else ''
+    if len(imported_md5) != 32 or any(c not in '0123456789abcdefABCDEF' for c in imported_md5):
+        raise ValueError('Ghidra imported PE MD5 unavailable or invalid')
+    refs = currentProgram.getReferenceManager()
+    blocks = []
     observations = {}
     block_scan_cap_reached = False
     keyword_match_cap_reached = False
