@@ -41,11 +41,14 @@ def _raw_offset(data, pe, va, need=6):
 def _idf_functions(data, pe, report):
     """Verify literal .IDF bytes at Ghidra-reported PE VAs before using xrefs.
 
-    This validates only the existence of a static string in the source PE.
-    Ghidra's association of a reference with a function is still unverified.
+    This validates the literal bytes and optionally a narrow raw x86
+    immediate operand at an xref source. Ghidra's association of the source
+    with a function is still unverified.
     Missing/invalid addresses never contribute to shared-function evidence.
     """
     functions = set()
+    direct_pointer_functions = set()
+    direct_pointer_references = 0
     verified = missing = mismatched = 0
     for block in report["keyword_hits"].values():
         for name, hits in block.items():
@@ -70,9 +73,31 @@ def _idf_functions(data, pe, report):
                     continue
                 verified += 1
                 for ref in hit["references_from"]:
-                    if ref.get("function_entry") is not None:
-                        functions.add(_function_key(ref["function_entry"]))
-    return functions, verified, missing, mismatched
+                    if ref.get("function_entry") is None:
+                        continue
+                    function = _function_key(ref["function_entry"])
+                    functions.add(function)
+                    # Independently corroborate only the narrow x86 forms
+                    # PUSH imm32 and MOV reg, imm32 whose operand equals the
+                    # literal VA. Other legitimate references are omitted.
+                    # These bytes are NOT independently decoded instructions.
+                    source = ref.get("source_address")
+                    if source is None:
+                        continue
+                    src_space, src_va = _function_key(source)
+                    if src_space != "ram" or not 0 <= src_va <= 0xffffffff:
+                        continue
+                    raw = _raw_offset(data, pe, src_va, 5)
+                    if raw is None or not raw[1]:
+                        continue
+                    offset = raw[0]
+                    opcode = data[offset]
+                    if (opcode == 0x68 or 0xb8 <= opcode <= 0xbf) and (
+                            struct.unpack_from("<I", data, offset + 1)[0] == va):
+                        direct_pointer_references += 1
+                        direct_pointer_functions.add(function)
+    return (functions, direct_pointer_functions, direct_pointer_references,
+            verified, missing, mismatched)
 
 def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict) -> dict:
     """Corroborate narrow raw IAT patterns without emitting private addresses."""
@@ -90,9 +115,12 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
             api_report.get("source_md5") != source_md5):
         raise ValueError("Ghidra report source MD5 mismatch")
     pe = parse_pe32(data)
-    idf_functions, idf_literals_verified, idf_literals_missing_address, idf_literals_mismatched = _idf_functions(data, pe, idf_report)
+    (idf_functions, direct_idf_functions, direct_idf_pointer_refs,
+     idf_literals_verified, idf_literals_missing_address,
+     idf_literals_mismatched) = _idf_functions(data, pe, idf_report)
     inspected = mapped_executable = nonexec = unmapped = 0
     raw_opcode_candidates = import_matched = shared_idf_matched = 0
+    direct_idf_shared_sites = 0
     opcode_flow_conflicts = duplicate_sites = ambiguous_sites = 0
     missing_instruction_evidence = inconsistent_instruction_evidence = 0
     # Aggregate by physical callsite before scoring. A source address cannot
@@ -169,12 +197,16 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
         import_matched += 1
         if function in idf_functions:
             shared_idf_matched += 1
+        if function in direct_idf_functions:
+            direct_idf_shared_sites += 1
     return {
         "schema": SCHEMA,
         "original_sha256_verified": True,
         "source_md5_matches_both_ghidra_reports": True,
         "reported_api_flow_sites_with_address_inspected": inspected,
         "idf_literal_hits_verified_against_source_pe": idf_literals_verified,
+        "idf_xrefs_with_raw_push_or_mov_literal_va": direct_idf_pointer_refs,
+        "matching_api_sites_in_idf_raw_pointer_functions": direct_idf_shared_sites,
         "idf_literal_hits_missing_address": idf_literals_missing_address,
         "idf_literal_hits_unmapped_or_mismatched": idf_literals_mismatched,
         "unique_sites_repeated_in_report": duplicate_sites,
@@ -198,7 +230,8 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
                        "Ghidra-reported instruction boundaries must be explicit, 6-byte, and match xref sources; they are not independently proven. "
                        "Conflicting API names, functions or flow types for one physical site are excluded. "
                        "Dynamic imports, thunks, other encodings and indirect flows are omitted. "
-                       "IDF literal bytes are independently checked at reported PE VAs, but string xrefs and containing functions remain Ghidra claims. "
+                       "IDF literal bytes are independently checked at reported PE VAs; raw PUSH/MOV immediate-pointer matches are narrow byte candidates, not validated instruction boundaries. " 
+                       "Other IDF string xrefs and containing functions remain Ghidra claims. "
                        "No evidence of an IDF decoder or licensed data access."
     }
 
