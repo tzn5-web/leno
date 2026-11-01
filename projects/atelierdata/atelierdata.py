@@ -725,6 +725,9 @@ def main():
                             raise RuntimeError('PROCEDURES_GUI_EXPORT_MULTILINE_FORMATTING_MISSING')
                         if 'AVERTISMENT REFERINȚĂ' not in printable:
                             raise RuntimeError('PROCEDURES_GUI_EXPORT_WARNING_MISSING')
+                        if ("Verificări înainte de lucru" not in printable
+                                or "Pasul 1</a>: Avertisment de siguranță / Referință indisponibilă" not in printable):
+                            raise RuntimeError('PROCEDURES_GUI_EXPORT_SAFETY_INDEX_MISSING')
                         if 'Referință secundară sintetică' in printable:
                             raise RuntimeError('PROCEDURES_GUI_EXPORT_FOREIGN_TITLE_LEAK')
                         export_path=Path(folder)/'gui-redacted-procedure.json'
