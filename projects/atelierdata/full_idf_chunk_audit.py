@@ -14,7 +14,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from split_archive_manifest_audit import inspect_manifest
+from split_archive_manifest_audit import inspect_manifest, reject_blocked_package
 
 WINDOW = 65536
 
@@ -39,6 +39,7 @@ def audit(manifest, directory):
                 total = 0
                 for chunk in row['chunks']:
                     package = chunk['package']
+                    reject_blocked_package(package)
                     if package not in archives:
                         source = directory / package
                         if source.is_symlink():
@@ -115,6 +116,13 @@ def self_test():
         result, records = audit(manifest, tmp)
         assert result['idf_files'] == 1 and result['idf_total_bytes'] == 6
         assert len(records) == 1 and records[0]['sha256_all_chunks_pass']
+        manifest['files'][0]['chunks'][0]['package'] = 'autodata_part_0016.zip'
+        try:
+            audit(manifest, tmp)
+        except ValueError as exc:
+            assert 'Blocked' in str(exc)
+        else:
+            raise AssertionError('Blocked part_0016 was not rejected')
     print('COMPLETE_IDF_STATIC_SELF_TEST=PASS')
 
 
