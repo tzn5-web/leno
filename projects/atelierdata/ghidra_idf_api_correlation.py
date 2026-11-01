@@ -105,6 +105,7 @@ def correlate(idf_report, api_report, expected_sha256):
     if type(scan_truncated) is not bool:
         raise ValueError("Invalid API scan truncation flag")
     truncated_symbol_refs = 0
+    unknown_flow_refs = 0
     idf_functions = set()
     api_functions = set()
     api_code_functions = set()
@@ -151,7 +152,24 @@ def correlate(idf_report, api_report, expected_sha256):
                 if entry is not None:
                     key = _function_key(entry)
                     api_functions.add(key)
-                    is_call_or_jump = ref.get("instruction_mnemonic") in ("CALL", "JMP")
+                    # An instruction mnemonic alone is insufficient: a CALL
+                    # instruction can have a DATA reference to a different
+                    # operand. Count only Ghidra flow references.
+                    flow = ref.get("reference_is_call_or_jump")
+                    if flow is not None and type(flow) is not bool:
+                        raise ValueError("Invalid Ghidra reference flow flag")
+                    reference_type = ref.get("reference_type")
+                    if reference_type is not None and not isinstance(reference_type, str):
+                        raise ValueError("Invalid Ghidra reference type")
+                    if flow is None:
+                        if reference_type is None:
+                            unknown_flow_refs += 1
+                            is_call_or_jump = False
+                        else:
+                            upper_type = reference_type.upper()
+                            is_call_or_jump = ("CALL" in upper_type or "JUMP" in upper_type)
+                    else:
+                        is_call_or_jump = flow
                     if is_call_or_jump:
                         api_code_functions.add(key)
                     for family, names in _API_FAMILIES.items():
@@ -181,6 +199,8 @@ def correlate(idf_report, api_report, expected_sha256):
         "idf_referencing_functions": len(idf_functions),
         "api_referencing_functions": len(api_functions),
         "api_call_or_jump_functions": len(api_code_functions),
+        "api_references_with_unknown_flow_type": unknown_flow_refs,
+        "api_flow_reference_classification_incomplete_or_unknown": bool(unknown_flow_refs),
         "shared_idf_and_api_functions": len(idf_functions & api_functions),
         "shared_idf_and_api_call_or_jump_functions": len(idf_functions & api_code_functions),
         "shared_idf_and_direct_file_io_functions": len(idf_functions & direct_functions),
@@ -194,6 +214,8 @@ def correlate(idf_report, api_report, expected_sha256):
                         "A shared function is a "
                         "triage candidate, not proof of file access or decoding. "
                         "API families are xref-only triage, not proven calls. "
+                        "Flow references use Ghidra reference type, never mnemonic alone; "
+                        "older reports without reference type are unclassified. "
                         "GetProcAddress alone is not direct file I/O. "
                         "Dynamically resolved calls, cross-function paths and "
                         "indirect edges may be missed.")
