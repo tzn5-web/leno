@@ -25,7 +25,8 @@ def fixtures():
                    'reference_type': 'UNCONDITIONAL_CALL', 'reference_is_call_or_jump': True}]}],
                'GetProcAddress': [{'references': [{'function_entry': '00401000',
                    'reference_type': 'UNCONDITIONAL_CALL', 'reference_is_call_or_jump': True}]}]}}
-    graph = {'schema': 'atelierdata-ghidra-direct-callgraph-v1',
+    graph = {'schema': 'atelierdata-ghidra-direct-callgraph-v2',
+             'edge_verification': 'x86-e8-rel32-ghidra-bytes-v1',
              'source_sha256': SHA, 'source_md5': MD5,
              'source_sha256_verified': True,
              'ghidra_import_sha256_verified': True,
@@ -34,9 +35,15 @@ def fixtures():
              'coverage_truncated': False,
              'edges': [
                  {'caller': '00401000', 'callee': '00402000', 'site': '00401050',
-                  'reference_type': 'UNCONDITIONAL_CALL'},
+                  'reference_type': 'UNCONDITIONAL_CALL',
+                  'instruction_mnemonic': 'CALL', 'instruction_length': 5,
+                  'direct_rel32_opcode_verified': True,
+                  'source_executable': True, 'target_executable': True},
                  {'caller': '00402000', 'callee': '00403000', 'site': '00402050',
-                  'reference_type': 'UNCONDITIONAL_CALL'}]}
+                  'reference_type': 'UNCONDITIONAL_CALL',
+                  'instruction_mnemonic': 'CALL', 'instruction_length': 5,
+                  'direct_rel32_opcode_verified': True,
+                  'source_executable': True, 'target_executable': True}]}
     return idf, api, graph
 
 
@@ -110,7 +117,7 @@ class CallgraphTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / 'graph.json'
             source.write_text(json.dumps(fixtures()[2]), encoding='utf-8')
-            self.assertEqual(load_graph(source)['schema'], 'atelierdata-ghidra-direct-callgraph-v1')
+            self.assertEqual(load_graph(source)['schema'], 'atelierdata-ghidra-direct-callgraph-v2')
             link = Path(tmp) / 'link.json'
             try:
                 link.symlink_to(source)
@@ -118,6 +125,47 @@ class CallgraphTests(unittest.TestCase):
                 self.skipTest('Symlink unavailable')
             with self.assertRaisesRegex(ValueError, 'linked'):
                 load_graph(link)
+
+    def test_legacy_unverified_graph_rejected(self):
+        idf, api, graph = fixtures()
+        graph['schema'] = 'atelierdata-ghidra-direct-callgraph-v1'
+        with self.assertRaisesRegex(ValueError, 'Unsupported Ghidra call graph'):
+            analyze(idf, api, graph, SHA)
+
+    def test_missing_edge_verification_contract_rejected(self):
+        idf, api, graph = fixtures()
+        graph.pop('edge_verification')
+        with self.assertRaisesRegex(ValueError, 'edge contract'):
+            analyze(idf, api, graph, SHA)
+
+    def test_unverified_opcode_rejected(self):
+        idf, api, graph = fixtures()
+        graph['edges'][0]['direct_rel32_opcode_verified'] = False
+        with self.assertRaisesRegex(ValueError, 'instruction evidence'):
+            analyze(idf, api, graph, SHA)
+
+    def test_non_executable_target_rejected(self):
+        idf, api, graph = fixtures()
+        graph['edges'][0]['target_executable'] = False
+        with self.assertRaisesRegex(ValueError, 'instruction evidence'):
+            analyze(idf, api, graph, SHA)
+
+    def test_incorrect_instruction_length_rejected(self):
+        idf, api, graph = fixtures()
+        graph['edges'][0]['instruction_length'] = 6
+        with self.assertRaisesRegex(ValueError, 'instruction evidence'):
+            analyze(idf, api, graph, SHA)
+
+    def test_callsite_before_function_entry_rejected(self):
+        idf, api, graph = fixtures()
+        graph['edges'][0]['site'] = '00400000'
+        with self.assertRaisesRegex(ValueError, 'Callsite outside'):
+            analyze(idf, api, graph, SHA)
+
+    def test_verified_edge_count_reported(self):
+        result = analyze(*fixtures(), SHA)
+        self.assertEqual(result['direct_rel32_call_sites_verified'], 2)
+        self.assertEqual(result['call_edge_validation'], 'x86-e8-rel32-ghidra-bytes-v1')
 
     def test_coverage_cap_visible(self):
         idf, api, graph = fixtures()
