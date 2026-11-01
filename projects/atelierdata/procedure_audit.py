@@ -17,6 +17,12 @@ IMAGE_SUFFIXES = frozenset((".png", ".jpg", ".jpeg"))
 
 def get_step_reference(store, step_id, vehicle_id, procedure_id):
     """Return the article only when both the step and article belong to this vehicle."""
+    # SQLite would otherwise coerce True, 1.0 and "1" to the same row ID.
+    # Check every navigation identifier before reading any document metadata.
+    for label, value in (("step", step_id), ("vehicle", vehicle_id),
+                         ("procedure", procedure_id)):
+        if type(value) is not int or value <= 0:
+            raise ValueError("Invalid " + label + " ID")
     row = store.db.execute(
         "SELECT s.article_id,p.vehicle_id FROM procedure_steps s "
         "JOIN procedures p ON p.id=s.procedure_id "
