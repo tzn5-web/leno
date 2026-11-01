@@ -35,6 +35,19 @@ def _name(data: bytes, offset: int) -> str:
     return raw.decode("ascii")
 
 
+
+def _mapped_name(data: bytes, map_rva, rva: int) -> str:
+    """Read a bounded import name wholly inside one file-backed RVA span.
+
+    A file-offset-only C string scan can read the null terminator from raw
+    alignment padding or an unrelated section. Neither is mapped evidence.
+    """
+    for length in range(1, MAX_NAME_BYTES + 2):
+        offset = map_rva(rva, length)
+        if data[offset + length - 1] == 0:
+            return _name(data, offset)
+    raise ValueError("unterminated mapped import name")
+
 def _mapper(data: bytes, pe: dict):
     header_at = _u32(data, 0x3c) + 24
     headers = _u32(data, header_at + 60)
@@ -135,7 +148,7 @@ def analyze_delay_imports(data: bytes, expected_sha256: str):
                             raise ValueError("VA below image base")
                         return value - pe["image_base"]
                     try:
-                        row["dll"] = _name(data, map_rva(pointer_rva(name_ptr)))
+                        row["dll"] = _mapped_name(data, map_rva, pointer_rva(name_ptr))
                     except ValueError:
                         row["issues"].append("dll_name_unmapped")
                     try:
@@ -150,7 +163,9 @@ def analyze_delay_imports(data: bytes, expected_sha256: str):
                             if thunk & 0x80000000:
                                 symbol = "#" + str(thunk & 0xffff)
                             else:
-                                symbol = _name(data, map_rva(pointer_rva(thunk) + 2))
+                                name_rva = pointer_rva(thunk)
+                                map_rva(name_rva, 2)  # IMAGE_IMPORT_BY_NAME hint
+                                symbol = _mapped_name(data, map_rva, name_rva + 2)
                             row["symbols"].append(symbol)
                             resolved_symbols += 1
                         else:
