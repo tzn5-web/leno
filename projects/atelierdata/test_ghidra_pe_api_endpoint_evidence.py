@@ -70,7 +70,7 @@ class PeApiEndpointEvidenceTests(unittest.TestCase):
     def test_same_name_export_from_untrusted_dll_is_not_file_api_evidence(self):
         def spoof(data):
             data = bytearray(data)
-            data[0x480:0x48d] = b"FAKECORE.dll\\0"
+            data[0x480:0x48d] = b"FAKECORE.dll" + bytes((0,))
             return bytes(data)
         endpoints, count, conflicts = self._run(data_change=spoof)
         self.assertEqual(count, 0)
