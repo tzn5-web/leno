@@ -57,9 +57,20 @@ def scan_block(block, refs):
                                 break
                             source = ref.getFromAddress()
                             function = getFunctionContaining(source)
+                            # Export explicit instruction evidence for each
+                            # data xref. getInstructionAt() deliberately does
+                            # not accept a reference from the middle of an
+                            # instruction; the offline replay checks this again.
+                            ref_type = ref.getReferenceType()
+                            instruction = getInstructionAt(source)
                             xrefs.append({'source_address': str(source),
                                           'containing_function': (str(function.getName()) if function else None),
-                                          'function_entry': (str(function.getEntryPoint()) if function else None)})
+                                          'function_entry': (str(function.getEntryPoint()) if function else None),
+                                          'reference_type': str(ref_type),
+                                          'reference_is_data': bool(ref_type.isData()),
+                                          'instruction_start_address': (str(instruction.getAddress()) if instruction else None),
+                                          'instruction_length': (int(instruction.getLength()) if instruction else None),
+                                          'instruction_mnemonic': (str(instruction.getMnemonicString()).upper() if instruction else None)})
                         entries.append({'address': str(addr), 'references_from': xrefs})
                     at = idx + 1
         carry = data[-overlap:]
