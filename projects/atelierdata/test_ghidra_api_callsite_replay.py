@@ -136,7 +136,11 @@ class ReplayTests(unittest.TestCase):
 
     def test_unmapped_source_is_not_corroborated(self):
         data, sha, idf, api = fixtures()
-        api["api_symbols"]["ReadFile"][0]["references"][0]["source_address"] = "0x90000000"
+        ref = api["api_symbols"]["ReadFile"][0]["references"][0]
+        # Preserve internally consistent Ghidra instruction evidence so this
+        # test reaches the raw PE mapping check rather than boundary rejection.
+        ref["source_address"] = "0x90000000"
+        ref["instruction_start_address"] = "0x90000000"
         result = replay(data, sha, idf, api)
         self.assertEqual(result["sites_without_unique_raw_mapping"], 1)
         self.assertEqual(result["raw_indirect_import_sites_with_matching_api_name"], 0)
