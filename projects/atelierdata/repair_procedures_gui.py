@@ -509,6 +509,7 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         ttk.Button(actions,text="Anulează",command=picker.destroy).pack(side="right")
         references.bind("<Double-1>",lambda _event:apply())
         picker.reference_tree=references
+        picker.reference_search_var=search_ref
         picker.apply_reference=apply
         picker.clear_reference=lambda:change_link(None)
         top.reference_picker=picker
