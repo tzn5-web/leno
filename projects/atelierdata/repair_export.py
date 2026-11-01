@@ -92,6 +92,7 @@ def procedure_html(store,procedure_id):
       "h1{font-size:2rem}h2{margin-top:1.8rem}.meta{color:#46556a}"
       ".warning{border-left:5px solid #b3312a;background:#fff1ee;padding:1rem;white-space:pre-wrap;overflow-wrap:anywhere}"
       ".step{break-inside:avoid;margin:1.3rem 0;padding:1rem;border:1px solid #ccd4dc}"
+      ".safety-index{border:2px solid #b3312a;padding:1rem;margin:1.5rem 0;break-inside:avoid}"
       ".reference{font-size:.9rem;color:#46556a}" " .instruction{white-space:pre-wrap;overflow-wrap:anywhere}"
       "@media print{nav{display:none}body{margin:0;max-width:none}.step{page-break-inside:avoid}}</style>",
       "</head><body><header><h1>"+esc(record["title"])+"</h1>",
@@ -104,6 +105,24 @@ def procedure_html(store,procedure_id):
     if record["precautions"]:
         parts.append("<section class='warning'><strong>Avertismente generale</strong><p>"
                      +esc(record["precautions"])+"</p></section>")
+    # A printable, offline safety index makes warnings and broken references
+    # discoverable before starting work. Link only to local step anchors.
+    flagged = []
+    for position, step in enumerate(record["steps"], 1):
+        labels = []
+        if step["safety_note"]:
+            labels.append("Avertisment de siguranță")
+        if step["reference_status"] == "invalid_or_unavailable":
+            labels.append("Referință indisponibilă")
+        if labels:
+            flagged.append((position, step["step_number"], labels))
+    if flagged:
+        parts.append("<aside class='safety-index' aria-label='Avertismente și referințe'>"
+                     "<h2>Verificări înainte de lucru</h2><ul>")
+        for position, number, labels in flagged:
+            parts.append("<li><a href='#pas-"+str(position)+"'>Pasul "
+                         +esc(number)+"</a>: "+esc(" / ".join(labels))+"</li>")
+        parts.append("</ul></aside>")
     parts.append("<h2>Pași de lucru</h2>")
     if not record["steps"]:
         parts.append("<p>Nu există pași introduși pentru această procedură.</p>")
