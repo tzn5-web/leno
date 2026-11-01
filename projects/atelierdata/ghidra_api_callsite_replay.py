@@ -49,6 +49,11 @@ def _idf_functions(data, pe, report):
     functions = set()
     direct_pointer_functions = set()
     direct_pointer_sites = set()
+    # A separate stronger tier requires Ghidra to report an actual 5-byte
+    # PUSH/MOV instruction starting at the source of a DATA reference.
+    # It is still Ghidra-reported evidence, not independently decoded code.
+    boundary_pointer_functions = set()
+    boundary_pointer_sites = set()
     verified = missing = mismatched = 0
     for block in report["keyword_hits"].values():
         for name, hits in block.items():
@@ -96,7 +101,18 @@ def _idf_functions(data, pe, report):
                             struct.unpack_from("<I", data, offset + 1)[0] == va):
                         direct_pointer_sites.add((src_va, va))
                         direct_pointer_functions.add(function)
+                        expected_mnemonic = "PUSH" if opcode == 0x68 else "MOV"
+                        start = ref.get("instruction_start_address")
+                        if (ref.get("reference_is_data") is True and
+                                start is not None and
+                                _function_key(start) == (src_space, src_va) and
+                                type(ref.get("instruction_length")) is int and
+                                ref["instruction_length"] == 5 and
+                                ref.get("instruction_mnemonic") == expected_mnemonic):
+                            boundary_pointer_sites.add((src_va, va))
+                            boundary_pointer_functions.add(function)
     return (functions, direct_pointer_functions, len(direct_pointer_sites),
+            boundary_pointer_functions, len(boundary_pointer_sites),
             verified, missing, mismatched)
 
 def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict) -> dict:
@@ -116,11 +132,13 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
         raise ValueError("Ghidra report source MD5 mismatch")
     pe = parse_pe32(data)
     (idf_functions, direct_idf_functions, direct_idf_pointer_refs,
+     boundary_idf_functions, boundary_idf_pointer_refs,
      idf_literals_verified, idf_literals_missing_address,
      idf_literals_mismatched) = _idf_functions(data, pe, idf_report)
     inspected = mapped_executable = nonexec = unmapped = 0
     raw_opcode_candidates = import_matched = shared_idf_matched = 0
     direct_idf_shared_sites = 0
+    boundary_idf_shared_sites = 0
     opcode_flow_conflicts = duplicate_sites = ambiguous_sites = 0
     missing_instruction_evidence = inconsistent_instruction_evidence = 0
     # Aggregate by physical callsite before scoring. A source address cannot
@@ -199,6 +217,8 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
             shared_idf_matched += 1
         if function in direct_idf_functions:
             direct_idf_shared_sites += 1
+        if function in boundary_idf_functions:
+            boundary_idf_shared_sites += 1
     return {
         "schema": SCHEMA,
         "original_sha256_verified": True,
@@ -207,6 +227,8 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
         "idf_literal_hits_verified_against_source_pe": idf_literals_verified,
         "idf_xrefs_with_raw_push_or_mov_literal_va": direct_idf_pointer_refs,
         "matching_api_sites_in_idf_raw_pointer_functions": direct_idf_shared_sites,
+        "idf_xrefs_with_ghidra_boundary_and_raw_pointer": boundary_idf_pointer_refs,
+        "matching_api_sites_in_ghidra_idf_pointer_functions": boundary_idf_shared_sites,
         "idf_literal_hits_missing_address": idf_literals_missing_address,
         "idf_literal_hits_unmapped_or_mismatched": idf_literals_mismatched,
         "unique_sites_repeated_in_report": duplicate_sites,
@@ -230,7 +252,8 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
                        "Ghidra-reported instruction boundaries must be explicit, 6-byte, and match xref sources; they are not independently proven. "
                        "Conflicting API names, functions or flow types for one physical site are excluded. "
                        "Dynamic imports, thunks, other encodings and indirect flows are omitted. "
-                       "IDF literal bytes are independently checked at reported PE VAs; raw PUSH/MOV immediate-pointer matches are narrow byte candidates, not validated instruction boundaries. " 
+                       "IDF literal bytes are independently checked at reported PE VAs; raw PUSH/MOV immediate-pointer matches are narrow byte candidates. "
+                       "A separate stricter counter requires Ghidra-reported DATA reference, matching instruction start, 5-byte length and PUSH/MOV mnemonic, but is not independent disassembly. " 
                        "Other IDF string xrefs and containing functions remain Ghidra claims. "
                        "No evidence of an IDF decoder or licensed data access."
     }
