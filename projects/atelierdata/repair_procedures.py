@@ -154,7 +154,8 @@ def list_procedures(store, vehicle_id=None, search=""):
 def list_reference_articles(store, procedure_id, search=""):
     """Same-vehicle reference picker with literal Unicode-aware search.
 
-    Only user-entered article metadata are returned, without remote access.
+    Only same-vehicle articles are returned. Search includes document body,
+    while results expose metadata only; no remote access is performed.
     """
     if get_procedure(store, procedure_id) is None:
         raise ValueError("Procedure does not exist")
@@ -168,8 +169,9 @@ def list_reference_articles(store, procedure_id, search=""):
         _register_literal_search(store)
         query += (" AND (atelierdata_literal_contains(a.title, ?)"
                   " OR atelierdata_literal_contains(a.category, ?)"
-                  " OR atelierdata_literal_contains(a.source, ?))")
-        args.extend((search, search, search))
+                  " OR atelierdata_literal_contains(a.source, ?)"
+                  " OR atelierdata_literal_contains(a.content, ?))")
+        args.extend((search, search, search, search))
     return store.db.execute(query + " ORDER BY a.category,a.title,a.id", args).fetchall()
 
 
