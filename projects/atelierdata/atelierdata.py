@@ -835,6 +835,32 @@ def main():
                         raise RuntimeError('PROCEDURES_SEARCH_HIT_DOCUMENT_TEXT_MISSING')
                     document.destroy()
                     hits.destroy()
+                    # GUI regression: a document-specific hit must not navigate
+                    # to a different document after the step link is changed.
+                    window.procedure_search_var.set('TEST OWNED')
+                    stale=window.open_search_hits()
+                    if stale is None or len(stale.hits)!=1:
+                        raise RuntimeError('PROCEDURES_GUI_STALE_HIT_SETUP_FAILED')
+                    if stale.hits[0]['article_id']!=second_article:
+                        raise RuntimeError('PROCEDURES_GUI_STALE_HIT_SNAPSHOT_FAILED')
+                    stale.hits_tree.selection_set('0')
+                    caught=[]
+                    old_error=smoke_messagebox.showerror
+                    try:
+                        ui.db.db.execute('UPDATE procedure_steps SET article_id=? WHERE id=?',
+                                         (article,step_id))
+                        ui.db.db.commit()
+                        smoke_messagebox.showerror=lambda title,message,**kwargs: caught.append((title,message))
+                        if stale.go_to_hit() is not None:
+                            raise RuntimeError('PROCEDURES_GUI_STALE_HIT_NAVIGATED')
+                        if not caught or 'schimbat' not in caught[0][1]:
+                            raise RuntimeError('PROCEDURES_GUI_STALE_HIT_NOT_REJECTED')
+                    finally:
+                        smoke_messagebox.showerror=old_error
+                        ui.db.db.execute('UPDATE procedure_steps SET article_id=? WHERE id=?',
+                                         (second_article,step_id))
+                        ui.db.db.commit()
+                        stale.destroy()
                     # End-to-end GUI regression: SQLite must find a Unicode
                     # casefold expansion, then navigate to the same vehicle.
                     original_title=ui.db.db.execute(

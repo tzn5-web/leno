@@ -236,7 +236,7 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
 
         def change_hits_page(direction):
             """Load another bounded result page without changing SQLite."""
-            if direction not in (-1,1) or isinstance(direction,bool):
+            if type(direction) is not int or direction not in (-1,1):
                 raise ValueError("Invalid page direction")
             if direction<0 and page_state["offset"]==0:
                 return False
@@ -291,6 +291,22 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                 if exists is None:
                     messagebox.showerror("Referință invalidă",
                         "Pasul nu mai aparține procedurii.",parent=popup)
+                    return None
+            # A document search result is a snapshot of a particular linked
+            # article. A changed step link must not silently open another
+            # document when the user follows an older result row.
+            if hit["field"] in {label for key, label in STEP_FIELDS
+                                if key.startswith("article_")}:
+                live=app.db.db.execute(
+                    "SELECT s.article_id FROM procedure_steps s "
+                    "JOIN procedures p ON p.id=s.procedure_id "
+                    "JOIN articles a ON a.id=s.article_id AND a.vehicle_id=p.vehicle_id "
+                    "WHERE s.id=? AND p.id=? AND p.vehicle_id=?",
+                    (sid,hit["procedure_id"],vehicle_id)).fetchone()
+                if live is None or live["article_id"]!=hit.get("article_id"):
+                    messagebox.showerror("Referință modificată",
+                        "Documentul asociat acestui rezultat a fost schimbat sau eliminat.",
+                        parent=popup)
                     return None
             refresh_proc(hit["procedure_id"])
             if not procedures.exists(str(hit["procedure_id"])):

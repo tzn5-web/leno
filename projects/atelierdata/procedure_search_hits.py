@@ -73,7 +73,7 @@ def next_hit_index(hit_count, current_index=None, direction=1):
     if (isinstance(hit_count, bool) or not isinstance(hit_count, int)
             or not 0 <= hit_count <= 1000):
         raise ValueError("Invalid search result count")
-    if isinstance(direction, bool) or direction not in (-1, 1):
+    if type(direction) is not int or direction not in (-1, 1):
         raise ValueError("Invalid search navigation direction")
     if current_index is not None and (
             isinstance(current_index, bool) or not isinstance(current_index, int)
@@ -134,7 +134,7 @@ def list_procedure_hits(store, vehicle_id, search, limit=DEFAULT_LIMIT, offset=0
             if needle in value.casefold():
                 if collect({
                     "procedure_id": pid, "procedure_title": procedure["title"],
-                    "step_id": None, "step_number": None,
+                    "step_id": None, "step_number": None, "article_id": None,
                     "field": label, "excerpt": _excerpt(value, search),
                     "source": procedure["source"],
                 }):
@@ -145,7 +145,7 @@ def list_procedure_hits(store, vehicle_id, search, limit=DEFAULT_LIMIT, offset=0
         if field in procedure_field_labels:
             continue
         rows = store.db.execute("""
-            SELECT s.id, s.step_number, s.instruction, s.safety_note,
+            SELECT s.id, s.step_number, s.instruction, s.safety_note, s.article_id,
                    a.title AS article_title, a.category AS article_category,
                    a.content AS article_content, a.source AS article_source
               FROM procedure_steps s
@@ -164,6 +164,7 @@ def list_procedure_hits(store, vehicle_id, search, limit=DEFAULT_LIMIT, offset=0
                     if collect({
                         "procedure_id": pid, "procedure_title": procedure["title"],
                         "step_id": step["id"], "step_number": step["step_number"],
+                        "article_id": step["article_id"] if doc_field else None,
                         "field": label, "excerpt": _excerpt(value, search),
                         "source": step["article_source"] if doc_field else procedure["source"],
                     }):

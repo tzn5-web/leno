@@ -214,7 +214,7 @@ class ProcedureSearchHitTests(unittest.TestCase):
         for count in (-1, 1001, True, 2.5, "2"):
             with self.subTest(count=count), self.assertRaises(ValueError):
                 next_hit_index(count)
-        for direction in (0, 2, True, "1"):
+        for direction in (0, 2, True, False, 1.0, -1.0, "1"):
             with self.subTest(direction=direction), self.assertRaises(ValueError):
                 next_hit_index(2, direction=direction)
         for selected in (-1, 2, True, 1.2, "1", 0):
@@ -246,6 +246,25 @@ class ProcedureSearchHitTests(unittest.TestCase):
                 self.assertEqual(hits[0]["source"], expected_source)
                 self.assertEqual(hits[0]["step_id"], self.sid)
                 self.assertEqual(hits[0]["step_number"], 1)
+
+    def test_document_hit_captures_link_identity_before_reassignment(self):
+        before=self.db.db.total_changes
+        hits=self.hits("DOC-PROVENANCE")
+        self.assertEqual(len(hits),1)
+        self.assertEqual(hits[0]["field"],"Proveniență document")
+        self.assertEqual(hits[0]["article_id"],self.doc)
+        self.assertEqual(hits[0]["step_id"],self.sid)
+        self.assertEqual(self.hits("GENERAL-ALERT")[0]["article_id"],None)
+        self.assertEqual(self.hits("SYNTHETIC-WARNING")[0]["article_id"],None)
+        self.assertEqual(self.db.db.total_changes,before)
+        self.db.db.execute("UPDATE procedure_steps SET article_id=? WHERE id=?",
+                           (self.foreign_doc,self.sid))
+        self.db.db.commit()
+        # The previously rendered hit must still identify its original article;
+        # a fresh search must not expose the now cross-vehicle document.
+        self.assertEqual(hits[0]["article_id"],self.doc)
+        self.assertEqual(self.hits("DOC-PROVENANCE"),[])
+        self.assertEqual(self.hits("SECRET-FOREIGN-SOURCE"),[])
 
     def test_metadata_hit_without_step(self):
         hits = self.hits("GENERAL-ALERT")
