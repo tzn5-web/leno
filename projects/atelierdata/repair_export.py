@@ -95,6 +95,7 @@ def procedure_html(store,procedure_id):
       ".step{break-inside:avoid;margin:1.3rem 0;padding:1rem;border:1px solid #ccd4dc}"
       ".safety-index{border:2px solid #b3312a;padding:1rem;margin:1.5rem 0;break-inside:avoid}"
       ".reference{font-size:.9rem;color:#46556a}" " .instruction{white-space:pre-wrap;overflow-wrap:anywhere}"
+      ".reference-index{border:1px solid #7891ab;padding:1rem;margin:1.5rem 0}"
       ".completion{display:block;margin-top:.8rem;padding:.4rem .6rem;background:#eef4fa}"
       ".completion input{width:1.1rem;height:1.1rem;vertical-align:middle}"
       "@media print{nav{display:none}body{margin:0;max-width:none}.step{page-break-inside:avoid}}</style>",
@@ -148,6 +149,36 @@ def procedure_html(store,procedure_id):
             parts.append("<li><a href='#pas-"+str(position)+"'>Pasul "
                          +esc(step["step_number"])+"</a>"+flags+"</li>")
         parts.append("</ol></nav>")
+    # Read-only index of distinct, same-vehicle references, with links to
+    # every step that uses each document. Never expose stale/foreign metadata.
+    references = {}
+    for position, step in enumerate(record["steps"], 1):
+        if step["reference_status"] != "linked" or not step["reference_title"]:
+            continue
+        article_id = step["reference_article_id"]
+        if article_id not in references:
+            references[article_id] = {"title": step["reference_title"],
+                                      "category": step["reference_category"],
+                                      "source": step["reference_source"],
+                                      "steps": []}
+        references[article_id]["steps"].append((position, step["step_number"]))
+    if references:
+        parts.append("<aside class='reference-index' aria-label='Index documente asociate'>"
+                     "<h2>Documente asociate — index</h2>"
+                     "<p class='meta'>Referințe verificate pentru acest vehicul. "
+                     "Fișierele nu sunt incluse în export.</p><ul>")
+        for reference in references.values():
+            details = ["<strong>"+esc(reference["title"])+"</strong>"]
+            if reference["category"]:
+                details.append("Tip: "+esc(reference["category"]))
+            if reference["source"]:
+                details.append("Sursă: "+esc(reference["source"]))
+            links = ", ".join("<a href='#pas-"+str(position)+"'>Pasul "
+                              +esc(number)+"</a>"
+                              for position, number in reference["steps"])
+            parts.append("<li>"+" — ".join(details)+"<br>Utilizat la: "
+                         +links+"</li>")
+        parts.append("</ul></aside>")
     for position, step in enumerate(record["steps"], 1):
         parts.append("<section class='step' id='pas-"+str(position)
                      +"'><h3>Pasul "+esc(step["step_number"])+"</h3>"
