@@ -92,6 +92,33 @@ def collect():
                 if target is None or target.isExternal():
                     skipped_calls += 1
                     continue
+                # Ghidra's flow reference alone is not enough: confirm the
+                # actual 32-bit x86 E8 rel32 opcode and its computed target.
+                # Do not count references to CALL operands or misidentified
+                # bytes as direct inter-function edges.
+                if str(ins.getMnemonicString()).upper() != 'CALL' or ins.getLength() != 5:
+                    skipped_calls += 1
+                    continue
+                raw = [int(value) & 0xff for value in ins.getBytes()]
+                if len(raw) != 5 or raw[0] != 0xe8:
+                    skipped_calls += 1
+                    continue
+                displacement = (raw[1] | (raw[2] << 8) |
+                                (raw[3] << 16) | (raw[4] << 24))
+                if displacement >= 0x80000000:
+                    displacement -= 0x100000000
+                site_address = ins.getAddress()
+                computed_target = (site_address.getOffset() + 5 + displacement) & 0xffffffff
+                if computed_target != (dest.getOffset() & 0xffffffff):
+                    skipped_calls += 1
+                    continue
+                memory = currentProgram.getMemory()
+                source_block = memory.getBlock(site_address)
+                target_block = memory.getBlock(dest)
+                if (source_block is None or not source_block.isExecute() or
+                        target_block is None or not target_block.isExecute()):
+                    skipped_calls += 1
+                    continue
                 if len(edges) >= MAX_EDGES:
                     truncated = True
                     break
@@ -99,7 +126,12 @@ def collect():
                     'caller': str(fn.getEntryPoint()),
                     'callee': str(target.getEntryPoint()),
                     'site': str(ins.getAddress()),
-                    'reference_type': 'UNCONDITIONAL_CALL'
+                    'reference_type': 'UNCONDITIONAL_CALL',
+                    'instruction_mnemonic': 'CALL',
+                    'instruction_length': 5,
+                    'direct_rel32_opcode_verified': True,
+                    'source_executable': True,
+                    'target_executable': True
                 })
             if truncated:
                 break
@@ -112,7 +144,8 @@ def main():
     sha, md5, output = checked_paths()
     edges, functions, instructions, skipped, truncated = collect()
     report = {
-        'schema': 'atelierdata-ghidra-direct-callgraph-v1',
+        'schema': 'atelierdata-ghidra-direct-callgraph-v2',
+        'edge_verification': 'x86-e8-rel32-ghidra-bytes-v1',
         'source_sha256': sha,
         'source_md5': md5,
         'source_sha256_verified': True,
@@ -126,7 +159,10 @@ def main():
         'non_direct_or_unresolved_calls_skipped': skipped,
         'coverage_truncated': truncated,
         'edges': edges,
-        'limitations': ('Ghidra-recognized direct unconditional function calls only. '
+        'limitations': ('Only x86 E8 rel32 calls with matching Ghidra reference target, '
+                        'five-byte instruction and executable source/target blocks. '
+                        'Ghidra-disassembled bytes are not independently replayed from the original PE here. '
+                        'Ghidra-recognized direct unconditional function calls only. '
                         'No proof of runtime reachability, dataflow, file access or IDF decoding.')
     }
     if os.path.islink(output):
