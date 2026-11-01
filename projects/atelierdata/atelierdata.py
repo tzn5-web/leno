@@ -696,6 +696,27 @@ def main():
                         window.refresh_steps(step_id)
                     if window.steps_tree.get_children()!=(str(step_id),):
                         raise RuntimeError('PROCEDURES_GUI_REORDER_RESTORE_FAILED')
+                    # Packaged GUI: a damaged/imported cross-vehicle link
+                    # must show a warning, never another vehicle's title.
+                    foreign_vehicle=ui.db.add_vehicle('FOREIGN SYNTHETIC','GUI TEST')
+                    try:
+                        ui.db.db.execute(
+                            'UPDATE articles SET vehicle_id=? WHERE id=?',
+                            (foreign_vehicle,second_article))
+                        ui.db.db.commit()
+                        window.refresh_steps(step_id)
+                        shown=window.procedure_detail_text.get('1.0','end')
+                        if 'AVERTISMENT REFERINȚĂ:' not in shown:
+                            raise RuntimeError('PROCEDURES_GUI_INVALID_REFERENCE_WARNING_MISSING')
+                        if 'Referință secundară sintetică' in shown:
+                            raise RuntimeError('PROCEDURES_GUI_FOREIGN_REFERENCE_TITLE_LEAK')
+                    finally:
+                        ui.db.db.execute(
+                            'UPDATE articles SET vehicle_id=? WHERE id=?',
+                            (vehicle,second_article))
+                        ui.db.db.commit()
+                        ui.db.delete_vehicle(foreign_vehicle)
+                        window.refresh_steps(step_id)
                 ui.root.after(200,check_steps)
                 def check_navigation():
                     window.steps_tree.selection_set(str(step_id))
