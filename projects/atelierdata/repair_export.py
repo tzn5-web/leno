@@ -94,6 +94,8 @@ def procedure_html(store,procedure_id):
       ".step{break-inside:avoid;margin:1.3rem 0;padding:1rem;border:1px solid #ccd4dc}"
       ".safety-index{border:2px solid #b3312a;padding:1rem;margin:1.5rem 0;break-inside:avoid}"
       ".reference{font-size:.9rem;color:#46556a}" " .instruction{white-space:pre-wrap;overflow-wrap:anywhere}"
+      ".completion{display:block;margin-top:.8rem;padding:.4rem .6rem;background:#eef4fa}"
+      ".completion input{width:1.1rem;height:1.1rem;vertical-align:middle}"
       "@media print{nav{display:none}body{margin:0;max-width:none}.step{page-break-inside:avoid}}</style>",
       "</head><body><header><h1>"+esc(record["title"])+"</h1>",
       "<p class='meta'><strong>Vehicul:</strong> "+esc(identity)+"<br>",
@@ -128,6 +130,9 @@ def procedure_html(store,procedure_id):
                          +esc(number)+"</a>: "+esc(" / ".join(labels))+"</li>")
         parts.append("</ul></aside>")
     parts.append("<h2>Pași de lucru</h2>")
+    if record["steps"]:
+        parts.append("<p class='meta'>Bifele marchează doar pașii parcurși în această "
+                     "pagină. Nu se salvează și nu confirmă siguranța lucrării.</p>")
     if not record["steps"]:
         parts.append("<p>Nu există pași introduși pentru această procedură.</p>")
     if record["steps"]:
@@ -158,6 +163,9 @@ def procedure_html(store,procedure_id):
                          +esc(step["reference_title"])
                          +("<br>Sursă document: "+esc(step["reference_source"])
                            if step["reference_source"] else "")+"</p>")
+        parts.append("<label class='completion'><input type='checkbox' id='parcurs-"
+                     +str(position)+"'> <span>Pasul "+esc(step["step_number"])
+                     +" parcurs</span></label>")
         parts.append("</section>")
     parts.append("<footer><hr><p class='meta'>Acest document reproduce numai informațiile "
                  "introduse sau importate autorizat. Fișierele atașate nu sunt incluse. "
