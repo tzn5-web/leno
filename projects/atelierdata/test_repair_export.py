@@ -114,6 +114,45 @@ class RepairExportTests(unittest.TestCase):
                          procedure_html(self.store, self.procedure))
         self.assertEqual(self.store.db.execute("PRAGMA quick_check").fetchone()[0], "ok")
 
+    def test_document_index_backlinks_are_stable_and_vehicle_scoped(self):
+        """Each verified document has one anchor and every linked step returns to it."""
+        second = self.store.add_article(
+            self.vehicle, "Note atelier", "<svg onload=alert(1)>",
+            "Synthetic content", "AUTHORIZED TEST")
+        self.store.db.execute(
+            "UPDATE procedure_steps SET article_id=? "
+            "WHERE procedure_id=? AND step_number=2",
+            (self.article, self.procedure))
+        self.store.db.commit()
+        add_step(self.store, self.procedure, "Third synthetic step", article_id=second)
+        before = self.store.db.total_changes
+        rendered = procedure_html(self.store, self.procedure)
+        self.assertEqual(rendered.count("id='document-1'"), 1)
+        self.assertEqual(rendered.count("id='document-2'"), 1)
+        self.assertEqual(rendered.count("href='#document-1'"), 2)
+        self.assertEqual(rendered.count("href='#document-2'"), 1)
+        self.assertIn("id='document-1'", rendered.split("Index documente asociate", 1)[1])
+        self.assertIn("&lt;svg onload=alert(1)&gt;", rendered)
+        self.assertNotIn("<svg", rendered)
+        self.assertNotIn("href='http", rendered)
+        self.assertEqual(self.store.db.total_changes, before)
+
+        foreign = self.store.add_vehicle("OTHER", "SYNTHETIC")
+        self.store.db.execute(
+            "UPDATE articles SET vehicle_id=? WHERE id=?", (foreign, second))
+        self.store.db.commit()
+        before = self.store.db.total_changes
+        redacted = procedure_html(self.store, self.procedure)
+        self.assertEqual(redacted.count("id='document-1'"), 1)
+        self.assertEqual(redacted.count("href='#document-1'"), 2)
+        self.assertNotIn("id='document-2'", redacted)
+        self.assertNotIn("href='#document-2'", redacted)
+        self.assertNotIn("AUTHORIZED TEST", redacted)
+        self.assertNotIn("&lt;svg onload", redacted)
+        self.assertIn("AVERTISMENT REFERINȚĂ", redacted)
+        self.assertEqual(self.store.db.total_changes, before)
+        self.assertEqual(self.store.db.execute("PRAGMA quick_check").fetchone()[0], "ok")
+
     def test_html_step_contents_links_are_offline_and_print_friendly(self):
         rendered=procedure_html(self.store,self.procedure)
         self.assertIn("<nav aria-label='Cuprinsul pașilor'>",rendered)
