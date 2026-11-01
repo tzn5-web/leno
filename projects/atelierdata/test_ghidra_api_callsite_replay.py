@@ -78,6 +78,37 @@ class ReplayTests(unittest.TestCase):
         self.assertNotIn("ReadFile", json.dumps(result))
 
 
+    def test_raw_push_immediate_to_idf_literal_is_independent_narrow_evidence(self):
+        data, sha, idf, api = fixtures()
+        modified = bytearray(data)
+        modified[0x230:0x235] = b"\\x68" + struct.pack("<I", 0x402100)
+        modified = bytes(modified)
+        new_sha = hashlib.sha256(modified).hexdigest()
+        for report in (idf, api):
+            report["source_sha256"] = new_sha
+            report["source_md5"] = hashlib.md5(modified).hexdigest()
+        ref = idf["keyword_hits"][".rdata"]["MODELS.IDF:ascii"][0]["references_from"][0]
+        ref["source_address"] = "RAM:00401030"
+        result = replay(modified, new_sha, idf, api)
+        self.assertEqual(result["idf_xrefs_with_raw_push_or_mov_literal_va"], 1)
+        self.assertEqual(result["matching_api_sites_in_idf_raw_pointer_functions"], 1)
+        self.assertFalse(result["instruction_boundaries_independently_verified"])
+        self.assertNotIn("00401030", json.dumps(result))
+
+    def test_raw_idf_pointer_evidence_rejects_wrong_operand_and_data_source(self):
+        data, sha, idf, api = fixtures()
+        ref = idf["keyword_hits"][".rdata"]["MODELS.IDF:ascii"][0]["references_from"][0]
+        ref["source_address"] = "RAM:00401030"
+        # A reported xref without the matching raw immediate is not evidence.
+        result = replay(data, sha, idf, api)
+        self.assertEqual(result["idf_xrefs_with_raw_push_or_mov_literal_va"], 0)
+        self.assertEqual(result["matching_api_sites_in_idf_raw_pointer_functions"], 0)
+        # A non-executable section cannot be counted as an instruction site.
+        ref["source_address"] = "RAM:00402100"
+        self.assertEqual(replay(data, sha, idf, api)["idf_xrefs_with_raw_push_or_mov_literal_va"], 0)
+        # The older Ghidra-reported shared-function count is kept separate.
+        self.assertEqual(result["matching_api_sites_in_idf_string_referencing_functions"], 1)
+
     def test_missing_idf_literal_address_is_not_independent_evidence(self):
         data, sha, idf, api = fixtures()
         hit = idf["keyword_hits"][".rdata"]["MODELS.IDF:ascii"][0]
