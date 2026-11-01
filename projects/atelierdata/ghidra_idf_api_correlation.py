@@ -54,6 +54,20 @@ def _identity(report, expected_sha256):
         raise ValueError("Ghidra report must declare no target execution")
 
 
+# These API families are only static xref triage categories. An xref to an
+# imported symbol is not proof of a runtime-reachable call or .IDF parsing.
+# Keep dynamic lookup separate: GetProcAddress alone is not file I/O.
+_API_FAMILIES = {
+    "file_open": frozenset(("CreateFileA", "CreateFileW")),
+    "file_read": frozenset(("ReadFile",)),
+    "file_position": frozenset(("SetFilePointer", "SetFilePointerEx")),
+    "file_mapping": frozenset(("CreateFileMappingA", "CreateFileMappingW",
+                               "MapViewOfFile")),
+    "dynamic_lookup": frozenset(("GetProcAddress",)),
+}
+_DIRECT_IO_FAMILIES = ("file_open", "file_read", "file_position", "file_mapping")
+
+
 _IDF_CAP_FLAGS = ("block_scan_cap_reached", "keyword_match_cap_reached",
                   "keyword_xref_cap_reached", "short_memory_read")
 
@@ -94,6 +108,8 @@ def correlate(idf_report, api_report, expected_sha256):
     idf_functions = set()
     api_functions = set()
     api_code_functions = set()
+    family_functions = {name: set() for name in _API_FAMILIES}
+    family_code_functions = {name: set() for name in _API_FAMILIES}
     idf_refs = api_refs = 0
     for block in hits.values():
         if not isinstance(block, dict):
@@ -135,8 +151,24 @@ def correlate(idf_report, api_report, expected_sha256):
                 if entry is not None:
                     key = _function_key(entry)
                     api_functions.add(key)
-                    if ref.get("instruction_mnemonic") in ("CALL", "JMP"):
+                    is_call_or_jump = ref.get("instruction_mnemonic") in ("CALL", "JMP")
+                    if is_call_or_jump:
                         api_code_functions.add(key)
+                    for family, names in _API_FAMILIES.items():
+                        if api_name in names:
+                            family_functions[family].add(key)
+                            if is_call_or_jump:
+                                family_code_functions[family].add(key)
+    direct_functions = set().union(*(family_functions[n] for n in _DIRECT_IO_FAMILIES))
+    direct_code_functions = set().union(*(family_code_functions[n] for n in _DIRECT_IO_FAMILIES))
+    family_shared = {
+        name: len(idf_functions & family_functions[name])
+        for name in _API_FAMILIES
+    }
+    family_shared_code = {
+        name: len(idf_functions & family_code_functions[name])
+        for name in _API_FAMILIES
+    }
     return {
         "schema": "atelierdata-ghidra-idf-api-correlation-v1",
         "source_sha256_claims_match": True,
@@ -151,13 +183,20 @@ def correlate(idf_report, api_report, expected_sha256):
         "api_call_or_jump_functions": len(api_code_functions),
         "shared_idf_and_api_functions": len(idf_functions & api_functions),
         "shared_idf_and_api_call_or_jump_functions": len(idf_functions & api_code_functions),
+        "shared_idf_and_direct_file_io_functions": len(idf_functions & direct_functions),
+        "shared_idf_and_direct_file_io_call_or_jump_functions": len(idf_functions & direct_code_functions),
+        "shared_idf_and_api_family_functions": family_shared,
+        "shared_idf_and_api_family_call_or_jump_functions": family_shared_code,
         "target_executed": False,
         "idf_decoder_proven": False,
         "limitations": ("Static, potentially truncated Ghidra xrefs. Older IDF reports "
                         "without explicit scan coverage have unknown completeness. "
                         "A shared function is a "
                         "triage candidate, not proof of file access or decoding. "
-                        "Dynamically resolved calls and indirect edges may be missed.")
+                        "API families are xref-only triage, not proven calls. "
+                        "GetProcAddress alone is not direct file I/O. "
+                        "Dynamically resolved calls, cross-function paths and "
+                        "indirect edges may be missed.")
     }
 
 
