@@ -11,7 +11,7 @@ import itertools
 import json
 import zipfile
 from pathlib import Path
-from split_archive_manifest_audit import inspect_manifest
+from split_archive_manifest_audit import inspect_manifest, reject_blocked_package
 
 WINDOW = 65536
 MAX_CHUNK = 1024 ** 3
@@ -19,6 +19,7 @@ MAX_CHUNK = 1024 ** 3
 
 def first_chunk_sample(root, chunk, archives):
     name = chunk['package']
+    reject_blocked_package(name)
     if name not in archives:
         path = root / name
         if path.is_symlink():
@@ -113,6 +114,15 @@ def self_test():
         assert summary['repeated_first16_pairs']==1
         assert summary['max_shared_prefix_bytes']==20
         assert pairs[0]['shared_prefix_bytes']==20
+        # Fail before any ZIP open, including when a manifest claims a
+        # Drive-blocked package is present in the local directory.
+        blocked = dict(records[0]['chunks'][0], package='autodata_part_0016.zip')
+        try:
+            first_chunk_sample(root, blocked, {})
+        except ValueError as exc:
+            assert 'Blocked' in str(exc)
+        else:
+            raise AssertionError('Blocked part_0016 was not rejected')
         manifest['files'][0]['chunks'][0]['sha256']='0'*64
         try:
             audit(manifest,root)
