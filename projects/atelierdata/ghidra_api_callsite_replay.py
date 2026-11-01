@@ -75,6 +75,9 @@ def _idf_functions(data, pe, report):
     """
     functions = set()
     direct_pointer_functions = set()
+    # Keep all Ghidra-claimed functions with byte-matched pointer sites for
+    # provenance counters, even when ownership is later rejected.
+    claimed_pointer_functions = set()
     direct_pointer_sites = set()
     # A separate stronger tier requires Ghidra to report an actual 5-byte
     # PUSH/MOV instruction starting at the source of a DATA reference.
@@ -127,6 +130,7 @@ def _idf_functions(data, pe, report):
                     if (opcode == 0x68 or 0xb8 <= opcode <= 0xbf) and (
                             struct.unpack_from("<I", data, offset + 1)[0] == va):
                         direct_pointer_sites.add((src_va, va))
+                        claimed_pointer_functions.add(function)
                         # The raw bytes are real even if the reported containing
                         # function is impossible. Keep site counts separate from
                         # function-level correlation.
@@ -147,7 +151,7 @@ def _idf_functions(data, pe, report):
                                 boundary_pointer_functions.add(function)
     return (functions, direct_pointer_functions, len(direct_pointer_sites),
             boundary_pointer_functions, len(boundary_pointer_sites),
-            verified, missing, mismatched)
+            verified, missing, mismatched, claimed_pointer_functions)
 
 def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict) -> dict:
     """Corroborate narrow raw IAT patterns without emitting private addresses."""
@@ -168,7 +172,8 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
     (idf_functions, direct_idf_functions, direct_idf_pointer_refs,
      boundary_idf_functions, boundary_idf_pointer_refs,
      idf_literals_verified, idf_literals_missing_address,
-     idf_literals_mismatched) = _idf_functions(data, pe, idf_report)
+     idf_literals_mismatched, claimed_idf_pointer_functions) = _idf_functions(
+         data, pe, idf_report)
     inspected = mapped_executable = nonexec = unmapped = 0
     raw_opcode_candidates = import_matched = shared_idf_matched = 0
     direct_idf_shared_sites = 0
@@ -260,6 +265,9 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
         "reported_api_flow_sites_with_address_inspected": inspected,
         "idf_literal_hits_verified_against_source_pe": idf_literals_verified,
         "idf_xrefs_with_raw_push_or_mov_literal_va": direct_idf_pointer_refs,
+        "ghidra_claimed_idf_pointer_function_count": len(claimed_idf_pointer_functions),
+        "ghidra_claimed_idf_pointer_functions_rejected_by_pe_ownership":
+            len(claimed_idf_pointer_functions - direct_idf_functions),
         "matching_api_sites_in_idf_raw_pointer_functions": direct_idf_shared_sites,
         "idf_xrefs_with_ghidra_boundary_and_raw_pointer": boundary_idf_pointer_refs,
         "matching_api_sites_in_ghidra_idf_pointer_functions": boundary_idf_shared_sites,
