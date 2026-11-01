@@ -680,6 +680,9 @@ def main():
                         (step_id,)).fetchone()
                     if linked['article_id']!=second_article or not linked['safety_note']:
                         raise RuntimeError('PROCEDURES_REFERENCE_PICKER_UPDATE_FAILED')
+                    from repair_export import procedure_html
+                    if 'Tip document: Note atelier' not in procedure_html(ui.db,pid):
+                        raise RuntimeError('PROCEDURES_GUI_EXPORT_VALID_CATEGORY_MISSING')
                     # Packaged Windows GUI regression: move a synthetic step
                     # both ways, verify the visible order and SQLite numbering.
                     # Restore the original single-step fixture afterwards.
@@ -718,7 +721,6 @@ def main():
                             raise RuntimeError('PROCEDURES_GUI_FOREIGN_REFERENCE_TITLE_LEAK')
                         # Verify the same warning/redaction in offline exports
                         # while the real Windows procedure editor is open.
-                        from repair_export import procedure_html
                         printable=procedure_html(ui.db,pid)
                         if ("href='#pas-1'" not in printable
                                 or "id='pas-1'" not in printable
@@ -737,8 +739,9 @@ def main():
                                 or "AVERTISMENT GENERAL SINTETIC" not in printable
                                 or "Pasul 1</a>: Avertisment de siguranță / Referință indisponibilă" not in printable):
                             raise RuntimeError('PROCEDURES_GUI_EXPORT_SAFETY_INDEX_MISSING')
-                        if 'Referință secundară sintetică' in printable:
-                            raise RuntimeError('PROCEDURES_GUI_EXPORT_FOREIGN_TITLE_LEAK')
+                        if ('Referință secundară sintetică' in printable
+                                or 'Tip document: Note atelier' in printable):
+                            raise RuntimeError('PROCEDURES_GUI_EXPORT_FOREIGN_METADATA_LEAK')
                         if (printable.count("type='checkbox'") != 1
                                 or "id='parcurs-1'" not in printable
                                 or 'Nu se salvează și nu confirmă siguranța lucrării.' not in printable):
@@ -748,7 +751,8 @@ def main():
                         payload=json.loads(export_path.read_text(encoding='utf-8'))
                         exported=payload['procedures'][0]['steps'][0]
                         if (exported['reference_status']!='invalid_or_unavailable'
-                                or exported['reference_article_id'] is not None):
+                                or exported['reference_article_id'] is not None
+                                or exported['reference_category'] is not None):
                             raise RuntimeError('PROCEDURES_GUI_EXPORT_FOREIGN_ID_LEAK')
                     finally:
                         ui.db.db.execute(

@@ -234,6 +234,48 @@ class RepairExportTests(unittest.TestCase):
         self.assertEqual(html_target.read_text(encoding="utf-8"),"KEEP HTML")
         self.assertEqual(json_target.read_text(encoding="utf-8"),"KEEP JSON")
 
+
+    def test_verified_document_category_in_exports_and_foreign_redaction(self):
+        """Expose only the category of a same-vehicle document, never a foreign one."""
+        before=self.store.db.total_changes
+        output=self.root/"category.json"
+        export_procedures_json(self.store,output,self.vehicle)
+        valid=json.loads(output.read_text(encoding="utf-8"))["procedures"][0]["steps"][0]
+        self.assertEqual(valid["reference_category"],"Scheme electrice")
+        self.assertIn("Tip document: Scheme electrice",procedure_html(self.store,self.procedure))
+        self.assertEqual(self.store.db.total_changes,before)
+
+        # Even hostile category text is inert in the printable HTML.
+        self.store.db.execute(
+            "UPDATE articles SET category=? WHERE id=?",
+            ("<svg onload=alert(1)>",self.article))
+        self.store.db.commit()
+        escaped=procedure_html(self.store,self.procedure)
+        self.assertIn("Tip document: &lt;svg onload=alert(1)&gt;",escaped)
+        self.assertNotIn("<svg",escaped)
+
+        foreign_vehicle=self.store.add_vehicle("OTHER","CATEGORY TEST")
+        foreign=self.store.add_article(
+            foreign_vehicle,"PRIVATE FOREIGN CATEGORY","PRIVATE FOREIGN TITLE",
+            "PRIVATE FOREIGN CONTENT","PRIVATE FOREIGN SOURCE")
+        self.store.db.execute(
+            "UPDATE procedure_steps SET article_id=? WHERE procedure_id=? AND step_number=1",
+            (foreign,self.procedure))
+        self.store.db.commit()
+        before=self.store.db.total_changes
+        export_procedures_json(self.store,output,self.vehicle)
+        redacted=json.loads(output.read_text(encoding="utf-8"))["procedures"][0]["steps"][0]
+        self.assertEqual(redacted["reference_status"],"invalid_or_unavailable")
+        self.assertIsNone(redacted["reference_category"])
+        self.assertIsNone(redacted["reference_title"])
+        self.assertIsNone(redacted["reference_source"])
+        rendered=procedure_html(self.store,self.procedure)
+        self.assertIn("AVERTISMENT REFERINȚĂ",rendered)
+        self.assertNotIn("PRIVATE FOREIGN",rendered)
+        self.assertNotIn("PRIVATE FOREIGN",output.read_text(encoding="utf-8"))
+        self.assertEqual(self.store.db.total_changes,before)
+        self.assertEqual(self.store.db.execute("PRAGMA quick_check").fetchone()[0],"ok")
+
     def test_cli_exports(self):
         script=str(Path(__file__).with_name("atelierdata.py"))
         target=self.root/"cli-procedures.json"

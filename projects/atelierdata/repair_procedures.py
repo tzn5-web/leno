@@ -193,7 +193,8 @@ def list_steps(store,procedure_id):
     # A damaged/imported database may contain an article_id from another vehicle.
     # Never display its title or content through the procedure step list.
     return store.db.execute(
-        "SELECT s.*,a.title AS reference_title,a.source AS reference_source FROM procedure_steps s "
+        "SELECT s.*,a.title AS reference_title,a.category AS reference_category, "
+        "a.source AS reference_source FROM procedure_steps s "
         "JOIN procedures p ON p.id=s.procedure_id "
         "LEFT JOIN articles a ON a.id=s.article_id AND a.vehicle_id=p.vehicle_id "
         "WHERE s.procedure_id=? ORDER BY s.step_number,s.id",

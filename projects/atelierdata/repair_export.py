@@ -49,6 +49,7 @@ def _record(store,procedure):
             "safety_note":step["safety_note"],
             "reference_article_id":None if invalid else step["article_id"],
             "reference_title":None if invalid else step["reference_title"],
+            "reference_category":None if invalid else step["reference_category"],
             "reference_source":None if invalid else step["reference_source"],
             "reference_status":status
         })
@@ -161,6 +162,8 @@ def procedure_html(store,procedure_id):
         if step["reference_title"]:
             parts.append("<p class='reference'>Document asociat: "
                          +esc(step["reference_title"])
+                         +("<br>Tip document: "+esc(step["reference_category"])
+                           if step["reference_category"] else "")
                          +("<br>Sursă document: "+esc(step["reference_source"])
                            if step["reference_source"] else "")+"</p>")
         parts.append("<label class='completion'><input type='checkbox' id='parcurs-"
