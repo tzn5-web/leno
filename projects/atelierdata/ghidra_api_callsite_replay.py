@@ -25,30 +25,54 @@ _FLOW_TYPES = frozenset(("UNCONDITIONAL_CALL", "COMPUTED_CALL",
                          "UNCONDITIONAL_JUMP", "COMPUTED_JUMP"))
 
 
-def _raw_offset(data, pe, va):
-    """Return a unique six-byte file-backed mapping, or None."""
+def _raw_offset(data, pe, va, need=6):
+    """Return a unique, initialized, file-backed mapping for *need* bytes."""
     rva = va - pe["image_base"]
     matches = []
     for sec in pe["sections"]:
         delta = rva - sec["rva"]
-        if 0 <= delta and delta + 6 <= min(sec["raw_size"], sec["vsize"]):
+        if 0 <= delta and delta + need <= min(sec["raw_size"], sec["vsize"]):
             off = sec["raw_at"] + delta
-            if off + 6 <= len(data):
+            if off + need <= len(data):
                 matches.append((off, sec["executable"]))
     return matches[0] if len(matches) == 1 else None
 
 
-def _idf_functions(report):
+def _idf_functions(data, pe, report):
+    """Verify literal .IDF bytes at Ghidra-reported PE VAs before using xrefs.
+
+    This validates only the existence of a static string in the source PE.
+    Ghidra's association of a reference with a function is still unverified.
+    Missing/invalid addresses never contribute to shared-function evidence.
+    """
     functions = set()
+    verified = missing = mismatched = 0
     for block in report["keyword_hits"].values():
         for name, hits in block.items():
-            if name.split(":", 1)[0].upper().endswith(".IDF"):
-                for hit in hits:
-                    for ref in hit["references_from"]:
-                        if ref.get("function_entry") is not None:
-                            functions.add(_function_key(ref["function_entry"]))
-    return functions
-
+            if not isinstance(name, str) or ":" not in name:
+                continue
+            term, encoding = name.rsplit(":", 1)
+            if not term.upper().endswith(".IDF") or encoding not in ("ascii", "utf16le"):
+                continue
+            needle = term.encode("ascii" if encoding == "ascii" else "utf-16le")
+            for hit in hits:
+                address = hit.get("address")
+                if address is None:
+                    missing += 1
+                    continue
+                space, va = _function_key(address)
+                if space != "ram" or not 0 <= va <= 0xffffffff:
+                    mismatched += 1
+                    continue
+                mapped = _raw_offset(data, pe, va, len(needle))
+                if mapped is None or data[mapped[0]:mapped[0] + len(needle)] != needle:
+                    mismatched += 1
+                    continue
+                verified += 1
+                for ref in hit["references_from"]:
+                    if ref.get("function_entry") is not None:
+                        functions.add(_function_key(ref["function_entry"]))
+    return functions, verified, missing, mismatched
 
 def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict) -> dict:
     """Corroborate narrow raw IAT patterns without emitting private addresses."""
@@ -66,7 +90,7 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
             api_report.get("source_md5") != source_md5):
         raise ValueError("Ghidra report source MD5 mismatch")
     pe = parse_pe32(data)
-    idf_functions = _idf_functions(idf_report)
+    idf_functions, idf_literals_verified, idf_literals_missing_address, idf_literals_mismatched = _idf_functions(data, pe, idf_report)
     inspected = mapped_executable = nonexec = unmapped = 0
     raw_opcode_candidates = import_matched = shared_idf_matched = 0
     opcode_flow_conflicts = duplicate_sites = ambiguous_sites = 0
@@ -150,6 +174,9 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
         "original_sha256_verified": True,
         "source_md5_matches_both_ghidra_reports": True,
         "reported_api_flow_sites_with_address_inspected": inspected,
+        "idf_literal_hits_verified_against_source_pe": idf_literals_verified,
+        "idf_literal_hits_missing_address": idf_literals_missing_address,
+        "idf_literal_hits_unmapped_or_mismatched": idf_literals_mismatched,
         "unique_sites_repeated_in_report": duplicate_sites,
         "sites_with_conflicting_reported_attribution": ambiguous_sites,
         "references_missing_ghidra_instruction_boundary_evidence": missing_instruction_evidence,
@@ -171,6 +198,7 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
                        "Ghidra-reported instruction boundaries must be explicit, 6-byte, and match xref sources; they are not independently proven. "
                        "Conflicting API names, functions or flow types for one physical site are excluded. "
                        "Dynamic imports, thunks, other encodings and indirect flows are omitted. "
+                       "IDF literal bytes are independently checked at reported PE VAs, but string xrefs and containing functions remain Ghidra claims. "
                        "No evidence of an IDF decoder or licensed data access."
     }
 
