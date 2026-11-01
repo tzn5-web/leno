@@ -681,8 +681,13 @@ def main():
                     if linked['article_id']!=second_article or not linked['safety_note']:
                         raise RuntimeError('PROCEDURES_REFERENCE_PICKER_UPDATE_FAILED')
                     from repair_export import procedure_html
-                    if 'Tip document: Note atelier' not in procedure_html(ui.db,pid):
+                    exported_html=procedure_html(ui.db,pid)
+                    if 'Tip document: Note atelier' not in exported_html:
                         raise RuntimeError('PROCEDURES_GUI_EXPORT_VALID_CATEGORY_MISSING')
+                    if ("Index documente asociate" not in exported_html
+                            or "Referință secundară sintetică" not in exported_html
+                            or "href='#pas-1'" not in exported_html):
+                        raise RuntimeError('PROCEDURES_GUI_DOCUMENT_INDEX_MISSING')
                     # Packaged Windows GUI regression: move a synthetic step
                     # both ways, verify the visible order and SQLite numbering.
                     # Restore the original single-step fixture afterwards.
