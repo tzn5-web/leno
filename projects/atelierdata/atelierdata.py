@@ -584,7 +584,7 @@ def main():
             step_id=add_step(ui.db,pid,'Pas fictiv 100%_ pentru smoke-test',
                      safety_note='Nu este o instrucțiune reală',article_id=article)
             second_article=ui.db.add_article(vehicle,'Note atelier',
-                          'Referință secundară sintetică','Große BODY%_TOKEN test','TEST OWNED')
+                          'Referință secundară sintetică','Date fictive; Große BODY%_TOKEN test','TEST OWNED')
             dtc_id=add_dtc(ui.db,vehicle,'P0A01','Sistem demonstrativ',
                           'Descriere inventată',source='DATE SINTETICE',
                           procedure_id=pid,article_id=article)
