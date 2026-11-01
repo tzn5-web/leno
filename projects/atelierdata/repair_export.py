@@ -157,7 +157,8 @@ def procedure_html(store,procedure_id):
             continue
         article_id = step["reference_article_id"]
         if article_id not in references:
-            references[article_id] = {"title": step["reference_title"],
+            references[article_id] = {"anchor": "document-" + str(len(references) + 1),
+                                      "title": step["reference_title"],
                                       "category": step["reference_category"],
                                       "source": step["reference_source"],
                                       "steps": []}
@@ -176,7 +177,7 @@ def procedure_html(store,procedure_id):
             links = ", ".join("<a href='#pas-"+str(position)+"'>Pasul "
                               +esc(number)+"</a>"
                               for position, number in reference["steps"])
-            parts.append("<li>"+" — ".join(details)+"<br>Utilizat la: "
+            parts.append("<li id='"+reference["anchor"]+"'>"+" — ".join(details)+"<br>Utilizat la: "
                          +links+"</li>")
         parts.append("</ul></aside>")
     for position, step in enumerate(record["steps"], 1):
@@ -196,7 +197,9 @@ def procedure_html(store,procedure_id):
                          +("<br>Tip document: "+esc(step["reference_category"])
                            if step["reference_category"] else "")
                          +("<br>Sursă document: "+esc(step["reference_source"])
-                           if step["reference_source"] else "")+"</p>")
+                           if step["reference_source"] else "")
+                         + "<br><a href='#" + references[step["reference_article_id"]]["anchor"]
+                         + "'>Vezi în indexul documentelor</a></p>")
         parts.append("<label class='completion'><input type='checkbox' id='parcurs-"
                      +str(position)+"'> <span>Pasul "+esc(step["step_number"])
                      +" parcurs</span></label>")
