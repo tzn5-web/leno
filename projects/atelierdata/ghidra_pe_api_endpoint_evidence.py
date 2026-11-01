@@ -25,7 +25,7 @@ def _trusted_windows_api_import(dll, families):
     # A prefix is not an API-set contract: arbitrary PE import DLL names
     # such as api-ms-win-core-file-malicious.dll must not be trusted.
     match = re.fullmatch(
-        r"API-MS-WIN-CORE-(FILE|MEMORY|LIBRARYLOADER)-L[0-9]+-[0-9]+-[0-9]+\\.DLL",
+        r"API-MS-WIN-CORE-(FILE|MEMORY|LIBRARYLOADER)-L[0-9]+-[0-9]+-[0-9]+\.DLL",
         dll,
     )
     if match is None:
