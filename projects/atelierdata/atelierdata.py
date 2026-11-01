@@ -584,7 +584,7 @@ def main():
             step_id=add_step(ui.db,pid,'Pas fictiv 100%_ pentru smoke-test',
                      safety_note='Nu este o instrucțiune reală',article_id=article)
             second_article=ui.db.add_article(vehicle,'Note atelier',
-                          'Referință secundară sintetică','Date fictive','TEST OWNED')
+                          'Referință secundară sintetică','Große BODY%_TOKEN test','TEST OWNED')
             dtc_id=add_dtc(ui.db,vehicle,'P0A01','Sistem demonstrativ',
                           'Descriere inventată',source='DATE SINTETICE',
                           procedure_id=pid,article_id=article)
@@ -655,6 +655,18 @@ def main():
                     refs=picker.reference_tree.get_children()
                     if set(refs)!={str(article),str(second_article)}:
                         raise RuntimeError('PROCEDURES_REFERENCE_PICKER_WRONG_VEHICLE_SCOPE')
+                    picker.reference_search_var.set('GROSSE BODY%_TOKEN')
+                    if picker.reference_tree.get_children()!=(str(second_article),):
+                        raise RuntimeError('PROCEDURES_REFERENCE_PICKER_BODY_SEARCH_FAILED')
+                    picker.reference_search_var.set('BODY%X')
+                    if picker.reference_tree.get_children():
+                        raise RuntimeError('PROCEDURES_REFERENCE_PICKER_WILDCARD_LEAK')
+                    picker.reference_search_var.set('x'*201)
+                    if picker.reference_tree.get_children():
+                        raise RuntimeError('PROCEDURES_REFERENCE_PICKER_INVALID_SEARCH_LEAK')
+                    picker.reference_search_var.set('')
+                    if set(picker.reference_tree.get_children())!={str(article),str(second_article)}:
+                        raise RuntimeError('PROCEDURES_REFERENCE_PICKER_SEARCH_RESET_FAILED')
                     picker.reference_tree.selection_set(str(second_article))
                     picker.apply_reference()
                     linked=ui.db.db.execute(
