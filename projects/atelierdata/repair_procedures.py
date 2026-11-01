@@ -24,6 +24,13 @@ def _text(value, label, limit, required=False):
     return value
 
 
+def _require_id(value, label):
+    """Reject bool, float and numeric strings before SQLite ID binding."""
+    if type(value) is not int or value <= 0:
+        raise ValueError(f"Invalid {label} ID")
+    return value
+
+
 def ensure_schema(store):
     store.db.executescript("""
     CREATE TABLE IF NOT EXISTS procedures(
@@ -57,6 +64,7 @@ def ensure_schema(store):
 
 
 def create_procedure(store, vehicle_id, system, title, summary="", precautions="", source=""):
+    _require_id(vehicle_id, "vehicle")
     fields = (_text(system,"system",MAX_SYSTEM,True),
               _text(title,"title",MAX_TITLE,True),
               _text(summary,"summary",MAX_SUMMARY),
@@ -71,6 +79,7 @@ def create_procedure(store, vehicle_id, system, title, summary="", precautions="
 
 
 def update_procedure(store, procedure_id, system, title, summary="",precautions="",source=""):
+    _require_id(procedure_id, "procedure")
     fields=(_text(system,"system",MAX_SYSTEM,True),
             _text(title,"title",MAX_TITLE,True),
             _text(summary,"summary",MAX_SUMMARY),
@@ -165,15 +174,18 @@ def list_reference_articles(store, procedure_id, search=""):
 
 
 def get_procedure(store,pid):
+    _require_id(pid, "procedure")
     return store.db.execute("SELECT * FROM procedures WHERE id=?",(pid,)).fetchone()
 
 
 def delete_procedure(store,pid):
+    _require_id(pid, "procedure")
     store.db.execute("DELETE FROM procedures WHERE id=?",(pid,))
     store.db.commit()
 
 
 def list_steps(store,procedure_id):
+    _require_id(procedure_id, "procedure")
     # A damaged/imported database may contain an article_id from another vehicle.
     # Never display its title or content through the procedure step list.
     return store.db.execute(
@@ -223,6 +235,7 @@ def _renumber(store,procedure_id,ordered_ids):
 
 
 def add_step(store,procedure_id,instruction,safety_note="",article_id=None,position=None):
+    _require_id(procedure_id, "procedure")
     instruction=_text(instruction,"instruction",MAX_INSTRUCTION,True)
     safety_note=_text(safety_note,"safety note",MAX_WARNING)
     ref=_article_reference(store,procedure_id,article_id)
@@ -248,6 +261,7 @@ def add_step(store,procedure_id,instruction,safety_note="",article_id=None,posit
 
 
 def update_step(store,step_id,instruction,safety_note="",article_id=None):
+    _require_id(step_id, "step")
     old=store.db.execute("SELECT * FROM procedure_steps WHERE id=?",(step_id,)).fetchone()
     if old is None:
         raise ValueError("Step does not exist")
@@ -260,6 +274,7 @@ def update_step(store,step_id,instruction,safety_note="",article_id=None):
 
 
 def delete_step(store,step_id):
+    _require_id(step_id, "step")
     old=store.db.execute("SELECT procedure_id FROM procedure_steps WHERE id=?",(step_id,)).fetchone()
     if old is None:
         return
@@ -275,6 +290,7 @@ def delete_step(store,step_id):
 
 
 def move_step(store,step_id,delta):
+    _require_id(step_id, "step")
     # Membership equality would accept True and 1.0 as the direction +1.
     if type(delta) is not int or delta not in (-1,1):
         raise ValueError("Direction must be +1 or -1")
@@ -299,6 +315,7 @@ def move_step(store,step_id,delta):
 
 
 def procedure_text(store,pid):
+    _require_id(pid, "procedure")
     p=get_procedure(store,pid)
     if p is None:
         raise ValueError("Procedure does not exist")
