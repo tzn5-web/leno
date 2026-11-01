@@ -56,6 +56,12 @@ class CallgraphTests(unittest.TestCase):
         result = analyze(idf, api, graph, SHA)
         self.assertEqual(result['idf_sources_by_shortest_direct_file_io_hops']['2'], 0)
 
+    def test_computed_api_reference_not_treated_as_direct(self):
+        idf, api, graph = fixtures()
+        api['api_symbols']['ReadFile'][0]['references'][0]['reference_type'] = 'COMPUTED_CALL'
+        result = analyze(idf, api, graph, SHA)
+        self.assertEqual(result['idf_sources_by_shortest_direct_file_io_hops']['2'], 0)
+
     def test_missing_call_edge_not_claimed(self):
         idf, api, graph = fixtures()
         graph['edges'].pop()
