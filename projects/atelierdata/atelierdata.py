@@ -684,6 +684,8 @@ def main():
                     exported_html=procedure_html(ui.db,pid)
                     if 'Tip document: Note atelier' not in exported_html:
                         raise RuntimeError('PROCEDURES_GUI_EXPORT_VALID_CATEGORY_MISSING')
+                    if 'Fișiere atașate (înregistrate, neverificate): 0' not in exported_html:
+                        raise RuntimeError('PROCEDURES_GUI_EXPORT_ATTACHMENT_COUNT_MISSING')
                     if ("Index documente asociate" not in exported_html
                             or "Referință secundară sintetică" not in exported_html
                             or "href='#pas-1'" not in exported_html

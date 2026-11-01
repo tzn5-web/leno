@@ -8,6 +8,7 @@ from pathlib import Path
 from atelierdata import Store
 from repair_procedures import ensure_schema,create_procedure,add_step
 from repair_export import export_procedures_json,export_procedure_html,procedure_html
+from atelierdata_extensions import attach_document
 
 class RepairExportTests(unittest.TestCase):
     def setUp(self):
@@ -68,6 +69,43 @@ class RepairExportTests(unittest.TestCase):
         empty = procedure_html(self.store, self.procedure)
         self.assertNotIn("type='checkbox'", empty)
         self.assertNotIn("Bifele marchează", empty)
+
+    def test_document_index_counts_registered_attachments_without_claiming_integrity(self):
+        """Show verified vehicle-scoped metadata, not unverified file availability."""
+        sample = self.root / "owned-synthetic.txt"
+        sample.write_text("Synthetic owned reference, no repair data", encoding="utf-8")
+        attach_document(self.store, self.article, sample)
+        before = self.store.db.total_changes
+        rendered = procedure_html(self.store, self.procedure)
+        self.assertIn("Fișiere atașate (înregistrate, neverificate): 1", rendered)
+        self.assertIn("Reference &lt;img", rendered)
+        self.assertEqual(self.store.db.total_changes, before)
+
+        # The export must not read files or claim they pass integrity checks.
+        stored = self.store.db.execute(
+            "SELECT path FROM attachments WHERE article_id=?", (self.article,)
+        ).fetchone()["path"]
+        (self.root / "documents" / stored).unlink()
+        self.assertIn("Fișiere atașate (înregistrate, neverificate): 1",
+                      procedure_html(self.store, self.procedure))
+        self.assertEqual(self.store.db.total_changes, before)
+
+        other = self.store.add_vehicle("OTHER", "MODEL")
+        foreign = self.store.add_article(
+            other, "Scheme electrice", "PRIVATE OTHER TITLE",
+            "PRIVATE OTHER BODY", "PRIVATE OTHER SOURCE")
+        self.store.db.execute(
+            "UPDATE procedure_steps SET article_id=? WHERE procedure_id=?",
+            (foreign, self.procedure))
+        self.store.db.commit()
+        before = self.store.db.total_changes
+        redacted = procedure_html(self.store, self.procedure)
+        self.assertNotIn("Index documente asociate", redacted)
+        self.assertNotIn("PRIVATE OTHER", redacted)
+        self.assertNotIn("Fișiere atașate (înregistrate, neverificate)", redacted)
+        self.assertIn("AVERTISMENT REFERINȚĂ", redacted)
+        self.assertEqual(self.store.db.total_changes, before)
+        self.assertEqual(self.store.db.execute("PRAGMA quick_check").fetchone()[0], "ok")
 
     def test_document_index_groups_steps_and_redacts_foreign_references(self):
         """Offline document index links every use without exposing other vehicles."""

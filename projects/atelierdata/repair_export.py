@@ -169,12 +169,20 @@ def procedure_html(store,procedure_id):
                      "<h2>Documente asociate — index</h2>"
                      "<p class='meta'>Referințe verificate pentru acest vehicul. "
                      "Fișierele nu sunt incluse în export.</p><ul>")
-        for reference in references.values():
+        for article_id, reference in references.items():
             details = ["<strong>"+esc(reference["title"])+"</strong>"]
             if reference["category"]:
                 details.append("Tip: "+esc(reference["category"]))
             if reference["source"]:
                 details.append("Sursă: "+esc(reference["source"]))
+            # Count only SQLite attachment records for verified same-vehicle
+            # references. This is NOT a filesystem/hash verification: actual
+            # files are checked by the viewer when explicitly opened.
+            registered_files = store.db.execute(
+                "SELECT COUNT(*) FROM attachments WHERE article_id=?",
+                (article_id,)).fetchone()[0]
+            details.append("Fișiere atașate (înregistrate, neverificate): "
+                           +str(registered_files))
             links = ", ".join("<a href='#pas-"+str(position)+"'>Pasul "
                               +esc(number)+"</a>"
                               for position, number in reference["steps"])
