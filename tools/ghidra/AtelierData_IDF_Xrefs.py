@@ -76,6 +76,63 @@ def main():
     imported_sha256 = currentProgram.getExecutableSHA256()
     if imported_sha256 is None or imported_sha256.lower() != expected_sha256:
         raise ValueError('Ghidra imported PE SHA256 differs from independently verified source')
+    imported_md5 = currentProgram.getExecutableMD5()
+    if not imported_md5 or not re.match(r'^[0-9a-fA-F]{32}    blocks = []
+    observations = {}
+    block_scan_cap_reached = False
+    keyword_match_cap_reached = False
+    keyword_xref_cap_reached = False
+    short_memory_read = False
+    for block in currentProgram.getMemory().getBlocks():
+        if not block.isInitialized():
+            continue
+        planned = int(min(block.getSize(), MAX_SCAN_BYTES))
+        found, scanned = scan_block(block, refs)
+        blocks.append({'name': str(block.getName()),
+                       'size': int(block.getSize()),
+                       'requested_scan_bytes': planned,
+                       'scanned_bytes': int(scanned)})
+        block_scan_cap_reached |= int(block.getSize()) > MAX_SCAN_BYTES
+        short_memory_read |= scanned < planned
+        if found:
+            observations[str(block.getName())] = found
+            for matches in found.values():
+                keyword_match_cap_reached |= len(matches) >= MAX_MATCHES_PER_TERM
+                for match in matches:
+                    keyword_xref_cap_reached |= len(match['references_from']) >= MAX_XREFS_PER_MATCH
+    result = {
+        'tool': 'Ghidra static analysis, AtelierData_IDF_Xrefs.py',
+        'program_name': str(currentProgram.getName()),
+        'language_id': str(currentProgram.getLanguageID()),
+        'source_sha256': imported_sha256.lower(),
+        'source_md5': imported_md5.lower(),
+        'ghidra_import_sha256_verified': True,
+        'keyword_hit_types': ['ascii', 'utf16le'],
+        'block_scan_cap_reached': bool(block_scan_cap_reached),
+        'keyword_match_cap_reached': bool(keyword_match_cap_reached),
+        'keyword_xref_cap_reached': bool(keyword_xref_cap_reached),
+        'short_memory_read': bool(short_memory_read),
+        'keyword_scan_coverage_complete': not any((
+            block_scan_cap_reached, keyword_match_cap_reached,
+            keyword_xref_cap_reached, short_memory_read)),
+        'coverage_note': ('A reached cap is treated as incomplete evidence, even if '
+                          'the exact number of omitted matches is unknown.'),
+        'executed_target_binary': False,
+        'idf_decoder_proven': False,
+        'blocks': blocks,
+        'keyword_hits': observations,
+        'limitations': ('Static, potentially capped API-name/IDF keyword hits and containing functions only. '
+                        'A string reference is not an API invocation. No proof of IDF loader, '
+                        'compression algorithm, decryption, or legal right to copy data.')
+    }
+    with open(destination, 'w') as stream:
+        json.dump(result, stream, indent=2, sort_keys=True)
+    print('ATELIERDATA_GHIDRA_STATIC_REPORT=' + destination)
+
+
+main()
+, imported_md5):
+        raise ValueError('Ghidra imported PE MD5 unavailable')
     refs = currentProgram.getReferenceManager()
     blocks = []
     observations = {}
