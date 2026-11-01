@@ -31,8 +31,10 @@ def fixtures():
         "idf_decoder_proven": False,
         "api_symbols": {
             "ReadFile": [{"address": "EXTERNAL:00000001", "references": [
-                {"function_entry": "00401000", "instruction_mnemonic": "CALL"},
-                {"function_entry": "00401100", "instruction_mnemonic": None}]}]
+                {"function_entry": "00401000", "instruction_mnemonic": "CALL",
+                 "reference_type": "UNCONDITIONAL_CALL"},
+                {"function_entry": "00401100", "instruction_mnemonic": None,
+                 "reference_type": "DATA"}]}]
         }
     }
     return idf, api
@@ -84,9 +86,41 @@ class CorrelationTests(unittest.TestCase):
     def test_data_reference_is_not_a_call_or_jump(self):
         idf, api = fixtures()
         api["api_symbols"]["ReadFile"][0]["references"][0]["instruction_mnemonic"] = None
+        api["api_symbols"]["ReadFile"][0]["references"][0]["reference_type"] = "DATA"
         result = correlate(idf, api, SHA)
         self.assertEqual(result["shared_idf_and_direct_file_io_functions"], 1)
         self.assertEqual(result["shared_idf_and_direct_file_io_call_or_jump_functions"], 0)
+
+    def test_call_mnemonic_with_data_reference_is_not_a_flow_edge(self):
+        idf, api = fixtures()
+        ref = api["api_symbols"]["ReadFile"][0]["references"][0]
+        ref["reference_type"] = "DATA"
+        result = correlate(idf, api, SHA)
+        self.assertEqual(result["shared_idf_and_direct_file_io_call_or_jump_functions"], 0)
+
+    def test_legacy_mnemonic_only_reference_is_unclassified(self):
+        idf, api = fixtures()
+        ref = api["api_symbols"]["ReadFile"][0]["references"][0]
+        ref.pop("reference_type")
+        result = correlate(idf, api, SHA)
+        self.assertEqual(result["shared_idf_and_direct_file_io_call_or_jump_functions"], 0)
+        self.assertEqual(result["api_references_with_unknown_flow_type"], 1)
+        self.assertTrue(result["api_flow_reference_classification_incomplete_or_unknown"])
+
+    def test_explicit_ghidra_flow_flag_controls_classification(self):
+        idf, api = fixtures()
+        ref = api["api_symbols"]["ReadFile"][0]["references"][0]
+        ref["reference_type"] = "DATA"
+        ref["reference_is_call_or_jump"] = True
+        result = correlate(idf, api, SHA)
+        self.assertEqual(result["shared_idf_and_direct_file_io_call_or_jump_functions"], 1)
+        self.assertFalse(result["api_flow_reference_classification_incomplete_or_unknown"])
+
+    def test_invalid_ghidra_flow_flag_is_rejected(self):
+        idf, api = fixtures()
+        api["api_symbols"]["ReadFile"][0]["references"][0]["reference_is_call_or_jump"] = "false"
+        with self.assertRaisesRegex(ValueError, "flow flag"):
+            correlate(idf, api, SHA)
 
     def test_non_api_string_does_not_count_as_idf(self):
         idf, api = fixtures()
