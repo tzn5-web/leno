@@ -2,7 +2,7 @@
 import copy
 import unittest
 
-from ghidra_pe_api_endpoint_evidence import pe_backed_api_endpoints
+from ghidra_pe_api_endpoint_evidence import pe_backed_api_endpoints, _trusted_windows_api_import
 from pe_file_io_xrefs import parse_pe32
 from test_ghidra_api_callsite_replay import fixtures
 
@@ -65,6 +65,36 @@ class PeApiEndpointEvidenceTests(unittest.TestCase):
         self.assertEqual(conflicts, 1)
         self.assertFalse(endpoints["file_read"])
 
+
+
+    def test_same_name_export_from_untrusted_dll_is_not_file_api_evidence(self):
+        def spoof(data):
+            data = bytearray(data)
+            data[0x480:0x48d] = b"FAKECORE.dll\\0"
+            return bytes(data)
+        endpoints, count, conflicts = self._run(data_change=spoof)
+        self.assertEqual(count, 0)
+        self.assertEqual(conflicts, 0)
+        self.assertFalse(endpoints["file_read"])
+
+    def test_caller_entry_after_callsite_is_not_ownership_evidence(self):
+        def tamper(api):
+            api["api_symbols"]["ReadFile"][0]["references"][0]["function_entry"] = "00401030"
+        endpoints, count, conflicts = self._run(change=tamper)
+        self.assertEqual(count, 0)
+        self.assertFalse(endpoints["file_read"])
+
+    def test_windows_api_set_contract_is_family_specific(self):
+        self.assertTrue(_trusted_windows_api_import("kernel32.DLL", ("file_read",)))
+        self.assertTrue(_trusted_windows_api_import(
+            "api-ms-win-core-file-l1-1-0.dll", ("file_read",)))
+        self.assertTrue(_trusted_windows_api_import(
+            "api-ms-win-core-libraryloader-l1-1-0.dll", ("dynamic_lookup",)))
+        self.assertFalse(_trusted_windows_api_import(
+            "api-ms-win-core-libraryloader-l1-1-0.dll", ("file_read",)))
+        self.assertFalse(_trusted_windows_api_import(
+            "api-ms-win-core-file-l1-1-0.dll", ("dynamic_lookup",)))
+        self.assertFalse(_trusted_windows_api_import("custom.dll", ("file_read",)))
 
 if __name__ == "__main__":
     unittest.main()
