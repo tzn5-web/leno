@@ -1,9 +1,11 @@
 """Synthetic, non-proprietary direct-callgraph triage regression tests."""
 import copy
 import json
+import tempfile
 import unittest
+from pathlib import Path
 
-from ghidra_idf_callgraph_triage import analyze
+from ghidra_idf_callgraph_triage import analyze, load_graph
 
 SHA = 'a' * 64
 MD5 = 'b' * 32
@@ -97,6 +99,19 @@ class CallgraphTests(unittest.TestCase):
         graph['edges'][0]['reference_type'] = 'COMPUTED_CALL'
         with self.assertRaisesRegex(ValueError, 'Only direct unconditional'):
             analyze(idf, api, graph, SHA)
+
+    def test_private_graph_loader_rejects_symlink(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / 'graph.json'
+            source.write_text(json.dumps(fixtures()[2]), encoding='utf-8')
+            self.assertEqual(load_graph(source)['schema'], 'atelierdata-ghidra-direct-callgraph-v1')
+            link = Path(tmp) / 'link.json'
+            try:
+                link.symlink_to(source)
+            except (OSError, NotImplementedError):
+                self.skipTest('Symlink unavailable')
+            with self.assertRaisesRegex(ValueError, 'linked'):
+                load_graph(link)
 
     def test_coverage_cap_visible(self):
         idf, api, graph = fixtures()
