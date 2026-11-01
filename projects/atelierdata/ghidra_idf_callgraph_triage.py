@@ -19,6 +19,7 @@ GRAPH_SCHEMA = 'atelierdata-ghidra-direct-callgraph-v1'
 SHA = re.compile(r'[0-9a-f]{64}\Z')
 MD5 = re.compile(r'[0-9a-f]{32}\Z')
 MAX_EDGES = 200000
+MAX_GRAPH_REPORT_BYTES = 64 * 1024 * 1024
 MAX_FUNCTIONS = 100000
 MAX_HOPS = 3
 FAMILIES = {
@@ -28,6 +29,14 @@ FAMILIES = {
     'file_mapping': frozenset(('CreateFileMappingA', 'CreateFileMappingW', 'MapViewOfFile')),
     'dynamic_lookup': frozenset(('GetProcAddress',)),
 }
+
+
+def load_graph(path):
+    """Read a bounded private graph, which can exceed the 16 MiB xref cap."""
+    path = Path(path)
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_GRAPH_REPORT_BYTES:
+        raise ValueError('Private graph missing, linked or oversized')
+    return json.loads(path.read_text(encoding='utf-8'))
 
 
 def _address(value):
@@ -190,7 +199,8 @@ def main():
     paths = (args.idf_private_report, args.api_private_report, args.callgraph_private_report, args.public_output)
     if len({p.resolve() for p in paths}) != 4 or any(p.is_symlink() for p in paths):
         parser.error('Inputs and output must be distinct non-symlink paths')
-    result = analyze(*(load_private(p) for p in paths[:3]), args.expected_sha256)
+    result = analyze(load_private(paths[0]), load_private(paths[1]),
+                     load_graph(paths[2]), args.expected_sha256)
     args.public_output.write_text(json.dumps(result, indent=2, sort_keys=True) + '\n', encoding='utf-8')
     print('GHIDRA_IDF_CALLGRAPH_TRIAGE=PASS (static metadata only)')
 
