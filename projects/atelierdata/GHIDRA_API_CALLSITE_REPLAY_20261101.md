@@ -98,3 +98,29 @@ proof that no IDF references exist. The original Ghidra-reported shared-function
 counter remains separate and is not upgraded to independent evidence.
 Synthetic tests cover a matching operand, a wrong operand, a non-executable
 source, duplicate reports and redaction. No private input is used in CI.
+
+
+## Ghidra IDF data-xref instruction evidence tier (2026-11-01)
+
+The private `AtelierData_IDF_Xrefs.py` exporter now records, for each IDF
+string xref, its Ghidra reference type, whether it is a data reference, and
+the exact instruction start address, byte length and mnemonic (if Ghidra
+recognizes an instruction at that source). These fields stay in the **private**
+Ghidra report. The original executable is never executed by the script.
+
+The offline replay adds two aggregate-only fields:
+`idf_xrefs_with_ghidra_boundary_and_raw_pointer` and
+`matching_api_sites_in_ghidra_idf_pointer_functions`. A candidate contributes
+to this stricter tier only when its independently checked raw PE bytes match
+a five-byte x86 `PUSH imm32` or `MOV reg, imm32` targeting a verified IDF
+literal, **and** the private Ghidra report explicitly says the xref is a data
+reference from a five-byte instruction beginning at the same source address
+with the matching mnemonic. Older reports without these fields contribute
+zero to the new tier; the legacy raw-byte candidate count remains separate.
+
+These counters are *Ghidra-boundary-supported candidates*, not independently
+decompiled instructions, verified control-flow paths or an IDF decoder.
+Synthetic-only tests exercise valid PUSH/MOV evidence and reject missing,
+contradictory or off-by-one instruction metadata. No original-specific result
+is claimed until the updated scripts are run against the privately held,
+independently SHA256-verified original and reviewed.
