@@ -46,6 +46,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "GHIDRA_IDF_CALLGRAPH_TRIAGE_TEST_FAILED" }
           python -m unittest discover -s projects/atelierdata -p 'test_ghidra_callgraph_reverse_bfs.py' -v
           if ($LASTEXITCODE -ne 0) { throw "GHIDRA_CALLGRAPH_REVERSE_BFS_TEST_FAILED" }
+          python -m py_compile projects/atelierdata/ghidra_callgraph_source_replay.py projects/atelierdata/test_ghidra_callgraph_source_replay.py
+          if ($LASTEXITCODE -ne 0) { throw "GHIDRA_CALLGRAPH_SOURCE_REPLAY_SYNTAX_FAILED" }
+          python -m unittest discover -s projects/atelierdata -p 'test_ghidra_callgraph_source_replay.py' -v
+          if ($LASTEXITCODE -ne 0) { throw "GHIDRA_CALLGRAPH_SOURCE_REPLAY_TEST_FAILED" }
           python -m unittest discover -s projects/atelierdata -p 'test_vehicle_search_literal.py' -v
           if ($LASTEXITCODE -ne 0) { throw "VEHICLE_LITERAL_SEARCH_TEST_FAILED" }
           python -m unittest discover -s projects/atelierdata -p 'test_restore_preflight.py' -v
