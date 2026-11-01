@@ -94,6 +94,10 @@ class RepairExportTests(unittest.TestCase):
         rendered = procedure_html(self.store, self.procedure)
         self.assertIn("aria-label='Avertismente și referințe'", rendered)
         self.assertIn("Verificări înainte de lucru", rendered)
+        self.assertIn("href='#avertismente-generale'", rendered)
+        self.assertIn("id='avertismente-generale'", rendered)
+        self.assertLess(rendered.index("href='#avertismente-generale'"),
+                        rendered.index("href='#pas-1'"))
         self.assertIn("Pasul 1</a>: Avertisment de siguranță / Referință indisponibilă",
                       rendered)
         self.assertNotIn("Pasul 2</a>:", rendered)
@@ -107,8 +111,31 @@ class RepairExportTests(unittest.TestCase):
             "UPDATE procedure_steps SET safety_note='', article_id=NULL "
             "WHERE procedure_id=?", (self.procedure,))
         self.store.db.commit()
+        # The procedure-level precaution must remain indexed even when no
+        # individual step has a warning or an invalid document.
+        general_only = procedure_html(self.store, self.procedure)
+        self.assertIn("Verificări înainte de lucru", general_only)
+        self.assertIn("href='#avertismente-generale'", general_only)
+        self.assertNotIn("Pasul 1</a>:", general_only)
+        self.store.db.execute("UPDATE procedures SET precautions='' WHERE id=?",
+                              (self.procedure,))
+        self.store.db.commit()
         self.assertNotIn("Verificări înainte de lucru",
                          procedure_html(self.store, self.procedure))
+
+    def test_general_precaution_is_indexed_without_step_warnings(self):
+        self.store.db.execute(
+            "UPDATE procedure_steps SET safety_note='', article_id=NULL "
+            "WHERE procedure_id=?", (self.procedure,))
+        self.store.db.commit()
+        before = self.store.db.total_changes
+        rendered = procedure_html(self.store, self.procedure)
+        self.assertIn("href='#avertismente-generale'", rendered)
+        self.assertIn("id='avertismente-generale'", rendered)
+        self.assertIn("Warning &lt;b&gt;not real&lt;/b&gt;", rendered)
+        self.assertNotIn("Pasul 1</a>:", rendered)
+        self.assertNotIn("href='http", rendered)
+        self.assertEqual(self.store.db.total_changes, before)
 
     def test_json_export_preserves_provenance_and_link_metadata(self):
         target=self.root/"procedures.json"

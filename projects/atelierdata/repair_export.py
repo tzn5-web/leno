@@ -103,7 +103,8 @@ def procedure_html(store,procedure_id):
     if record["summary"]:
         parts.append("<h2>Descriere</h2><p>"+esc(record["summary"])+"</p>")
     if record["precautions"]:
-        parts.append("<section class='warning'><strong>Avertismente generale</strong><p>"
+        parts.append("<section class='warning' id='avertismente-generale'>"
+                     "<strong>Avertismente generale</strong><p>"
                      +esc(record["precautions"])+"</p></section>")
     # A printable, offline safety index makes warnings and broken references
     # discoverable before starting work. Link only to local step anchors.
@@ -116,9 +117,12 @@ def procedure_html(store,procedure_id):
             labels.append("Referință indisponibilă")
         if labels:
             flagged.append((position, step["step_number"], labels))
-    if flagged:
+    if flagged or record["precautions"]:
         parts.append("<aside class='safety-index' aria-label='Avertismente și referințe'>"
                      "<h2>Verificări înainte de lucru</h2><ul>")
+        if record["precautions"]:
+            parts.append("<li><a href='#avertismente-generale'>"
+                         "Avertismente generale</a></li>")
         for position, number, labels in flagged:
             parts.append("<li><a href='#pas-"+str(position)+"'>Pasul "
                          +esc(number)+"</a>: "+esc(" / ".join(labels))+"</li>")

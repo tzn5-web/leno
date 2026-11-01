@@ -580,6 +580,7 @@ def main():
             article=ui.db.add_article(vehicle,'Scheme electrice',
                                       'Referință sintetică','Doar test','TEST')
             pid=create_procedure(ui.db,vehicle,'Sistem sintetic','Procedură GUI TEST',
+                                 precautions='AVERTISMENT GENERAL SINTETIC',
                                  source='TEST ONLY')
             step_id=add_step(ui.db,pid,'Pas fictiv 100%_ pentru smoke-test\nLinia a doua',
                      safety_note='Nu este o instrucțiune reală\nAvertisment pe linia a doua',article_id=article)
@@ -726,6 +727,9 @@ def main():
                         if 'AVERTISMENT REFERINȚĂ' not in printable:
                             raise RuntimeError('PROCEDURES_GUI_EXPORT_WARNING_MISSING')
                         if ("Verificări înainte de lucru" not in printable
+                                or "href='#avertismente-generale'" not in printable
+                                or "id='avertismente-generale'" not in printable
+                                or "AVERTISMENT GENERAL SINTETIC" not in printable
                                 or "Pasul 1</a>: Avertisment de siguranță / Referință indisponibilă" not in printable):
                             raise RuntimeError('PROCEDURES_GUI_EXPORT_SAFETY_INDEX_MISSING')
                         if 'Referință secundară sintetică' in printable:
