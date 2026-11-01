@@ -120,6 +120,9 @@ def procedure_html(store,procedure_id):
             labels.append("Avertisment de siguranță")
         if step["reference_status"] == "invalid_or_unavailable":
             labels.append("Referință indisponibilă")
+        elif (step["reference_status"] == "linked"
+              and not (step["reference_source"] or "").strip()):
+            labels.append("Sursă document nespecificată")
         if labels:
             flagged.append((position, step["step_number"], labels))
     if flagged or record["precautions"]:
@@ -173,8 +176,10 @@ def procedure_html(store,procedure_id):
             details = ["<strong>"+esc(reference["title"])+"</strong>"]
             if reference["category"]:
                 details.append("Tip: "+esc(reference["category"]))
-            if reference["source"]:
+            if (reference["source"] or "").strip():
                 details.append("Sursă: "+esc(reference["source"]))
+            else:
+                details.append("Sursă document nespecificată — verifică proveniența")
             # Count only SQLite attachment records for verified same-vehicle
             # references. This is NOT a filesystem/hash verification: actual
             # files are checked by the viewer when explicitly opened.
@@ -206,7 +211,8 @@ def procedure_html(store,procedure_id):
                          +("<br>Tip document: "+esc(step["reference_category"])
                            if step["reference_category"] else "")
                          +("<br>Sursă document: "+esc(step["reference_source"])
-                           if step["reference_source"] else "")
+                           if (step["reference_source"] or "").strip()
+                           else "<br><strong>Sursă document nespecificată — verifică proveniența</strong>")
                          + "<br><a href='#" + references[step["reference_article_id"]]["anchor"]
                          + "'>Vezi în indexul documentelor</a></p>")
         # Offline, keyboard-accessible navigation through the ordered steps.
