@@ -54,6 +54,23 @@ class ProcedureTests(unittest.TestCase):
         self.assertEqual([r["id"] for r in list_steps(self.db, self.pid)], [second, first])
         self.assertFalse(self.db.db.execute("PRAGMA foreign_key_check").fetchall())
 
+    def test_search_vehicle_scope_rejects_coercible_ids(self):
+        """Search cannot silently bind a non-exact vehicle identifier in SQLite."""
+        add_step(self.db, self.pid, "Synthetic scoped search instruction")
+        before = self.db.db.total_changes
+        for bad in (True, False, float(self.vid), str(self.vid), None):
+            if bad is None:
+                # None is the documented all-vehicles search mode.
+                self.assertEqual(len(list_procedures(self.db, None, "scoped")), 1)
+                continue
+            with self.subTest(vehicle_id=repr(bad)), self.assertRaises(ValueError):
+                list_procedures(self.db, bad, "scoped")
+        self.assertEqual([row["id"] for row in list_procedures(
+            self.db, self.vid, "scoped")], [self.pid])
+        self.assertEqual(list_procedures(self.db, self.other, "scoped"), [])
+        self.assertEqual(self.db.db.total_changes, before)
+        self.assertEqual(self.db.db.execute("PRAGMA quick_check").fetchone()[0], "ok")
+
     def test_document_link_same_vehicle_only(self):
         document=self.db.add_article(self.vid,"Scheme electrice","Diagramă demo",
                                 "Nu este o schemă reală","Date test")
