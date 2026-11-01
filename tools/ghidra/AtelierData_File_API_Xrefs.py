@@ -55,7 +55,7 @@ def checked_paths():
         raise ValueError("Ghidra imported PE MD5 mismatch")
     if not os.path.isdir(os.path.dirname(output)):
         raise ValueError("Private output parent must exist")
-    return expected, output
+    return expected, output, md5.hexdigest()
 
 
 def canonical_api(symbol_name):
@@ -118,11 +118,12 @@ def collect():
 
 
 def main():
-    expected, output = checked_paths()
+    expected, output, source_md5 = checked_paths()
     found, scanned, recorded, truncated = collect()
     report = {
         "schema": "atelierdata-ghidra-file-api-xrefs-v1",
         "source_sha256": expected,
+        "source_md5": source_md5,
         "ghidra_program_sha256_verified": True,
         "ghidra_program_md5_verified": True,
         "target_executed": False,
