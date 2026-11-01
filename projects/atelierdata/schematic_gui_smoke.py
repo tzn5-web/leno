@@ -70,9 +70,18 @@ def main():
                 root.update()
                 assert error.called, "Oversized PNG must show a GUI error"
             assert not viewer.diagram_canvas.find_all(), "Rejected image left a preview"
-            viewer.attachments_tree.selection_set(str(attachment))
-            root.update()
-            assert len(viewer.diagram_canvas.find_all()) == 1
+            # Force a tiny preview budget to exercise the actual Tk resize
+            # path, not merely the pure dimension calculation.
+            with patch("schematic_viewer.MAX_RENDER_PIXELS", 512):
+                viewer.attachments_tree.selection_set(str(attachment))
+                root.update()
+                items = viewer.diagram_canvas.find_all()
+                assert len(items) == 1
+                photo_name = viewer.diagram_canvas.itemcget(items[0], "image")
+                displayed_width = int(root.tk.call("image", "width", photo_name))
+                displayed_height = int(root.tk.call("image", "height", photo_name))
+                assert displayed_width * displayed_height <= 512, (
+                    "Tk preview exceeded the configured pixel budget")
             viewer.schematic_search_var.set("100%X")
             root.update()
             assert not viewer.schematics_tree.get_children()

@@ -10,7 +10,7 @@ from atelierdata import Store
 from atelierdata_extensions import attach_document, resolve_document
 from schematic_viewer import (clamp_zoom, fit_zoom, image_metadata,
                               list_schematic_articles, resolve_schematic_attachment,
-                              MAX_IMAGE_PIXELS)
+                              MAX_IMAGE_PIXELS, MAX_RENDER_PIXELS, render_dimensions)
 
 class SchematicViewerTests(unittest.TestCase):
     def setUp(self):
@@ -123,6 +123,27 @@ class SchematicViewerTests(unittest.TestCase):
         before = self.store.db.total_changes
         with self.assertRaisesRegex(ValueError, "Imagine invalidă"):
             image_metadata(oversized)
+        self.assertEqual(self.store.db.total_changes, before)
+
+    def test_render_dimensions_limit_display_memory_without_changing_sqlite(self):
+        before = self.store.db.total_changes
+        self.assertEqual(render_dimensions(200, 100, 2), (400, 200, 2))
+        for width, height in ((4000, 3000), (6000, 4000)):
+            for requested in (1, 2, 4):
+                with self.subTest(width=width, height=height, zoom=requested):
+                    w, h, actual = render_dimensions(width, height, requested)
+                    self.assertLessEqual(w * h, MAX_RENDER_PIXELS)
+                    self.assertLessEqual(actual, requested)
+                    self.assertGreater(w, 0)
+                    self.assertGreater(h, 0)
+        for width, height, zoom in (
+            (0, 20, 1), (20, 0, 1), (True, 20, 1),
+            (6000, 6000, 1), (20, 20, float("nan")),
+            (20, 20, float("inf")), (20, 20, -float("inf"))
+        ):
+            with self.subTest(invalid=(width, height, zoom)):
+                with self.assertRaises(ValueError):
+                    render_dimensions(width, height, zoom)
         self.assertEqual(self.store.db.total_changes, before)
 
     def test_bounds_and_zoom(self):

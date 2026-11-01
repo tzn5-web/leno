@@ -4,6 +4,7 @@ No Autodata content is bundled; files must be explicitly attached to vehicle art
 """
 from __future__ import annotations
 
+import math
 import os
 import sys
 from pathlib import Path
@@ -13,12 +14,35 @@ from atelierdata_extensions import attach_document, list_documents, resolve_docu
 IMAGE_EXT = {".png", ".jpg", ".jpeg"}
 SCHEME_CATEGORIES = ("Scheme electrice", "Siguranțe și relee")
 MAX_IMAGE_PIXELS = 24_000_000
+# Limit decoded display surfaces separately from source-image validation.
+MAX_RENDER_PIXELS = 12_000_000
 MIN_ZOOM = 0.15
 MAX_ZOOM = 4.0
 
 
 def clamp_zoom(value):
-    return min(MAX_ZOOM, max(MIN_ZOOM, float(value)))
+    zoom = float(value)
+    if not math.isfinite(zoom):
+        raise ValueError("Zoom invalid")
+    return min(MAX_ZOOM, max(MIN_ZOOM, zoom))
+
+
+def render_dimensions(width, height, zoom):
+    """Return bounded preview dimensions and the actual zoom applied.
+
+    A verified 24 MP source must never create a 384 MP Tk image at 400%.
+    The limit applies to the resized surface, not only to the source file.
+    """
+    if (type(width) is not int or type(height) is not int
+            or width <= 0 or height <= 0 or width * height > MAX_IMAGE_PIXELS):
+        raise ValueError("Dimensiuni imagine invalide")
+    factor = clamp_zoom(zoom)
+    w, h = max(1, round(width * factor)), max(1, round(height * factor))
+    if w * h > MAX_RENDER_PIXELS:
+        factor = min(factor, math.sqrt(MAX_RENDER_PIXELS / (width * height)))
+        # Floor dimensions to guarantee the pixel budget after rounding.
+        w, h = max(1, int(width * factor)), max(1, int(height * factor))
+    return w, h, factor
 
 
 def image_metadata(path):
@@ -257,10 +281,8 @@ def open_schematics_window(app, editor_class, selected_article_id=None, vehicle_
     def render():
         image=state["image"]
         if image is None:return
-        w=max(1,round(image.width*state["zoom"]))
-        h=max(1,round(image.height*state["zoom"]))
-        if w*h>MAX_IMAGE_PIXELS*MAX_ZOOM*MAX_ZOOM:
-            raise ValueError("Zoom prea mare")
+        w,h,actual_zoom=render_dimensions(image.width,image.height,state["zoom"])
+        state["zoom"]=actual_zoom
         resized=image.resize((w,h),Image.Resampling.LANCZOS)
         photo=ImageTk.PhotoImage(resized,master=window)
         state["photo"]=photo
