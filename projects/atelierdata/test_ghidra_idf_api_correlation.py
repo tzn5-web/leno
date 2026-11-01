@@ -110,7 +110,7 @@ class CorrelationTests(unittest.TestCase):
     def test_explicit_ghidra_flow_flag_controls_classification(self):
         idf, api = fixtures()
         ref = api["api_symbols"]["ReadFile"][0]["references"][0]
-        ref["reference_type"] = "DATA"
+        ref["reference_type"] = "UNCONDITIONAL_CALL"
         ref["reference_is_call_or_jump"] = True
         result = correlate(idf, api, SHA)
         self.assertEqual(result["shared_idf_and_direct_file_io_call_or_jump_functions"], 1)
@@ -120,6 +120,18 @@ class CorrelationTests(unittest.TestCase):
         idf, api = fixtures()
         api["api_symbols"]["ReadFile"][0]["references"][0]["reference_is_call_or_jump"] = "false"
         with self.assertRaisesRegex(ValueError, "flow flag"):
+            correlate(idf, api, SHA)
+
+    def test_contradictory_flow_flag_is_rejected(self):
+        idf, api = fixtures()
+        api["api_symbols"]["ReadFile"][0]["references"][0]["reference_is_call_or_jump"] = False
+        with self.assertRaisesRegex(ValueError, "Contradictory Ghidra flow"):
+            correlate(idf, api, SHA)
+
+    def test_conflicting_execution_declarations_are_rejected(self):
+        idf, api = fixtures()
+        api["executed_target_binary"] = True
+        with self.assertRaisesRegex(ValueError, "no target execution"):
             correlate(idf, api, SHA)
 
     def test_non_api_string_does_not_count_as_idf(self):
