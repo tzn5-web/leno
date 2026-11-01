@@ -81,7 +81,7 @@ class ReplayTests(unittest.TestCase):
     def test_raw_push_immediate_to_idf_literal_is_independent_narrow_evidence(self):
         data, sha, idf, api = fixtures()
         modified = bytearray(data)
-        modified[0x230:0x235] = b"\\x68" + struct.pack("<I", 0x402100)
+        modified[0x230:0x235] = bytes((0x68,)) + struct.pack("<I", 0x402100)
         modified = bytes(modified)
         new_sha = hashlib.sha256(modified).hexdigest()
         for report in (idf, api):
