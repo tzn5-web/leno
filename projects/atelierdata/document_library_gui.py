@@ -12,7 +12,7 @@ from tkinter import ttk, messagebox, filedialog
 from pathlib import Path
 from document_library import (
     DOCUMENT_TYPES,ACCESS_RIGHTS,ensure_schema,import_local_file,
-    list_library,set_metadata,verified_library_file)
+    list_library,set_metadata,verified_library_file,inspect_library_entry)
 from technical_sources import normalize
 from document_bulk_import import bulk_import_folder
 
@@ -284,6 +284,21 @@ def open_document_library(app):
         except Exception as exc:
             messagebox.showerror("Metadate invalide",str(exc),parent=win)
 
+    def verify_selected():
+        """Explicit read-only SHA256/rights check; never opens the document."""
+        row=selected()
+        if not row:
+            return messagebox.showinfo("Selectare","Selectează un fișier.",parent=win)
+        result=inspect_library_entry(
+            app.db,row["attachment_id"],vehicle_id=row["vehicle_id"],
+            article_id=row["article_id"])
+        if result["ok"]:
+            status.set("Verificare document: "+result["message"])
+        else:
+            status.set("Verificare document eșuată: "+result["message"])
+            messagebox.showerror("Verificare document",result["message"],parent=win)
+        return result
+
     def open_verified():
         row=selected()
         if not row:return messagebox.showinfo("Selectare","Selectează un fișier.",parent=win)
@@ -304,6 +319,7 @@ def open_document_library(app):
     ttk.Button(actions,text="Importă fișier local",command=import_file).pack(side="left",padx=(0,7))
     ttk.Button(actions,text="Importă dosar local",command=import_folder).pack(side="left",padx=(0,7))
     ttk.Button(actions,text="Editează proveniența",command=edit_metadata).pack(side="left",padx=(0,7))
+    ttk.Button(actions,text="Verifică integritatea",command=verify_selected).pack(side="left",padx=(0,7))
     ttk.Button(actions,text="Deschide verificat",command=open_verified).pack(side="left",padx=(0,7))
     ttk.Button(actions,text="Închide",command=win.destroy).pack(side="right")
     for var in (search,make,year,category):var.trace_add("write",refresh)
@@ -314,5 +330,6 @@ def open_document_library(app):
     win.library_search=search
     win.library_year=year
     win.library_details=details
+    win.library_verify_selected=verify_selected
     win.library_open_verified=open_verified
     return win
