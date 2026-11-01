@@ -334,7 +334,12 @@ def procedure_text(store,pid):
         line=f"{step['step_number']}. {step['instruction']}"
         if step["safety_note"]:
             line+="\n    ATENȚIE: "+step["safety_note"]
-        if step["reference_title"]:
+        if step["article_id"] is not None and step["reference_title"] is None:
+            # An imported/corrupted cross-vehicle link is intentionally hidden
+            # by list_steps(). Do not silently present the step as fully sourced:
+            # show an actionable warning without disclosing foreign metadata.
+            line+="\n    AVERTISMENT REFERINȚĂ: Document indisponibil sau asociat altui vehicul; verifică auditul."
+        elif step["reference_title"]:
             line+="\n    DOCUMENT ASOCIAT: "+step["reference_title"]
             if step["reference_source"]:
                 line+="\n    SURSĂ DOCUMENT: "+step["reference_source"]
