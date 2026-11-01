@@ -93,6 +93,21 @@ class ProcedureAuditTests(unittest.TestCase):
             resolve_step_attachment(
                 self.store, self.step, self.car, self.proc, owned)
 
+    def test_reference_lookup_rejects_coerced_navigation_ids_without_reads(self):
+        """No SQLite coercion may redirect a procedure reference to another row."""
+        valid = (self.step, self.car, self.proc)
+        before = self.store.db.total_changes
+        for index, label in enumerate(("step", "vehicle", "procedure")):
+            for invalid in (True, False, 1.0, "1", 0, -1, None, [], {}):
+                with self.subTest(field=label, value=repr(invalid)):
+                    ids = list(valid)
+                    ids[index] = invalid
+                    with self.assertRaisesRegex(ValueError, "Invalid " + label + " ID"):
+                        get_step_reference(self.store, *ids)
+        self.assertEqual(get_step_reference(self.store, *valid)["id"], self.diagram)
+        self.assertEqual(self.store.db.total_changes, before)
+        self.assertEqual(self.store.db.execute("PRAGMA quick_check").fetchone()[0], "ok")
+
     def test_missing_image_warning_and_source_provenance(self):
         report = audit_procedure(self.store, self.proc)
         self.assertTrue(report["ok"])
