@@ -144,6 +144,7 @@ class ReplayTests(unittest.TestCase):
     def test_opcode_flow_type_conflict_is_not_evidence(self):
         data, sha, idf, api = fixtures()
         api["api_symbols"]["ReadFile"][0]["references"][0]["reference_type"] = "UNCONDITIONAL_JUMP"
+        api["api_symbols"]["ReadFile"][0]["references"][0]["instruction_mnemonic"] = "JMP"
         result = replay(data, sha, idf, api)
         self.assertEqual(result["opcode_vs_ghidra_flow_type_conflicts"], 1)
         self.assertEqual(result["raw_indirect_import_sites_with_matching_api_name"], 0)
@@ -190,6 +191,7 @@ class ReplayTests(unittest.TestCase):
         refs = api["api_symbols"]["ReadFile"][0]["references"]
         other = copy.deepcopy(refs[0])
         other["reference_type"] = "UNCONDITIONAL_JUMP"
+        other["instruction_mnemonic"] = "JMP"
         refs.append(other)
         result = replay(data, sha, idf, api)
         self.assertEqual(result["sites_with_conflicting_reported_attribution"], 1)
