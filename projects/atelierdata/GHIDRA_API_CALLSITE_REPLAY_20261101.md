@@ -56,3 +56,26 @@ read, run, published or bypassed in this implementation.
 
 No .IDF record format, decoder, decryption, protected content extraction, or
 right to use proprietary data has been demonstrated.
+
+## 2026-11-01 — independent .IDF literal provenance gate
+
+The replay now independently verifies the **literal bytes** of reported ASCII
+or UTF-16LE `.IDF` strings at the virtual addresses supplied by the private
+Ghidra IDF-xref report. The PE32 RVA must map uniquely to initialized,
+file-backed section bytes and the expected literal must match exactly.
+Missing addresses, unmapped locations and mismatched bytes do not contribute
+to the `matching_api_sites_in_idf_string_referencing_functions` count.
+
+The public aggregate includes:
+`idf_literal_hits_verified_against_source_pe`,
+`idf_literal_hits_missing_address`, and
+`idf_literal_hits_unmapped_or_mismatched`. It exposes neither literal names
+nor addresses. Four new synthetic tests exercise missing, mismatched,
+unmapped and UTF-16LE literal evidence; the synthetic PE fixture also contains
+an explicit ASCII .IDF literal at its reported address.
+
+**Important:** a verified literal is not a verified code xref, and a
+Ghidra-reported containing function is not independently proven by this gate.
+Neither the loader nor any .IDF record format is identified. This change
+must be run on a privately held, SHA256-verified original before it can
+support any original-specific conclusion. CI runs synthetic fixtures only.
