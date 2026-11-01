@@ -59,6 +59,7 @@ class PointerFunctionOwnershipTests(unittest.TestCase):
         self.assertEqual(result["idf_xrefs_with_ghidra_boundary_and_raw_pointer"], 1)
         self.assertEqual(result["matching_api_sites_in_idf_raw_pointer_functions"], 0)
         self.assertEqual(result["matching_api_sites_in_ghidra_idf_pointer_functions"], 0)
+        self.assertEqual(result["ghidra_claimed_idf_pointer_functions_rejected_by_pe_ownership"], 1)
 
     def test_separate_executable_sections_do_not_establish_ownership(self):
         data, sha, idf, api = pointer_fixture(
@@ -77,6 +78,8 @@ class PointerFunctionOwnershipTests(unittest.TestCase):
         self.assertEqual(report["idf_raw_pointer_sites_with_ghidra_boundary_metadata"], 1)
         self.assertEqual(report["verified_raw_pointer_source_function_count"], 0)
         self.assertEqual(report["verified_boundary_pointer_source_function_count"], 0)
+        self.assertEqual(
+            report["ghidra_claimed_pointer_function_entries_with_impossible_source_ownership"], 1)
         self.assertFalse(report["runtime_reachability_proven"])
 
 
