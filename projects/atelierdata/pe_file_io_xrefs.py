@@ -82,24 +82,49 @@ def parse_pe32(data):
                              raw_at=raw_at, executable=bool(flags & 0x20000000)))
 
     def rva_offset(rva, need=1):
-        for s in sections:
-            if s['rva'] <= rva and rva - s['rva'] + need <= s['raw_size']:
-                return s['raw_at'] + rva - s['rva']
+        # An RVA must map uniquely to initialized bytes in the PE image.
+        # Raw alignment padding is not evidence of an imported name or thunk.
+        if rva < 0 or need < 1 or rva + need > 0x100000000:
+            raise ValueError('Invalid PE32 RVA extent')
+        matches = []
+        for section in sections:
+            delta = rva - section['rva']
+            backed = min(section['raw_size'], section['vsize'])
+            if delta >= 0 and delta + need <= backed:
+                matches.append(section['raw_at'] + delta)
+        if len(matches) > 1:
+            raise ValueError('Ambiguous overlapping PE sections')
+        if matches:
+            if rva + need <= min(len(data), header_size):
+                raise ValueError('PE header and section RVA overlap')
+            return matches[0]
         if rva + need <= min(len(data), header_size):
             return rva
-        raise ValueError('RVA not mapped to file bytes')
+        raise ValueError('RVA not mapped to initialized file bytes')
+
+    def mapped_cstring(rva):
+        # Require the entire name including NUL to remain in one mapped span.
+        # A file-offset-only scan can silently cross into raw section padding.
+        for length in range(1, 258):
+            offset = rva_offset(rva, length)
+            if data[offset + length - 1] == 0:
+                return _cstring(data, offset)
+        raise ValueError('Unterminated mapped PE import name')
 
     imports = {}
+    if bool(imp_rva) != bool(imp_size):
+        raise ValueError('Half-populated PE import directory')
     if imp_rva and imp_size:
-        desc = rva_offset(imp_rva, 20)
-        for idx in range(min(MAX_IMPORTS, imp_size // 20 + 1)):
-            at = desc + idx * 20
+        if imp_size < 40 or imp_size % 20:
+            raise ValueError('Invalid PE import directory extent')
+        for idx in range(min(MAX_IMPORTS, imp_size // 20)):
+            at = rva_offset(imp_rva + idx * 20, 20)
             original, timestamp, forward, name_rva, first = (_u32(data, at + x) for x in (0, 4, 8, 12, 16))
             if not any((original, timestamp, forward, name_rva, first)):
                 break
             if not name_rva or not first:
                 raise ValueError('Malformed import descriptor')
-            dll = _cstring(data, rva_offset(name_rva))
+            dll = mapped_cstring(name_rva)
             thunk_rva = original or first
             for n in range(MAX_IMPORTS):
                 thunk = _u32(data, rva_offset(thunk_rva + n * 4, 4))
@@ -108,7 +133,8 @@ def parse_pe32(data):
                 if thunk & 0x80000000:
                     symbol = f'#{thunk & 0xffff}'
                 else:
-                    symbol = _cstring(data, rva_offset(thunk + 2))
+                    rva_offset(thunk, 2)  # IMAGE_IMPORT_BY_NAME hint
+                    symbol = mapped_cstring(thunk + 2)
                 iat_va = image_base + first + n * 4
                 if iat_va > 0xffffffff:
                     raise ValueError('IAT address overflows PE32')
@@ -133,7 +159,8 @@ def analyze(data, expected_sha):
     for sec in pe['sections']:
         if not sec['executable'] or not sec['raw_size']:
             continue
-        raw = data[sec['raw_at']:sec['raw_at'] + sec['raw_size']]
+        backed = min(sec['raw_size'], sec['vsize'])
+        raw = data[sec['raw_at']:sec['raw_at'] + backed]
         scanned += len(raw)
         # FF 15 / FF 25 + 32-bit absolute address, commonly used for IAT calls/jumps.
         # This is a raw-byte triage only; instruction boundaries are unverified.
@@ -171,13 +198,14 @@ def analyze(data, expected_sha):
             pointer_candidates = 0
             for at in positions:
                 for sec in pe['sections']:
-                    if sec['raw_size'] and sec['raw_at'] <= at < sec['raw_at'] + sec['raw_size']:
+                    backed = min(sec['raw_size'], sec['vsize'])
+                    if backed and sec['raw_at'] <= at < sec['raw_at'] + backed:
                         va = pe['image_base'] + sec['rva'] + at - sec['raw_at']
                         if va <= 0xffffffff:
                             packed = struct.pack('<I', va)
                             pointer_candidates += sum(
-                                data[s['raw_at']:s['raw_at'] + s['raw_size']].count(packed)
-                                for s in pe['sections'] if s['executable'] and s['raw_size'])
+                                data[s['raw_at']:s['raw_at'] + min(s['raw_size'], s['vsize'])].count(packed)
+                                for s in pe['sections'] if s['executable'] and min(s['raw_size'], s['vsize']))
                         break
             variants[encoding] = {'literal_count_at_most_1024': len(positions),
                                   'truncated': len(positions) == 1024,
