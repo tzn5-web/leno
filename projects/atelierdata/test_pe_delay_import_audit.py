@@ -81,6 +81,51 @@ class DelayImportAuditTests(unittest.TestCase):
         self.assertEqual(public["state"], "PARTIAL")
         self.assertGreater(public["issue_counts"]["directory_unmapped"], 0)
 
+    def test_half_populated_delay_directory_is_partial_not_absent(self):
+        for directory_rva, directory_size in ((0x2100, 0), (0, 64)):
+            with self.subTest(rva=directory_rva, size=directory_size):
+                blob = bytearray(delay_fixture())
+                struct.pack_into("<II", blob, 0x98 + 96 + 13 * 8,
+                                 directory_rva, directory_size)
+                public, private = analyze_delay_imports(
+                    bytes(blob), hashlib.sha256(blob).hexdigest())
+                self.assertEqual(public["state"], "PARTIAL")
+                self.assertEqual(
+                    public["issue_counts"]["directory_rva_size_inconsistent"], 1)
+                self.assertEqual(public["descriptor_count"], 0)
+                self.assertEqual(private["descriptors"], [])
+
+    def test_delay_directory_rva_extent_overflow_is_partial(self):
+        blob = bytearray(delay_fixture())
+        struct.pack_into("<II", blob, 0x98 + 96 + 13 * 8,
+                         0xfffffff0, 64)
+        public, _ = analyze_delay_imports(
+            bytes(blob), hashlib.sha256(blob).hexdigest())
+        self.assertEqual(public["state"], "PARTIAL")
+        self.assertEqual(
+            public["issue_counts"]["directory_extent_overflows_rva"], 1)
+
+    def test_trailing_directory_bytes_are_not_silently_complete(self):
+        blob = bytearray(delay_fixture())
+        struct.pack_into("<II", blob, 0x98 + 96 + 13 * 8, 0x2100, 65)
+        public, private = analyze_delay_imports(
+            bytes(blob), hashlib.sha256(blob).hexdigest())
+        self.assertEqual(public["state"], "PARTIAL")
+        self.assertEqual(public["issue_counts"]["directory_trailing_bytes"], 1)
+        self.assertEqual(private["descriptors"][0]["symbols"], ["MessageBoxA"])
+
+    def test_delay_descriptor_in_raw_file_padding_is_unmapped(self):
+        blob = bytearray(delay_fixture())
+        # .idata has 0x200 raw bytes but only 0x100 mapped virtual bytes.
+        # The directory at RVA 0x2100 is therefore entirely raw padding.
+        idata_section = 0x98 + 224 + 40
+        struct.pack_into("<I", blob, idata_section + 8, 0x100)
+        public, private = analyze_delay_imports(
+            bytes(blob), hashlib.sha256(blob).hexdigest())
+        self.assertEqual(public["state"], "PARTIAL")
+        self.assertEqual(public["issue_counts"]["directory_unmapped"], 1)
+        self.assertEqual(private["descriptors"], [])
+
     def test_sha256_and_output_separation(self):
         blob = delay_fixture()
         with self.assertRaisesRegex(ValueError, "SHA256 mismatch"):
