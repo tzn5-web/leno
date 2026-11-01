@@ -187,6 +187,25 @@ class ProcedureTests(unittest.TestCase):
         self.assertEqual(list_steps(self.db,self.pid)[0]["article_id"],owned)
         self.assertEqual(self.db.db.execute("PRAGMA quick_check").fetchone()[0],"ok")
 
+    def test_reference_picker_searches_owned_body_without_exposing_foreign_data(self):
+        """The GUI picker can find a licensed document by body, but only for its vehicle."""
+        owned = self.db.add_article(
+            self.vid, "Note atelier", "Document fără cuvântul căutat",
+            "Große BODY%_TOKEN în conținut", "OWNED-TEST")
+        foreign = self.db.add_article(
+            self.other, "Note atelier", "Document străin",
+            "Große BODY%_TOKEN în conținut", "FOREIGN-TEST")
+        before = self.db.db.total_changes
+        for term in ("GROSSE BODY%_TOKEN", "body%_token"):
+            with self.subTest(term=term):
+                rows = list_reference_articles(self.db, self.pid, term)
+                self.assertEqual([row["id"] for row in rows], [owned])
+                self.assertNotIn(foreign, [row["id"] for row in rows])
+                self.assertNotIn("content", rows[0].keys())
+        self.assertEqual(list_reference_articles(self.db, self.pid, "BODY%X"), [])
+        self.assertEqual(self.db.db.total_changes, before)
+        self.assertEqual(self.db.db.execute("PRAGMA quick_check").fetchone()[0], "ok")
+
     def test_reopen_and_integrity(self):
         add_step(self.db,self.pid,"Pas 1")
         self.db.close()
