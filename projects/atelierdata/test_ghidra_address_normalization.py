@@ -25,7 +25,8 @@ def fixtures(idf_address="00401000", api_address="00401000"):
         "idf_decoder_proven": False,
         "api_symbols": {"ReadFile": [{
             "references": [{"function_entry": api_address,
-                            "instruction_mnemonic": "CALL"}]
+                            "instruction_mnemonic": "CALL",
+                            "reference_type": "UNCONDITIONAL_CALL"}]
         }]},
     }
     return idf, api
