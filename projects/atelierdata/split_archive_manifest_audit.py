@@ -53,6 +53,7 @@ def inspect_manifest(data, inventory_text=None):
             amount = chunk['bytes']
             digest = chunk['sha256']
             if (not isinstance(package, str) or not PART.fullmatch(package)
+                    or '/' in package or '\\' in package or '\0' in package
                     or entry != expected or type(amount) is not int or amount < 0
                     or amount > 1024**3 or not isinstance(digest, str)
                     or not HEX.fullmatch(digest) or entry in packages[package]):
@@ -132,6 +133,17 @@ def self_test():
              file_count=1, package_count=1, total_extracted_bytes=3)
     summary, packages = inspect_manifest(data, '3 Sample/file.IDF\n')
     assert (summary['files'], summary['idf_files']) == (1, 1)
+    # A malicious manifest must not redirect ZIP reads outside parts-dir.
+    for unsafe in ('../sample_part_0001.zip', 'dir/sample_part_0001.zip',
+                   '..\\sample_part_0001.zip'):
+        data['files'][0]['chunks'][0]['package'] = unsafe
+        try:
+            inspect_manifest(data)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('Unsafe package path accepted')
+    data['files'][0]['chunks'][0]['package'] = 'sample_part_0001.zip'
     from tempfile import TemporaryDirectory
     with TemporaryDirectory() as d:
         archive = Path(d) / 'sample_part_0001.zip'
