@@ -21,8 +21,8 @@ from pe_file_io_xrefs import MAX_PE, parse_pe32
 
 SCHEMA = "atelierdata-ghidra-api-callsite-replay-v1"
 _SHA = re.compile(r"[0-9a-f]{64}\Z")
-_FLOW_TYPES = frozenset(("UNCONDITIONAL_CALL", "CONDITIONAL_CALL", "COMPUTED_CALL",
-                         "UNCONDITIONAL_JUMP", "CONDITIONAL_JUMP", "COMPUTED_JUMP"))
+_FLOW_TYPES = frozenset(("UNCONDITIONAL_CALL", "COMPUTED_CALL",
+                         "UNCONDITIONAL_JUMP", "COMPUTED_JUMP"))
 
 
 def _raw_offset(data, pe, va):
@@ -70,6 +70,7 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
     inspected = mapped_executable = nonexec = unmapped = 0
     raw_opcode_candidates = import_matched = shared_idf_matched = 0
     opcode_flow_conflicts = duplicate_sites = ambiguous_sites = 0
+    missing_instruction_evidence = inconsistent_instruction_evidence = 0
     # Aggregate by physical callsite before scoring. A source address cannot
     # become two independently corroborated calls just because a private
     # Ghidra report repeats it with different containing functions.
@@ -82,13 +83,25 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
                 flow_type = ref.get("reference_type")
                 if flow_type not in _FLOW_TYPES:
                     continue
-                if ref.get("reference_is_call_or_jump", True) is not True:
+                # A raw opcode match alone is not Ghidra instruction-boundary
+                # evidence. Old reports lacking these explicit fields are
+                # excluded rather than silently upgraded to corroboration.
+                if ref.get("reference_is_call_or_jump") is not True:
                     continue
                 source = ref.get("source_address")
-                if source is None:
+                start = ref.get("instruction_start_address")
+                length = ref.get("instruction_length")
+                mnemonic = ref.get("instruction_mnemonic")
+                if source is None or start is None or length is None or mnemonic is None:
+                    missing_instruction_evidence += 1
                     continue
                 space, address = _function_key(source)
                 if space != "ram" or not 0 <= address <= 0xffffffff:
+                    continue
+                if (_function_key(start) != (space, address) or
+                        type(length) is not int or length != 6 or
+                        mnemonic != ("CALL" if "CALL" in flow_type else "JMP")):
+                    inconsistent_instruction_evidence += 1
                     continue
                 function = _function_key(ref["function_entry"])
                 site = address
@@ -139,6 +152,8 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
         "reported_api_flow_sites_with_address_inspected": inspected,
         "unique_sites_repeated_in_report": duplicate_sites,
         "sites_with_conflicting_reported_attribution": ambiguous_sites,
+        "references_missing_ghidra_instruction_boundary_evidence": missing_instruction_evidence,
+        "references_with_inconsistent_ghidra_instruction_boundary_evidence": inconsistent_instruction_evidence,
         "sites_in_executable_raw_sections": mapped_executable,
         "sites_in_nonexecutable_raw_sections": nonexec,
         "sites_without_unique_raw_mapping": unmapped,
@@ -153,7 +168,7 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
         "runtime_reachability_proven": False,
         "idf_decoder_proven": False,
         "limitations": "Raw FF15/FF25 import-table corroboration only. Byte patterns can be data; "
-                       "Ghidra xrefs and function boundaries are not independently proven. "
+                       "Ghidra-reported instruction boundaries must be explicit, 6-byte, and match xref sources; they are not independently proven. "
                        "Conflicting API names, functions or flow types for one physical site are excluded. "
                        "Dynamic imports, thunks, other encodings and indirect flows are omitted. "
                        "No evidence of an IDF decoder or licensed data access."
