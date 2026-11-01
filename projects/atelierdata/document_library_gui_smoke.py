@@ -71,9 +71,9 @@ def main():
             foreign_article=store.add_article(
                 foreign_vehicle,"Manual de atelier","Foreign synthetic fixture",
                 "","OWNED")
-            store.db.db.execute("UPDATE attachments SET article_id=? WHERE id=?",
+            store.db.execute("UPDATE attachments SET article_id=? WHERE id=?",
                                 (foreign_article,attachment_id))
-            store.db.db.commit()
+            store.db.commit()
             with patch("document_library_gui.os.startfile") as launch, \
                  patch("document_library_gui.messagebox.showerror") as error:
                 win.library_open_verified()
