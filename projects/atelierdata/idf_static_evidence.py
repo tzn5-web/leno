@@ -2,6 +2,7 @@
 from __future__ import annotations
 import argparse, collections, hashlib, json, math, tempfile, zipfile
 from pathlib import Path
+from split_archive_manifest_audit import reject_blocked_package
 
 MAX_ENTRY = 64 * 1024 * 1024
 TERMS = ('MODELS.IDF', 'CONST.IDF', 'CSS.IDF', 'DTC.IDF', '.IDF',
@@ -63,6 +64,7 @@ def scan_executable(path, expected_sha=None):
 def scan_archives(archives, index, names):
     rows, skipped = [], []
     for archive in archives:
+        reject_blocked_package(archive)
         with zipfile.ZipFile(archive) as z:
             for info in z.infolist():
                 if info.is_dir() or not info.filename.lower().endswith('.idf'):
@@ -110,6 +112,12 @@ def self_test():
         assert result['verified_samples'] == 1
         assert result['samples'][0]['entropy_bits_per_byte']['first'] == 8.0
         assert not result['samples'][0]['decoded']
+        try:
+            scan_archives([root / 'autodata_part_0016.zip'], index, {'FAKE.IDF'})
+        except ValueError as exc:
+            assert 'Blocked' in str(exc)
+        else:
+            raise AssertionError('Blocked part_0016 was not rejected')
         index[('test.zip', entry)]['sha256'] = '0' * 64
         try:
             scan_archives([root / 'test.zip'], index, {'FAKE.IDF'})
