@@ -91,20 +91,22 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
                 if space != "ram" or not 0 <= address <= 0xffffffff:
                     continue
                 function = _function_key(ref["function_entry"])
-                site = (api_name, address)
+                site = address
                 if site in sites:
                     duplicate_sites += 1
-                row = sites.setdefault(site, {"functions": set(), "flow_kinds": set()})
+                row = sites.setdefault(site, {"api_names": set(), "functions": set(), "flow_kinds": set()})
+                row["api_names"].add(api_name)
                 row["functions"].add(function)
                 row["flow_kinds"].add("CALL" if "CALL" in flow_type else "JUMP")
 
-    for (api_name, address), row in sites.items():
+    for address, row in sites.items():
         inspected += 1
-        if len(row["functions"]) != 1 or len(row["flow_kinds"]) != 1:
+        if len(row["api_names"]) != 1 or len(row["functions"]) != 1 or len(row["flow_kinds"]) != 1:
             # Contradictory report attribution is not evidence. This also
             # makes the result independent of private JSON reference order.
             ambiguous_sites += 1
             continue
+        api_name = next(iter(row["api_names"]))
         function = next(iter(row["functions"]))
         reported_kind = next(iter(row["flow_kinds"]))
         mapped = _raw_offset(data, pe, address)
@@ -152,7 +154,7 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
         "idf_decoder_proven": False,
         "limitations": "Raw FF15/FF25 import-table corroboration only. Byte patterns can be data; "
                        "Ghidra xrefs and function boundaries are not independently proven. "
-                       "Conflicting report attributions are excluded. "
+                       "Conflicting API names, functions or flow types for one physical site are excluded. "
                        "Dynamic imports, thunks, other encodings and indirect flows are omitted. "
                        "No evidence of an IDF decoder or licensed data access."
     }
