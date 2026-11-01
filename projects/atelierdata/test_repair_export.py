@@ -79,6 +79,37 @@ class RepairExportTests(unittest.TestCase):
         self.assertIn("Pasul 1</a> — Atenție — Document asociat",rendered)
         self.assertIn("href='#pas-1'",rendered)
 
+    def test_printable_safety_index_links_only_flagged_steps(self):
+        """Warnings and damaged links must be visible before the instructions."""
+        foreign_vehicle = self.store.add_vehicle("FOREIGN", "SYNTHETIC")
+        foreign_article = self.store.add_article(
+            foreign_vehicle, "Scheme electrice", "PRIVATE FOREIGN TITLE",
+            "PRIVATE FOREIGN CONTENT", "PRIVATE FOREIGN SOURCE")
+        self.store.db.execute(
+            "UPDATE procedure_steps SET article_id=? "
+            "WHERE procedure_id=? AND step_number=1",
+            (foreign_article, self.procedure))
+        self.store.db.commit()
+        before = self.store.db.total_changes
+        rendered = procedure_html(self.store, self.procedure)
+        self.assertIn("aria-label='Avertismente și referințe'", rendered)
+        self.assertIn("Verificări înainte de lucru", rendered)
+        self.assertIn("Pasul 1</a>: Avertisment de siguranță / Referință indisponibilă",
+                      rendered)
+        self.assertNotIn("Pasul 2</a>:", rendered)
+        self.assertLess(rendered.index("Verificări înainte de lucru"),
+                        rendered.index("<h2>Pași de lucru</h2>"))
+        self.assertIn(".safety-index{", rendered)
+        self.assertNotIn("PRIVATE FOREIGN", rendered)
+        self.assertEqual(self.store.db.total_changes, before)
+        self.assertEqual(self.store.db.execute("PRAGMA quick_check").fetchone()[0], "ok")
+        self.store.db.execute(
+            "UPDATE procedure_steps SET safety_note='', article_id=NULL "
+            "WHERE procedure_id=?", (self.procedure,))
+        self.store.db.commit()
+        self.assertNotIn("Verificări înainte de lucru",
+                         procedure_html(self.store, self.procedure))
+
     def test_json_export_preserves_provenance_and_link_metadata(self):
         target=self.root/"procedures.json"
         self.assertEqual(export_procedures_json(self.store,target),1)
