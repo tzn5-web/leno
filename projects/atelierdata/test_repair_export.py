@@ -68,6 +68,50 @@ class RepairExportTests(unittest.TestCase):
             export_procedure_html(self.store,self.procedure,self.root/"wrong.txt")
         self.assertEqual(self.store.db.execute("PRAGMA quick_check").fetchone()[0],"ok")
 
+    def test_corrupt_foreign_reference_is_redacted_and_warned_in_exports(self):
+        """An imported cross-vehicle link must not leak IDs or disappear silently."""
+        foreign_vehicle=self.store.add_vehicle("OTHER","SYNTHETIC")
+        foreign=self.store.add_article(
+            foreign_vehicle,"Scheme electrice","PRIVATE FOREIGN TITLE",
+            "PRIVATE FOREIGN CONTENT","PRIVATE FOREIGN SOURCE")
+        step_id=self.store.db.execute(
+            "SELECT id FROM procedure_steps WHERE procedure_id=? ORDER BY step_number",
+            (self.procedure,)).fetchone()[0]
+        self.store.db.execute(
+            "UPDATE procedure_steps SET article_id=? WHERE id=?",(foreign,step_id))
+        self.store.db.commit()
+        before=self.store.db.total_changes
+        target=self.root/"redacted.json"
+        self.assertEqual(export_procedures_json(self.store,target,self.vehicle),1)
+        exported=json.loads(target.read_text(encoding="utf-8"))["procedures"][0]["steps"][0]
+        self.assertEqual(exported["reference_status"],"invalid_or_unavailable")
+        self.assertIsNone(exported["reference_article_id"])
+        self.assertIsNone(exported["reference_title"])
+        self.assertIsNone(exported["reference_source"])
+        self.assertNotIn("PRIVATE FOREIGN",target.read_text(encoding="utf-8"))
+        rendered=procedure_html(self.store,self.procedure)
+        self.assertIn("AVERTISMENT REFERINȚĂ",rendered)
+        self.assertIn("verifică auditul",rendered)
+        self.assertNotIn("PRIVATE FOREIGN",rendered)
+        self.assertNotIn("Document asociat:",rendered)
+        self.assertEqual(self.store.db.total_changes,before)
+        self.assertEqual(self.store.db.execute("PRAGMA quick_check").fetchone()[0],"ok")
+
+    def test_export_rejects_managed_attachment_destination(self):
+        """A save dialog must not overwrite documents managed by SHA256."""
+        managed=self.root/"documents"
+        managed.mkdir()
+        html_target=managed/"protected.html"
+        json_target=managed/"protected.json"
+        html_target.write_text("KEEP HTML",encoding="utf-8")
+        json_target.write_text("KEEP JSON",encoding="utf-8")
+        with self.assertRaisesRegex(ValueError,"atașamente"):
+            export_procedure_html(self.store,self.procedure,html_target)
+        with self.assertRaisesRegex(ValueError,"atașamente"):
+            export_procedures_json(self.store,json_target)
+        self.assertEqual(html_target.read_text(encoding="utf-8"),"KEEP HTML")
+        self.assertEqual(json_target.read_text(encoding="utf-8"),"KEEP JSON")
+
     def test_cli_exports(self):
         script=str(Path(__file__).with_name("atelierdata.py"))
         target=self.root/"cli-procedures.json"
