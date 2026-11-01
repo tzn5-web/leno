@@ -15,7 +15,8 @@ from pathlib import Path
 from ghidra_idf_api_correlation import _function_key, correlate, load_private
 
 SCHEMA = 'atelierdata-ghidra-idf-direct-callgraph-triage-v1'
-GRAPH_SCHEMA = 'atelierdata-ghidra-direct-callgraph-v1'
+GRAPH_SCHEMA = 'atelierdata-ghidra-direct-callgraph-v2'
+EDGE_VERIFICATION = 'x86-e8-rel32-ghidra-bytes-v1'
 SHA = re.compile(r'[0-9a-f]{64}\Z')
 MD5 = re.compile(r'[0-9a-f]{32}\Z')
 MAX_EDGES = 200000
@@ -63,6 +64,8 @@ def _validate_identity(idf, api, graph, sha):
         raise ValueError('Ghidra imported program identity not verified')
     if graph.get('target_executed') is not False or graph.get('idf_decoder_proven') is not False:
         raise ValueError('Call graph must declare no execution or decoding')
+    if graph.get('edge_verification') != EDGE_VERIFICATION:
+        raise ValueError('Call graph lacks verified x86 E8 rel32 edge contract')
     if type(graph.get('coverage_truncated')) is not bool:
         raise ValueError('Missing call graph coverage flag')
 
@@ -113,7 +116,16 @@ def _edges(graph):
     for edge in entries:
         if not isinstance(edge, dict) or edge.get('reference_type') != 'UNCONDITIONAL_CALL':
             raise ValueError('Only direct unconditional Ghidra call references accepted')
+        if (edge.get('direct_rel32_opcode_verified') is not True or
+                edge.get('instruction_mnemonic') != 'CALL' or
+                type(edge.get('instruction_length')) is not int or
+                edge['instruction_length'] != 5 or
+                edge.get('source_executable') is not True or
+                edge.get('target_executable') is not True):
+            raise ValueError('Call edge lacks verified x86 E8 rel32 instruction evidence')
         caller, callee, site = (_address(edge[k]) for k in ('caller', 'callee', 'site'))
+        if site < caller or site > 0xffffffff - 5:
+            raise ValueError('Callsite outside valid PE32 function/address range')
         signature = (caller, callee)
         if site in by_site:
             if by_site[site] != signature:
@@ -167,6 +179,8 @@ def analyze(idf_report, api_report, graph_report, expected_sha256):
         'original_md5_claims_match': True,
         'idf_referencing_function_count': len(starts),
         'direct_call_sites_in_graph': unique_sites,
+        'direct_rel32_call_sites_verified': unique_sites,
+        'call_edge_validation': EDGE_VERIFICATION,
         'duplicate_call_sites_ignored': duplicates,
         'distinct_callers_in_graph': len(adjacency),
         'idf_sources_by_shortest_direct_file_io_hops': {str(i): any_direct[i] for i in range(MAX_HOPS + 1)},
@@ -181,7 +195,9 @@ def analyze(idf_report, api_report, graph_report, expected_sha256):
         'original_executed': False,
         'runtime_reachability_proven': False,
         'idf_decoder_proven': False,
-        'limitations': ('Static Ghidra-reported direct unconditional call edges only; paths do not establish runtime reachability, '
+        'limitations': ('Only Ghidra-disassembled x86 E8 rel32 edges with checked target and executable blocks; '
+                        'original PE bytes are not independently replayed by this triage. '
+                        'Static Ghidra-reported direct unconditional call edges only; paths do not establish runtime reachability, '
                         'file contents, dataflow, parsing, or a decoder. API endpoints require explicit call-reference metadata. '
                         'Computed/indirect calls and paths longer than three edges are omitted. '
                         'Missing edges and capped scans prevent negative conclusions.'),
