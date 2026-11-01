@@ -22,6 +22,7 @@ from ghidra_idf_callgraph_triage import (
     _reverse_distances_to_targets, analyze, load_graph,
 )
 from pe_file_io_xrefs import MAX_PE, parse_pe32
+from ghidra_pe_api_endpoint_evidence import pe_backed_api_endpoints
 
 
 
@@ -76,6 +77,16 @@ def analyze_verified(binary, expected_sha256, idf_report, api_report, graph_repo
     direct_distances = _reverse_distances_to_targets(adjacency, direct_targets)
     dynamic_distances = _reverse_distances_to_targets(
         adjacency, endpoints['dynamic_lookup'])
+    # Distinct, stricter endpoint tier: only Ghidra-declared CALL FF 15
+    # sites whose actual PE bytes target a matching named static import.
+    # These remain byte candidates, not independently disassembled calls.
+    pe_endpoints, pe_iat_sites, pe_iat_conflicts = pe_backed_api_endpoints(
+        binary, pe, api_report)
+    pe_direct_targets = set().union(
+        *(pe_endpoints[family] for family in FAMILIES if family != 'dynamic_lookup'))
+    pe_direct_distances = _reverse_distances_to_targets(adjacency, pe_direct_targets)
+    pe_dynamic_distances = _reverse_distances_to_targets(
+        adjacency, pe_endpoints['dynamic_lookup'])
     literal_sources = _executable_source_addresses(binary, pe, literal_functions)
     pointer_sources = _executable_source_addresses(binary, pe, pointer_functions)
     boundary_sources = _executable_source_addresses(binary, pe, boundary_functions)
@@ -83,6 +94,14 @@ def analyze_verified(binary, expected_sha256, idf_report, api_report, graph_repo
         'schema': 'atelierdata-ghidra-idf-verified-triage-v1',
         'idf_report_derived_hops_include_unverified_literal_xrefs': True,
         'api_endpoint_calls_independently_replayed': False,
+        'pe_iat_endpoint_byte_check_performed': True,
+        'pe_iat_endpoint_callsites_correlated': pe_iat_sites,
+        'pe_iat_endpoint_conflicting_ghidra_attribution': pe_iat_conflicts,
+        'pe_iat_direct_file_io_endpoint_function_count': len(pe_direct_targets),
+        'verified_boundary_pointer_sources_by_shortest_pe_iat_file_io_hops':
+            _hop_histogram(boundary_sources, pe_direct_distances),
+        'verified_boundary_pointer_sources_by_shortest_pe_iat_dynamic_lookup_hops':
+            _hop_histogram(boundary_sources, pe_dynamic_distances),
         'verified_literal_source_function_count': len(literal_sources),
         'ghidra_claimed_idf_function_entries_without_executable_pe_mapping':
             len(literal_functions) - len(literal_sources),
@@ -125,6 +144,11 @@ def analyze_verified(binary, expected_sha256, idf_report, api_report, graph_repo
             'boundaries and ownership of xrefs remain Ghidra claims. '
             'The legacy IDF-source hop histogram uses unverified Ghidra xrefs; '
             'separate verified-literal/pointer tiers exclude unmatched source bytes. '
+            'The additional PE-IAT endpoint tier checks exact FF 15 import '
+            'bytes and Ghidra-declared six-byte CALL boundaries; it excludes '
+            'dynamic resolution, delayed imports and all other call forms. '
+            'Even these matching raw bytes do not independently establish '
+            'instruction boundaries or reachable file operations. '
             'File-I/O API endpoint references are still Ghidra metadata, not '
             'independently replayed instructions. '
             'Static byte matches are not independently replayed dataflow. '
