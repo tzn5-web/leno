@@ -49,6 +49,21 @@ def checked_paths():
     return expected, md5.hexdigest(), output
 
 
+def verified_rel32(raw, site, target):
+    """Validate an x86 E8 rel32 call independently of Ghidra flow metadata.
+
+    Pure integer/byte logic; this function is exercised by synthetic tests
+    without importing Ghidra or executing the analyzed program.
+    """
+    if len(raw) != 5 or raw[0] != 0xe8:
+        return False
+    displacement = (raw[1] | (raw[2] << 8) |
+                    (raw[3] << 16) | (raw[4] << 24))
+    if displacement >= 0x80000000:
+        displacement -= 0x100000000
+    return ((site + 5 + displacement) & 0xffffffff) == (target & 0xffffffff)
+
+
 def collect():
     manager = currentProgram.getFunctionManager()
     listing = currentProgram.getListing()
@@ -100,16 +115,8 @@ def collect():
                     skipped_calls += 1
                     continue
                 raw = [int(value) & 0xff for value in ins.getBytes()]
-                if len(raw) != 5 or raw[0] != 0xe8:
-                    skipped_calls += 1
-                    continue
-                displacement = (raw[1] | (raw[2] << 8) |
-                                (raw[3] << 16) | (raw[4] << 24))
-                if displacement >= 0x80000000:
-                    displacement -= 0x100000000
                 site_address = ins.getAddress()
-                computed_target = (site_address.getOffset() + 5 + displacement) & 0xffffffff
-                if computed_target != (dest.getOffset() & 0xffffffff):
+                if not verified_rel32(raw, site_address.getOffset(), dest.getOffset()):
                     skipped_calls += 1
                     continue
                 memory = currentProgram.getMemory()
