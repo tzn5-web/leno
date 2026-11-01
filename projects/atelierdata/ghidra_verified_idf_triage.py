@@ -14,7 +14,8 @@ import tempfile
 from pathlib import Path
 
 from ghidra_callgraph_source_replay import replay
-from ghidra_api_callsite_replay import _idf_functions as replay_idf_literals
+from ghidra_api_callsite_replay import (_idf_functions as replay_idf_literals,
+                                        _raw_offset)
 from ghidra_idf_api_correlation import load_private
 from ghidra_idf_callgraph_triage import (
     FAMILIES, MAX_HOPS, _api_functions, _edges,
@@ -24,10 +25,22 @@ from pe_file_io_xrefs import MAX_PE, parse_pe32
 
 
 
-def _ram_source_addresses(functions):
-    """Only PE32 RAM function entries may participate in verified-source hops."""
-    return {value for space, value in functions
-            if space == 'ram' and 0 <= value <= 0xffffffff}
+def _executable_source_addresses(binary, pe, functions):
+    """Only unique, initialized executable PE mappings may be graph sources.
+
+    A verified literal or PUSH/MOV byte candidate does not establish that
+    Ghidra's attributed containing function exists at the reported address.
+    This filter removes impossible/non-code function entries; it does not
+    independently prove Ghidra's function boundaries or control flow.
+    """
+    backed = set()
+    for space, value in functions:
+        if space != 'ram' or not 0 <= value <= 0xffffffff:
+            continue
+        mapped = _raw_offset(binary, pe, value, 1)
+        if mapped is not None and mapped[1]:
+            backed.add(value)
+    return backed
 
 
 def _hop_histogram(starts, distances):
@@ -43,10 +56,11 @@ def analyze_verified(binary, expected_sha256, idf_report, api_report, graph_repo
     # Cross-check reported .IDF string addresses against *source* PE bytes.
     # This is an independent, narrower evidence tier: Ghidra function
     # attribution and instruction boundaries remain unproven by raw bytes.
+    pe = parse_pe32(binary)
     (literal_functions, pointer_functions, pointer_sites,
      boundary_functions, boundary_sites, verified_literals,
      missing_addresses, mismatched_literals) = replay_idf_literals(
-         binary, parse_pe32(binary), idf_report)
+         binary, pe, idf_report)
     if (verified['direct_call_sites_verified'] != summary['direct_call_sites_in_graph'] or
             verified['duplicate_call_sites_ignored'] != summary['duplicate_call_sites_ignored'] or
             verified['callgraph_coverage_truncated'] != summary['callgraph_coverage_truncated']):
@@ -62,14 +76,18 @@ def analyze_verified(binary, expected_sha256, idf_report, api_report, graph_repo
     direct_distances = _reverse_distances_to_targets(adjacency, direct_targets)
     dynamic_distances = _reverse_distances_to_targets(
         adjacency, endpoints['dynamic_lookup'])
-    literal_sources = _ram_source_addresses(literal_functions)
-    pointer_sources = _ram_source_addresses(pointer_functions)
-    boundary_sources = _ram_source_addresses(boundary_functions)
+    literal_sources = _executable_source_addresses(binary, pe, literal_functions)
+    pointer_sources = _executable_source_addresses(binary, pe, pointer_functions)
+    boundary_sources = _executable_source_addresses(binary, pe, boundary_functions)
     summary.update({
         'schema': 'atelierdata-ghidra-idf-verified-triage-v1',
         'idf_report_derived_hops_include_unverified_literal_xrefs': True,
         'api_endpoint_calls_independently_replayed': False,
         'verified_literal_source_function_count': len(literal_sources),
+        'ghidra_claimed_idf_function_entries_without_executable_pe_mapping':
+            len(literal_functions) - len(literal_sources),
+        'ghidra_claimed_pointer_function_entries_without_executable_pe_mapping':
+            len(pointer_functions) - len(pointer_sources),
         'verified_raw_pointer_source_function_count': len(pointer_sources),
         'verified_boundary_pointer_source_function_count': len(boundary_sources),
         'verified_literal_sources_by_shortest_ghidra_file_io_hops':
@@ -88,6 +106,7 @@ def analyze_verified(binary, expected_sha256, idf_report, api_report, graph_repo
         'idf_literal_hits_missing_address': missing_addresses,
         'idf_literal_hits_unmapped_or_mismatched': mismatched_literals,
         'ghidra_claimed_idf_functions_with_verified_literal_bytes': len(literal_functions),
+        'verified_literal_sources_executable_pe_backed': True,
         'ghidra_claimed_idf_functions_with_raw_pointer_candidate': len(pointer_functions),
         'idf_raw_push_or_mov_pointer_sites': pointer_sites,
         'ghidra_claimed_idf_functions_with_boundary_pointer_candidate': len(boundary_functions),
@@ -101,7 +120,9 @@ def analyze_verified(binary, expected_sha256, idf_report, api_report, graph_repo
             'static metadata assertions. Reported IDF literal bytes are now '
             'checked against original PE mappings, but containing functions '
             'and raw PUSH/MOV pointer candidates are not independently '
-            'disassembled or shown reachable. '
+            'disassembled or shown reachable. Function entries in the stricter '
+            'source tiers must map to executable PE bytes; their actual '
+            'boundaries and ownership of xrefs remain Ghidra claims. '
             'The legacy IDF-source hop histogram uses unverified Ghidra xrefs; '
             'separate verified-literal/pointer tiers exclude unmatched source bytes. '
             'File-I/O API endpoint references are still Ghidra metadata, not '
