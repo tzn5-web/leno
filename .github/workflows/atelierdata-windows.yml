@@ -60,6 +60,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "GHIDRA_VERIFIED_SOURCE_MAPPING_SYNTAX_FAILED" }
           python -m unittest discover -s projects/atelierdata -p 'test_ghidra_verified_source_mapping.py' -v
           if ($LASTEXITCODE -ne 0) { throw "GHIDRA_VERIFIED_SOURCE_MAPPING_TEST_FAILED" }
+          python -m py_compile projects/atelierdata/import_validation.py projects/atelierdata/test_import_preflight.py projects/atelierdata/ghidra_pe_api_endpoint_evidence.py projects/atelierdata/test_ghidra_pe_api_endpoint_evidence.py projects/atelierdata/test_ghidra_pe_api_triage_integration.py
+          if ($LASTEXITCODE -ne 0) { throw "IMPORT_AND_GHIDRA_PE_IAT_SYNTAX_FAILED" }
+          python -m unittest discover -s projects/atelierdata -p 'test_import_preflight.py' -v
+          if ($LASTEXITCODE -ne 0) { throw "IMPORT_PREFLIGHT_TEST_FAILED" }
+          python -m unittest discover -s projects/atelierdata -p 'test_ghidra_pe_api_endpoint_evidence.py' -v
+          if ($LASTEXITCODE -ne 0) { throw "GHIDRA_PE_API_ENDPOINT_TEST_FAILED" }
+          python -m unittest discover -s projects/atelierdata -p 'test_ghidra_pe_api_triage_integration.py' -v
+          if ($LASTEXITCODE -ne 0) { throw "GHIDRA_PE_IAT_TRIAGE_INTEGRATION_FAILED" }
           python -m unittest discover -s projects/atelierdata -p 'test_vehicle_search_literal.py' -v
           if ($LASTEXITCODE -ne 0) { throw "VEHICLE_LITERAL_SEARCH_TEST_FAILED" }
           python -m unittest discover -s projects/atelierdata -p 'test_restore_preflight.py' -v
