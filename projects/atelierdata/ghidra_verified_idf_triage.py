@@ -14,15 +14,23 @@ import tempfile
 from pathlib import Path
 
 from ghidra_callgraph_source_replay import replay
+from ghidra_api_callsite_replay import _idf_functions as replay_idf_literals
 from ghidra_idf_api_correlation import load_private
 from ghidra_idf_callgraph_triage import analyze, load_graph
-from pe_file_io_xrefs import MAX_PE
+from pe_file_io_xrefs import MAX_PE, parse_pe32
 
 
 def analyze_verified(binary, expected_sha256, idf_report, api_report, graph_report):
     """Require matching source identity and independent PE byte replay first."""
     verified = replay(binary, expected_sha256, graph_report)
     summary = analyze(idf_report, api_report, graph_report, expected_sha256)
+    # Cross-check reported .IDF string addresses against *source* PE bytes.
+    # This is an independent, narrower evidence tier: Ghidra function
+    # attribution and instruction boundaries remain unproven by raw bytes.
+    (literal_functions, pointer_functions, pointer_sites,
+     boundary_functions, boundary_sites, verified_literals,
+     missing_addresses, mismatched_literals) = replay_idf_literals(
+         binary, parse_pe32(binary), idf_report)
     if (verified['direct_call_sites_verified'] != summary['direct_call_sites_in_graph'] or
             verified['duplicate_call_sites_ignored'] != summary['duplicate_call_sites_ignored'] or
             verified['callgraph_coverage_truncated'] != summary['callgraph_coverage_truncated']):
@@ -33,13 +41,25 @@ def analyze_verified(binary, expected_sha256, idf_report, api_report, graph_repo
         'original_pe_md5_matches_private_ghidra': True,
         'all_reported_call_edges_replayed_against_original_pe': True,
         'direct_rel32_call_sites_verified': verified['direct_call_sites_verified'],
+        'idf_literal_hits_verified_against_original_pe': verified_literals,
+        'idf_literal_hits_missing_address': missing_addresses,
+        'idf_literal_hits_unmapped_or_mismatched': mismatched_literals,
+        'ghidra_claimed_idf_functions_with_verified_literal_bytes': len(literal_functions),
+        'ghidra_claimed_idf_functions_with_raw_pointer_candidate': len(pointer_functions),
+        'idf_raw_push_or_mov_pointer_sites': pointer_sites,
+        'ghidra_claimed_idf_functions_with_boundary_pointer_candidate': len(boundary_functions),
+        'idf_raw_pointer_sites_with_ghidra_boundary_metadata': boundary_sites,
         'original_executed': False,
         'runtime_reachability_proven': False,
         'idf_decoder_proven': False,
         'limitations': (
             'Every reported E8 rel32 edge matches original PE bytes, but Ghidra '
             'function boundaries, IDF-string xrefs and API references remain '
-            'static metadata assertions, not independently replayed dataflow. '
+            'static metadata assertions. Reported IDF literal bytes are now '
+            'checked against original PE mappings, but containing functions '
+            'and raw PUSH/MOV pointer candidates are not independently '
+            'disassembled or shown reachable. '
+            'Static byte matches are not independently replayed dataflow. '
             'No runtime reachability, IDF parser, decryption or licensed data '
             'access is demonstrated. Truncated coverage and indirect calls '
             'prevent negative conclusions.'
