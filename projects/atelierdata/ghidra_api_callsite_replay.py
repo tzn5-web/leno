@@ -31,7 +31,7 @@ def _raw_offset(data, pe, va):
     matches = []
     for sec in pe["sections"]:
         delta = rva - sec["rva"]
-        if 0 <= delta and delta + 6 <= sec["raw_size"]:
+        if 0 <= delta and delta + 6 <= min(sec["raw_size"], sec["vsize"]):
             off = sec["raw_at"] + delta
             if off + 6 <= len(data):
                 matches.append((off, sec["executable"]))
@@ -61,19 +61,25 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
             api_report.get("ghidra_program_md5_verified") is not True or
             idf_report.get("ghidra_import_sha256_verified") is not True):
         raise ValueError("Missing Ghidra imported-program identity flags")
+    source_md5 = hashlib.md5(data).hexdigest()
+    if (idf_report.get("source_md5") != source_md5 or
+            api_report.get("source_md5") != source_md5):
+        raise ValueError("Ghidra report source MD5 mismatch")
     pe = parse_pe32(data)
     idf_functions = _idf_functions(idf_report)
     inspected = mapped_executable = nonexec = unmapped = 0
     raw_opcode_candidates = import_matched = shared_idf_matched = 0
-    opcode_flow_conflicts = duplicate_sites = 0
-    seen = set()
+    opcode_flow_conflicts = duplicate_sites = ambiguous_sites = 0
+    # Aggregate by physical callsite before scoring. A source address cannot
+    # become two independently corroborated calls just because a private
+    # Ghidra report repeats it with different containing functions.
+    sites = {}
     for api_name, symbols in api_report["api_symbols"].items():
         for symbol in symbols:
             for ref in symbol["references"]:
                 if ref.get("function_entry") is None:
                     continue
                 flow_type = ref.get("reference_type")
-                # Never infer a call solely from an instruction mnemonic.
                 if flow_type not in _FLOW_TYPES:
                     continue
                 if ref.get("reference_is_call_or_jump", True) is not True:
@@ -85,40 +91,52 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
                 if space != "ram" or not 0 <= address <= 0xffffffff:
                     continue
                 function = _function_key(ref["function_entry"])
-                site = (api_name, address, function)
-                if site in seen:
+                site = (api_name, address)
+                if site in sites:
                     duplicate_sites += 1
-                    continue
-                seen.add(site)
-                inspected += 1
-                mapped = _raw_offset(data, pe, address)
-                if mapped is None:
-                    unmapped += 1
-                    continue
-                off, executable = mapped
-                if not executable:
-                    nonexec += 1
-                    continue
-                mapped_executable += 1
-                if data[off] != 0xff or data[off + 1] not in (0x15, 0x25):
-                    continue
-                raw_opcode_candidates += 1
-                kind = "CALL" if data[off + 1] == 0x15 else "JUMP"
-                if kind not in flow_type:
-                    opcode_flow_conflicts += 1
-                    continue
-                target = struct.unpack_from("<I", data, off + 2)[0]
-                imported = pe["imports"].get(target)
-                if imported is None or imported["symbol"] != api_name:
-                    continue
-                import_matched += 1
-                if function in idf_functions:
-                    shared_idf_matched += 1
+                row = sites.setdefault(site, {"functions": set(), "flow_kinds": set()})
+                row["functions"].add(function)
+                row["flow_kinds"].add("CALL" if "CALL" in flow_type else "JUMP")
+
+    for (api_name, address), row in sites.items():
+        inspected += 1
+        if len(row["functions"]) != 1 or len(row["flow_kinds"]) != 1:
+            # Contradictory report attribution is not evidence. This also
+            # makes the result independent of private JSON reference order.
+            ambiguous_sites += 1
+            continue
+        function = next(iter(row["functions"]))
+        reported_kind = next(iter(row["flow_kinds"]))
+        mapped = _raw_offset(data, pe, address)
+        if mapped is None:
+            unmapped += 1
+            continue
+        off, executable = mapped
+        if not executable:
+            nonexec += 1
+            continue
+        mapped_executable += 1
+        if data[off] != 0xff or data[off + 1] not in (0x15, 0x25):
+            continue
+        raw_opcode_candidates += 1
+        kind = "CALL" if data[off + 1] == 0x15 else "JUMP"
+        if kind != reported_kind:
+            opcode_flow_conflicts += 1
+            continue
+        target = struct.unpack_from("<I", data, off + 2)[0]
+        imported = pe["imports"].get(target)
+        if imported is None or imported["symbol"] != api_name:
+            continue
+        import_matched += 1
+        if function in idf_functions:
+            shared_idf_matched += 1
     return {
         "schema": SCHEMA,
         "original_sha256_verified": True,
+        "source_md5_matches_both_ghidra_reports": True,
         "reported_api_flow_sites_with_address_inspected": inspected,
         "unique_sites_repeated_in_report": duplicate_sites,
+        "sites_with_conflicting_reported_attribution": ambiguous_sites,
         "sites_in_executable_raw_sections": mapped_executable,
         "sites_in_nonexecutable_raw_sections": nonexec,
         "sites_without_unique_raw_mapping": unmapped,
@@ -134,6 +152,7 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
         "idf_decoder_proven": False,
         "limitations": "Raw FF15/FF25 import-table corroboration only. Byte patterns can be data; "
                        "Ghidra xrefs and function boundaries are not independently proven. "
+                       "Conflicting report attributions are excluded. "
                        "Dynamic imports, thunks, other encodings and indirect flows are omitted. "
                        "No evidence of an IDF decoder or licensed data access."
     }
