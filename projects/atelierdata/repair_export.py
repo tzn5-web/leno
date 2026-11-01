@@ -90,9 +90,9 @@ def procedure_html(store,procedure_id):
       "<style>body{font:16px/1.5 system-ui,Arial,sans-serif;max-width:900px;"
       "margin:2rem auto;padding:0 1.5rem;color:#162438}"
       "h1{font-size:2rem}h2{margin-top:1.8rem}.meta{color:#46556a}"
-      ".warning{border-left:5px solid #b3312a;background:#fff1ee;padding:1rem}"
+      ".warning{border-left:5px solid #b3312a;background:#fff1ee;padding:1rem;white-space:pre-wrap;overflow-wrap:anywhere}"
       ".step{break-inside:avoid;margin:1.3rem 0;padding:1rem;border:1px solid #ccd4dc}"
-      ".reference{font-size:.9rem;color:#46556a}"
+      ".reference{font-size:.9rem;color:#46556a}" " .instruction{white-space:pre-wrap;overflow-wrap:anywhere}"
       "@media print{nav{display:none}body{margin:0;max-width:none}.step{page-break-inside:avoid}}</style>",
       "</head><body><header><h1>"+esc(record["title"])+"</h1>",
       "<p class='meta'><strong>Vehicul:</strong> "+esc(identity)+"<br>",
@@ -114,13 +114,15 @@ def procedure_html(store,procedure_id):
             flags = (" — Atenție" if step["safety_note"] else "")
             if step["reference_status"] == "invalid_or_unavailable":
                 flags += " — Referință indisponibilă"
+            elif step["reference_status"] == "linked":
+                flags += " — Document asociat"
             parts.append("<li><a href='#pas-"+str(position)+"'>Pasul "
                          +esc(step["step_number"])+"</a>"+flags+"</li>")
         parts.append("</ol></nav>")
     for position, step in enumerate(record["steps"], 1):
         parts.append("<section class='step' id='pas-"+str(position)
                      +"'><h3>Pasul "+esc(step["step_number"])+"</h3>"
-                     "<p>"+esc(step["instruction"])+"</p>")
+                     "<p class='instruction'>"+esc(step["instruction"])+"</p>")
         if step["safety_note"]:
             parts.append("<p class='warning'><strong>Atenție:</strong> "
                          +esc(step["safety_note"])+"</p>")
