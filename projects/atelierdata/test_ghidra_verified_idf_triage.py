@@ -1,6 +1,7 @@
 """Synthetic-only tests for private PE-backed Ghidra/IDF triage integration."""
 import hashlib
 import json
+import struct
 import tempfile
 import unittest
 from pathlib import Path
@@ -50,6 +51,49 @@ class VerifiedTriageTests(unittest.TestCase):
         api['source_md5'] = '0' * 32
         with self.assertRaisesRegex(ValueError, 'source MD5'):
             analyze_verified(binary, sha, idf, api, graph)
+
+    def test_real_pe_literal_and_pointer_candidate_correlated(self):
+        binary, sha, idf, api, graph = fixture()
+        modified = bytearray(binary)
+        # In the synthetic PE, .text starts at raw 0x200 / VA 0x401000.
+        modified[0x280:0x28a] = b'MODELS.IDF'
+        modified[0x290:0x295] = b'\\x68' + struct.pack('<I', 0x401080)
+        binary = bytes(modified)
+        sha = hashlib.sha256(binary).hexdigest()
+        md5 = hashlib.md5(binary).hexdigest()
+        for report in (idf, api, graph):
+            report['source_sha256'] = sha
+            report['source_md5'] = md5
+        hit = idf['keyword_hits']['.rdata']['MODELS.IDF:ascii'][0]
+        hit['address'] = '00401080'
+        hit['references_from'][0].update({
+            'source_address': '00401090',
+            'reference_is_data': True,
+            'instruction_start_address': '00401090',
+            'instruction_length': 5,
+            'instruction_mnemonic': 'PUSH',
+        })
+        result = analyze_verified(binary, sha, idf, api, graph)
+        self.assertEqual(result['idf_literal_hits_verified_against_original_pe'], 1)
+        self.assertEqual(result['idf_literal_hits_unmapped_or_mismatched'], 0)
+        self.assertEqual(result['idf_raw_push_or_mov_pointer_sites'], 1)
+        self.assertEqual(result['idf_raw_pointer_sites_with_ghidra_boundary_metadata'], 1)
+        self.assertFalse(result['idf_decoder_proven'])
+        self.assertNotIn('00401080', json.dumps(result))
+
+    def test_unmapped_reported_literal_is_not_corroborated(self):
+        binary, sha, idf, api, graph = fixture()
+        result = analyze_verified(binary, sha, idf, api, graph)
+        self.assertEqual(result['idf_literal_hits_verified_against_original_pe'], 0)
+        self.assertEqual(result['idf_literal_hits_unmapped_or_mismatched'], 1)
+        self.assertEqual(result['idf_raw_push_or_mov_pointer_sites'], 0)
+
+    def test_missing_reported_literal_address_remains_unverified(self):
+        binary, sha, idf, api, graph = fixture()
+        idf['keyword_hits']['.rdata']['MODELS.IDF:ascii'][0]['address'] = None
+        result = analyze_verified(binary, sha, idf, api, graph)
+        self.assertEqual(result['idf_literal_hits_verified_against_original_pe'], 0)
+        self.assertEqual(result['idf_literal_hits_missing_address'], 1)
 
     def test_cli_writes_only_aggregate_json(self):
         binary, sha, idf, api, graph = fixture()
