@@ -157,5 +157,39 @@ class ProcedureReferenceProvenanceTests(unittest.TestCase):
         self.assertNotIn("Licensed & authored <source>", detail)
 
 
+    def test_gui_reference_button_blocks_corrupt_cross_vehicle_link(self):
+        """The document button must not create a popup for a foreign reference."""
+        import tkinter as tk
+        from unittest.mock import patch
+        from repair_procedures_gui import open_procedures_window
+
+        try:
+            root = tk.Tk()
+        except tk.TclError as exc:
+            self.skipTest("No graphical Tk display available: " + str(exc))
+        self.addCleanup(root.destroy)
+        root.withdraw()
+        app = SimpleNamespace(root=root, tk=tk, db=self.store, vid=self.car)
+        window = open_procedures_window(
+            app, object, selected_procedure_id=self.procedure)
+        self.addCleanup(window.destroy)
+        window.steps_tree.selection_set(str(self.step))
+        window.update_idletasks()
+        before_children = tuple(window.winfo_children())
+        before_changes = self.store.db.total_changes
+        self.store.db.execute(
+            "UPDATE procedure_steps SET article_id=? WHERE id=?",
+            (self.foreign, self.step))
+        self.store.db.commit()
+        after_corruption = self.store.db.total_changes
+        with patch("tkinter.messagebox.showerror") as showerror:
+            window.open_step_reference()
+        showerror.assert_called_once()
+        self.assertIn("Referință invalidă", showerror.call_args.args[0])
+        self.assertEqual(tuple(window.winfo_children()), before_children)
+        self.assertEqual(self.store.db.total_changes, after_corruption)
+        self.assertGreater(after_corruption, before_changes)
+
+
 if __name__ == "__main__":
     unittest.main()
