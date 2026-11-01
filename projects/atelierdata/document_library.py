@@ -65,6 +65,9 @@ def _validate_url(value):
     return url
 
 def document_attachment(store, attachment_id):
+    # SQLite treats True and 1.0 as row ID 1; reject coercion at the boundary.
+    if type(attachment_id) is not int or attachment_id <= 0:
+        raise ValueError("Invalid attachment ID")
     row=store.db.execute("""SELECT att.id,att.path,art.id AS article_id,
           art.vehicle_id,art.title AS article_title,art.category,art.source AS article_source,
           v.make,v.model,v.engine,v.years,v.fuel,v.variant
@@ -224,8 +227,20 @@ def list_library(store,make="",model="",engine="",year="",category="",query="",
         rows=[x for x in rows if matches(x["years"])]
     return rows
 
-def verified_library_file(store,attachment_id,vehicle_id=None):
+def verified_library_file(store,attachment_id,vehicle_id=None,article_id=None):
+    """Recheck a selected row immediately before opening a local document.
+
+    A GUI result can become stale if the attachment is reassigned after search.
+    Check both the expected vehicle and article; the SHA256 file check remains
+    in resolve_document(). No document bytes are exposed on mismatch.
+    """
+    if vehicle_id is not None and (type(vehicle_id) is not int or vehicle_id <= 0):
+        raise ValueError("Invalid vehicle ID")
+    if article_id is not None and (type(article_id) is not int or article_id <= 0):
+        raise ValueError("Invalid article ID")
     attachment=document_attachment(store,attachment_id)
     if vehicle_id is not None and attachment["vehicle_id"]!=vehicle_id:
         raise ValueError("Documentul nu aparține vehiculului selectat")
+    if article_id is not None and attachment["article_id"]!=article_id:
+        raise ValueError("Documentul nu mai aparține articolului selectat")
     return resolve_document(store,attachment_id)

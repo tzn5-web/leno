@@ -167,6 +167,49 @@ class DocumentLibraryTests(unittest.TestCase):
             [r["attachment_id"] for r in list_library(self.db,make="Skoda",query="OTHER-REV")],
             [other])
 
+    def test_attachment_ids_cannot_be_coerced_by_sqlite(self):
+        attachment=self.import_sample()
+        baseline=self.db.db.total_changes
+        for invalid in (True,False,float(attachment),str(attachment),None,0,-1):
+            with self.subTest(value=repr(invalid)):
+                with self.assertRaises(ValueError):
+                    document_attachment(self.db,invalid)
+                with self.assertRaises(ValueError):
+                    verified_library_file(self.db,invalid)
+                self.assertEqual(self.db.db.total_changes,baseline)
+        for invalid in (True,False,1.0,"1",0,-1):
+            with self.subTest(expected_id=repr(invalid)):
+                with self.assertRaises(ValueError):
+                    verified_library_file(self.db,attachment,vehicle_id=invalid)
+                with self.assertRaises(ValueError):
+                    verified_library_file(self.db,attachment,article_id=invalid)
+        self.assertEqual(self.db.db.total_changes,baseline)
+
+    def test_stale_document_article_selection_cannot_open_reassigned_file(self):
+        attachment=self.import_sample()
+        original=document_attachment(self.db,attachment)
+        self.assertEqual(
+            verified_library_file(self.db,attachment,
+                vehicle_id=self.mitsubishi,article_id=original["article_id"]).read_bytes(),
+            self.pdf.read_bytes())
+        same_vehicle_article=self.db.add_article(
+            self.mitsubishi,"Manual de atelier","Other synthetic article","","OWNED")
+        self.db.db.execute("UPDATE attachments SET article_id=? WHERE id=?",
+                           (same_vehicle_article,attachment))
+        self.db.db.commit()
+        with self.assertRaisesRegex(ValueError,"articolului selectat"):
+            verified_library_file(self.db,attachment,
+                vehicle_id=self.mitsubishi,article_id=original["article_id"])
+        other_vehicle_article=self.db.add_article(
+            self.skoda,"Manual de atelier","Foreign synthetic article","","OWNED")
+        self.db.db.execute("UPDATE attachments SET article_id=? WHERE id=?",
+                           (other_vehicle_article,attachment))
+        self.db.db.commit()
+        with self.assertRaisesRegex(ValueError,"vehiculului selectat"):
+            verified_library_file(self.db,attachment,
+                vehicle_id=self.mitsubishi,article_id=original["article_id"])
+        self.assertEqual(self.db.db.execute("PRAGMA quick_check").fetchone()[0],"ok")
+
     def test_complete_backup_restores_metadata_and_bytes(self):
         a=self.import_sample()
         archive=self.root/"bundle.zip"

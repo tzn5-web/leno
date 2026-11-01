@@ -119,6 +119,10 @@ def open_document_library(app):
                 app.db,make=make.get(),category="" if category.get()=="Toate" else category.get(),
                 year=year.get(),query=search.get())
         except ValueError as exc:
+            # Invalid filters must not leave a stale selection/preview actionable.
+            indexed.clear()
+            tree.delete(*tree.get_children())
+            show_detail()
             status.set("Filtru invalid: "+str(exc))
             return
         indexed.clear()
@@ -284,7 +288,9 @@ def open_document_library(app):
         row=selected()
         if not row:return messagebox.showinfo("Selectare","Selectează un fișier.",parent=win)
         try:
-            path=verified_library_file(app.db,row["attachment_id"])
+            path=verified_library_file(
+                app.db,row["attachment_id"],vehicle_id=row["vehicle_id"],
+                article_id=row["article_id"])
             if sys.platform=="win32":
                 os.startfile(str(path))
             else:
@@ -306,4 +312,7 @@ def open_document_library(app):
     win.library_tree=tree
     win.library_status=status
     win.library_search=search
+    win.library_year=year
+    win.library_details=details
+    win.library_open_verified=open_verified
     return win

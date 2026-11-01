@@ -1,6 +1,7 @@
 """Windows/Tk smoke test for the real offline document library widget."""
 import tempfile
 import tkinter as tk
+from unittest.mock import patch
 from pathlib import Path
 from atelierdata import Store
 from document_library import import_local_file
@@ -55,6 +56,29 @@ def main():
             win.library_search.set("4A91")
             root.update_idletasks()
             assert len(win.library_tree.get_children())==1
+            win.library_year.set("invalid")
+            root.update_idletasks()
+            assert not win.library_tree.get_children(), "Invalid year must clear stale results"
+            assert "Filtru invalid" in win.library_status.get()
+            assert "Selectează un document" in win.library_details.get("1.0","end")
+            win.library_year.set("2008")
+            root.update_idletasks()
+            assert len(win.library_tree.get_children())==1
+            attachment_id=int(win.library_tree.get_children()[0])
+            win.library_tree.selection_set(str(attachment_id))
+            root.update_idletasks()
+            foreign_vehicle=store.add_vehicle("SYNTHETIC","OTHER")
+            foreign_article=store.add_article(
+                foreign_vehicle,"Manual de atelier","Foreign synthetic fixture",
+                "","OWNED")
+            store.db.db.execute("UPDATE attachments SET article_id=? WHERE id=?",
+                                (foreign_article,attachment_id))
+            store.db.db.commit()
+            with patch("document_library_gui.os.startfile") as launch, \
+                 patch("document_library_gui.messagebox.showerror") as error:
+                win.library_open_verified()
+                assert not launch.called, "Stale attachment must not open"
+                assert error.called, "Stale selection must report an error"
             win.destroy()
             print("DOCUMENT_LIBRARY_GUI_SMOKE=PASS")
         finally:
