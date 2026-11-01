@@ -48,7 +48,7 @@ def _idf_functions(data, pe, report):
     """
     functions = set()
     direct_pointer_functions = set()
-    direct_pointer_references = 0
+    direct_pointer_sites = set()
     verified = missing = mismatched = 0
     for block in report["keyword_hits"].values():
         for name, hits in block.items():
@@ -94,9 +94,9 @@ def _idf_functions(data, pe, report):
                     opcode = data[offset]
                     if (opcode == 0x68 or 0xb8 <= opcode <= 0xbf) and (
                             struct.unpack_from("<I", data, offset + 1)[0] == va):
-                        direct_pointer_references += 1
+                        direct_pointer_sites.add((src_va, va))
                         direct_pointer_functions.add(function)
-    return (functions, direct_pointer_functions, direct_pointer_references,
+    return (functions, direct_pointer_functions, len(direct_pointer_sites),
             verified, missing, mismatched)
 
 def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict) -> dict:
