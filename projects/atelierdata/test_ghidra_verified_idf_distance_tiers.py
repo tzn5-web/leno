@@ -18,7 +18,7 @@ def with_literal(pointer=False, boundary=False):
     data = bytearray(binary)
     data[0x280:0x28a] = b'MODELS.IDF'
     if pointer:
-        data[0x290:0x295] = b'\\x68' + struct.pack('<I', 0x401080)
+        data[0x290:0x295] = bytes((0x68,)) + struct.pack('<I', 0x401080)
     binary = bytes(data)
     sha = hashlib.sha256(binary).hexdigest()
     md5 = hashlib.md5(binary).hexdigest()
