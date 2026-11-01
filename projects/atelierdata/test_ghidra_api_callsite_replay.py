@@ -99,6 +99,61 @@ class ReplayTests(unittest.TestCase):
         repeated = replay(modified, new_sha, idf, api)
         self.assertEqual(repeated["idf_xrefs_with_raw_push_or_mov_literal_va"], 1)
 
+    def test_ghidra_idf_data_xref_instruction_boundary_tier(self):
+        data, sha, idf, api = fixtures()
+        modified = bytearray(data)
+        modified[0x230:0x235] = b"\\x68" + struct.pack("<I", 0x402100)
+        modified = bytes(modified)
+        sha = hashlib.sha256(modified).hexdigest()
+        for report in (idf, api):
+            report["source_sha256"] = sha
+            report["source_md5"] = hashlib.md5(modified).hexdigest()
+        ref = idf["keyword_hits"][".rdata"]["MODELS.IDF:ascii"][0]["references_from"][0]
+        ref.update(source_address="RAM:00401030",
+                   reference_type="DATA", reference_is_data=True,
+                   instruction_start_address="RAM:00401030",
+                   instruction_length=5, instruction_mnemonic="PUSH")
+        result = replay(modified, sha, idf, api)
+        self.assertEqual(result["idf_xrefs_with_raw_push_or_mov_literal_va"], 1)
+        self.assertEqual(result["idf_xrefs_with_ghidra_boundary_and_raw_pointer"], 1)
+        self.assertEqual(result["matching_api_sites_in_ghidra_idf_pointer_functions"], 1)
+        self.assertFalse(result["instruction_boundaries_independently_verified"])
+        self.assertNotIn("00401030", json.dumps(result))
+        ref_copy = copy.deepcopy(ref)
+        for key, wrong in (
+                ("reference_is_data", False),
+                ("instruction_start_address", "RAM:00401031"),
+                ("instruction_length", 6),
+                ("instruction_mnemonic", "MOV"),
+                ("instruction_start_address", None)):
+            with self.subTest(field=key, invalid=wrong):
+                ref.update(ref_copy)
+                ref[key] = wrong
+                invalid = replay(modified, sha, idf, api)
+                self.assertEqual(invalid["idf_xrefs_with_raw_push_or_mov_literal_va"], 1)
+                self.assertEqual(invalid["idf_xrefs_with_ghidra_boundary_and_raw_pointer"], 0)
+                self.assertEqual(invalid["matching_api_sites_in_ghidra_idf_pointer_functions"], 0)
+
+    def test_ghidra_idf_mov_immediate_boundary_tier(self):
+        data, sha, idf, api = fixtures()
+        modified = bytearray(data)
+        modified[0x230:0x235] = b"\\xb8" + struct.pack("<I", 0x402100)
+        modified = bytes(modified)
+        sha = hashlib.sha256(modified).hexdigest()
+        for report in (idf, api):
+            report["source_sha256"] = sha
+            report["source_md5"] = hashlib.md5(modified).hexdigest()
+        ref = idf["keyword_hits"][".rdata"]["MODELS.IDF:ascii"][0]["references_from"][0]
+        ref.update(source_address="RAM:00401030",
+                   reference_type="DATA", reference_is_data=True,
+                   instruction_start_address="RAM:00401030",
+                   instruction_length=5, instruction_mnemonic="MOV")
+        self.assertEqual(replay(modified, sha, idf, api)[
+            "idf_xrefs_with_ghidra_boundary_and_raw_pointer"], 1)
+        ref["instruction_mnemonic"] = "PUSH"
+        self.assertEqual(replay(modified, sha, idf, api)[
+            "idf_xrefs_with_ghidra_boundary_and_raw_pointer"], 0)
+
     def test_raw_idf_pointer_evidence_rejects_wrong_operand_and_data_source(self):
         data, sha, idf, api = fixtures()
         ref = idf["keyword_hits"][".rdata"]["MODELS.IDF:ascii"][0]["references_from"][0]
