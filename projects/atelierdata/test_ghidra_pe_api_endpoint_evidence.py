@@ -100,5 +100,45 @@ class PeApiEndpointEvidenceTests(unittest.TestCase):
             "api-ms-win-core-memory-l1-1-0.dll", ("file_read",)))
         self.assertFalse(_trusted_windows_api_import("custom.dll", ("file_read",)))
 
+
+    def test_api_set_prefix_spoof_and_cross_family_rejected(self):
+        for dll in (
+                "api-ms-win-core-file-evil.dll",
+                "api-ms-win-core-file-l1-1-0.dll.evil",
+                "api-ms-win-core-file-l1-1-0x.dll",
+                "C:\\\\Windows\\\\api-ms-win-core-file-l1-1-0.dll",
+                "api-ms-win-core-file-l1-1-0.dll\\x00suffix",
+                "api-ms-win-core-file-l1-1-0.dll/extra"):
+            with self.subTest(dll=dll):
+                self.assertFalse(_trusted_windows_api_import(dll, ("file_read",)))
+        self.assertTrue(_trusted_windows_api_import(
+            "API-MS-WIN-CORE-FILE-L1-2-0.DLL", ("file_read",)))
+        self.assertFalse(_trusted_windows_api_import(
+            "API-MS-WIN-CORE-MEMORY-L1-1-0.DLL", ("file_read",)))
+        self.assertFalse(_trusted_windows_api_import(
+            "API-MS-WIN-CORE-FILE-L1-1-0.DLL", ("file_mapping",)))
+
+    def test_invalid_duplicate_reference_taints_same_physical_site(self):
+        def tamper(api):
+            refs = api["api_symbols"]["ReadFile"][0]["references"]
+            duplicate = copy.deepcopy(refs[0])
+            duplicate["instruction_length"] = 5
+            refs.append(duplicate)
+        endpoints, count, conflicts = self._run(change=tamper)
+        self.assertEqual(count, 0)
+        self.assertEqual(conflicts, 1)
+        self.assertFalse(endpoints["file_read"])
+
+    def test_inconsistent_duplicate_start_taints_same_physical_site(self):
+        def tamper(api):
+            refs = api["api_symbols"]["ReadFile"][0]["references"]
+            duplicate = copy.deepcopy(refs[0])
+            duplicate["instruction_start_address"] = "RAM:00401021"
+            refs.append(duplicate)
+        endpoints, count, conflicts = self._run(change=tamper)
+        self.assertEqual(count, 0)
+        self.assertEqual(conflicts, 1)
+        self.assertFalse(endpoints["file_read"])
+
 if __name__ == "__main__":
     unittest.main()
