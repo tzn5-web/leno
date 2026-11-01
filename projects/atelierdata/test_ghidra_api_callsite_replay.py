@@ -130,6 +130,21 @@ class ReplayTests(unittest.TestCase):
         refs.reverse()
         self.assertEqual(replay(data, sha, idf, api), result)
 
+    def test_conflicting_api_names_at_one_physical_site_are_excluded(self):
+        data, sha, idf, api = fixtures()
+        # One instruction cannot independently corroborate two reported API
+        # targets. Both names share the exact same physical source address.
+        api["api_symbols"]["CreateFileA"] = copy.deepcopy(api["api_symbols"]["ReadFile"])
+        result = replay(data, sha, idf, api)
+        self.assertEqual(result["reported_api_flow_sites_with_address_inspected"], 1)
+        self.assertEqual(result["unique_sites_repeated_in_report"], 1)
+        self.assertEqual(result["sites_with_conflicting_reported_attribution"], 1)
+        self.assertEqual(result["raw_indirect_import_sites_with_matching_api_name"], 0)
+        self.assertEqual(result["matching_api_sites_in_idf_string_referencing_functions"], 0)
+        reversed_symbols = dict(reversed(list(api["api_symbols"].items())))
+        api["api_symbols"] = reversed_symbols
+        self.assertEqual(replay(data, sha, idf, api), result)
+
     def test_conflicting_call_and_jump_reports_are_excluded(self):
         data, sha, idf, api = fixtures()
         refs = api["api_symbols"]["ReadFile"][0]["references"]
