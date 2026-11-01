@@ -581,8 +581,8 @@ def main():
                                       'Referință sintetică','Doar test','TEST')
             pid=create_procedure(ui.db,vehicle,'Sistem sintetic','Procedură GUI TEST',
                                  source='TEST ONLY')
-            step_id=add_step(ui.db,pid,'Pas fictiv 100%_ pentru smoke-test',
-                     safety_note='Nu este o instrucțiune reală',article_id=article)
+            step_id=add_step(ui.db,pid,'Pas fictiv 100%_ pentru smoke-test\nLinia a doua',
+                     safety_note='Nu este o instrucțiune reală\nAvertisment pe linia a doua',article_id=article)
             second_article=ui.db.add_article(vehicle,'Note atelier',
                           'Referință secundară sintetică','Date fictive; Große BODY%_TOKEN test','TEST OWNED')
             dtc_id=add_dtc(ui.db,vehicle,'P0A01','Sistem demonstrativ',
@@ -718,6 +718,11 @@ def main():
                                 or "id='pas-1'" not in printable
                                 or 'Referință indisponibilă' not in printable):
                             raise RuntimeError('PROCEDURES_GUI_EXPORT_STEP_NAVIGATION_MISSING')
+                        if ("class='instruction'" not in printable
+                                or '.instruction{white-space:pre-wrap;overflow-wrap:anywhere}' not in printable
+                                or 'Pas fictiv 100%_ pentru smoke-test\nLinia a doua' not in printable
+                                or 'Nu este o instrucțiune reală\nAvertisment pe linia a doua' not in printable):
+                            raise RuntimeError('PROCEDURES_GUI_EXPORT_MULTILINE_FORMATTING_MISSING')
                         if 'AVERTISMENT REFERINȚĂ' not in printable:
                             raise RuntimeError('PROCEDURES_GUI_EXPORT_WARNING_MISSING')
                         if 'Referință secundară sintetică' in printable:
