@@ -60,7 +60,7 @@ def analyze_verified(binary, expected_sha256, idf_report, api_report, graph_repo
     pe = parse_pe32(binary)
     (literal_functions, pointer_functions, pointer_sites,
      boundary_functions, boundary_sites, verified_literals,
-     missing_addresses, mismatched_literals) = replay_idf_literals(
+     missing_addresses, mismatched_literals, claimed_pointer_functions) = replay_idf_literals(
          binary, pe, idf_report)
     if (verified['direct_call_sites_verified'] != summary['direct_call_sites_in_graph'] or
             verified['duplicate_call_sites_ignored'] != summary['duplicate_call_sites_ignored'] or
@@ -106,7 +106,10 @@ def analyze_verified(binary, expected_sha256, idf_report, api_report, graph_repo
         'ghidra_claimed_idf_function_entries_without_executable_pe_mapping':
             len(literal_functions) - len(literal_sources),
         'ghidra_claimed_pointer_function_entries_without_executable_pe_mapping':
-            len(pointer_functions) - len(pointer_sources),
+            len(claimed_pointer_functions -
+                _executable_source_addresses(binary, pe, claimed_pointer_functions)),
+        'ghidra_claimed_pointer_function_entries_with_impossible_source_ownership':
+            len(claimed_pointer_functions - pointer_functions),
         'verified_raw_pointer_source_function_count': len(pointer_sources),
         'verified_boundary_pointer_source_function_count': len(boundary_sources),
         'verified_literal_sources_by_shortest_ghidra_file_io_hops':
