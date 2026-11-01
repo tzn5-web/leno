@@ -33,6 +33,7 @@ def synthetic_pe():
     struct.pack_into("<II", b, 0x4a0, 0x20e0, 0)
     struct.pack_into("<II", b, 0x4c0, 0x20e0, 0)
     b[0x4e2:0x4eb] = b"ReadFile\0"
+    b[0x500:0x50a] = b"MODELS.IDF"  # Synthetic string at PE VA 0x402100
     b[0x220:0x226] = b"\xff\x15" + struct.pack("<I", 0x4020c0)
     return bytes(b)
 
@@ -45,6 +46,7 @@ def fixtures():
         "executed_target_binary": False,
         "idf_decoder_proven": False, "ghidra_import_sha256_verified": True,
         "keyword_hits": {".rdata": {"MODELS.IDF:ascii": [{
+            "address": "RAM:00402100",
             "references_from": [{"function_entry": "00401000"}]}]}}
     }
     api = {
@@ -70,9 +72,51 @@ class ReplayTests(unittest.TestCase):
         result = replay(data, sha, idf, api)
         self.assertEqual(result["raw_indirect_import_sites_with_matching_api_name"], 1)
         self.assertEqual(result["matching_api_sites_in_idf_string_referencing_functions"], 1)
+        self.assertEqual(result["idf_literal_hits_verified_against_source_pe"], 1)
         self.assertFalse(result["idf_decoder_proven"])
         self.assertNotIn("004010", json.dumps(result))
         self.assertNotIn("ReadFile", json.dumps(result))
+
+
+    def test_missing_idf_literal_address_is_not_independent_evidence(self):
+        data, sha, idf, api = fixtures()
+        hit = idf["keyword_hits"][".rdata"]["MODELS.IDF:ascii"][0]
+        hit.pop("address")
+        result = replay(data, sha, idf, api)
+        self.assertEqual(result["idf_literal_hits_missing_address"], 1)
+        self.assertEqual(result["matching_api_sites_in_idf_string_referencing_functions"], 0)
+        self.assertEqual(result["raw_indirect_import_sites_with_matching_api_name"], 1)
+
+    def test_mismatched_literal_bytes_are_not_shared_idf_evidence(self):
+        data, sha, idf, api = fixtures()
+        hit = idf["keyword_hits"][".rdata"]["MODELS.IDF:ascii"][0]
+        hit["address"] = "RAM:00402110"  # Mapped but not the IDF string.
+        result = replay(data, sha, idf, api)
+        self.assertEqual(result["idf_literal_hits_unmapped_or_mismatched"], 1)
+        self.assertEqual(result["matching_api_sites_in_idf_string_referencing_functions"], 0)
+
+    def test_unmapped_literal_is_not_shared_idf_evidence(self):
+        data, sha, idf, api = fixtures()
+        hit = idf["keyword_hits"][".rdata"]["MODELS.IDF:ascii"][0]
+        hit["address"] = "RAM:90000000"
+        result = replay(data, sha, idf, api)
+        self.assertEqual(result["idf_literal_hits_unmapped_or_mismatched"], 1)
+        self.assertEqual(result["matching_api_sites_in_idf_string_referencing_functions"], 0)
+
+    def test_utf16_literal_is_checked_at_reported_address(self):
+        data, sha, idf, api = fixtures()
+        modified = bytearray(data)
+        modified[0x500:0x514] = "MODELS.IDF".encode("utf-16le")
+        modified = bytes(modified)
+        new_sha = hashlib.sha256(modified).hexdigest()
+        for report in (idf, api):
+            report["source_sha256"] = new_sha
+            report["source_md5"] = hashlib.md5(modified).hexdigest()
+        hits = idf["keyword_hits"][".rdata"]
+        hits["MODELS.IDF:utf16le"] = hits.pop("MODELS.IDF:ascii")
+        result = replay(modified, new_sha, idf, api)
+        self.assertEqual(result["idf_literal_hits_verified_against_source_pe"], 1)
+        self.assertEqual(result["matching_api_sites_in_idf_string_referencing_functions"], 1)
 
     def test_different_idf_function_does_not_match(self):
         data, sha, idf, api = fixtures()
