@@ -4,7 +4,7 @@ import tkinter as tk
 from unittest.mock import patch
 from pathlib import Path
 from atelierdata import Store
-from document_library import import_local_file
+from document_library import import_local_file, set_metadata
 from document_library_gui import open_document_library
 
 class TestApp:
@@ -67,6 +67,23 @@ def main():
             attachment_id=int(win.library_tree.get_children()[0])
             win.library_tree.selection_set(str(attachment_id))
             root.update_idletasks()
+            # The real Windows launch must be blocked if the current rights
+            # declaration is revoked after the search result was selected.
+            with patch("document_library_gui.os.startfile") as launch, \
+                 patch("document_library_gui.messagebox.showerror") as error:
+                win.library_open_verified()
+                assert launch.called and not error.called
+            set_metadata(store,attachment_id,"Manual de atelier",
+                         "Straße %_ 4A91","Local synthetic fixture",
+                         rights_basis="neconfirmat")
+            with patch("document_library_gui.os.startfile") as launch, \
+                 patch("document_library_gui.messagebox.showerror") as error:
+                win.library_open_verified()
+                assert not launch.called, "Unconfirmed rights must block launch"
+                assert error.called, "Unconfirmed rights must show a GUI error"
+            set_metadata(store,attachment_id,"Manual de atelier",
+                         "Straße %_ 4A91","Local synthetic fixture",
+                         rights_basis="document_propriu")
             foreign_vehicle=store.add_vehicle("SYNTHETIC","OTHER")
             foreign_article=store.add_article(
                 foreign_vehicle,"Manual de atelier","Foreign synthetic fixture",

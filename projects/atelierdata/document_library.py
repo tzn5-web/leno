@@ -243,4 +243,16 @@ def verified_library_file(store,attachment_id,vehicle_id=None,article_id=None):
         raise ValueError("Documentul nu aparține vehiculului selectat")
     if article_id is not None and attachment["article_id"]!=article_id:
         raise ValueError("Documentul nu mai aparține articolului selectat")
+    # Older attachments and records explicitly marked "neconfirmat" are
+    # inventory entries, not authorized documents to launch. Read the current
+    # declaration instead of trusting the possibly stale GUI search row.
+    # sqlite_master also handles pre-library databases without any schema write.
+    indexed=store.db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='library_documents'"
+    ).fetchone()
+    rights=(store.db.execute(
+        "SELECT rights_basis FROM library_documents WHERE attachment_id=?",
+        (attachment_id,)).fetchone() if indexed else None)
+    if rights is None or rights["rights_basis"] not in ACCESS_RIGHTS[1:]:
+        raise ValueError("Drepturi neconfirmate: document disponibil doar în inventar")
     return resolve_document(store,attachment_id)

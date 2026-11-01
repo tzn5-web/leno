@@ -210,6 +210,27 @@ class DocumentLibraryTests(unittest.TestCase):
                 vehicle_id=self.mitsubishi,article_id=original["article_id"])
         self.assertEqual(self.db.db.execute("PRAGMA quick_check").fetchone()[0],"ok")
 
+    def test_unconfirmed_or_legacy_rights_are_inventory_only(self):
+        article=self.db.add_article(
+            self.mitsubishi,"Manual de atelier","Legacy synthetic file","","TEST")
+        attachment=attach_document(self.db,article,self.pdf)
+        before=self.db.db.total_changes
+        with self.assertRaisesRegex(ValueError,"Drepturi neconfirmate"):
+            verified_library_file(self.db,attachment,
+                vehicle_id=self.mitsubishi,article_id=article)
+        self.assertEqual(self.db.db.total_changes,before)
+        set_metadata(self.db,attachment,"Manual de atelier","Synthetic","TEST",
+                     rights_basis="neconfirmat")
+        before=self.db.db.total_changes
+        with self.assertRaisesRegex(ValueError,"doar în inventar"):
+            verified_library_file(self.db,attachment)
+        self.assertEqual(self.db.db.total_changes,before)
+        set_metadata(self.db,attachment,"Manual de atelier","Synthetic","TEST",
+                     rights_basis="document_propriu")
+        self.assertEqual(verified_library_file(self.db,attachment).read_bytes(),
+                         self.pdf.read_bytes())
+        self.assertEqual(self.db.db.execute("PRAGMA quick_check").fetchone()[0],"ok")
+
     def test_complete_backup_restores_metadata_and_bytes(self):
         a=self.import_sample()
         archive=self.root/"bundle.zip"
