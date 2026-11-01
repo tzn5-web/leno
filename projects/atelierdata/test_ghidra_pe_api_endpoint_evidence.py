@@ -94,6 +94,10 @@ class PeApiEndpointEvidenceTests(unittest.TestCase):
             "api-ms-win-core-libraryloader-l1-1-0.dll", ("file_read",)))
         self.assertFalse(_trusted_windows_api_import(
             "api-ms-win-core-file-l1-1-0.dll", ("dynamic_lookup",)))
+        self.assertTrue(_trusted_windows_api_import(
+            "api-ms-win-core-memory-l1-1-0.dll", ("file_mapping",)))
+        self.assertFalse(_trusted_windows_api_import(
+            "api-ms-win-core-memory-l1-1-0.dll", ("file_read",)))
         self.assertFalse(_trusted_windows_api_import("custom.dll", ("file_read",)))
 
 if __name__ == "__main__":
