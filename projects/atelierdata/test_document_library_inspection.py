@@ -1,0 +1,87 @@
+"""Read-only document preflight tests; synthetic user-owned fixtures only."""
+import tempfile
+import unittest
+from pathlib import Path
+
+from atelierdata import Store
+from document_library import import_local_file, inspect_library_entry, set_metadata
+from atelierdata_extensions import resolve_document
+
+
+class LibraryInspectionTests(unittest.TestCase):
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.root = Path(temp.name)
+        self.store = Store(self.root / "data.sqlite3")
+        self.addCleanup(self.store.close)
+        self.vehicle = self.store.add_vehicle(
+            "Synthetic", "Vehicle", "TEST", "2008", "Benzina")
+        self.source = self.root / "fixture.pdf"
+        self.source.write_bytes(b"%PDF-1.4\n%%EOF\n")
+        self.attachment = import_local_file(
+            self.store, self.vehicle, self.source, "Manual de atelier",
+            "Synthetic fixture", "User fixture", rights_basis="document_propriu")
+        self.article = self.store.db.execute(
+            "SELECT article_id FROM attachments WHERE id=?",
+            (self.attachment,)).fetchone()[0]
+
+    def check(self):
+        return inspect_library_entry(
+            self.store, self.attachment, self.vehicle, self.article)
+
+    def test_valid_preflight_is_read_only_and_does_not_launch(self):
+        before = self.store.db.total_changes
+        result = self.check()
+        self.assertTrue(result["ok"], result)
+        self.assertIn("SHA256", result["message"])
+        self.assertIn("declarate", result["message"])
+        self.assertEqual(self.store.db.total_changes, before)
+        self.assertEqual(self.store.db.execute("PRAGMA quick_check").fetchone()[0], "ok")
+
+    def test_corrupted_and_missing_files_fail_without_sqlite_writes(self):
+        path = resolve_document(self.store, self.attachment)
+        path.write_bytes(b"changed")
+        before = self.store.db.total_changes
+        result = self.check()
+        self.assertFalse(result["ok"])
+        self.assertIn("corupt", result["message"])
+        self.assertEqual(self.store.db.total_changes, before)
+        path.unlink()
+        result = self.check()
+        self.assertFalse(result["ok"])
+        self.assertIn("lipsă", result["message"])
+        self.assertEqual(self.store.db.total_changes, before)
+
+    def test_rights_revoked_after_selection_fail_closed(self):
+        set_metadata(self.store, self.attachment, "Manual de atelier",
+                     "Synthetic fixture", "User fixture",
+                     rights_basis="neconfirmat")
+        before = self.store.db.total_changes
+        result = self.check()
+        self.assertFalse(result["ok"])
+        self.assertIn("Drepturi neconfirmate", result["message"])
+        self.assertEqual(self.store.db.total_changes, before)
+
+    def test_reassigned_article_and_vehicle_are_rejected(self):
+        new_article = self.store.add_article(
+            self.vehicle, "Manual de atelier", "Other article", "", "User")
+        self.store.db.execute("UPDATE attachments SET article_id=? WHERE id=?",
+                              (new_article, self.attachment))
+        self.store.db.commit()
+        before = self.store.db.total_changes
+        self.assertIn("articolului", self.check()["message"])
+        self.assertEqual(self.store.db.total_changes, before)
+        foreign = self.store.add_vehicle("Foreign", "Vehicle")
+        foreign_article = self.store.add_article(
+            foreign, "Manual de atelier", "Foreign article", "", "User")
+        self.store.db.execute("UPDATE attachments SET article_id=? WHERE id=?",
+                              (foreign_article, self.attachment))
+        self.store.db.commit()
+        before = self.store.db.total_changes
+        self.assertIn("vehiculului", self.check()["message"])
+        self.assertEqual(self.store.db.total_changes, before)
+
+
+if __name__ == "__main__":
+    unittest.main()
