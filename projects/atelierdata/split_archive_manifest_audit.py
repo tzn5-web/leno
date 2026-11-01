@@ -14,6 +14,14 @@ from pathlib import Path, PurePosixPath
 HEX = re.compile(r'^[0-9a-f]{64}$', re.I)
 PART = re.compile(r'^.+_part_\d{4}\.zip$')
 
+BLOCKED_PACKAGE = 'autodata_part_0016.zip'
+
+
+def reject_blocked_package(name):
+    """Never open the Drive-flagged original package, even if locally present."""
+    if Path(name).name.casefold() == BLOCKED_PACKAGE:
+        raise ValueError('Blocked original package part_0016 must not be accessed')
+
 
 def safe_relative(name):
     if not isinstance(name, str) or not name or '\\' in name or '\0' in name:
@@ -82,6 +90,9 @@ def inspect_manifest(data, inventory_text=None):
 
 
 def inspect_zip(path, expected, verify_sha=False):
+    # Metadata is allowed, but opening this Drive-flagged package is not.
+    if Path(path).name.casefold() == BLOCKED_PACKAGE:
+        return 'BLOCKED'
     if path.is_symlink() or not path.is_file():
         return 'MISSING'
     try:
@@ -127,6 +138,7 @@ def self_test():
         with zipfile.ZipFile(archive, 'w') as z:
             z.writestr('Sample/file.IDF', b'abc')
         assert inspect_zip(archive, packages[archive.name], True) == 'SHA256_PASS'
+        assert inspect_zip(Path(d) / BLOCKED_PACKAGE, packages[archive.name], True) == 'BLOCKED'
         with zipfile.ZipFile(archive, 'w') as z:
             z.writestr('Sample/file.IDF', b'xyz')
         assert inspect_zip(archive, packages[archive.name], True) == 'FAIL'
