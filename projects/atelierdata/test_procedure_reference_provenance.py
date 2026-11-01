@@ -191,5 +191,66 @@ class ProcedureReferenceProvenanceTests(unittest.TestCase):
         self.assertGreater(after_corruption, before_changes)
 
 
+    def test_gui_step_editor_rejects_noncanonical_document_ids(self):
+        """Tkinter must not coerce +1/Unicode digits into another article ID."""
+        import tkinter as tk
+        from unittest.mock import patch
+        from repair_procedures_gui import open_procedures_window
+
+        try:
+            root = tk.Tk()
+        except tk.TclError as exc:
+            self.skipTest("No graphical Tk display available: " + str(exc))
+        self.addCleanup(root.destroy)
+        root.withdraw()
+        app = SimpleNamespace(root=root, tk=tk, db=self.store, vid=self.car)
+        payload = {}
+
+        class Editor:
+            def __init__(self, *_args, **_kwargs):
+                self.value = dict(payload)
+
+        window = open_procedures_window(
+            app, Editor, selected_procedure_id=self.procedure,
+            selected_step_id=self.step)
+        self.addCleanup(window.destroy)
+        window.update()
+        window.steps_tree.selection_set(str(self.step))
+        window.update()
+        before = dict(self.store.db.execute(
+            "SELECT instruction,safety_note,article_id FROM procedure_steps WHERE id=?",
+            (self.step,)).fetchone())
+        changes = self.store.db.total_changes
+        for invalid in ("+" + str(self.article), "٠" + str(self.article)):
+            with self.subTest(article_id=invalid):
+                payload.clear()
+                payload.update(instruction="MUST-NOT-BE-SAVED",
+                               safety_note="MUST-NOT-BE-SAVED",
+                               article_id=invalid)
+                with patch("tkinter.messagebox.showerror") as showerror:
+                    window.edit_selected_step()
+                showerror.assert_called_once()
+                actual = dict(self.store.db.execute(
+                    "SELECT instruction,safety_note,article_id FROM procedure_steps WHERE id=?",
+                    (self.step,)).fetchone())
+                self.assertEqual(actual, before)
+                self.assertEqual(self.store.db.total_changes, changes)
+
+        # ASCII decimal text (including surrounding form whitespace) is valid.
+        payload.clear()
+        payload.update(instruction="Synthetic edited instruction",
+                       safety_note="Synthetic edited warning",
+                       article_id=" " + str(self.article) + " ")
+        with patch("tkinter.messagebox.showerror") as showerror:
+            window.edit_selected_step()
+        showerror.assert_not_called()
+        actual = self.store.db.execute(
+            "SELECT instruction,safety_note,article_id FROM procedure_steps WHERE id=?",
+            (self.step,)).fetchone()
+        self.assertEqual(actual["article_id"], self.article)
+        self.assertEqual(actual["instruction"], "Synthetic edited instruction")
+        self.assertEqual(actual["safety_note"], "Synthetic edited warning")
+
+
 if __name__ == "__main__":
     unittest.main()
