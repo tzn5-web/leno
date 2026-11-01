@@ -69,6 +69,51 @@ class RepairExportTests(unittest.TestCase):
         self.assertNotIn("type='checkbox'", empty)
         self.assertNotIn("Bifele marchează", empty)
 
+    def test_document_index_groups_steps_and_redacts_foreign_references(self):
+        """Offline document index links every use without exposing other vehicles."""
+        self.store.db.execute(
+            "UPDATE procedure_steps SET article_id=? "
+            "WHERE procedure_id=? AND step_number=2",
+            (self.article, self.procedure))
+        self.store.db.commit()
+        before = self.store.db.total_changes
+        rendered = procedure_html(self.store, self.procedure)
+        self.assertIn("aria-label='Index documente asociate'", rendered)
+        index = rendered.split("aria-label='Index documente asociate'", 1)[1].split("</aside>", 1)[0]
+        self.assertEqual(index.count("<strong>Reference &lt;img"), 1)
+        self.assertIn("Tip: Scheme electrice", index)
+        self.assertIn("Sursă: TEST", index)
+        self.assertIn("href='#pas-1'", index)
+        self.assertIn("href='#pas-2'", index)
+        self.assertNotIn("<img", index)
+        self.assertNotIn("href='http", index)
+        self.assertEqual(self.store.db.total_changes, before)
+
+        other = self.store.add_vehicle("FOREIGN", "TEST")
+        foreign = self.store.add_article(
+            other, "Scheme electrice", "PRIVATE FOREIGN TITLE",
+            "PRIVATE FOREIGN BODY", "PRIVATE FOREIGN SOURCE")
+        self.store.db.execute(
+            "UPDATE procedure_steps SET article_id=? "
+            "WHERE procedure_id=? AND step_number=2",
+            (foreign, self.procedure))
+        self.store.db.commit()
+        before = self.store.db.total_changes
+        rendered = procedure_html(self.store, self.procedure)
+        index = rendered.split("aria-label='Index documente asociate'", 1)[1].split("</aside>", 1)[0]
+        self.assertIn("href='#pas-1'", index)
+        self.assertNotIn("href='#pas-2'", index)
+        self.assertNotIn("PRIVATE FOREIGN", rendered)
+        self.assertIn("AVERTISMENT REFERINȚĂ", rendered)
+        self.assertEqual(self.store.db.total_changes, before)
+        self.store.db.execute(
+            "UPDATE procedure_steps SET article_id=NULL WHERE procedure_id=?",
+            (self.procedure,))
+        self.store.db.commit()
+        self.assertNotIn("Index documente asociate",
+                         procedure_html(self.store, self.procedure))
+        self.assertEqual(self.store.db.execute("PRAGMA quick_check").fetchone()[0], "ok")
+
     def test_html_step_contents_links_are_offline_and_print_friendly(self):
         rendered=procedure_html(self.store,self.procedure)
         self.assertIn("<nav aria-label='Cuprinsul pașilor'>",rendered)
