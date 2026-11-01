@@ -57,7 +57,7 @@ class VerifiedTriageTests(unittest.TestCase):
         modified = bytearray(binary)
         # In the synthetic PE, .text starts at raw 0x200 / VA 0x401000.
         modified[0x280:0x28a] = b'MODELS.IDF'
-        modified[0x290:0x295] = b'\\x68' + struct.pack('<I', 0x401080)
+        modified[0x290:0x295] = bytes((0x68,)) + struct.pack('<I', 0x401080)
         binary = bytes(modified)
         sha = hashlib.sha256(binary).hexdigest()
         md5 = hashlib.md5(binary).hexdigest()
