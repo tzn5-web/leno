@@ -43,6 +43,32 @@ class RepairExportTests(unittest.TestCase):
         self.assertEqual(export_procedure_html(self.store,self.procedure,target),target)
         self.assertEqual(target.read_text(encoding="utf-8"),rendered)
 
+    def test_offline_checklist_tracks_steps_without_persisting_or_running_scripts(self):
+        before = self.store.db.total_changes
+        rendered = procedure_html(self.store, self.procedure)
+        self.assertEqual(rendered.count("type='checkbox'"), 2)
+        self.assertIn("id='parcurs-1'", rendered)
+        self.assertIn("id='parcurs-2'", rendered)
+        self.assertIn("Pasul 1 parcurs", rendered)
+        self.assertIn("Pasul 2 parcurs", rendered)
+        self.assertIn("Nu se salvează și nu confirmă siguranța lucrării.", rendered)
+        self.assertNotIn("type='checkbox' checked", rendered)
+        self.assertNotIn("<script", rendered)
+        self.assertEqual(self.store.db.total_changes, before)
+        self.store.db.execute(
+            "DELETE FROM procedure_steps WHERE procedure_id=? AND step_number=2",
+            (self.procedure,))
+        self.store.db.commit()
+        one_step = procedure_html(self.store, self.procedure)
+        self.assertEqual(one_step.count("type='checkbox'"), 1)
+        self.assertNotIn("id='parcurs-2'", one_step)
+        self.store.db.execute(
+            "DELETE FROM procedure_steps WHERE procedure_id=?", (self.procedure,))
+        self.store.db.commit()
+        empty = procedure_html(self.store, self.procedure)
+        self.assertNotIn("type='checkbox'", empty)
+        self.assertNotIn("Bifele marchează", empty)
+
     def test_html_step_contents_links_are_offline_and_print_friendly(self):
         rendered=procedure_html(self.store,self.procedure)
         self.assertIn("<nav aria-label='Cuprinsul pașilor'>",rendered)
