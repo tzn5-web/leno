@@ -59,6 +59,26 @@ class RepairExportTests(unittest.TestCase):
         self.store.db.commit()
         self.assertNotIn("<nav ",procedure_html(self.store,self.procedure))
 
+    def test_multiline_steps_and_safety_notes_remain_readable_and_inert(self):
+        """Line breaks must survive browser layout without allowing HTML injection."""
+        instruction="Prima linie\\nA doua linie <script>alert(1)</script>"
+        safety="Avertisment 1\\nAvertisment 2 & control"
+        self.store.db.execute(
+            "UPDATE procedure_steps SET instruction=?,safety_note=? "
+            "WHERE procedure_id=? AND step_number=1",
+            (instruction,safety,self.procedure))
+        self.store.db.commit()
+        rendered=procedure_html(self.store,self.procedure)
+        self.assertIn("class='instruction'",rendered)
+        self.assertIn(".instruction{white-space:pre-wrap;overflow-wrap:anywhere}",rendered)
+        self.assertIn(".warning{border-left:5px solid #b3312a;background:#fff1ee;"
+                      "padding:1rem;white-space:pre-wrap;overflow-wrap:anywhere}",rendered)
+        self.assertIn("Prima linie\\nA doua linie &lt;script&gt;alert(1)&lt;/script&gt;",rendered)
+        self.assertIn("Avertisment 1\\nAvertisment 2 &amp; control",rendered)
+        self.assertNotIn("<script>",rendered)
+        self.assertIn("Pasul 1</a> — Atenție — Document asociat",rendered)
+        self.assertIn("href='#pas-1'",rendered)
+
     def test_json_export_preserves_provenance_and_link_metadata(self):
         target=self.root/"procedures.json"
         self.assertEqual(export_procedures_json(self.store,target),1)
