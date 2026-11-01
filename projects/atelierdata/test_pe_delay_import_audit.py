@@ -128,11 +128,11 @@ class DelayImportAuditTests(unittest.TestCase):
 
     def test_dll_name_terminator_in_raw_padding_is_not_mapped(self):
         blob = bytearray(delay_fixture())
-        # .idata starts at RVA 0x2100, file offset 0x500. The DLL
+        # .idata starts at RVA 0x2000, file offset 0x400. The DLL
         # name begins at RVA 0x2150. Map only its first ten bytes,
         # leaving its NUL byte in the raw-file alignment padding.
         idata_section = 0x98 + 224 + 40
-        struct.pack_into("<I", blob, idata_section + 8, 0x5a)
+        struct.pack_into("<I", blob, idata_section + 8, 0x15a)
         public, private = analyze_delay_imports(
             bytes(blob), hashlib.sha256(blob).hexdigest())
         self.assertEqual(public["state"], "PARTIAL")
@@ -145,7 +145,7 @@ class DelayImportAuditTests(unittest.TestCase):
         # at RVA 0x219d. Keep the hint, thunk, and all preceding
         # name bytes mapped, but not the final terminator.
         idata_section = 0x98 + 224 + 40
-        struct.pack_into("<I", blob, idata_section + 8, 0x9d)
+        struct.pack_into("<I", blob, idata_section + 8, 0x19d)
         public, private = analyze_delay_imports(
             bytes(blob), hashlib.sha256(blob).hexdigest())
         self.assertEqual(public["state"], "PARTIAL")
@@ -157,7 +157,7 @@ class DelayImportAuditTests(unittest.TestCase):
     def test_symbol_name_null_inside_virtual_extent_is_accepted(self):
         blob = bytearray(delay_fixture())
         idata_section = 0x98 + 224 + 40
-        struct.pack_into("<I", blob, idata_section + 8, 0x9e)
+        struct.pack_into("<I", blob, idata_section + 8, 0x19e)
         public, private = analyze_delay_imports(
             bytes(blob), hashlib.sha256(blob).hexdigest())
         self.assertEqual(public["state"], "PARSED")
