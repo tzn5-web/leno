@@ -67,6 +67,14 @@ def main():
             attachment_id=int(win.library_tree.get_children()[0])
             win.library_tree.selection_set(str(attachment_id))
             root.update_idletasks()
+            # Preflight is explicit, read-only and must never launch a viewer.
+            before=store.db.total_changes
+            with patch("document_library_gui.os.startfile") as launch:
+                result=win.library_verify_selected()
+                assert result["ok"], result
+                assert not launch.called, "Preflight must not open a file"
+            assert store.db.total_changes==before, "Preflight must not write SQLite"
+            assert "SHA256 valid" in win.library_status.get()
             # The real Windows launch must be blocked if the current rights
             # declaration is revoked after the search result was selected.
             with patch("document_library_gui.os.startfile") as launch, \
@@ -76,6 +84,12 @@ def main():
             set_metadata(store,attachment_id,"Manual de atelier",
                          "Straße %_ 4A91","Local synthetic fixture",
                          rights_basis="neconfirmat")
+            with patch("document_library_gui.os.startfile") as launch, \
+                 patch("document_library_gui.messagebox.showerror") as error:
+                result=win.library_verify_selected()
+                assert not result["ok"] and error.called
+                assert not launch.called
+                assert "eșuată" in win.library_status.get()
             with patch("document_library_gui.os.startfile") as launch, \
                  patch("document_library_gui.messagebox.showerror") as error:
                 win.library_open_verified()
@@ -91,6 +105,11 @@ def main():
             store.db.execute("UPDATE attachments SET article_id=? WHERE id=?",
                                 (foreign_article,attachment_id))
             store.db.commit()
+            with patch("document_library_gui.os.startfile") as launch, \
+                 patch("document_library_gui.messagebox.showerror") as error:
+                result=win.library_verify_selected()
+                assert not result["ok"] and error.called
+                assert not launch.called, "Stale selection must fail preflight"
             with patch("document_library_gui.os.startfile") as launch, \
                  patch("document_library_gui.messagebox.showerror") as error:
                 win.library_open_verified()
