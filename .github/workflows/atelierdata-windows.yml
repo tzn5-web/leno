@@ -38,6 +38,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "GHIDRA_API_CALLSITE_REPLAY_TEST_FAILED" }
           python -m unittest discover -s projects/atelierdata -p 'test_ghidra_idf_api_correlation.py' -v
           if ($LASTEXITCODE -ne 0) { throw "GHIDRA_IDF_API_CORRELATION_TEST_FAILED" }
+          python -m py_compile tools/ghidra/AtelierData_Direct_Callgraph.py projects/atelierdata/ghidra_idf_callgraph_triage.py projects/atelierdata/test_ghidra_idf_callgraph_triage.py projects/atelierdata/test_ghidra_direct_rel32.py
+          if ($LASTEXITCODE -ne 0) { throw "GHIDRA_DIRECT_CALLGRAPH_SYNTAX_FAILED" }
+          python -m unittest discover -s projects/atelierdata -p 'test_ghidra_direct_rel32.py' -v
+          if ($LASTEXITCODE -ne 0) { throw "GHIDRA_DIRECT_REL32_TEST_FAILED" }
+          python -m unittest discover -s projects/atelierdata -p 'test_ghidra_idf_callgraph_triage.py' -v
+          if ($LASTEXITCODE -ne 0) { throw "GHIDRA_IDF_CALLGRAPH_TRIAGE_TEST_FAILED" }
+          python -m unittest discover -s projects/atelierdata -p 'test_vehicle_search_literal.py' -v
+          if ($LASTEXITCODE -ne 0) { throw "VEHICLE_LITERAL_SEARCH_TEST_FAILED" }
           python -m unittest discover -s projects/atelierdata -p 'test_restore_preflight.py' -v
           if ($LASTEXITCODE -ne 0) { throw "RESTORE_PREFLIGHT_TEST_FAILED" }
           python -m py_compile projects/atelierdata/backup_verification.py projects/atelierdata/test_backup_verification.py
