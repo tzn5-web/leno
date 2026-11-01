@@ -690,11 +690,18 @@ def main():
                             or "id='document-1'" not in exported_html
                             or "href='#document-1'" not in exported_html):
                         raise RuntimeError('PROCEDURES_GUI_DOCUMENT_INDEX_MISSING')
+                    # Check real GUI-backed export navigation with two steps.
+                    # The GUI fixture is restored after the reorder exercise.
                     # Packaged Windows GUI regression: move a synthetic step
                     # both ways, verify the visible order and SQLite numbering.
                     # Restore the original single-step fixture afterwards.
                     temporary_step=add_step(ui.db,pid,'REORDER-UI synthetic step')
                     try:
+                        multi_step_html=procedure_html(ui.db,pid)
+                        if ("href='#pas-2'>Pasul următor" not in multi_step_html
+                                or "href='#pas-1'>← Pasul anterior" not in multi_step_html
+                                or multi_step_html.count("href='#cuprins-pasi'") != 2):
+                            raise RuntimeError('PROCEDURES_GUI_EXPORT_ADJACENT_NAVIGATION_MISSING')
                         window.refresh_steps(temporary_step)
                         if window.steps_tree.get_children()!=(str(step_id),str(temporary_step)):
                             raise RuntimeError('PROCEDURES_GUI_REORDER_INITIAL_ROWS_FAILED')
@@ -746,6 +753,10 @@ def main():
                                 or "AVERTISMENT GENERAL SINTETIC" not in printable
                                 or "Pasul 1</a>: Avertisment de siguranță / Referință indisponibilă" not in printable):
                             raise RuntimeError('PROCEDURES_GUI_EXPORT_SAFETY_INDEX_MISSING')
+                        if ("href='#cuprins-pasi'" not in printable
+                                or "Pasul următor" in printable
+                                or "Pasul anterior" in printable):
+                            raise RuntimeError('PROCEDURES_GUI_EXPORT_SINGLE_STEP_NAVIGATION_INVALID')
                         if ('Referință secundară sintetică' in printable
                                 or 'Tip document: Note atelier' in printable
                                 or "id='document-1'" in printable

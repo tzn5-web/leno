@@ -96,6 +96,7 @@ def procedure_html(store,procedure_id):
       ".safety-index{border:2px solid #b3312a;padding:1rem;margin:1.5rem 0;break-inside:avoid}"
       ".reference{font-size:.9rem;color:#46556a}" " .instruction{white-space:pre-wrap;overflow-wrap:anywhere}"
       ".reference-index{border:1px solid #7891ab;padding:1rem;margin:1.5rem 0}"
+      ".step-navigation{display:flex;gap:1rem;flex-wrap:wrap;margin-top:.8rem}" 
       ".completion{display:block;margin-top:.8rem;padding:.4rem .6rem;background:#eef4fa}"
       ".completion input{width:1.1rem;height:1.1rem;vertical-align:middle}"
       "@media print{nav{display:none}body{margin:0;max-width:none}.step{page-break-inside:avoid}}</style>",
@@ -139,7 +140,7 @@ def procedure_html(store,procedure_id):
         parts.append("<p>Nu există pași introduși pentru această procedură.</p>")
     if record["steps"]:
         # Fragment-only navigation works offline and never loads attachments.
-        parts.append("<nav aria-label='Cuprinsul pașilor'><h2>Cuprins</h2><ol>")
+        parts.append("<nav aria-label='Cuprinsul pașilor'><h2 id='cuprins-pasi'>Cuprins</h2><ol>")
         for position, step in enumerate(record["steps"], 1):
             flags = (" — Atenție" if step["safety_note"] else "")
             if step["reference_status"] == "invalid_or_unavailable":
@@ -200,6 +201,16 @@ def procedure_html(store,procedure_id):
                            if step["reference_source"] else "")
                          + "<br><a href='#" + references[step["reference_article_id"]]["anchor"]
                          + "'>Vezi în indexul documentelor</a></p>")
+        # Offline, keyboard-accessible navigation through the ordered steps.
+        # Anchors use positions rather than database IDs, which are not exported.
+        parts.append("<nav class='step-navigation' aria-label='Navigare pas "
+                     +esc(step["step_number"])+"'>")
+        if position > 1:
+            parts.append("<a href='#pas-"+str(position-1)+"'>← Pasul anterior</a>")
+        parts.append("<a href='#cuprins-pasi'>Înapoi la cuprins</a>")
+        if position < len(record["steps"]):
+            parts.append("<a href='#pas-"+str(position+1)+"'>Pasul următor →</a>")
+        parts.append("</nav>")
         parts.append("<label class='completion'><input type='checkbox' id='parcurs-"
                      +str(position)+"'> <span>Pasul "+esc(step["step_number"])
                      +" parcurs</span></label>")

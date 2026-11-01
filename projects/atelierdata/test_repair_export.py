@@ -153,6 +153,39 @@ class RepairExportTests(unittest.TestCase):
         self.assertEqual(self.store.db.total_changes, before)
         self.assertEqual(self.store.db.execute("PRAGMA quick_check").fetchone()[0], "ok")
 
+    def test_step_navigation_is_offline_ordered_and_read_only(self):
+        """Each step links only to existing adjacent anchors and the contents."""
+        before = self.store.db.total_changes
+        rendered = procedure_html(self.store, self.procedure)
+        self.assertIn("<h2 id='cuprins-pasi'>Cuprins</h2>", rendered)
+        self.assertEqual(rendered.count("class='step-navigation'"), 2)
+        first = rendered.split("aria-label='Navigare pas 1'", 1)[1].split("</nav>", 1)[0]
+        second = rendered.split("aria-label='Navigare pas 2'", 1)[1].split("</nav>", 1)[0]
+        self.assertIn("href='#pas-2'>Pasul următor", first)
+        self.assertNotIn("Pasul anterior", first)
+        self.assertIn("href='#pas-1'>← Pasul anterior", second)
+        self.assertNotIn("Pasul următor", second)
+        self.assertEqual(rendered.count("href='#cuprins-pasi'"), 2)
+        self.assertIn("@media print{nav{display:none}", rendered)
+        self.assertNotIn("href='http", rendered)
+        self.assertEqual(self.store.db.total_changes, before)
+
+        self.store.db.execute("DELETE FROM procedure_steps WHERE procedure_id=? AND step_number=2",
+                              (self.procedure,))
+        self.store.db.commit()
+        one = procedure_html(self.store, self.procedure)
+        self.assertEqual(one.count("class='step-navigation'"), 1)
+        self.assertIn("href='#cuprins-pasi'", one)
+        self.assertNotIn("Pasul următor", one)
+        self.assertNotIn("Pasul anterior", one)
+        self.store.db.execute("DELETE FROM procedure_steps WHERE procedure_id=?",
+                              (self.procedure,))
+        self.store.db.commit()
+        empty = procedure_html(self.store, self.procedure)
+        self.assertNotIn("step-navigation", empty.split("</style>", 1)[1])
+        self.assertNotIn("cuprins-pasi", empty)
+        self.assertEqual(self.store.db.execute("PRAGMA quick_check").fetchone()[0], "ok")
+
     def test_html_step_contents_links_are_offline_and_print_friendly(self):
         rendered=procedure_html(self.store,self.procedure)
         self.assertIn("<nav aria-label='Cuprinsul pașilor'>",rendered)
