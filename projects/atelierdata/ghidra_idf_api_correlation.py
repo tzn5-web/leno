@@ -50,8 +50,10 @@ def _identity(report, expected_sha256):
         raise ValueError("Ghidra report source SHA256 mismatch")
     if report.get("idf_decoder_proven") is not False:
         raise ValueError("Ghidra report must not assert IDF decoding")
-    if report.get("target_executed", report.get("executed_target_binary")) is not False:
-        raise ValueError("Ghidra report must declare no target execution")
+    execution_flags = [report[key] for key in ("target_executed", "executed_target_binary")
+                       if key in report]
+    if not execution_flags or any(flag is not False for flag in execution_flags):
+        raise ValueError("Ghidra report must consistently declare no target execution")
 
 
 # These API families are only static xref triage categories. An xref to an
@@ -161,6 +163,11 @@ def correlate(idf_report, api_report, expected_sha256):
                     reference_type = ref.get("reference_type")
                     if reference_type is not None and not isinstance(reference_type, str):
                         raise ValueError("Invalid Ghidra reference type")
+                    if flow is not None and reference_type is not None:
+                        upper_type = reference_type.upper()
+                        derived_flow = ("CALL" in upper_type or "JUMP" in upper_type)
+                        if flow is not derived_flow:
+                            raise ValueError("Contradictory Ghidra flow evidence")
                     if flow is None:
                         if reference_type is None:
                             unknown_flow_refs += 1
