@@ -404,7 +404,7 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                           fields,body=("instruction",current["instruction"] if current else "")).value
         if data is None:return
         try:
-            ref=int(data["article_id"]) if data["article_id"] else None
+            # Keep the raw form value: int() silently accepts +1 and Unicode\n            # digits, bypassing the canonical ASCII-decimal reference policy.\n            # add_step/update_step validate the value and its vehicle scope.\n            ref=data["article_id"] if data["article_id"] else None
             if edit:
                 update_step(app.db,current["id"],data["instruction"],data["safety_note"],ref)
                 chosen=current["id"]
@@ -755,7 +755,7 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
     top.steps_tree=steps
     top.procedure_detail_text=detail
     top.refresh_steps=refresh_steps
-    top.move_selected_step=step_move
+    top.move_selected_step=step_move\n    top.edit_selected_step=lambda:step_form(True)
     top.open_reference_picker=choose_reference
     top.open_schematic_reference=open_schematic_reference
     top.open_step_reference=open_reference
