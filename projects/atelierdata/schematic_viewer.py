@@ -40,7 +40,7 @@ def image_metadata(path):
                 raise ValueError("Imagine prea mare sau invalidă")
             picture.verify()
         return {"width": w, "height": h, "format": source.suffix.lower()}
-    except (UnidentifiedImageError, OSError) as exc:
+    except (UnidentifiedImageError, Image.DecompressionBombError, OSError) as exc:
         raise ValueError("Imagine invalidă sau deteriorată") from exc
 
 

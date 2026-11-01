@@ -5,6 +5,8 @@ Uses synthetic, user-owned test data only.
 from __future__ import annotations
 
 import tempfile
+import struct
+import zlib
 import tkinter as tk
 from pathlib import Path
 from types import SimpleNamespace
@@ -33,6 +35,13 @@ def main():
             image_path = folder / "diagram.png"
             Image.new("RGB", (64, 32), (10, 30, 50)).save(image_path)
             attachment = attach_document(store, article, image_path)
+            # A checksum-valid PNG may advertise bomb-sized dimensions.
+            oversized_path = folder / "oversized.png"
+            payload = bytearray(image_path.read_bytes())
+            payload[16:24] = struct.pack(">II", 12000, 12000)
+            payload[29:33] = struct.pack(">I", zlib.crc32(payload[12:29]) & 0xffffffff)
+            oversized_path.write_bytes(payload)
+            oversized = attach_document(store, article, oversized_path)
             app = SimpleNamespace(tk=tk, root=root, db=store, vid=vehicle,
                                   refresh=lambda: None)
             # A stale/untyped vehicle ID must fail before Tk creates a popup.
@@ -54,7 +63,15 @@ def main():
             viewer.schematic_search_var.set("STRASSE")
             root.update()
             assert viewer.schematics_tree.selection() == (str(article),)
-            assert viewer.attachments_tree.get_children() == (str(attachment),)
+            assert viewer.attachments_tree.get_children() == (str(attachment), str(oversized))
+            assert len(viewer.diagram_canvas.find_all()) == 1
+            with patch("tkinter.messagebox.showerror") as error:
+                viewer.attachments_tree.selection_set(str(oversized))
+                root.update()
+                assert error.called, "Oversized PNG must show a GUI error"
+            assert not viewer.diagram_canvas.find_all(), "Rejected image left a preview"
+            viewer.attachments_tree.selection_set(str(attachment))
+            root.update()
             assert len(viewer.diagram_canvas.find_all()) == 1
             viewer.schematic_search_var.set("100%X")
             root.update()
@@ -69,7 +86,7 @@ def main():
             assert not viewer.attachments_tree.get_children()
             viewer.schematics_tree.selection_set(str(article))
             root.update()
-            assert viewer.attachments_tree.get_children() == (str(attachment),)
+            assert viewer.attachments_tree.get_children() == (str(attachment), str(oversized))
             assert len(viewer.diagram_canvas.find_all()) == 1
             viewer.schematic_search_var.set("x" * 201)
             root.update()

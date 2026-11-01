@@ -1,6 +1,8 @@
 """Synthetic diagram tests: verify bounds, ownership, and verified attachments."""
 from __future__ import annotations
 import tempfile
+import struct
+import zlib
 import unittest
 from pathlib import Path
 from PIL import Image
@@ -109,6 +111,20 @@ class SchematicViewerTests(unittest.TestCase):
         mislabeled=self.root/"bad.jpg"
         Image.new("RGB",(20,20)).save(mislabeled,format="PNG")
         with self.assertRaises(ValueError):image_metadata(mislabeled)
+    def test_oversized_png_header_is_rejected_without_decoding_pixels(self):
+        """A small file may claim enormous dimensions; never crash the audit."""
+        source = self.root / "tiny.png"
+        Image.new("RGB", (1, 1)).save(source)
+        payload = bytearray(source.read_bytes())
+        payload[16:24] = struct.pack(">II", 12000, 12000)
+        payload[29:33] = struct.pack(">I", zlib.crc32(payload[12:29]) & 0xffffffff)
+        oversized = self.root / "oversized.png"
+        oversized.write_bytes(payload)
+        before = self.store.db.total_changes
+        with self.assertRaisesRegex(ValueError, "Imagine invalidă"):
+            image_metadata(oversized)
+        self.assertEqual(self.store.db.total_changes, before)
+
     def test_bounds_and_zoom(self):
         self.assertAlmostEqual(fit_zoom(2000,1000,1000,500),0.5)
         self.assertEqual(clamp_zoom(0.001),0.15)

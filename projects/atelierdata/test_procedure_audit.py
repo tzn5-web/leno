@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import tempfile
+import struct
+import zlib
 import unittest
 from pathlib import Path
 
@@ -132,6 +134,27 @@ class ProcedureAuditTests(unittest.TestCase):
         codes = {issue["code"] for issue in report["issues"]}
         self.assertIn("SCHEMATIC_IMAGE_INVALID", codes)
         self.assertIn("SCHEMATIC_IMAGE_UNAVAILABLE", codes)
+
+    def test_oversized_png_header_is_reported_not_raised_by_audit(self):
+        """SHA256-valid hostile dimensions must become an audit finding."""
+        source = self.root / "tiny.png"
+        Image.new("RGB", (1, 1)).save(source)
+        payload = bytearray(source.read_bytes())
+        payload[16:24] = struct.pack(">II", 12000, 12000)
+        payload[29:33] = struct.pack(">I", zlib.crc32(payload[12:29]) & 0xffffffff)
+        oversized = self.root / "oversized.png"
+        oversized.write_bytes(payload)
+        attach_document(self.store, self.diagram, oversized)
+        before = self.store.db.total_changes
+        report = audit_procedure(self.store, self.proc)
+        self.assertFalse(report["ok"])
+        self.assertEqual(report["verified_attachments"], 1)
+        self.assertIn("SCHEMATIC_IMAGE_INVALID",
+                      {item["code"] for item in report["issues"]})
+        self.assertIn("SCHEMATIC_IMAGE_UNAVAILABLE",
+                      {item["code"] for item in report["issues"]})
+        self.assertEqual(self.store.db.total_changes, before)
+        self.assertEqual(self.store.db.execute("PRAGMA quick_check").fetchone()[0], "ok")
 
     def test_tamper_detected_without_modifying_original_file(self):
         attachment_id = attach_document(self.store, self.diagram, self._image())
