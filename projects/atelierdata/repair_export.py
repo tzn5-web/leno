@@ -13,8 +13,13 @@ from repair_procedures import get_procedure,list_procedures,list_steps
 
 def _write_atomic(store,destination,content):
     target=Path(destination)
-    if target.resolve()==store.path.resolve():
+    resolved=target.resolve()
+    if resolved==store.path.resolve():
         raise ValueError("Refuz suprascrierea bazei SQLite")
+    # Exports must never replace managed attachments, even through symlinks.
+    managed=(store.path.parent/"documents").resolve()
+    if resolved==managed or managed in resolved.parents:
+        raise ValueError("Refuz exportul în depozitul de atașamente")
     target.parent.mkdir(parents=True,exist_ok=True)
     fd,temp=tempfile.mkstemp(prefix=".atelierdata-export-",dir=str(target.parent))
     try:
@@ -31,6 +36,22 @@ def _record(store,procedure):
     vehicle=store.db.execute(
         "SELECT make,model,engine,years,fuel,variant FROM vehicles WHERE id=?",
         (procedure["vehicle_id"],)).fetchone()
+    steps=[]
+    for step in list_steps(store,procedure["id"]):
+        # list_steps hides foreign/missing document metadata. Preserve the
+        # warning in exports, without leaking the foreign article identifier.
+        invalid=(step["article_id"] is not None and step["reference_title"] is None)
+        status=("invalid_or_unavailable" if invalid else
+                "linked" if step["article_id"] is not None else "none")
+        steps.append({
+            "step_number":step["step_number"],
+            "instruction":step["instruction"],
+            "safety_note":step["safety_note"],
+            "reference_article_id":None if invalid else step["article_id"],
+            "reference_title":None if invalid else step["reference_title"],
+            "reference_source":None if invalid else step["reference_source"],
+            "reference_status":status
+        })
     return {
         "vehicle":dict(vehicle),
         "system":procedure["system"],
@@ -38,14 +59,7 @@ def _record(store,procedure):
         "summary":procedure["summary"],
         "precautions":procedure["precautions"],
         "source":procedure["source"],
-        "steps":[{
-            "step_number":step["step_number"],
-            "instruction":step["instruction"],
-            "safety_note":step["safety_note"],
-            "reference_article_id":step["article_id"],
-            "reference_title":step["reference_title"],
-            "reference_source":step["reference_source"]
-        } for step in list_steps(store,procedure["id"])]
+        "steps":steps
     }
 
 def export_procedures_json(store,destination,vehicle_id=None):
@@ -99,6 +113,10 @@ def procedure_html(store,procedure_id):
         if step["safety_note"]:
             parts.append("<p class='warning'><strong>Atenție:</strong> "
                          +esc(step["safety_note"])+"</p>")
+        if step["reference_status"]=="invalid_or_unavailable":
+            parts.append("<p class='warning'><strong>AVERTISMENT REFERINȚĂ:</strong> "
+                         "Document indisponibil sau asociat altui vehicul; "
+                         "verifică auditul.</p>")
         if step["reference_title"]:
             parts.append("<p class='reference'>Document asociat: "
                          +esc(step["reference_title"])
