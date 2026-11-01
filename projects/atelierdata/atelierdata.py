@@ -23,6 +23,7 @@ from document_library_gui import open_document_library
 from workshop_atlas import ensure_schema as ensure_atlas_schema
 from workshop_atlas_gui import open_workshop_atlas
 from vehicle_service_card_gui import open_vehicle_service_card
+from import_validation import read_import_rows, validate_import_row
 
 CATEGORIES = ("Date tehnice","Întreținere","Motor","Distribuție","Cupluri de strângere",
               "Diagnosticare / DTC","Scheme electrice","Siguranțe și relee","Frâne / ABS",
@@ -115,25 +116,15 @@ class Store:
     def close(self):self.db.close()
 
 def import_records(store,path):
-    """Import valid records atomically; reject invalid rows without partial writes."""
-    path=Path(path)
-    if path.suffix.lower()=='.csv':
-        with path.open(encoding='utf-8-sig',newline='') as stream:rows=list(csv.DictReader(stream))
-    elif path.suffix.lower()=='.json':
-        obj=json.loads(path.read_text(encoding='utf-8-sig'))
-        rows=obj.get('records',[]) if isinstance(obj,dict) else obj
-    else:raise ValueError("Accept doar CSV/JSON")
-    if not isinstance(rows,list):raise ValueError("JSON invalid")
-    result={'inserted':0,'rejected':[]}
-    validated=[]
-    for i,row in enumerate(rows,1):
+    """Import bounded, validated user records atomically into SQLite."""
+    rows = read_import_rows(path)
+    result = {'inserted': 0, 'rejected': []}
+    validated = []
+    for i, row in enumerate(rows, 1):
         try:
-            if not isinstance(row,dict) or any(not str(row.get(k,'')).strip() for k in ('make','model','category','title')):
-                raise ValueError("Câmpurile make, model, category, title sunt obligatorii")
-            fields=[str(row.get(k,'')).strip() for k in ('make','model','engine','years','fuel','variant')]
-            validated.append((fields,str(row['category']).strip(),str(row['title']).strip(),
-                              str(row.get('content',row.get('body',''))),str(row.get('source',''))))
-        except (ValueError,KeyError,TypeError) as exc:result['rejected'].append(f"{i}: {exc}")
+            validated.append(validate_import_row(row))
+        except (ValueError, KeyError, TypeError) as exc:
+            result['rejected'].append(f"{i}: {exc}")
     # Do not commit an import with rejected records: callers can correct and retry.
     if result['rejected']:
         return result
