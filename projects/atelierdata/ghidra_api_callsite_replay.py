@@ -38,6 +38,33 @@ def _raw_offset(data, pe, va, need=6):
     return matches[0] if len(matches) == 1 else None
 
 
+
+def _candidate_function_contains_site(data, pe, function, site_va, length):
+    """Reject impossible Ghidra caller attribution for a raw x86 pointer site.
+
+    The claimed function entry and the full candidate instruction must have
+    unique file-backed executable mappings in the SAME PE section, with the
+    entry no later than the instruction. This is only a necessary condition:
+    it does not prove the instruction belongs to the function or is reachable.
+    """
+    space, entry_va = function
+    if space != "ram" or not 0 <= entry_va <= 0xffffffff:
+        return False
+    entry = _raw_offset(data, pe, entry_va, 1)
+    site = _raw_offset(data, pe, site_va, length)
+    if entry is None or site is None or not entry[1] or not site[1]:
+        return False
+    entry_rva = entry_va - pe["image_base"]
+    site_rva = site_va - pe["image_base"]
+    for sec in pe["sections"]:
+        backed = min(sec["raw_size"], sec["vsize"])
+        first = sec["rva"]
+        if (sec["executable"] and first <= entry_rva <= site_rva and
+                site_rva + length <= first + backed):
+            return True
+    return False
+
+
 def _idf_functions(data, pe, report):
     """Verify literal .IDF bytes at Ghidra-reported PE VAs before using xrefs.
 
@@ -100,7 +127,13 @@ def _idf_functions(data, pe, report):
                     if (opcode == 0x68 or 0xb8 <= opcode <= 0xbf) and (
                             struct.unpack_from("<I", data, offset + 1)[0] == va):
                         direct_pointer_sites.add((src_va, va))
-                        direct_pointer_functions.add(function)
+                        # The raw bytes are real even if the reported containing
+                        # function is impossible. Keep site counts separate from
+                        # function-level correlation.
+                        plausible_owner = _candidate_function_contains_site(
+                            data, pe, function, src_va, 5)
+                        if plausible_owner:
+                            direct_pointer_functions.add(function)
                         expected_mnemonic = "PUSH" if opcode == 0x68 else "MOV"
                         start = ref.get("instruction_start_address")
                         if (ref.get("reference_is_data") is True and
@@ -110,7 +143,8 @@ def _idf_functions(data, pe, report):
                                 ref["instruction_length"] == 5 and
                                 ref.get("instruction_mnemonic") == expected_mnemonic):
                             boundary_pointer_sites.add((src_va, va))
-                            boundary_pointer_functions.add(function)
+                            if plausible_owner:
+                                boundary_pointer_functions.add(function)
     return (functions, direct_pointer_functions, len(direct_pointer_sites),
             boundary_pointer_functions, len(boundary_pointer_sites),
             verified, missing, mismatched)
@@ -254,6 +288,7 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
                        "Dynamic imports, thunks, other encodings and indirect flows are omitted. "
                        "IDF literal bytes are independently checked at reported PE VAs; raw PUSH/MOV immediate-pointer matches are narrow byte candidates. "
                        "A separate stricter counter requires Ghidra-reported DATA reference, matching instruction start, 5-byte length and PUSH/MOV mnemonic, but is not independent disassembly. " 
+                       "Pointer-source function correlation additionally requires a unique, file-backed executable mapping with the reported function entry preceding the source in the same section; this does not prove ownership. " 
                        "Other IDF string xrefs and containing functions remain Ghidra claims. "
                        "No evidence of an IDF decoder or licensed data access."
     }
