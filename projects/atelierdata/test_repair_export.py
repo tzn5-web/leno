@@ -43,6 +43,22 @@ class RepairExportTests(unittest.TestCase):
         self.assertEqual(export_procedure_html(self.store,self.procedure,target),target)
         self.assertEqual(target.read_text(encoding="utf-8"),rendered)
 
+    def test_html_step_contents_links_are_offline_and_print_friendly(self):
+        rendered=procedure_html(self.store,self.procedure)
+        self.assertIn("<nav aria-label='Cuprinsul pașilor'>",rendered)
+        self.assertIn("href='#pas-1'",rendered)
+        self.assertIn("id='pas-1'",rendered)
+        self.assertIn("href='#pas-2'",rendered)
+        self.assertIn("id='pas-2'",rendered)
+        self.assertIn("Pasul 1</a> — Atenție",rendered)
+        self.assertIn("nav{display:none}",rendered)
+        self.assertLess(rendered.index("href='#pas-1'"),rendered.index("id='pas-1'"))
+        self.assertNotIn("href='http",rendered)
+        self.store.db.execute("DELETE FROM procedure_steps WHERE procedure_id=?",
+                              (self.procedure,))
+        self.store.db.commit()
+        self.assertNotIn("<nav ",procedure_html(self.store,self.procedure))
+
     def test_json_export_preserves_provenance_and_link_metadata(self):
         target=self.root/"procedures.json"
         self.assertEqual(export_procedures_json(self.store,target),1)
@@ -91,6 +107,8 @@ class RepairExportTests(unittest.TestCase):
         self.assertNotIn("PRIVATE FOREIGN",target.read_text(encoding="utf-8"))
         rendered=procedure_html(self.store,self.procedure)
         self.assertIn("AVERTISMENT REFERINȚĂ",rendered)
+        self.assertIn("Referință indisponibilă",rendered)
+        self.assertIn("href='#pas-1'",rendered)
         self.assertIn("verifică auditul",rendered)
         self.assertNotIn("PRIVATE FOREIGN",rendered)
         self.assertNotIn("Document asociat:",rendered)

@@ -714,6 +714,10 @@ def main():
                         # while the real Windows procedure editor is open.
                         from repair_export import procedure_html
                         printable=procedure_html(ui.db,pid)
+                        if ("href='#pas-1'" not in printable
+                                or "id='pas-1'" not in printable
+                                or 'Referință indisponibilă' not in printable):
+                            raise RuntimeError('PROCEDURES_GUI_EXPORT_STEP_NAVIGATION_MISSING')
                         if 'AVERTISMENT REFERINȚĂ' not in printable:
                             raise RuntimeError('PROCEDURES_GUI_EXPORT_WARNING_MISSING')
                         if 'Referință secundară sintetică' in printable:

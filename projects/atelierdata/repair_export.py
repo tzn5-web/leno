@@ -93,7 +93,7 @@ def procedure_html(store,procedure_id):
       ".warning{border-left:5px solid #b3312a;background:#fff1ee;padding:1rem}"
       ".step{break-inside:avoid;margin:1.3rem 0;padding:1rem;border:1px solid #ccd4dc}"
       ".reference{font-size:.9rem;color:#46556a}"
-      "@media print{body{margin:0;max-width:none}.step{page-break-inside:avoid}}</style>",
+      "@media print{nav{display:none}body{margin:0;max-width:none}.step{page-break-inside:avoid}}</style>",
       "</head><body><header><h1>"+esc(record["title"])+"</h1>",
       "<p class='meta'><strong>Vehicul:</strong> "+esc(identity)+"<br>",
       "<strong>Sistem:</strong> "+esc(record["system"])+"<br>",
@@ -107,8 +107,19 @@ def procedure_html(store,procedure_id):
     parts.append("<h2>Pași de lucru</h2>")
     if not record["steps"]:
         parts.append("<p>Nu există pași introduși pentru această procedură.</p>")
-    for step in record["steps"]:
-        parts.append("<section class='step'><h3>Pasul "+str(step["step_number"])+"</h3>"
+    if record["steps"]:
+        # Fragment-only navigation works offline and never loads attachments.
+        parts.append("<nav aria-label='Cuprinsul pașilor'><h2>Cuprins</h2><ol>")
+        for position, step in enumerate(record["steps"], 1):
+            flags = (" — Atenție" if step["safety_note"] else "")
+            if step["reference_status"] == "invalid_or_unavailable":
+                flags += " — Referință indisponibilă"
+            parts.append("<li><a href='#pas-"+str(position)+"'>Pasul "
+                         +esc(step["step_number"])+"</a>"+flags+"</li>")
+        parts.append("</ol></nav>")
+    for position, step in enumerate(record["steps"], 1):
+        parts.append("<section class='step' id='pas-"+str(position)
+                     +"'><h3>Pasul "+esc(step["step_number"])+"</h3>"
                      "<p>"+esc(step["instruction"])+"</p>")
         if step["safety_note"]:
             parts.append("<p class='warning'><strong>Atenție:</strong> "
