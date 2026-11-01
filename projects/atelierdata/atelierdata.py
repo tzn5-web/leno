@@ -683,6 +683,30 @@ def main():
                             or "id='document-1'" not in exported_html
                             or "href='#document-1'" not in exported_html):
                         raise RuntimeError('PROCEDURES_GUI_DOCUMENT_INDEX_MISSING')
+                    # The Windows GUI export must warn when an otherwise valid
+                    # document reference has no provenance, without changing it.
+                    original_source=ui.db.db.execute(
+                        'SELECT source FROM articles WHERE id=?',
+                        (second_article,)).fetchone()['source']
+                    try:
+                        ui.db.db.execute(
+                            "UPDATE articles SET source='' WHERE id=?",
+                            (second_article,))
+                        ui.db.db.commit()
+                        before_export=ui.db.db.total_changes
+                        missing_source_html=procedure_html(ui.db,pid)
+                        if ("Pasul 1</a>: Avertisment de siguranță / Sursă document nespecificată"
+                                not in missing_source_html
+                                or "Sursă document nespecificată — verifică proveniența"
+                                not in missing_source_html):
+                            raise RuntimeError('PROCEDURES_GUI_MISSING_DOCUMENT_SOURCE_WARNING')
+                        if ui.db.db.total_changes!=before_export:
+                            raise RuntimeError('PROCEDURES_GUI_SOURCE_EXPORT_MUTATED_SQLITE')
+                    finally:
+                        ui.db.db.execute(
+                            'UPDATE articles SET source=? WHERE id=?',
+                            (original_source,second_article))
+                        ui.db.db.commit()
                     # Check real GUI-backed export navigation with two steps.
                     # The GUI fixture is restored after the reorder exercise.
                     # Packaged Windows GUI regression: move a synthetic step
