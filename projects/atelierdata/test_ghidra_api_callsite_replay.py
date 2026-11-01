@@ -102,7 +102,7 @@ class ReplayTests(unittest.TestCase):
     def test_ghidra_idf_data_xref_instruction_boundary_tier(self):
         data, sha, idf, api = fixtures()
         modified = bytearray(data)
-        modified[0x230:0x235] = b"\\x68" + struct.pack("<I", 0x402100)
+        modified[0x230:0x235] = bytes((0x68,)) + struct.pack("<I", 0x402100)
         modified = bytes(modified)
         sha = hashlib.sha256(modified).hexdigest()
         for report in (idf, api):
@@ -137,7 +137,7 @@ class ReplayTests(unittest.TestCase):
     def test_ghidra_idf_mov_immediate_boundary_tier(self):
         data, sha, idf, api = fixtures()
         modified = bytearray(data)
-        modified[0x230:0x235] = b"\\xb8" + struct.pack("<I", 0x402100)
+        modified[0x230:0x235] = bytes((0xb8,)) + struct.pack("<I", 0x402100)
         modified = bytes(modified)
         sha = hashlib.sha256(modified).hexdigest()
         for report in (idf, api):
