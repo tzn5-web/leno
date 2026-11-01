@@ -45,7 +45,10 @@ def _mapper(data: bytes, pe: dict):
         matches = []
         for section in pe["sections"]:
             delta = rva - section["rva"]
-            if delta >= 0 and delta + length <= section["raw_size"]:
+            # File-alignment padding beyond VirtualSize is not mapped image
+            # memory. Never turn padding bytes into apparent delay imports.
+            backed = min(section["raw_size"], section["vsize"])
+            if delta >= 0 and delta + length <= backed:
                 offset = section["raw_at"] + delta
                 if offset + length <= len(data):
                     matches.append(offset)
@@ -83,10 +86,18 @@ def analyze_delay_imports(data: bytes, expected_sha256: str):
     else:
         rva, size = struct.unpack_from("<II", data, directory_offset)
 
+    # A half-populated directory is malformed, not evidence that no delay
+    # imports exist. Do not silently report ABSENT in this case.
+    if bool(rva) != bool(size):
+        issues["directory_rva_size_inconsistent"] += 1
     if rva and size:
-        if size < 32:
+        if rva + size > 0x100000000:
+            issues["directory_extent_overflows_rva"] += 1
+        elif size < 32:
             issues["directory_too_small"] += 1
         else:
+            if size % 32:
+                issues["directory_trailing_bytes"] += 1
             try:
                 first = map_rva(rva, 32)
             except ValueError:
@@ -153,7 +164,7 @@ def analyze_delay_imports(data: bytes, expected_sha256: str):
                     issues["missing_terminator_or_truncated_directory"] += 1
                 if size // 32 > MAX_DESCRIPTORS:
                     issues["descriptor_limit"] += 1
-    state = ("ABSENT" if not (rva and size) else
+    state = ("ABSENT" if not (rva or size) else
              "PARTIAL" if issues else "PARSED")
     public = {
         "schema": "atelierdata-pe-delay-import-public-v1",
