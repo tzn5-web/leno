@@ -70,7 +70,7 @@ class SourceReplayTests(unittest.TestCase):
         binary, sha, graph = fixture()
         modified = bytearray(binary)
         # Section has 0x200 raw bytes but only 0x20 virtual bytes.
-        struct.pack_into("<I", modified, 0x178, 0x20)
+        struct.pack_into("<I", modified, 0x180, 0x20)
         modified = bytes(modified)
         graph["source_sha256"] = hashlib.sha256(modified).hexdigest()
         graph["source_md5"] = hashlib.md5(modified).hexdigest()
