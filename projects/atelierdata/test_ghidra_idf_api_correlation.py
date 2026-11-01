@@ -49,6 +49,45 @@ class CorrelationTests(unittest.TestCase):
         self.assertFalse(result["idf_decoder_proven"])
         self.assertNotIn("00401000", json.dumps(result))
 
+    def test_direct_read_family_counts_shared_call_only(self):
+        idf, api = fixtures()
+        result = correlate(idf, api, SHA)
+        self.assertEqual(result["shared_idf_and_direct_file_io_functions"], 1)
+        self.assertEqual(result["shared_idf_and_direct_file_io_call_or_jump_functions"], 1)
+        self.assertEqual(result["shared_idf_and_api_family_functions"]["file_read"], 1)
+        self.assertEqual(result["shared_idf_and_api_family_functions"]["file_open"], 0)
+        self.assertEqual(result["shared_idf_and_api_family_call_or_jump_functions"]["file_read"], 1)
+
+    def test_dynamic_lookup_only_is_not_direct_file_io(self):
+        idf, api = fixtures()
+        api["api_symbols"]["GetProcAddress"] = api["api_symbols"].pop("ReadFile")
+        result = correlate(idf, api, SHA)
+        self.assertEqual(result["shared_idf_and_api_functions"], 1)
+        self.assertEqual(result["shared_idf_and_direct_file_io_functions"], 0)
+        self.assertEqual(result["shared_idf_and_api_family_functions"]["dynamic_lookup"], 1)
+
+    def test_closehandle_only_is_not_direct_file_io(self):
+        idf, api = fixtures()
+        api["api_symbols"]["CloseHandle"] = api["api_symbols"].pop("ReadFile")
+        result = correlate(idf, api, SHA)
+        self.assertEqual(result["shared_idf_and_api_functions"], 1)
+        self.assertEqual(result["shared_idf_and_direct_file_io_functions"], 0)
+
+    def test_same_function_in_multiple_io_families_is_not_double_counted(self):
+        idf, api = fixtures()
+        api["api_symbols"]["CreateFileW"] = copy.deepcopy(api["api_symbols"]["ReadFile"])
+        result = correlate(idf, api, SHA)
+        self.assertEqual(result["shared_idf_and_api_family_functions"]["file_open"], 1)
+        self.assertEqual(result["shared_idf_and_api_family_functions"]["file_read"], 1)
+        self.assertEqual(result["shared_idf_and_direct_file_io_functions"], 1)
+
+    def test_data_reference_is_not_a_call_or_jump(self):
+        idf, api = fixtures()
+        api["api_symbols"]["ReadFile"][0]["references"][0]["instruction_mnemonic"] = None
+        result = correlate(idf, api, SHA)
+        self.assertEqual(result["shared_idf_and_direct_file_io_functions"], 1)
+        self.assertEqual(result["shared_idf_and_direct_file_io_call_or_jump_functions"], 0)
+
     def test_non_api_string_does_not_count_as_idf(self):
         idf, api = fixtures()
         idf["keyword_hits"][".rdata"].pop("MODELS.IDF:ascii")
