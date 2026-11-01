@@ -140,17 +140,30 @@ def _edges(graph):
     return adjacency, len(by_site), duplicates
 
 
-def _shortest_hops(source, graph):
-    distances = {source: 0}
-    queue = deque((source,))
+def _reverse_distances_to_targets(graph, targets):
+    """Minimum directed call hops to any target, bounded by MAX_HOPS.
+
+    A single multi-source reverse BFS replaces a forward BFS for *every*
+    IDF-referencing function. This keeps large private graphs bounded by
+    O(V + E) per API family instead of O(IDF_sources * (V + E)).
+    """
+    if not targets:
+        return {}
+    reverse = {}
+    for caller, callees in graph.items():
+        for callee in callees:
+            reverse.setdefault(callee, set()).add(caller)
+    distances = {target: 0 for target in targets}
+    queue = deque(targets)
     while queue:
         current = queue.popleft()
-        if distances[current] >= MAX_HOPS:
+        distance = distances[current]
+        if distance >= MAX_HOPS:
             continue
-        for neighbor in graph.get(current, ()):
-            if neighbor not in distances:
-                distances[neighbor] = distances[current] + 1
-                queue.append(neighbor)
+        for caller in reverse.get(current, ()):
+            if caller not in distances:
+                distances[caller] = distance + 1
+                queue.append(caller)
     return distances
 
 
@@ -164,15 +177,19 @@ def analyze(idf_report, api_report, graph_report, expected_sha256):
     any_direct = Counter()
     direct_families = tuple(k for k in FAMILIES if k != 'dynamic_lookup')
     direct_targets = set().union(*(endpoints[k] for k in direct_families))
+    # Each API family is searched once, backwards from all its endpoints.
+    # The distance of a source is its shortest *forward* path to that family.
+    family_distances = {
+        family: _reverse_distances_to_targets(adjacency, targets)
+        for family, targets in endpoints.items()
+    }
+    direct_distances = _reverse_distances_to_targets(adjacency, direct_targets)
     for source in starts:
-        distances = _shortest_hops(source, adjacency)
-        for family, targets in endpoints.items():
-            hops = [distances[t] for t in targets if t in distances]
-            if hops:
-                families[family][min(hops)] += 1
-        hops = [distances[t] for t in direct_targets if t in distances]
-        if hops:
-            any_direct[min(hops)] += 1
+        for family, distances in family_distances.items():
+            if source in distances:
+                families[family][distances[source]] += 1
+        if source in direct_distances:
+            any_direct[direct_distances[source]] += 1
     return {
         'schema': SCHEMA,
         'original_sha256_claims_match': True,
