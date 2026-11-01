@@ -41,14 +41,16 @@ def fixtures():
     data = synthetic_pe()
     sha = hashlib.sha256(data).hexdigest()
     idf = {
-        "source_sha256": sha, "executed_target_binary": False,
+        "source_sha256": sha, "source_md5": hashlib.md5(data).hexdigest(),
+        "executed_target_binary": False,
         "idf_decoder_proven": False, "ghidra_import_sha256_verified": True,
         "keyword_hits": {".rdata": {"MODELS.IDF:ascii": [{
             "references_from": [{"function_entry": "00401000"}]}]}}
     }
     api = {
         "schema": "atelierdata-ghidra-file-api-xrefs-v1",
-        "source_sha256": sha, "target_executed": False,
+        "source_sha256": sha, "source_md5": hashlib.md5(data).hexdigest(),
+        "target_executed": False,
         "idf_decoder_proven": False, "ghidra_program_sha256_verified": True,
         "ghidra_program_md5_verified": True,
         "api_symbols": {"ReadFile": [{"references": [{
@@ -113,6 +115,53 @@ class ReplayTests(unittest.TestCase):
         api["ghidra_program_md5_verified"] = False
         with self.assertRaisesRegex(ValueError, "identity flags"):
             replay(data, sha, idf, api)
+
+    def test_conflicting_containing_functions_do_not_inflate_callsites(self):
+        data, sha, idf, api = fixtures()
+        refs = api["api_symbols"]["ReadFile"][0]["references"]
+        other = copy.deepcopy(refs[0])
+        other["function_entry"] = "00401100"
+        refs.append(other)
+        result = replay(data, sha, idf, api)
+        self.assertEqual(result["reported_api_flow_sites_with_address_inspected"], 1)
+        self.assertEqual(result["unique_sites_repeated_in_report"], 1)
+        self.assertEqual(result["sites_with_conflicting_reported_attribution"], 1)
+        self.assertEqual(result["raw_indirect_import_sites_with_matching_api_name"], 0)
+        refs.reverse()
+        self.assertEqual(replay(data, sha, idf, api), result)
+
+    def test_conflicting_call_and_jump_reports_are_excluded(self):
+        data, sha, idf, api = fixtures()
+        refs = api["api_symbols"]["ReadFile"][0]["references"]
+        other = copy.deepcopy(refs[0])
+        other["reference_type"] = "UNCONDITIONAL_JUMP"
+        refs.append(other)
+        result = replay(data, sha, idf, api)
+        self.assertEqual(result["sites_with_conflicting_reported_attribution"], 1)
+        self.assertEqual(result["raw_indirect_import_sites_with_matching_api_name"], 0)
+
+    def test_raw_section_padding_is_not_mapped_as_code(self):
+        data, sha, idf, api = fixtures()
+        modified = bytearray(data)
+        # .text VirtualSize is 0x20; reported site is at RVA 0x1020.
+        struct.pack_into("<I", modified, 0x98 + 224 + 8, 0x20)
+        modified = bytes(modified)
+        new_sha = hashlib.sha256(modified).hexdigest()
+        for report in (idf, api):
+            report["source_sha256"] = new_sha
+            report["source_md5"] = hashlib.md5(modified).hexdigest()
+        result = replay(modified, new_sha, idf, api)
+        self.assertEqual(result["sites_without_unique_raw_mapping"], 1)
+        self.assertEqual(result["raw_indirect_import_sites_with_matching_api_name"], 0)
+
+    def test_private_reports_are_bound_to_original_md5(self):
+        data, sha, idf, api = fixtures()
+        for report in (idf, api):
+            saved = report["source_md5"]
+            report["source_md5"] = "0" * 32
+            with self.assertRaisesRegex(ValueError, "source MD5 mismatch"):
+                replay(data, sha, idf, api)
+            report["source_md5"] = saved
 
     def test_duplicate_sites_not_double_counted_and_reports_immutable(self):
         data, sha, idf, api = fixtures()
