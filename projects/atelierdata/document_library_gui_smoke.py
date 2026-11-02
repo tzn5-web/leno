@@ -130,7 +130,7 @@ def main():
             win.library_tree.selection_set(str(forged_id))
             root.update_idletasks()
             before=store.db.total_changes
-            with patch("document_library_gui.os.startfile") as launch, \\
+            with patch("document_library_gui.os.startfile") as launch, \
                  patch("document_library_gui.messagebox.showerror") as error:
                 result=win.library_verify_selected()
                 assert not result["ok"] and "Semnătură" in result["message"]
