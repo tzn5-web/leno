@@ -11,7 +11,7 @@ from unittest.mock import patch
 from atelierdata import Store
 from procedure_step_context import step_context_text
 from repair_procedures import (add_step, create_procedure, delete_step,
-                               move_step, update_step)
+                               list_steps, move_step, update_step)
 from repair_procedures_gui import open_procedures_window
 
 
@@ -128,7 +128,11 @@ class SelectedStepContextTests(unittest.TestCase):
             self.store.db.commit()
             self.assertIn("AVERTISMENT REFERINȚĂ", window.render_selected_step())
             delete_step(self.store, self.first)
+            before = self.store.db.total_changes
             self.assertIsNone(window.render_selected_step())
+            self.assertFalse(window.steps_tree.exists(str(self.first)))
+            self.assertTrue(window.steps_tree.exists(str(self.second)))
+            self.assertEqual(self.store.db.total_changes, before)
             text = window.procedure_detail_text.get("1.0", "end")
             self.assertIn("nu mai aparține", text)
             self.assertNotIn("PRIVATE OTHER VEHICLE", text)
@@ -162,6 +166,42 @@ class SelectedStepContextTests(unittest.TestCase):
             self.assertNotIn("Synthetic first instruction", text)
             self.assertNotIn("Authorized fixture", text)
             self.assertEqual(self.store.db.total_changes, before)
+        finally:
+            window.destroy()
+
+    def test_tk_refresh_rechecks_vehicle_after_fetch_before_display(self):
+        """A procedure reassigned during list_steps must never expose cached rows."""
+        try:
+            root = tk.Tk()
+        except tk.TclError as exc:
+            self.skipTest("Tk display unavailable: " + str(exc))
+        self.addCleanup(root.destroy)
+        root.withdraw()
+        app = SimpleNamespace(root=root, tk=tk, db=self.store, vid=self.vehicle)
+        window = open_procedures_window(
+            app, object, selected_procedure_id=self.procedure,
+            selected_step_id=self.first)
+        try:
+            original_rows = list_steps(self.store, self.procedure)
+
+            def reassign_during_fetch(store, procedure_id):
+                self.assertEqual(procedure_id, self.procedure)
+                self.store.db.execute(
+                    "UPDATE procedures SET vehicle_id=? WHERE id=?",
+                    (self.other, self.procedure))
+                self.store.db.commit()
+                return original_rows
+
+            with patch("repair_procedures_gui.list_steps",
+                       side_effect=reassign_during_fetch) as fetched:
+                window.refresh_steps()
+            fetched.assert_called_once()
+            self.assertEqual(window.steps_tree.get_children(), ())
+            self.assertFalse(window.procedures_tree.exists(str(self.procedure)))
+            text = window.procedure_detail_text.get("1.0", "end")
+            self.assertIn("nu mai aparține", text)
+            self.assertNotIn("Synthetic first instruction", text)
+            self.assertNotIn("Authorized fixture", text)
         finally:
             window.destroy()
 

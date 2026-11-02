@@ -146,6 +146,10 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         try:
             context=step_context_text(app.db,vehicle_id,pid,int(chosen[0]))
         except ValueError:
+            # A deleted or reassigned step must not remain selectable in the GUI.
+            # Keep other live rows intact; this is a read-only view update.
+            if steps.exists(chosen[0]):
+                steps.delete(chosen[0])
             render("Pasul selectat nu mai aparține procedurii sau vehiculului. "
                    "Actualizează lista înainte de a continua.")
             return None
@@ -184,7 +188,15 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         except ValueError:
             invalidate_stale_procedure(pid)
             return
-        for step in list_steps(app.db,pid):
+        live_rows=list_steps(app.db,pid)
+        # The procedure may be reassigned while SQLite rows are being fetched.
+        # Revalidate before inserting any cached rows into the visible tree.
+        try:
+            require_live_procedure(pid)
+        except ValueError:
+            invalidate_stale_procedure(pid)
+            return
+        for step in live_rows:
             steps.insert("","end",iid=str(step["id"]),values=(
                 step["step_number"],step["instruction"][:130],
                 step["safety_note"][:95],step["reference_title"] or ""))
