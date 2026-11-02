@@ -406,5 +406,38 @@ class ReplayTests(unittest.TestCase):
             "raw_indirect_import_sites_with_matching_api_name"], 1)
 
 
+    def test_same_api_export_from_untrusted_dll_is_not_windows_evidence(self):
+        data, sha, idf, api = fixtures()
+        modified = bytearray(data)
+        modified[0x480:0x48d] = b"FAKECORE.dll" + bytes((0,))
+        data = bytes(modified)
+        sha = hashlib.sha256(data).hexdigest()
+        for report in (idf, api):
+            report["source_sha256"] = sha
+            report["source_md5"] = hashlib.md5(data).hexdigest()
+        result = replay(data, sha, idf, api)
+        self.assertEqual(result["api_sites_rejected_untrusted_import_provider"], 1)
+        self.assertEqual(result["raw_indirect_import_sites_with_matching_api_name"], 0)
+        self.assertEqual(result["matching_api_sites_in_idf_string_referencing_functions"], 0)
+
+    def test_api_set_import_provider_must_match_api_family(self):
+        data, sha, idf, api = fixtures()
+        for dll, expected in (
+                (b"api-ms-win-core-file-l1-1-0.dll", 1),
+                (b"api-ms-win-core-libraryloader-l1-1-0.dll", 0)):
+            with self.subTest(dll=dll):
+                modified = bytearray(data)
+                struct.pack_into("<I", modified, 0x42c, 0x2120)
+                modified[0x520:0x520 + len(dll) + 1] = dll + bytes((0,))
+                candidate = bytes(modified)
+                sha = hashlib.sha256(candidate).hexdigest()
+                for report in (idf, api):
+                    report["source_sha256"] = sha
+                    report["source_md5"] = hashlib.md5(candidate).hexdigest()
+                result = replay(candidate, sha, idf, api)
+                self.assertEqual(result["raw_indirect_import_sites_with_matching_api_name"], expected)
+                self.assertEqual(result["api_sites_rejected_untrusted_import_provider"], 1 - expected)
+
+
 if __name__ == "__main__":
     unittest.main()
