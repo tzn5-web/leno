@@ -187,14 +187,16 @@ def correlate(idf_report, api_report, expected_sha256):
                                     if reference_type is not None else None)
                     if flow is not None and derived_flow is not None and flow is not derived_flow:
                         raise ValueError("Contradictory Ghidra flow evidence")
-                    if flow is None:
-                        if derived_flow is None:
-                            unknown_flow_refs += 1
-                            is_call_or_jump = False
-                        else:
-                            is_call_or_jump = derived_flow
+                    # A Boolean emitted by a report is not independent proof
+                    # of an instruction-flow xref. Only a recognized Ghidra
+                    # RefType may establish that classification. In particular,
+                    # NOT_CALL + true and legacy type-less + true must remain
+                    # unknown rather than inflate confirmed call counts.
+                    if derived_flow is None:
+                        unknown_flow_refs += 1
+                        is_call_or_jump = False
                     else:
-                        is_call_or_jump = flow
+                        is_call_or_jump = derived_flow
                     if is_call_or_jump:
                         api_code_functions.add(key)
                     for family, names in _API_FAMILIES.items():
