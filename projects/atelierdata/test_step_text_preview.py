@@ -171,10 +171,10 @@ class StepTextPreviewTests(unittest.TestCase):
                          rights_basis="neconfirmat")
             return content
 
-        with patch("document_library.read_verified_text_preview", side_effect=revoke), \\
-             patch("tkinter.messagebox.showerror") as error:
-            self.assertIsNone(popup.preview_attachment(self.attachment))
-            self.assertTrue(error.called)
+        with patch("document_library.read_verified_text_preview", side_effect=revoke):
+            with patch("tkinter.messagebox.showerror") as error:
+                self.assertIsNone(popup.preview_attachment(self.attachment))
+                self.assertTrue(error.called)
         self.assertFalse(any(
             child.title() == "AtelierData — TXT verificat din pas"
             for child in popup.winfo_children() if isinstance(child, tk.Toplevel)))
