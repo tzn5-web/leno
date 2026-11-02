@@ -190,7 +190,9 @@ def analyze(data, expected_sha):
             # A substring, unbacked section padding or a missing NUL is not
             # evidence of a complete API literal. Keep the raw locations private.
             positions, truncated = mapped_literal_positions(
-                data, pe['sections'], term, encoding, limit=1024)
+                data, pe['sections'], term, encoding, limit=1024,
+                allow_word_prefix=(term == '.IDF'),
+                case_insensitive=(term == '.IDF'))
             pointer_candidates = 0
             for at, rva in positions:
                 va = pe['image_base'] + rva
@@ -215,7 +217,7 @@ def analyze(data, expected_sha):
                   imported_symbol_count=len(pe['imports']),
                   candidate_count=sum(counts.values()),
                   focus_candidates=selected, literal_probes=literal_counts,
-                  literal_matching_policy='exact NUL-terminated in initialized PE section, non-embedded word',
+                  literal_matching_policy='API: exact NUL-terminated non-embedded identifier; .IDF: ASCII-case-insensitive NUL-terminated suffix (filename prefixes permitted); all hits in unambiguous initialized PE sections',
                   target_executed=False, idf_decoder_proven=False,
                   method='Raw FF15/FF25 patterns matching PE import IAT VAs; no disassembly or control-flow validation',
                   limitations='Matches may be incidental bytes; zero matches does not exclude indirect calls, Delphi runtime wrappers, dynamic imports, or a data loader.')
