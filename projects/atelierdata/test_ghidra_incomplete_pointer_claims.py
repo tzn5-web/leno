@@ -48,6 +48,20 @@ class IncompletePointerClaimTests(unittest.TestCase):
         self.assertEqual(result["matching_api_sites_in_idf_raw_pointer_functions"], 1)
         self.assertEqual(result["matching_api_sites_in_ghidra_idf_pointer_functions"], 0)
 
+    def test_explicit_read_data_reference_retains_boundary_tier(self):
+        data, sha, idf, api = pointer_fixture("00401000")
+        _refs(idf)[0]["reference_type"] = "READ"
+        result = replay(data, sha, idf, api)
+        self.assertEqual(result["idf_xrefs_with_ghidra_boundary_and_raw_pointer"], 1)
+        self.assertEqual(result["matching_api_sites_in_ghidra_idf_pointer_functions"], 1)
+
+    def test_missing_reference_type_cannot_validate_boundary_tier(self):
+        data, sha, idf, api = pointer_fixture("00401000")
+        _refs(idf)[0].pop("reference_type")
+        result = replay(data, sha, idf, api)
+        self.assertEqual(result["idf_xrefs_with_raw_push_or_mov_literal_va"], 1)
+        self.assertEqual(result["idf_xrefs_with_ghidra_boundary_and_raw_pointer"], 0)
+
     def test_verified_graph_rejects_incomplete_owner_sibling(self):
         binary, sha, idf, api, graph = with_literal(pointer=True, boundary=True)
         orphan = copy.deepcopy(_refs(idf)[0])
