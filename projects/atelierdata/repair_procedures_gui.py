@@ -4,6 +4,7 @@ from __future__ import annotations
 from procedure_step_navigation import adjacent_step_id
 from procedure_step_context import step_context_text
 from procedure_warning_overview import warning_overview_text
+from procedure_warning_reference import warning_step_reference_id
 from repair_export import export_procedure_html,export_procedures_json
 from procedure_audit import (audit_procedure, get_step_reference,
                              get_step_reference_snapshot, resolve_step_attachment)
@@ -737,17 +738,50 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                 messagebox.showinfo("Navigare indisponibilă",str(exc),parent=popup)
                 return None
 
+        def open_warning_reference():
+            """Open the selected warning's current, same-vehicle linked document."""
+            chosen=warning_tree.selection()
+            if not chosen:
+                messagebox.showinfo("Document avertisment",
+                                    "Selectează un pas cu avertisment.",parent=popup)
+                return None
+            step_id=int(chosen[0])
+            shown_warning=warning_tree.item(chosen[0],"values")[1]
+            try:
+                require_live_procedure(pid)
+                article_id,warning=warning_step_reference_id(
+                    app.db,vehicle_id,pid,step_id)
+                if warning!=shown_warning:
+                    raise ValueError("Avertismentul s-a schimbat; actualizează lista")
+                if state["pid"]!=pid:
+                    raise ValueError("Procedura selectată s-a schimbat")
+                if goto_warning_step()!=step_id:
+                    return None
+                # Recheck after GUI navigation, then compare against the
+                # document returned by the final snapshot in open_reference.
+                if warning_step_reference_id(
+                        app.db,vehicle_id,pid,step_id)!=(article_id,warning):
+                    raise ValueError("Avertismentul sau documentul s-a schimbat")
+                return open_reference(expected_article_id=article_id)
+            except ValueError as exc:
+                refresh_overview()
+                messagebox.showinfo("Document indisponibil",str(exc),parent=popup)
+                return None
+
         show(initial)
         show_targets(initial_targets)
         controls=ttk.Frame(popup)
         controls.pack(fill="x",padx=12,pady=(0,12))
         ttk.Button(controls,text="Mergi la pasul selectat",
                    command=goto_warning_step).pack(side="left")
+        ttk.Button(controls,text="Documentul avertismentului",
+                   command=open_warning_reference).pack(side="left",padx=8)
         ttk.Button(controls,text="Actualizează avertismente",
                    command=refresh_overview).pack(side="right")
         popup.overview_text=area
         popup.warning_steps=warning_tree
         popup.goto_warning_step=goto_warning_step
+        popup.open_warning_reference=open_warning_reference
         popup.refresh_overview=refresh_overview
         return popup
 
@@ -778,7 +812,7 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
             messagebox.showerror("Eroare schemă",str(exc),parent=top)
             return None
 
-    def open_reference():
+    def open_reference(expected_article_id=None):
         selected=steps.selection()
         if not selected:return
         selected_step_id=int(selected[0])
@@ -788,6 +822,13 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                 app.db,selected_step_id,vehicle_id,selected_procedure_id)
         except ValueError as exc:
             return messagebox.showerror("Referință invalidă",str(exc),parent=top)
+        if expected_article_id is not None and (
+                article is None or article["id"]!=expected_article_id):
+            messagebox.showerror(
+                "Referință schimbată",
+                "Documentul asociat s-a schimbat în timpul navigării; actualizează lista.",
+                parent=top)
+            return None
         if article is None:
             return messagebox.showinfo("Referință","Pasul nu are document asociat.",parent=top)
         display=tk.Toplevel(top)

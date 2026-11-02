@@ -139,6 +139,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "WARNING_STEP_NAVIGATION_SYNTAX_FAILED" }
           python -m unittest discover -s projects/atelierdata -p 'test_procedure_warning_navigation.py' -v
           if ($LASTEXITCODE -ne 0) { throw "WARNING_STEP_NAVIGATION_TEST_FAILED" }
+          python -m py_compile projects/atelierdata/procedure_warning_reference.py projects/atelierdata/test_procedure_warning_reference.py
+          if ($LASTEXITCODE -ne 0) { throw "WARNING_DOCUMENT_NAVIGATION_SYNTAX_FAILED" }
+          python -m unittest discover -s projects/atelierdata -p 'test_procedure_warning_reference.py' -v
+          if ($LASTEXITCODE -ne 0) { throw "WARNING_DOCUMENT_NAVIGATION_TEST_FAILED" }
           python -m unittest discover -s projects/atelierdata -p 'test_*.py' -v
           if ($LASTEXITCODE -ne 0) { throw "ATELIERDATA_REGRESSION_TEST_FAILED" }
           $searchDb = Join-Path $env:RUNNER_TEMP 'atelierdata-search-ci.sqlite3'
