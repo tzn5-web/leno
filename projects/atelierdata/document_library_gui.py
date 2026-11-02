@@ -412,8 +412,16 @@ def open_document_library(app):
                 photo=ImageTk.PhotoImage(picture,master=preview)
                 canvas.configure(image=photo)
                 preview.pdf_photo=photo
+            def invalidate_preview():
+                # A revoked/changed document must not leave an old page visible.
+                canvas.configure(image="")
+                preview.pdf_photo=None
+                preview.pdf_invalidated=True
+                label.set("Previzualizare invalidată")
+                previous.configure(state="disabled")
+                following.configure(state="disabled")
             def show_page(number):
-                if number<1 or number>count:
+                if preview.pdf_invalidated or number<1 or number>count:
                     return False
                 try:
                     picture,new_count=read_verified_pdf_page(
@@ -423,6 +431,7 @@ def open_document_library(app):
                         raise ValueError("Numărul paginilor PDF s-a schimbat")
                     display(picture)
                 except (ValueError,FileNotFoundError,OSError,RuntimeError,tk.TclError) as exc:
+                    invalidate_preview()
                     messagebox.showerror("Previzualizare indisponibilă",str(exc),parent=preview)
                     return False
                 page.set(number)
@@ -432,6 +441,7 @@ def open_document_library(app):
                 return True
             previous.configure(command=lambda:show_page(page.get()-1))
             following.configure(command=lambda:show_page(page.get()+1))
+            preview.pdf_invalidated=False
             display(image)
             previous.configure(state="disabled")
             following.configure(state="normal" if count>1 else "disabled")

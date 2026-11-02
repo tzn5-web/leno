@@ -258,6 +258,50 @@ def main():
                 assert win.library_preview_pdf() is None
                 assert error.called and not launch.called
             assert store.db.total_changes==after_pdf_revocation
+            # Exercise real multipage Tk controls, then revoke rights while
+            # the window is open. A failed page change must clear stale pixels.
+            from test_document_pdf_preview import create_multipage_pdf
+            multipage_source=Path(directory)/"preview_multipage.pdf"
+            create_multipage_pdf(multipage_source,3)
+            multipage_id=import_local_file(
+                store,vid,multipage_source,"Manual de atelier",
+                "preview multipage fixture","Local synthetic fixture",
+                rights_basis="document_propriu")
+            win.library_search.set("preview multipage fixture")
+            root.update_idletasks()
+            assert len(win.library_tree.get_children())==1
+            win.library_tree.selection_set(str(multipage_id))
+            root.update_idletasks()
+            before_multipage=store.db.total_changes
+            with patch("document_library_gui.os.startfile") as launch, \
+                 patch("document_library_gui.messagebox.showerror") as error:
+                multipage_window=win.library_preview_pdf()
+                assert multipage_window is not None and not error.called
+                assert multipage_window.pdf_page_count==3
+                assert multipage_window.pdf_page_label.get()=="Pagina 1/3"
+                assert multipage_window.pdf_next() is True
+                assert multipage_window.pdf_page_number.get()==2
+                assert multipage_window.pdf_page_label.get()=="Pagina 2/3"
+                assert multipage_window.pdf_next() is True
+                assert multipage_window.pdf_page_number.get()==3
+                assert multipage_window.pdf_next() is False
+                assert multipage_window.pdf_previous() is True
+                assert multipage_window.pdf_page_number.get()==2
+                assert not launch.called and not error.called
+            assert store.db.total_changes==before_multipage
+            set_metadata(store,multipage_id,"Manual de atelier",
+                         "preview multipage fixture","Local synthetic fixture",
+                         rights_basis="neconfirmat")
+            after_multipage_revocation=store.db.total_changes
+            with patch("document_library_gui.messagebox.showerror") as error:
+                assert multipage_window.pdf_next() is False
+                assert error.called, "Revocation must block next page"
+                assert multipage_window.pdf_invalidated is True
+                assert multipage_window.pdf_photo is None
+                assert multipage_window.pdf_page_label.get()=="Previzualizare invalidată"
+                assert multipage_window.pdf_previous() is False
+            assert store.db.total_changes==after_multipage_revocation
+            multipage_window.destroy()
             win.destroy()
             print("DOCUMENT_LIBRARY_GUI_SMOKE=PASS")
         finally:
