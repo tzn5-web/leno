@@ -115,6 +115,29 @@ def main():
                 win.library_open_verified()
                 assert not launch.called, "Stale attachment must not open"
                 assert error.called, "Stale selection must report an error"
+            # A file named .pdf but containing executable-like bytes must not
+            # be launched even when its stored SHA256 and declared rights match.
+            masquerade=Path(directory)/"masquerade.pdf"
+            masquerade.write_bytes(b"MZ" + bytes([0x90, 0]) + b"synthetic")
+            forged_id=import_local_file(
+                store,vid,masquerade,"Manual de atelier",
+                "masquerade synthetic fixture","Local synthetic fixture",
+                rights_basis="document_propriu")
+            win.library_search.set("masquerade")
+            root.update_idletasks()
+            assert len(win.library_tree.get_children())==1
+            assert int(win.library_tree.get_children()[0])==forged_id
+            win.library_tree.selection_set(str(forged_id))
+            root.update_idletasks()
+            before=store.db.total_changes
+            with patch("document_library_gui.os.startfile") as launch, \\
+                 patch("document_library_gui.messagebox.showerror") as error:
+                result=win.library_verify_selected()
+                assert not result["ok"] and "Semnătură" in result["message"]
+                assert error.called and not launch.called
+                win.library_open_verified()
+                assert not launch.called, "Disguised PDF must not launch"
+            assert store.db.total_changes==before, "Signature checks must be read-only"
             win.destroy()
             print("DOCUMENT_LIBRARY_GUI_SMOKE=PASS")
         finally:
