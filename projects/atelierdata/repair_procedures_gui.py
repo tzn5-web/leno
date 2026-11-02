@@ -93,6 +93,35 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
     detail.pack(fill="both",expand=False)
 
     state={"pid":None}
+
+    def require_live_procedure(pid):
+        """Reject a deleted or reassigned procedure before exposing GUI data."""
+        _validate_navigation_id(pid, "procedure")
+        if app.db.db.execute(
+                "SELECT 1 FROM procedures WHERE id=? AND vehicle_id=?",
+                (pid, vehicle_id)).fetchone() is None:
+            raise ValueError("Procedura nu mai aparține vehiculului selectat")
+        return pid
+
+    def invalidate_stale_procedure(pid):
+        """Remove stale rows as well as details; never retain foreign step text."""
+        state["pid"]=None
+        old_steps=steps.get_children()
+        if old_steps:
+            steps.delete(*old_steps)
+        if procedures.exists(str(pid)):
+            procedures.delete(str(pid))
+        render("Procedura nu mai aparține vehiculului selectat. Actualizează lista.")
+
+    def ensure_live_for_edit(pid):
+        try:
+            require_live_procedure(pid)
+        except ValueError as exc:
+            invalidate_stale_procedure(pid)
+            messagebox.showerror("Procedură indisponibilă",str(exc),parent=top)
+            return False
+        return True
+
     def render(text):
         detail.configure(state="normal")
         detail.delete("1.0","end")
@@ -104,6 +133,11 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         pid=state["pid"]
         if pid is None:
             render("Selectează o procedură sau adaugă una nouă.")
+            return None
+        try:
+            require_live_procedure(pid)
+        except ValueError:
+            invalidate_stale_procedure(pid)
             return None
         chosen=steps.selection()
         if not chosen:
@@ -144,6 +178,11 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         pid=state["pid"]
         if pid is None:
             render("Selectează o procedură sau adaugă una nouă.")
+            return
+        try:
+            require_live_procedure(pid)
+        except ValueError:
+            invalidate_stale_procedure(pid)
             return
         for step in list_steps(app.db,pid):
             steps.insert("","end",iid=str(step["id"]),values=(
@@ -388,6 +427,8 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         return popup
 
     def procedure_form(edit):
+        if edit and state["pid"] is not None and not ensure_live_for_edit(state["pid"]):
+            return None
         current=get_procedure(app.db,state["pid"]) if edit and state["pid"] else None
         if edit and current is None:
             return messagebox.showinfo("Selectare","Alege mai întâi o procedură.",parent=top)
@@ -411,6 +452,8 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         pid=state["pid"]
         if pid is None:
             return messagebox.showinfo("Selectare","Selectează o procedură.",parent=top)
+        if not ensure_live_for_edit(pid):
+            return None
         selected=steps.selection()
         current=None
         if edit:
@@ -460,6 +503,8 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
             return None
 
     def step_move(direction):
+        if state["pid"] is None or not ensure_live_for_edit(state["pid"]):
+            return None
         selected=steps.selection()
         if not selected:return
         try:
@@ -469,14 +514,22 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
 
     def procedure_remove():
         pid=state["pid"]
-        if pid is not None and messagebox.askyesno("Ștergere",
-                                      "Ștergi procedura și toți pașii?",parent=top):
+        if pid is None or not ensure_live_for_edit(pid):
+            return None
+        if messagebox.askyesno("Ștergere",
+                              "Ștergi procedura și toți pașii?",parent=top):
+            if not ensure_live_for_edit(pid):
+                return None
             delete_procedure(app.db,pid)
             refresh_proc()
 
     def step_remove():
+        if state["pid"] is None or not ensure_live_for_edit(state["pid"]):
+            return None
         selected=steps.selection()
         if selected and messagebox.askyesno("Ștergere","Ștergi pasul selectat?",parent=top):
+            if not ensure_live_for_edit(state["pid"]):
+                return None
             delete_step(app.db,int(selected[0]))
             refresh_steps()
 
@@ -485,6 +538,8 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         selected=steps.selection()
         if not selected or state["pid"] is None:
             messagebox.showinfo("Selectare","Selectează un pas pentru a lega un document.",parent=top)
+            return None
+        if not ensure_live_for_edit(state["pid"]):
             return None
         sid=int(selected[0])
         original=app.db.db.execute("SELECT * FROM procedure_steps WHERE id=?",(sid,)).fetchone()
@@ -532,6 +587,7 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
 
         def change_link(article_id):
             try:
+                require_live_procedure(pid)
                 current=app.db.db.execute("SELECT * FROM procedure_steps WHERE id=?",(sid,)).fetchone()
                 if current is None or current["procedure_id"]!=pid:
                     raise ValueError("Pasul a fost șters sau mutat")
