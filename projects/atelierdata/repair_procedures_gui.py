@@ -695,19 +695,19 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         if not selected or state["pid"] is None:
             messagebox.showinfo("Schemă", "Selectează un pas.", parent=top)
             return None
-        row=app.db.db.execute(
-            "SELECT s.article_id FROM procedure_steps s "
-            "JOIN procedures p ON p.id=s.procedure_id "
-            "WHERE s.id=? AND p.id=? AND p.vehicle_id=?",
-            (int(selected[0]),state["pid"],vehicle_id)).fetchone()
-        if row is None or row["article_id"] is None:
-            messagebox.showinfo("Schemă", "Pasul nu are schemă asociată.", parent=top)
-            return None
         try:
+            from procedure_schematic_link import linked_step_schematic_id
             from schematic_viewer import get_schematic_reference, open_schematics_window
-            get_schematic_reference(app.db,vehicle_id,row["article_id"])
+            step_id=int(selected[0])
+            pid=state["pid"]
+            article_id=linked_step_schematic_id(app.db,vehicle_id,pid,step_id)
+            get_schematic_reference(app.db,vehicle_id,article_id)
+            # The link may have changed while the article was being validated.
+            # Never open an unrelated/stale diagram from an older selection.
+            if linked_step_schematic_id(app.db,vehicle_id,pid,step_id)!=article_id:
+                raise ValueError("Schematic link changed; refresh the selected step")
             return open_schematics_window(
-                app,editor_class,selected_article_id=row["article_id"],
+                app,editor_class,selected_article_id=article_id,
                 vehicle_id=vehicle_id)
         except ValueError as exc:
             messagebox.showinfo("Schemă indisponibilă",str(exc),parent=top)
