@@ -1,6 +1,11 @@
 """Synthetic-only variable-payload regression tests; no original data."""
+import hashlib
+import tempfile
 import unittest
+import zipfile
+from pathlib import Path
 from idf_stride_variability import has_variable_payload_streak
+from idf_zip_stride_streaks import audit
 
 
 class StrideVariabilityTests(unittest.TestCase):
@@ -38,6 +43,31 @@ class StrideVariabilityTests(unittest.TestCase):
             for i in range(31)
         ) + b"ABCD1234"
         self.assertFalse(has_variable_payload_streak(sample, 19))
+
+
+    def test_zip_audit_separates_constant_and_variable_payload(self):
+        token = b"ABCD1234"
+        varied = b"".join(
+            token + bytes([i % 251, (i * 7) % 251]) + b"X" * 9
+            for i in range(64)
+        )
+        constant = (token + b"Y" * 11) * 64
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "allowed_part_0001.zip"
+            with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as z:
+                z.writestr("var.IDF", varied)
+                z.writestr("const.IDF", constant)
+            expected = hashlib.sha256(path.read_bytes()).hexdigest()
+            result = audit(path, expected)
+            self.assertEqual(result["idf_files_crc_checked"], 2)
+            self.assertEqual(
+                result["files_with_32_diverse_repeated_tokens_by_stride"]["19"], 2
+            )
+            self.assertEqual(
+                result["files_with_32_diverse_tokens_and_variable_payload_by_stride"]["19"], 1
+            )
+            self.assertFalse(result["idf_decoder_proven"])
+            self.assertNotIn("var.IDF", str(result))
 
 
 if __name__ == "__main__":
