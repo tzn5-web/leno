@@ -87,6 +87,9 @@ def parse_delay_imports(data):
             raise ValueError('Delay VA below image base')
         return value - image_base
 
+    # A slot may have only one import owner. Overlapping classic/delay IAT
+    # ranges or repeated delay descriptors make attribution ambiguous.
+    occupied_iat_rvas = {entry['iat_rva'] for entry in pe['imports'].values()}
     result = []
     count_total = 0
     terminated = False
@@ -115,6 +118,10 @@ def parse_delay_imports(data):
             map_rva(iat_rva + n * 4, 4)
             if thunk == 0:
                 break
+            slot_rva = iat_rva + n * 4
+            if slot_rva in occupied_iat_rvas:
+                raise ValueError('Ambiguous duplicate classic/delay IAT slot')
+            occupied_iat_rvas.add(slot_rva)
             count_total += 1
             if count_total > MAX_IMPORTS_TOTAL:
                 raise ValueError('Excessive total delay imports')
