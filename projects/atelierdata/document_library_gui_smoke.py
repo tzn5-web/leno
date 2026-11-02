@@ -138,6 +138,29 @@ def main():
                 win.library_open_verified()
                 assert not launch.called, "Disguised PDF must not launch"
             assert store.db.total_changes==before, "Signature checks must be read-only"
+            # The single-file importer accepts TXT bytes for inventory, but
+            # the GUI must refuse an executable header disguised as .txt.
+            disguised_txt = Path(directory)/"masquerade_txt.txt"
+            disguised_txt.write_bytes(b"MZ" + bytes([0x90, 0]) + b"synthetic")
+            txt_id = import_local_file(
+                store, vid, disguised_txt, "Manual de atelier",
+                "binary TXT synthetic fixture", "Local synthetic fixture",
+                rights_basis="document_propriu")
+            win.library_search.set("binary TXT synthetic fixture")
+            root.update_idletasks()
+            assert len(win.library_tree.get_children()) == 1
+            assert int(win.library_tree.get_children()[0]) == txt_id
+            win.library_tree.selection_set(str(txt_id))
+            root.update_idletasks()
+            before = store.db.total_changes
+            with patch("document_library_gui.os.startfile") as launch, \\
+                 patch("document_library_gui.messagebox.showerror") as error:
+                result = win.library_verify_selected()
+                assert not result["ok"] and "TXT nu pare text" in result["message"]
+                assert error.called and not launch.called
+                win.library_open_verified()
+                assert not launch.called, "Binary TXT must not launch"
+            assert store.db.total_changes == before, "TXT preflight must be read-only"
             win.destroy()
             print("DOCUMENT_LIBRARY_GUI_SMOKE=PASS")
         finally:
