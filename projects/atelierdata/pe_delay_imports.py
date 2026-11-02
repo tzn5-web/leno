@@ -97,6 +97,12 @@ def parse_delay_imports(data):
         at = map_rva(directory_rva + 32 * index, 32)
         attrs, dll, hmod, iat, names, bound, unload, timestamp = struct.unpack_from('<8I', data, at)
         if not any((attrs, dll, hmod, iat, names, bound, unload, timestamp)):
+            # A null descriptor terminates the directory. Any later nonzero
+            # descriptor bytes make the claimed directory extent ambiguous.
+            for tail in range(index + 1, directory_size // 32):
+                tail_at = map_rva(directory_rva + 32 * tail, 32)
+                if any(data[tail_at:tail_at + 32]):
+                    raise ValueError('Nonzero bytes after delay descriptor terminator')
             terminated = True
             break
         if attrs not in (0, 1):
@@ -126,6 +132,10 @@ def parse_delay_imports(data):
             if count_total > MAX_IMPORTS_TOTAL:
                 raise ValueError('Excessive total delay imports')
             if thunk & 0x80000000:
+                # IMAGE_ORDINAL_FLAG32 leaves bits 16..30 reserved.
+                # Silently masking them would misattribute malformed thunks.
+                if thunk & 0x7fff0000:
+                    raise ValueError('Delay ordinal thunk has nonzero reserved bits')
                 symbol = f'#{thunk & 0xffff}'
                 ordinal = True
             else:

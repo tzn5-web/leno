@@ -75,6 +75,32 @@ class DelayImportTests(unittest.TestCase):
         self.assertEqual([x['entries'][0]['iat_rva'] for x in result],
                          [0x2170, 0x2190])
 
+    def test_delay_ordinal_reserved_bits_rejected(self):
+        data = bytearray(fixture(ordinal=True))
+        struct.pack_into('<I', data, 0x560, 0x8001002a)
+        with self.assertRaisesRegex(ValueError, 'reserved bits'):
+            parse_delay_imports(data)
+
+    def test_nonzero_descriptor_after_terminator_rejected(self):
+        data = bytearray(fixture())
+        # Move the DLL string away from the enlarged descriptor directory.
+        data[0x5a0:0x5ad] = data[0x540:0x54d]
+        data[0x540:0x54d] = bytes(13)
+        struct.pack_into('<I', data, 0x504, 0x21a0)
+        struct.pack_into('<II', data, 0x98 + 96 + 13 * 8, 0x2100, 96)
+        # The second descriptor remains null; the third must also be null.
+        data[0x540] = 1
+        with self.assertRaisesRegex(ValueError, 'after delay descriptor terminator'):
+            parse_delay_imports(data)
+
+    def test_zero_padding_after_terminator_accepted(self):
+        data = bytearray(fixture())
+        data[0x5a0:0x5ad] = data[0x540:0x54d]
+        data[0x540:0x54d] = bytes(13)
+        struct.pack_into('<I', data, 0x504, 0x21a0)
+        struct.pack_into('<II', data, 0x98 + 96 + 13 * 8, 0x2100, 96)
+        self.assertEqual(len(parse_delay_imports(data)), 1)
+
     def test_missing_terminator_rejected(self):
         data = bytearray(fixture())
         struct.pack_into('<I', data, 0x520, 1)
