@@ -94,6 +94,17 @@ def read_step_text_preview(store, step_id, vehicle_id, procedure_id, attachment_
     current = get_step_reference(store, step_id, vehicle_id, procedure_id)
     if current is None or current["id"] != article["id"]:
         raise ValueError("Legătura pasului s-a modificat în timpul previzualizării")
+    linked = store.db.execute(
+        "SELECT 1 FROM attachments WHERE id=? AND article_id=?",
+        (attachment_id, article["id"])).fetchone()
+    if linked is None:
+        raise ValueError("Atașamentul a fost reasociat în timpul previzualizării")
+    # The TXT bytes were SHA256-checked by the reader. Revalidate current
+    # rights and the managed file after decoding, before exposing the text.
+    from document_library import verified_library_file
+    verified_library_file(
+        store, attachment_id, vehicle_id=vehicle_id,
+        article_id=article["id"], require_declared_rights=True)
     return content
 
 
