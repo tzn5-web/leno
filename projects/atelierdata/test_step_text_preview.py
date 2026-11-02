@@ -65,8 +65,16 @@ class StepTextPreviewTests(unittest.TestCase):
     def test_relinked_or_cross_vehicle_step_blocks_stale_attachment(self):
         for replacement in (self.other_article, self.foreign_article, None):
             with self.subTest(article=replacement):
-                update_step(self.store, self.step, "Fictional instruction",
-                            "Fictional warning", replacement)
+                if replacement == self.foreign_article:
+                    # The public API correctly rejects foreign links; simulate
+                    # a damaged/imported SQLite row to test the read boundary.
+                    self.store.db.execute(
+                        "UPDATE procedure_steps SET article_id=? WHERE id=?",
+                        (replacement, self.step))
+                    self.store.db.commit()
+                else:
+                    update_step(self.store, self.step, "Fictional instruction",
+                                "Fictional warning", replacement)
                 before = self.store.db.total_changes
                 with self.assertRaises(ValueError):
                     self.preview()
