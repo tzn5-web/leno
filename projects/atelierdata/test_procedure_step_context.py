@@ -11,7 +11,7 @@ from unittest.mock import patch
 from atelierdata import Store
 from procedure_step_context import step_context_text
 from repair_procedures import (add_step, create_procedure, delete_step,
-                               list_steps, move_step, update_step)
+                               list_procedures, list_steps, move_step, update_step)
 from repair_procedures_gui import open_procedures_window
 
 
@@ -202,6 +202,46 @@ class SelectedStepContextTests(unittest.TestCase):
             self.assertIn("nu mai aparține", text)
             self.assertNotIn("Synthetic first instruction", text)
             self.assertNotIn("Authorized fixture", text)
+        finally:
+            window.destroy()
+
+    def test_tk_search_refresh_drops_reassigned_cached_procedure(self):
+        """A procedure moved during search must not leak cached GUI titles."""
+        try:
+            root = tk.Tk()
+        except tk.TclError as exc:
+            self.skipTest("Tk display unavailable: " + str(exc))
+        self.addCleanup(root.destroy)
+        root.withdraw()
+        app = SimpleNamespace(root=root, tk=tk, db=self.store, vid=self.vehicle)
+        window = open_procedures_window(
+            app, object, selected_procedure_id=self.procedure,
+            selected_step_id=self.first)
+        try:
+            cached = list_procedures(self.store, self.vehicle, "Synthetic")
+            self.assertTrue(any(row["id"] == self.procedure for row in cached))
+
+            def reassign_after_query(store, vehicle_id, search):
+                self.assertEqual((vehicle_id, search), (self.vehicle, "Synthetic"))
+                self.store.db.execute(
+                    "UPDATE procedures SET vehicle_id=? WHERE id=?",
+                    (self.other, self.procedure))
+                self.store.db.commit()
+                return cached
+
+            with patch("repair_procedures_gui.list_procedures",
+                       side_effect=reassign_after_query) as query:
+                window.procedure_search_var.set("Synthetic")
+            query.assert_called_once()
+            self.assertFalse(window.procedures_tree.exists(str(self.procedure)))
+            self.assertEqual(window.steps_tree.get_children(), ())
+            self.assertEqual(window.procedure_search_notice.get(),
+                             "0 proceduri găsite")
+            detail = window.procedure_detail_text.get("1.0", "end")
+            self.assertNotIn("Synthetic first instruction", detail)
+            self.assertNotIn("Authorized fixture", detail)
+            self.assertEqual(self.store.db.execute("PRAGMA quick_check").fetchone()[0],
+                             "ok")
         finally:
             window.destroy()
 

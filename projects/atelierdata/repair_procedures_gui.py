@@ -166,9 +166,19 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         else:
             search_notice.set(f"{len(candidates)} proceduri găsite")
         procedures.delete(*procedures.get_children())
+        visible_count=0
         for row in candidates:
+            # The list query is a snapshot. A procedure may be reassigned
+            # before the GUI consumes its cached title and system.
+            if app.db.db.execute(
+                    "SELECT 1 FROM procedures WHERE id=? AND vehicle_id=?",
+                    (row["id"],vehicle_id)).fetchone() is None:
+                continue
             procedures.insert("","end",iid=str(row["id"]),
                               text=f"{row['system']} / {row['title']}")
+            visible_count+=1
+        if candidates:
+            search_notice.set(f"{visible_count} proceduri găsite")
         chosen=prefer if prefer is not None else state["pid"]
         if chosen is not None and procedures.exists(str(chosen)):
             procedures.selection_set(str(chosen))
