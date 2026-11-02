@@ -177,7 +177,7 @@ def _idf_functions(data, pe, report):
         expected_mnemonic = "PUSH" if opcode == 0x68 else "MOV"
         start = ref.get("instruction_start_address")
         if (ref.get("reference_is_data") is True and
-                ref.get("reference_type") == "DATA" and
+                ref.get("reference_type") in ("DATA", "READ", "WRITE", "READ_WRITE") and
                 start is not None and
                 _function_key(start) == ("ram", src_va) and
                 type(ref.get("instruction_length")) is int and
