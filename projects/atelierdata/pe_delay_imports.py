@@ -130,8 +130,13 @@ def parse_delay_imports(data):
             if n == MAX_IMPORTS_PER_DLL:
                 raise ValueError('Excessive delay import entries')
             thunk = _u32(data, map_rva(names_rva + n * 4, 4))
-            map_rva(iat_rva + n * 4, 4)
+            iat_slot_offset = map_rva(iat_rva + n * 4, 4)
             if thunk == 0:
+                # Both parallel thunk arrays must terminate at the same
+                # index. A mapped but nonzero IAT tail is not a terminator
+                # and must not be silently attributed to the next table.
+                if _u32(data, iat_slot_offset) != 0:
+                    raise ValueError('Delay IAT terminator is nonzero')
                 break
             slot_rva = iat_rva + n * 4
             if slot_rva in occupied_iat_rvas:
