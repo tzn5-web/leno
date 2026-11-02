@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from procedure_step_navigation import adjacent_step_id
 from procedure_step_context import step_context_text
+from procedure_warning_overview import warning_overview_text
 from repair_export import export_procedure_html,export_procedures_json
 from procedure_audit import (audit_procedure, get_step_reference,
                              get_step_reference_snapshot, resolve_step_attachment)
@@ -640,6 +641,54 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         top.reference_picker=picker
         return picker
 
+    def open_warning_overview():
+        """Display recorded warnings with source and live vehicle ownership checks."""
+        pid=state["pid"]
+        if pid is None:
+            messagebox.showinfo("Avertismente", "Selectează o procedură.", parent=top)
+            return None
+        try:
+            require_live_procedure(pid)
+            initial=warning_overview_text(app.db,vehicle_id,pid)
+            # Do not show a cached snapshot if ownership changed during the read.
+            require_live_procedure(pid)
+        except ValueError as exc:
+            invalidate_stale_procedure(pid)
+            messagebox.showerror("Avertismente indisponibile",str(exc),parent=top)
+            return None
+        popup=tk.Toplevel(top)
+        popup.title("AtelierData — avertismente înregistrate")
+        popup.geometry("760x510")
+        area=tk.Text(popup,wrap="word",font=("Segoe UI",11))
+        area.pack(fill="both",expand=True,padx=12,pady=(12,6))
+
+        def show(text):
+            area.configure(state="normal")
+            area.delete("1.0","end")
+            area.insert("1.0",text)
+            area.configure(state="disabled")
+
+        def refresh_overview():
+            try:
+                require_live_procedure(pid)
+                current=warning_overview_text(app.db,vehicle_id,pid)
+                require_live_procedure(pid)
+            except ValueError:
+                show("Procedura nu mai aparține vehiculului selectat. "
+                     "Închide fereastra și actualizează lista.")
+                invalidate_stale_procedure(pid)
+                return None
+            show(current)
+            return current
+
+        show(initial)
+        from tkinter import ttk
+        ttk.Button(popup,text="Actualizează avertismente",
+                   command=refresh_overview).pack(anchor="e",padx=12,pady=(0,12))
+        popup.overview_text=area
+        popup.refresh_overview=refresh_overview
+        return popup
+
     def open_schematic_reference():
         """Navigate to a linked diagram, keeping the procedure's vehicle scope."""
         selected=steps.selection()
@@ -1040,6 +1089,7 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
               ("Șterge pas",step_remove),("Alege document",choose_reference),
               ("Document asociat",open_reference),
               ("Vezi schema",open_schematic_reference),
+               ("Avertismente",open_warning_overview),
               ("Audit documente",open_procedure_audit),
               ("Export HTML",export_html),("Export JSON",export_json)]
     for start in range(0,len(commands),6):
@@ -1062,6 +1112,7 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
     top.edit_selected_step=lambda:step_form(True)
     top.open_reference_picker=choose_reference
     top.open_schematic_reference=open_schematic_reference
+    top.open_warning_overview=open_warning_overview
     top.open_step_reference=open_reference
     top.open_procedure_audit=open_procedure_audit
     refresh_proc(selected_procedure_id)
