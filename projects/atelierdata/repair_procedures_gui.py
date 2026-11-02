@@ -632,6 +632,47 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
             ttk.Button(display,text="Previzualizează TXT verificat",
                        command=preview_attachment).pack(pady=5)
             display.preview_attachment=preview_attachment
+            def preview_image_attachment(attachment_id=None):
+                """Show a current, authorized PNG/JPEG linked to this exact step."""
+                if attachment_id is None:
+                    choice=1 if len(linked)==1 else simpledialog.askinteger(
+                        "Atașamente imagine",
+                        "Alege numărul atașamentului (1–"+str(len(linked))+"):",
+                        minvalue=1,maxvalue=len(linked),parent=display)
+                    if choice is None:
+                        return None
+                    attachment_id=linked[choice-1]["id"]
+                try:
+                    if type(attachment_id) is not int or attachment_id not in {
+                            row["id"] for row in linked}:
+                        raise ValueError("Atașamentul nu este în lista acestui pas")
+                    from step_image_preview import read_step_image_preview
+                    from PIL import Image, ImageTk
+                    image=read_step_image_preview(
+                        app.db,selected_step_id,vehicle_id,selected_procedure_id,
+                        attachment_id)
+                    image.thumbnail((1000,700),Image.Resampling.LANCZOS)
+                    preview=tk.Toplevel(display)
+                    preview.title("AtelierData — imagine verificată din pas")
+                    preview.geometry("1050x780")
+                    preview.transient(display)
+                    frame=ttk.Frame(preview,padding=12)
+                    frame.pack(fill="both",expand=True)
+                    ttk.Label(frame,text=(
+                        "Imagine locală verificată SHA256; drepturile sunt declarate, "
+                        "nu certificate independent. Conținutul nu este validat tehnic."),
+                        wraplength=1000).pack(anchor="w",pady=(0,8))
+                    photo=ImageTk.PhotoImage(image,master=preview)
+                    ttk.Label(frame,image=photo).pack(expand=True)
+                    preview.image_photo=photo
+                    return preview
+                except (ValueError,FileNotFoundError,OSError,RuntimeError,tk.TclError) as exc:
+                    messagebox.showerror("Previzualizare indisponibilă",str(exc),
+                                         parent=display)
+                    return None
+            ttk.Button(display,text="Previzualizează imagine verificată",
+                       command=preview_image_attachment).pack(pady=5)
+            display.preview_image_attachment=preview_image_attachment
         display.reference_article_id=article["id"]
         display.reference_text_widget=area
         return display
