@@ -122,6 +122,33 @@ class CorrelationTests(unittest.TestCase):
         ref["reference_is_call_or_jump"] = False
         result = correlate(idf, api, SHA)
         self.assertEqual(result["shared_idf_and_direct_file_io_call_or_jump_functions"], 0)
+        self.assertEqual(result["api_references_with_unknown_flow_type"], 1)
+
+    def test_unknown_reference_type_cannot_claim_flow_with_true_flag(self):
+        idf, api = fixtures()
+        ref = api["api_symbols"]["ReadFile"][0]["references"][0]
+        ref["reference_type"] = "NOT_CALL"
+        ref["reference_is_call_or_jump"] = True
+        result = correlate(idf, api, SHA)
+        self.assertEqual(result["shared_idf_and_direct_file_io_call_or_jump_functions"], 0)
+        self.assertEqual(result["api_references_with_unknown_flow_type"], 1)
+
+    def test_missing_reference_type_cannot_claim_flow_with_true_flag(self):
+        idf, api = fixtures()
+        ref = api["api_symbols"]["ReadFile"][0]["references"][0]
+        ref.pop("reference_type")
+        ref["reference_is_call_or_jump"] = True
+        result = correlate(idf, api, SHA)
+        self.assertEqual(result["shared_idf_and_api_call_or_jump_functions"], 0)
+        self.assertTrue(result["api_flow_reference_classification_incomplete_or_unknown"])
+
+    def test_known_nonflow_reference_with_false_flag_remains_nonflow(self):
+        idf, api = fixtures()
+        ref = api["api_symbols"]["ReadFile"][0]["references"][0]
+        ref["reference_type"] = "DATA"
+        ref["reference_is_call_or_jump"] = False
+        result = correlate(idf, api, SHA)
+        self.assertEqual(result["shared_idf_and_direct_file_io_call_or_jump_functions"], 0)
         self.assertEqual(result["api_references_with_unknown_flow_type"], 0)
 
     def test_known_computed_jump_is_a_flow_edge(self):
