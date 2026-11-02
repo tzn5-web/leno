@@ -650,6 +650,8 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         try:
             require_live_procedure(pid)
             initial=warning_overview_text(app.db,vehicle_id,pid)
+            from procedure_warning_navigation import warning_step_targets
+            initial_targets=warning_step_targets(app.db,vehicle_id,pid)
             # Do not show a cached snapshot if ownership changed during the read.
             require_live_procedure(pid)
         except ValueError as exc:
@@ -661,6 +663,24 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         popup.geometry("760x510")
         area=tk.Text(popup,wrap="word",font=("Segoe UI",11))
         area.pack(fill="both",expand=True,padx=12,pady=(12,6))
+        ttk.Label(popup,text="PAȘI CU AVERTISMENT — selectează pentru navigare").pack(
+            anchor="w",padx=12)
+        warning_tree=ttk.Treeview(
+            popup,columns=("number","warning"),show="headings",
+            selectmode="browse",height=5)
+        warning_tree.heading("number",text="Pas")
+        warning_tree.heading("warning",text="Avertisment înregistrat")
+        warning_tree.column("number",width=65,stretch=False)
+        warning_tree.column("warning",width=590,stretch=True)
+        warning_tree.pack(fill="x",padx=12,pady=(4,8))
+
+        def show_targets(targets):
+            old=warning_tree.get_children()
+            if old:
+                warning_tree.delete(*old)
+            for step_id,number,note in targets:
+                warning_tree.insert("", "end", iid=str(step_id),
+                                    values=(number,note))
 
         def show(text):
             area.configure(state="normal")
@@ -672,20 +692,63 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
             try:
                 require_live_procedure(pid)
                 current=warning_overview_text(app.db,vehicle_id,pid)
+                targets=warning_step_targets(app.db,vehicle_id,pid)
                 require_live_procedure(pid)
             except ValueError:
+                show_targets(())
                 show("Procedura nu mai aparține vehiculului selectat. "
                      "Închide fereastra și actualizează lista.")
                 invalidate_stale_procedure(pid)
                 return None
+            show_targets(targets)
             show(current)
             return current
 
+        def goto_warning_step():
+            """Navigate only to a warning still linked to this vehicle/procedure."""
+            chosen=warning_tree.selection()
+            if not chosen:
+                messagebox.showinfo("Avertismente","Selectează un pas cu avertisment.",
+                                    parent=popup)
+                return None
+            step_id=int(chosen[0])
+            try:
+                require_live_procedure(pid)
+                targets=warning_step_targets(app.db,vehicle_id,pid)
+                if step_id not in {row[0] for row in targets}:
+                    refresh_overview()
+                    messagebox.showinfo("Avertisment actualizat",
+                                        "Avertismentul nu mai este asociat acestui pas.",
+                                        parent=popup)
+                    return None
+                require_live_procedure(pid)
+                if state["pid"]!=pid:
+                    raise ValueError("Procedura selectată s-a schimbat")
+                refresh_steps(step_id)
+                if not steps.exists(str(step_id)):
+                    raise ValueError("Pasul nu mai este disponibil")
+                steps.selection_set(str(step_id))
+                steps.see(str(step_id))
+                render_selected_step()
+                top.lift()
+                return step_id
+            except ValueError as exc:
+                refresh_overview()
+                messagebox.showinfo("Navigare indisponibilă",str(exc),parent=popup)
+                return None
+
         show(initial)
+        show_targets(initial_targets)
         from tkinter import ttk
-        ttk.Button(popup,text="Actualizează avertismente",
-                   command=refresh_overview).pack(anchor="e",padx=12,pady=(0,12))
+        controls=ttk.Frame(popup)
+        controls.pack(fill="x",padx=12,pady=(0,12))
+        ttk.Button(controls,text="Mergi la pasul selectat",
+                   command=goto_warning_step).pack(side="left")
+        ttk.Button(controls,text="Actualizează avertismente",
+                   command=refresh_overview).pack(side="right")
         popup.overview_text=area
+        popup.warning_steps=warning_tree
+        popup.goto_warning_step=goto_warning_step
         popup.refresh_overview=refresh_overview
         return popup
 
