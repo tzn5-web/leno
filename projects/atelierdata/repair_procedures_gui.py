@@ -368,7 +368,8 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
             try:
                 validate_live_hit(app.db,vehicle_id,hit,term)
             except ValueError as exc:
-                messagebox.showerror("Rezultat învechit",str(exc),parent=popup)
+                messagebox.showerror("Rezultat învechit",
+                    "Rezultatul căutării s-a schimbat: "+str(exc),parent=popup)
                 return None
             procedure=get_procedure(app.db,hit["procedure_id"])
             if procedure is None or procedure["vehicle_id"]!=vehicle_id:
@@ -404,7 +405,8 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
             try:
                 validate_live_hit(app.db,vehicle_id,hit,term)
             except ValueError as exc:
-                messagebox.showerror("Rezultat învechit",str(exc),parent=popup)
+                messagebox.showerror("Rezultat învechit",
+                    "Rezultatul căutării s-a schimbat: "+str(exc),parent=popup)
                 return None
             if not procedures.exists(str(hit["procedure_id"])):
                 messagebox.showinfo("Căutare modificată",
