@@ -60,7 +60,8 @@ def analyze_verified(binary, expected_sha256, idf_report, api_report, graph_repo
     pe = parse_pe32(binary)
     (literal_functions, pointer_functions, pointer_sites,
      boundary_functions, boundary_sites, verified_literals,
-     missing_addresses, mismatched_literals, claimed_pointer_functions) = replay_idf_literals(
+     missing_addresses, mismatched_literals, claimed_pointer_functions,
+     ambiguous_pointer_sites) = replay_idf_literals(
          binary, pe, idf_report)
     if (verified['direct_call_sites_verified'] != summary['direct_call_sites_in_graph'] or
             verified['duplicate_call_sites_ignored'] != summary['duplicate_call_sites_ignored'] or
@@ -93,6 +94,7 @@ def analyze_verified(binary, expected_sha256, idf_report, api_report, graph_repo
     summary.update({
         'schema': 'atelierdata-ghidra-idf-verified-triage-v1',
         'idf_report_derived_hops_include_unverified_literal_xrefs': True,
+        'idf_pointer_sites_with_conflicting_ghidra_claims': ambiguous_pointer_sites,
         'api_endpoint_calls_independently_replayed': False,
         'pe_iat_endpoint_byte_check_performed': True,
         'pe_iat_endpoint_callsites_correlated': pe_iat_sites,
