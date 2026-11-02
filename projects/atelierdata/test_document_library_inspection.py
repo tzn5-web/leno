@@ -4,7 +4,8 @@ import unittest
 from pathlib import Path
 
 from atelierdata import Store
-from document_library import import_local_file, inspect_library_entry, set_metadata, verified_library_file
+from document_library import (import_local_file, inspect_library_entry, set_metadata,
+                              verified_library_file, read_verified_text_preview)
 from atelierdata_extensions import resolve_document
 
 
@@ -123,6 +124,58 @@ class LibraryInspectionTests(unittest.TestCase):
         before = self.store.db.total_changes
         result = inspect_library_entry(self.store, attachment, self.vehicle)
         self.assertTrue(result["ok"], result)
+        self.assertEqual(self.store.db.total_changes, before)
+
+    def test_internal_txt_preview_is_utf8_read_only_and_vehicle_scoped(self):
+        source = self.root / "preview.txt"
+        source.write_text("Pași de test — conținut sintetic\\n", encoding="utf-8-sig")
+        attachment = import_local_file(
+            self.store, self.vehicle, source, "Manual de atelier",
+            "Synthetic preview", "User fixture", rights_basis="document_propriu")
+        article = self.store.db.execute(
+            "SELECT article_id FROM attachments WHERE id=?", (attachment,)).fetchone()[0]
+        before = self.store.db.total_changes
+        self.assertEqual(
+            read_verified_text_preview(self.store, attachment, self.vehicle, article),
+            "Pași de test — conținut sintetic\\n")
+        self.assertEqual(self.store.db.total_changes, before)
+        with self.assertRaisesRegex(ValueError, "vehiculului"):
+            read_verified_text_preview(self.store, attachment, self.vehicle + 999, article)
+        with self.assertRaisesRegex(ValueError, "articolului"):
+            read_verified_text_preview(self.store, attachment, self.vehicle, article + 999)
+        self.assertEqual(self.store.db.total_changes, before)
+
+    def test_internal_txt_preview_rejects_oversized_invalid_and_late_binary(self):
+        for label, payload, error in (
+            ("oversized", b"A" * (1024 * 1024 + 1), "prea mare"),
+            ("invalid_utf8", b"invalid " + bytes([255]), "UTF-8"),
+            ("late_nul", b"A" * 5000 + bytes([0]), "control"),
+        ):
+            with self.subTest(label=label):
+                source = self.root / (label + ".txt")
+                source.write_bytes(payload)
+                attachment = import_local_file(
+                    self.store, self.vehicle, source, "Manual de atelier",
+                    "Synthetic " + label, "User fixture",
+                    rights_basis="document_propriu")
+                before = self.store.db.total_changes
+                with self.assertRaisesRegex(ValueError, error):
+                    read_verified_text_preview(self.store, attachment, self.vehicle)
+                self.assertEqual(self.store.db.total_changes, before)
+
+    def test_internal_txt_preview_requires_current_rights_and_txt_extension(self):
+        with self.assertRaisesRegex(ValueError, "numai fișiere TXT"):
+            read_verified_text_preview(self.store, self.attachment, self.vehicle, self.article)
+        source = self.root / "revoked.txt"
+        source.write_text("Synthetic test only", encoding="utf-8")
+        attachment = import_local_file(
+            self.store, self.vehicle, source, "Manual de atelier",
+            "Synthetic revoked", "User fixture", rights_basis="document_propriu")
+        set_metadata(self.store, attachment, "Manual de atelier",
+                     "Synthetic revoked", "User fixture", rights_basis="neconfirmat")
+        before = self.store.db.total_changes
+        with self.assertRaisesRegex(ValueError, "Drepturi neconfirmate"):
+            read_verified_text_preview(self.store, attachment, self.vehicle)
         self.assertEqual(self.store.db.total_changes, before)
 
     def test_rights_revoked_after_selection_fail_closed(self):

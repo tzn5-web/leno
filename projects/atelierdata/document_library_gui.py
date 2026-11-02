@@ -12,7 +12,8 @@ from tkinter import ttk, messagebox, filedialog
 from pathlib import Path
 from document_library import (
     DOCUMENT_TYPES,ACCESS_RIGHTS,ensure_schema,import_local_file,
-    list_library,set_metadata,verified_library_file,inspect_library_entry)
+    list_library,set_metadata,verified_library_file,inspect_library_entry,
+    read_verified_text_preview)
 from technical_sources import normalize
 from document_bulk_import import bulk_import_folder
 
@@ -314,12 +315,44 @@ def open_document_library(app):
         except Exception as exc:
             messagebox.showerror("Integritate fișier",str(exc),parent=win)
 
+    def preview_text():
+        """Render a verified UTF-8 TXT in a bounded, read-only Tk window."""
+        row=selected()
+        if not row:
+            return messagebox.showinfo("Selectare","Selectează un fișier TXT.",parent=win)
+        try:
+            content=read_verified_text_preview(
+                app.db,row["attachment_id"],vehicle_id=row["vehicle_id"],
+                article_id=row["article_id"])
+        except (ValueError,FileNotFoundError,OSError) as exc:
+            messagebox.showerror("Previzualizare indisponibilă",str(exc),parent=win)
+            return None
+        preview=tk.Toplevel(win)
+        preview.title("AtelierData — previzualizare TXT verificat")
+        preview.geometry("900x620")
+        preview.transient(win)
+        frame=ttk.Frame(preview,padding=12)
+        frame.pack(fill="both",expand=True)
+        ttk.Label(frame,text="Previzualizare locală UTF-8 (maxim 1 MiB). "
+                  "Drepturile sunt declarate; conținutul nu este validat tehnic.",
+                  wraplength=850).pack(anchor="w",pady=(0,8))
+        scroll=ttk.Scrollbar(frame,orient="vertical")
+        viewer=tk.Text(frame,wrap="word",yscrollcommand=scroll.set)
+        scroll.configure(command=viewer.yview)
+        scroll.pack(side="right",fill="y")
+        viewer.pack(side="left",fill="both",expand=True)
+        viewer.insert("1.0",content)
+        viewer.configure(state="disabled")
+        preview.preview_text_widget=viewer
+        return preview
+
     actions=ttk.Frame(outer)
     actions.pack(fill="x",pady=(4,1))
     ttk.Button(actions,text="Importă fișier local",command=import_file).pack(side="left",padx=(0,7))
     ttk.Button(actions,text="Importă dosar local",command=import_folder).pack(side="left",padx=(0,7))
     ttk.Button(actions,text="Editează proveniența",command=edit_metadata).pack(side="left",padx=(0,7))
     ttk.Button(actions,text="Verifică integritatea",command=verify_selected).pack(side="left",padx=(0,7))
+    ttk.Button(actions,text="Previzualizare TXT",command=preview_text).pack(side="left",padx=(0,7))
     ttk.Button(actions,text="Deschide verificat",command=open_verified).pack(side="left",padx=(0,7))
     ttk.Button(actions,text="Închide",command=win.destroy).pack(side="right")
     for var in (search,make,year,category):var.trace_add("write",refresh)
@@ -331,5 +364,6 @@ def open_document_library(app):
     win.library_year=year
     win.library_details=details
     win.library_verify_selected=verify_selected
+    win.library_preview_text=preview_text
     win.library_open_verified=open_verified
     return win

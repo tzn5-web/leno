@@ -11,6 +11,7 @@ permission, vehicle applicability, or technical correctness.
 from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
+import hashlib
 from urllib.parse import urlsplit
 import re
 
@@ -313,3 +314,33 @@ def inspect_library_entry(store, attachment_id, vehicle_id=None, article_id=None
         return {"ok": False, "message": str(exc)}
     return {"ok": True, "message":
             "SHA256 valid la momentul verificării; drepturile sunt doar declarate."}
+
+
+MAX_TEXT_PREVIEW_BYTES = 1024 * 1024
+
+
+def read_verified_text_preview(store, attachment_id, vehicle_id=None, article_id=None):
+    """Return at most 1 MiB of verified, authorized UTF-8 TXT for offline preview.
+
+    No external application is launched. Recheck the digest of the bytes actually
+    displayed, not only the earlier on-disk preflight, to reject changes between
+    the two reads. This does not certify a document's technical correctness.
+    """
+    path = verified_library_file(
+        store, attachment_id, vehicle_id=vehicle_id, article_id=article_id,
+        require_declared_rights=True)
+    if path.suffix.lower() != ".txt":
+        raise ValueError("Previzualizarea internă acceptă numai fișiere TXT")
+    with path.open("rb") as stream:
+        payload = stream.read(MAX_TEXT_PREVIEW_BYTES + 1)
+    if len(payload) > MAX_TEXT_PREVIEW_BYTES:
+        raise ValueError("TXT prea mare pentru previzualizare (maxim 1 MiB)")
+    if hashlib.sha256(payload).hexdigest() != path.stem:
+        raise ValueError("Atașament modificat sau corupt în timpul previzualizării")
+    try:
+        content = payload.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ValueError("Previzualizarea TXT necesită codare UTF-8") from exc
+    if any(ord(char) < 32 and char not in "\t\r\n" for char in content):
+        raise ValueError("TXT conține caractere de control nepermise")
+    return content

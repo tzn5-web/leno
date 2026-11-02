@@ -161,6 +161,35 @@ def main():
                 win.library_open_verified()
                 assert not launch.called, "Binary TXT must not launch"
             assert store.db.total_changes == before, "TXT preflight must be read-only"
+            # Authorized TXT is previewed inside Tk without invoking the OS
+            # viewer; the same selected row must fail after rights revocation.
+            preview_source=Path(directory)/"preview_valid.txt"
+            preview_source.write_text("Pași sintetici — numai test\\n",encoding="utf-8")
+            preview_id=import_local_file(
+                store,vid,preview_source,"Manual de atelier",
+                "preview authorized fixture","Local synthetic fixture",
+                rights_basis="document_propriu")
+            win.library_search.set("preview authorized fixture")
+            root.update_idletasks()
+            assert len(win.library_tree.get_children())==1
+            win.library_tree.selection_set(str(preview_id))
+            root.update_idletasks()
+            before=store.db.total_changes
+            with patch("document_library_gui.os.startfile") as launch:
+                preview=win.library_preview_text()
+                assert preview is not None, "Authorized TXT preview must open"
+                assert "Pași sintetici" in preview.preview_text_widget.get("1.0","end")
+                assert not launch.called, "Internal preview must not start an OS viewer"
+                preview.destroy()
+            assert store.db.total_changes==before, "Preview must be read-only"
+            set_metadata(store,preview_id,"Manual de atelier",
+                         "preview authorized fixture","Local synthetic fixture",
+                         rights_basis="neconfirmat")
+            with patch("document_library_gui.messagebox.showerror") as error, \\
+                 patch("document_library_gui.os.startfile") as launch:
+                assert win.library_preview_text() is None
+                assert error.called and not launch.called
+            assert store.db.total_changes>=before
             win.destroy()
             print("DOCUMENT_LIBRARY_GUI_SMOKE=PASS")
         finally:
