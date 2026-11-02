@@ -11,6 +11,7 @@ import json
 import struct
 from collections import Counter
 from pathlib import Path
+from pe_literal_evidence import mapped_literal_positions
 
 MAX_PE = 64 * 1024 * 1024
 MAX_SECTIONS = 96
@@ -186,31 +187,24 @@ def analyze(data, expected_sha):
     for term in LITERAL_PROBES:
         variants = {}
         for encoding in ('ascii', 'utf-16le'):
-            needle = term.encode(encoding)
-            positions = []
-            start = 0
-            while len(positions) < 1024:
-                at = data.find(needle, start)
-                if at < 0:
-                    break
-                positions.append(at)
-                start = at + 1
+            # A substring, unbacked section padding or a missing NUL is not
+            # evidence of a complete API literal. Keep the raw locations private.
+            positions, truncated = mapped_literal_positions(
+                data, pe['sections'], term, encoding, limit=1024)
             pointer_candidates = 0
-            for at in positions:
-                for sec in pe['sections']:
-                    backed = min(sec['raw_size'], sec['vsize'])
-                    if backed and sec['raw_at'] <= at < sec['raw_at'] + backed:
-                        va = pe['image_base'] + sec['rva'] + at - sec['raw_at']
-                        if va <= 0xffffffff:
-                            packed = struct.pack('<I', va)
-                            pointer_candidates += sum(
-                                data[s['raw_at']:s['raw_at'] + min(s['raw_size'], s['vsize'])].count(packed)
-                                for s in pe['sections'] if s['executable'] and min(s['raw_size'], s['vsize']))
-                        break
+            for at, rva in positions:
+                va = pe['image_base'] + rva
+                if va > 0xffffffff:
+                    continue
+                packed = struct.pack('<I', va)
+                pointer_candidates += sum(
+                    data[s['raw_at']:s['raw_at'] + min(s['raw_size'], s['vsize'])].count(packed)
+                    for s in pe['sections'] if s['executable'] and min(s['raw_size'], s['vsize']))
             variants[encoding] = {'literal_count_at_most_1024': len(positions),
-                                  'truncated': len(positions) == 1024,
+                                  'truncated': truncated,
                                   'raw_pointer_candidates_in_executable_sections': pointer_candidates}
-            private_literals.append({'term': term, 'encoding': encoding, 'file_offsets': positions})
+            private_literals.append({'term': term, 'encoding': encoding,
+                                     'file_offsets': [at for at, _ in positions]})
         literal_counts[term] = variants
     selected = {k: v for k, v in sorted(counts.items())
                 if any(t in k.lower() for t in FOCUS)}
@@ -221,6 +215,7 @@ def analyze(data, expected_sha):
                   imported_symbol_count=len(pe['imports']),
                   candidate_count=sum(counts.values()),
                   focus_candidates=selected, literal_probes=literal_counts,
+                  literal_matching_policy='exact NUL-terminated in initialized PE section, non-embedded word',
                   target_executed=False, idf_decoder_proven=False,
                   method='Raw FF15/FF25 patterns matching PE import IAT VAs; no disassembly or control-flow validation',
                   limitations='Matches may be incidental bytes; zero matches does not exclude indirect calls, Delphi runtime wrappers, dynamic imports, or a data loader.')
