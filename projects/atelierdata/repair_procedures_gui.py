@@ -1,6 +1,7 @@
 """Native Windows/Tkinter procedure navigator for user-owned, sourced workshop data."""
 from __future__ import annotations
 
+from procedure_step_navigation import adjacent_step_id
 from repair_export import export_procedure_html,export_procedures_json
 from procedure_audit import audit_procedure, get_step_reference, resolve_step_attachment
 from procedure_audit_export import export_procedure_audit_json
@@ -415,6 +416,27 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                 chosen=add_step(app.db,pid,data["instruction"],data["safety_note"],ref)
             refresh_steps(chosen)
         except Exception as exc:messagebox.showerror("Pas invalid",str(exc),parent=top)
+
+    def navigate_step(direction):
+        """Select the adjacent live SQLite step, never a stale or foreign row."""
+        pid=state["pid"]
+        if pid is None:
+            messagebox.showinfo("Navigare", "Selectează o procedură.", parent=top)
+            return None
+        selected=steps.selection()
+        current=int(selected[0]) if selected else None
+        try:
+            target=adjacent_step_id(app.db,vehicle_id,pid,current,direction)
+            if target is None:
+                return None
+            refresh_steps(target)
+            if not steps.exists(str(target)):
+                raise ValueError("Pasul selectat nu mai există")
+            steps.see(str(target))
+            return target
+        except ValueError as exc:
+            messagebox.showerror("Navigare indisponibilă",str(exc),parent=top)
+            return None
 
     def step_move(direction):
         selected=steps.selection()
@@ -915,6 +937,8 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
               ("+ Pas",lambda:step_form(False)),
               ("Editează pas",lambda:step_form(True)),
               ("↑",lambda:step_move(-1)),("↓",lambda:step_move(1)),
+              ("◀ Pas anterior",lambda:navigate_step(-1)),
+              ("Pas următor ▶",lambda:navigate_step(1)),
               ("Șterge pas",step_remove),("Alege document",choose_reference),
               ("Document asociat",open_reference),
               ("Vezi schema",open_schematic_reference),
@@ -935,6 +959,7 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
     top.procedure_detail_text=detail
     top.refresh_steps=refresh_steps
     top.move_selected_step=step_move
+    top.navigate_step=navigate_step
     top.edit_selected_step=lambda:step_form(True)
     top.open_reference_picker=choose_reference
     top.open_schematic_reference=open_schematic_reference
