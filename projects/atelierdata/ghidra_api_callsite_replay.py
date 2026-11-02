@@ -125,10 +125,14 @@ def _idf_functions(data, pe, report):
                     continue
                 verified += 1
                 for ref in hit["references_from"]:
-                    if ref.get("function_entry") is None:
-                        continue
-                    function = _function_key(ref["function_entry"])
-                    functions.add(function)
+                    # Missing ownership metadata is not evidence that a
+                    # second, otherwise identical claim is trustworthy.
+                    # Keep a tombstone for byte-matched physical sites so a
+                    # malformed sibling cannot be silently discarded.
+                    entry = ref.get("function_entry")
+                    function = _function_key(entry) if entry is not None else None
+                    if function is not None:
+                        functions.add(function)
                     # Independently corroborate only the narrow x86 forms
                     # PUSH imm32 and MOV reg, imm32 whose operand equals the
                     # literal VA. Other legitimate references are omitted.
@@ -153,7 +157,8 @@ def _idf_functions(data, pe, report):
         # A byte-matched pointer is physical evidence even if the associated
         # Ghidra function/metadata is contradictory. Keep that count separate.
         direct_pointer_sites.add((src_va, va))
-        claimed_pointer_functions.update(function for function, _, _ in claims)
+        claimed_pointer_functions.update(
+            function for function, _, _ in claims if function is not None)
         signatures = set()
         for function, ref, opcode in claims:
             signatures.add((
@@ -161,7 +166,7 @@ def _idf_functions(data, pe, report):
                 ref.get("instruction_start_address"),
                 ref.get("instruction_length"),
                 ref.get("instruction_mnemonic")))
-        if len(signatures) != 1:
+        if len(signatures) != 1 or claims[0][0] is None:
             ambiguous_pointer_sites += 1
             continue
         function, ref, opcode = claims[0]
@@ -172,6 +177,7 @@ def _idf_functions(data, pe, report):
         expected_mnemonic = "PUSH" if opcode == 0x68 else "MOV"
         start = ref.get("instruction_start_address")
         if (ref.get("reference_is_data") is True and
+                ref.get("reference_type") == "DATA" and
                 start is not None and
                 _function_key(start) == ("ram", src_va) and
                 type(ref.get("instruction_length")) is int and
