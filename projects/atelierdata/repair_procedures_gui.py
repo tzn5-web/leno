@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from procedure_step_navigation import adjacent_step_id
+from procedure_step_context import step_context_text
 from repair_export import export_procedure_html,export_procedures_json
 from procedure_audit import audit_procedure, get_step_reference, resolve_step_attachment
 from procedure_audit_export import export_procedure_audit_json
@@ -86,7 +87,7 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         steps.heading(col,text=title)
         steps.column(col,width=width,stretch=True,minwidth=35)
     steps.pack(fill="both",expand=True)
-    ttk.Label(right,text="DETALII PROCEDURĂ").pack(anchor="w",pady=(10,5))
+    ttk.Label(right,text="DETALII PAS SELECTAT / PROCEDURĂ").pack(anchor="w",pady=(10,5))
     detail=tk.Text(right,height=10,wrap="word",state="disabled",
                    font=("Segoe UI",10),bg="#1a2a42",fg="#eef5ff",relief="flat")
     detail.pack(fill="both",expand=False)
@@ -97,6 +98,25 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         detail.delete("1.0","end")
         detail.insert("1.0",text)
         detail.configure(state="disabled")
+
+    def render_selected_step(event=None):
+        """Show live selected-step warnings, references and source; never stale text."""
+        pid=state["pid"]
+        if pid is None:
+            render("Selectează o procedură sau adaugă una nouă.")
+            return None
+        chosen=steps.selection()
+        if not chosen:
+            render(procedure_text(app.db,pid))
+            return None
+        try:
+            context=step_context_text(app.db,vehicle_id,pid,int(chosen[0]))
+        except ValueError:
+            render("Pasul selectat nu mai aparține procedurii sau vehiculului. "
+                   "Actualizează lista înainte de a continua.")
+            return None
+        render(context)
+        return context
 
     def refresh_proc(prefer=None):
         try:
@@ -131,7 +151,7 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                 step["safety_note"][:95],step["reference_title"] or ""))
         if prefer is not None and steps.exists(str(prefer)):
             steps.selection_set(str(prefer))
-        render(procedure_text(app.db,pid))
+        render_selected_step()
 
     def selection(event=None):
         items=procedures.selection()
@@ -140,6 +160,7 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         refresh_steps(selected)
 
     procedures.bind("<<TreeviewSelect>>",selection)
+    steps.bind("<<TreeviewSelect>>",render_selected_step)
     search.trace_add("write",lambda *_:refresh_proc())
 
     def open_search_hits():
@@ -958,6 +979,7 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
     top.steps_tree=steps
     top.procedure_detail_text=detail
     top.refresh_steps=refresh_steps
+    top.render_selected_step=render_selected_step
     top.move_selected_step=step_move
     top.navigate_step=navigate_step
     top.edit_selected_step=lambda:step_form(True)
