@@ -185,7 +185,7 @@ def main():
             set_metadata(store,preview_id,"Manual de atelier",
                          "preview authorized fixture","Local synthetic fixture",
                          rights_basis="neconfirmat")
-            with patch("document_library_gui.messagebox.showerror") as error, \\
+            with patch("document_library_gui.messagebox.showerror") as error, \
                  patch("document_library_gui.os.startfile") as launch:
                 assert win.library_preview_text() is None
                 assert error.called and not launch.called
