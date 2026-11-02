@@ -61,6 +61,20 @@ class DelayImportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'duplicate classic/delay IAT slot'):
             parse_delay_imports(data)
 
+    def test_distinct_delay_iat_slots_are_accepted(self):
+        data = bytearray(fixture())
+        data[0x5a0:0x5ad] = data[0x540:0x54d]
+        data[0x540:0x54d] = bytes(13)
+        struct.pack_into('<I', data, 0x504, 0x21a0)
+        data[0x520:0x540] = data[0x500:0x520]
+        # Same DLL and name table, but a separate, initialized IAT slot.
+        struct.pack_into('<I', data, 0x52c, 0x2190)
+        struct.pack_into('<II', data, 0x98 + 96 + 13 * 8, 0x2100, 96)
+        result = parse_delay_imports(data)
+        self.assertEqual(len(result), 2)
+        self.assertEqual([x['entries'][0]['iat_rva'] for x in result],
+                         [0x2170, 0x2190])
+
     def test_missing_terminator_rejected(self):
         data = bytearray(fixture())
         struct.pack_into('<I', data, 0x520, 1)
