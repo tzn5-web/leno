@@ -17,6 +17,8 @@ import tempfile
 from pathlib import Path
 
 from ghidra_idf_api_correlation import _function_key, correlate, load_private
+from ghidra_idf_callgraph_triage import FAMILIES
+from pe_api_import_trust import _trusted_windows_api_import
 from pe_file_io_xrefs import MAX_PE, parse_pe32
 
 SCHEMA = "atelierdata-ghidra-api-callsite-replay-v1"
@@ -181,6 +183,7 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
     opcode_flow_conflicts = duplicate_sites = ambiguous_sites = 0
     missing_instruction_evidence = inconsistent_instruction_evidence = 0
     impossible_api_function_owners = 0
+    untrusted_api_import_providers = 0
     # Aggregate by physical callsite before scoring. A source address cannot
     # become two independently corroborated calls just because a private
     # Ghidra report repeats it with different containing functions.
@@ -260,6 +263,25 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
         imported = pe["imports"].get(target)
         if imported is None or imported["symbol"] != api_name:
             continue
+        # The name ReadFile/GetProcAddress alone does not establish a Windows
+        # API: an unrelated DLL may export an identically named function.
+        # KERNEL32/KERNELBASE and strictly matching API-set families are
+        # allowed as declared PE import providers, not runtime proof.
+        families = tuple(family for family, names in FAMILIES.items()
+                         if api_name in names)
+        if not families:
+            if api_name.startswith("LoadLibrary"):
+                families = ("dynamic_lookup",)
+            elif api_name in (
+                    "GetFileSize", "GetFileSizeEx", "GetFileAttributesA",
+                    "GetFileAttributesW", "FindFirstFileA", "FindFirstFileW",
+                    "FindNextFileA", "FindNextFileW"):
+                families = ("file_read",)
+        dll = imported["dll"].upper()
+        if (dll not in ("KERNEL32.DLL", "KERNELBASE.DLL") and
+                (not families or not _trusted_windows_api_import(dll, families))):
+            untrusted_api_import_providers += 1
+            continue
         import_matched += 1
         if function in idf_functions:
             shared_idf_matched += 1
@@ -285,6 +307,7 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
         "unique_sites_repeated_in_report": duplicate_sites,
         "sites_with_conflicting_reported_attribution": ambiguous_sites,
         "api_callsites_with_impossible_function_ownership": impossible_api_function_owners,
+        "api_sites_rejected_untrusted_import_provider": untrusted_api_import_providers,
         "references_missing_ghidra_instruction_boundary_evidence": missing_instruction_evidence,
         "references_with_inconsistent_ghidra_instruction_boundary_evidence": inconsistent_instruction_evidence,
         "sites_in_executable_raw_sections": mapped_executable,
@@ -304,6 +327,7 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
                        "Ghidra-reported instruction boundaries must be explicit, 6-byte, and match xref sources; they are not independently proven. "
                        "Conflicting or malformed call claims at the same physical site are excluded. "
                        "Claimed API caller entries must precede the callsite in the same uniquely backed executable PE section; this is not function-boundary proof. "
+                       "A matching API name is accepted only with a recognized declared Windows import provider; actual runtime DLL resolution is unproven. "
                        "Dynamic imports, thunks, other encodings and indirect flows are omitted. "
                        "IDF literal bytes are independently checked at reported PE VAs; raw PUSH/MOV immediate-pointer matches are narrow byte candidates. "
                        "A separate stricter counter requires Ghidra-reported DATA reference, matching instruction start, 5-byte length and PUSH/MOV mnemonic, but is not independent disassembly. " 
