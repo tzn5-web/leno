@@ -241,6 +241,16 @@ def _check_document_signature(path):
         ".jpg": b"\xff\xd8\xff",
         ".jpeg": b"\xff\xd8\xff",
     }
+    if suffix == ".txt":
+        # Single-file imports may bypass the batch import's text preflight.
+        # Prevent obvious executable/archive bytes (or NUL text) from being
+        # launched through the library GUI even when SHA256 matches.
+        with path.open("rb") as stream:
+            prefix = stream.read(4096)
+        if (not prefix or b"\x00" in prefix or
+                prefix.startswith((b"MZ", b"PK\x03\x04"))):
+            raise ValueError("Fișier TXT nu pare text")
+        return
     marker=signatures.get(suffix)
     if marker is None:
         return
