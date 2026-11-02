@@ -368,5 +368,43 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual(api, before)
 
 
+    def test_api_caller_after_callsite_is_not_corroborated(self):
+        data, sha, idf, api = fixtures()
+        api["api_symbols"]["ReadFile"][0]["references"][0]["function_entry"] = "00401030"
+        result = replay(data, sha, idf, api)
+        self.assertEqual(result["api_callsites_with_impossible_function_ownership"], 1)
+        self.assertEqual(result["raw_indirect_import_sites_with_matching_api_name"], 0)
+        self.assertEqual(result["matching_api_sites_in_idf_string_referencing_functions"], 0)
+
+    def test_api_caller_in_nonexecuting_section_is_not_corroborated(self):
+        data, sha, idf, api = fixtures()
+        api["api_symbols"]["ReadFile"][0]["references"][0]["function_entry"] = "00402000"
+        result = replay(data, sha, idf, api)
+        self.assertEqual(result["api_callsites_with_impossible_function_ownership"], 1)
+        self.assertEqual(result["raw_indirect_import_sites_with_matching_api_name"], 0)
+
+    def test_malformed_duplicate_cannot_upgrade_valid_api_site(self):
+        data, sha, idf, api = fixtures()
+        refs = api["api_symbols"]["ReadFile"][0]["references"]
+        good = copy.deepcopy(refs[0])
+        for field, value in (
+                ("instruction_length", 5),
+                ("instruction_start_address", "RAM:00401021"),
+                ("function_entry", None),
+                ("reference_is_call_or_jump", None)):
+            with self.subTest(field=field):
+                bad = copy.deepcopy(good)
+                bad[field] = value
+                refs[:] = [good, bad]
+                result = replay(data, sha, idf, api)
+                self.assertEqual(result["sites_with_conflicting_reported_attribution"], 1)
+                self.assertEqual(result["raw_indirect_import_sites_with_matching_api_name"], 0)
+                refs.reverse()
+                self.assertEqual(replay(data, sha, idf, api), result)
+        refs[:] = [good]
+        self.assertEqual(replay(data, sha, idf, api)[
+            "raw_indirect_import_sites_with_matching_api_name"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()
