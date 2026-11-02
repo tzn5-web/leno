@@ -556,6 +556,14 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
             steps.see(str(target))
             return target
         except ValueError as exc:
+            # Do not leave stale rows visible when ownership changed or a
+            # selected step was deleted between navigation and GUI refresh.
+            try:
+                require_live_procedure(pid)
+            except ValueError:
+                invalidate_stale_procedure(pid)
+            else:
+                refresh_steps()
             messagebox.showerror("Navigare indisponibilă",str(exc),parent=top)
             return None
 

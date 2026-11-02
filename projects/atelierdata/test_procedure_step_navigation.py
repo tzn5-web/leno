@@ -63,6 +63,21 @@ class StepNavigationTests(unittest.TestCase):
                 self.nav(direction=bad)
         self.assertEqual(self.db.total_changes,before)
 
+    def test_one_scoped_sql_snapshot_for_each_navigation(self):
+        """The vehicle ownership and ordered steps must not use two SELECTs."""
+        statements=[]
+        self.db.set_trace_callback(statements.append)
+        try:
+            before=self.db.total_changes
+            self.assertEqual(self.nav(101),102)
+            self.assertIsNone(self.nav(procedure=33))
+            self.assertEqual(self.db.total_changes,before)
+        finally:
+            self.db.set_trace_callback(None)
+        selects=[sql for sql in statements if sql.lstrip().upper().startswith("SELECT")]
+        self.assertEqual(len(selects),2,selects)
+        self.assertTrue(all("JOIN procedure_steps" in sql for sql in selects))
+
     def test_windows_gui_navigation_and_stale_row(self):
         try:
             root=tk.Tk()
@@ -100,6 +115,23 @@ class StepNavigationTests(unittest.TestCase):
                     with patch("tkinter.messagebox.showerror") as error:
                         self.assertIsNone(window.navigate_step(1))
                         self.assertTrue(error.called)
+                    # A reassigned procedure must clear previously cached
+                    # steps and metadata, not merely reject the button click.
+                    other=store.add_vehicle("SYNTHETIC","OTHER")
+                    store.db.execute(
+                        "UPDATE procedures SET vehicle_id=? WHERE id=?",
+                        (other,pid))
+                    store.db.commit()
+                    window.steps_tree.selection_set(str(first))
+                    before=store.db.total_changes
+                    with patch("tkinter.messagebox.showerror") as error:
+                        self.assertIsNone(window.navigate_step(1))
+                    error.assert_called_once()
+                    self.assertEqual(window.steps_tree.get_children(),())
+                    self.assertFalse(window.procedures_tree.exists(str(pid)))
+                    self.assertNotIn("Synthetic first",
+                                     window.procedure_detail_text.get("1.0","end"))
+                    self.assertEqual(store.db.total_changes,before)
                 finally:
                     window.destroy()
             finally:
