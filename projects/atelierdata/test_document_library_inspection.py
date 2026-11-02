@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from atelierdata import Store
-from document_library import import_local_file, inspect_library_entry, set_metadata
+from document_library import import_local_file, inspect_library_entry, set_metadata, verified_library_file
 from atelierdata_extensions import resolve_document
 
 
@@ -52,6 +52,34 @@ class LibraryInspectionTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("lipsă", result["message"])
         self.assertEqual(self.store.db.total_changes, before)
+
+    def test_masquerading_pdf_and_images_are_inventory_only(self):
+        """Correct SHA256 does not make mislabeled binary data safe to launch."""
+        for suffix in (".pdf", ".png", ".jpg", ".jpeg"):
+            with self.subTest(suffix=suffix):
+                source = self.root / ("masquerade" + suffix)
+                source.write_bytes(b"MZ\\x90\\x00synthetic non-document")
+                attachment = import_local_file(
+                    self.store, self.vehicle, source, "Manual de atelier",
+                    "Synthetic masquerade", "User fixture",
+                    rights_basis="document_propriu")
+                article = self.store.db.execute(
+                    "SELECT article_id FROM attachments WHERE id=?",
+                    (attachment,)).fetchone()[0]
+                before = self.store.db.total_changes
+                # Existing internal byte integrity/indexing remains unchanged.
+                self.assertEqual(resolve_document(self.store, attachment).read_bytes(),
+                                 source.read_bytes())
+                result = inspect_library_entry(
+                    self.store, attachment, self.vehicle, article)
+                self.assertFalse(result["ok"], result)
+                self.assertIn("Semnătură fișier invalidă", result["message"])
+                with self.assertRaisesRegex(ValueError, "Semnătură fișier invalidă"):
+                    verified_library_file(
+                        self.store, attachment, vehicle_id=self.vehicle,
+                        article_id=article, require_declared_rights=True)
+                self.assertEqual(self.store.db.total_changes, before)
+        self.assertEqual(self.store.db.execute("PRAGMA quick_check").fetchone()[0], "ok")
 
     def test_rights_revoked_after_selection_fail_closed(self):
         set_metadata(self.store, self.attachment, "Manual de atelier",
