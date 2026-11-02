@@ -180,50 +180,56 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
     boundary_idf_shared_sites = 0
     opcode_flow_conflicts = duplicate_sites = ambiguous_sites = 0
     missing_instruction_evidence = inconsistent_instruction_evidence = 0
+    impossible_api_function_owners = 0
     # Aggregate by physical callsite before scoring. A source address cannot
     # become two independently corroborated calls just because a private
     # Ghidra report repeats it with different containing functions.
     sites = {}
+    tainted_sites = set()
     for api_name, symbols in api_report["api_symbols"].items():
         for symbol in symbols:
             for ref in symbol["references"]:
-                if ref.get("function_entry") is None:
-                    continue
                 flow_type = ref.get("reference_type")
                 if flow_type not in _FLOW_TYPES:
                     continue
-                # A raw opcode match alone is not Ghidra instruction-boundary
-                # evidence. Old reports lacking these explicit fields are
-                # excluded rather than silently upgraded to corroboration.
-                if ref.get("reference_is_call_or_jump") is not True:
-                    continue
                 source = ref.get("source_address")
-                start = ref.get("instruction_start_address")
-                length = ref.get("instruction_length")
-                mnemonic = ref.get("instruction_mnemonic")
-                if source is None or start is None or length is None or mnemonic is None:
+                if source is None:
                     missing_instruction_evidence += 1
                     continue
                 space, address = _function_key(source)
                 if space != "ram" or not 0 <= address <= 0xffffffff:
                     continue
+                # A malformed second claim at the same physical address
+                # invalidates a valid sibling instead of being skipped.
+                if (ref.get("function_entry") is None or
+                        ref.get("reference_is_call_or_jump") is not True):
+                    tainted_sites.add(address)
+                    continue
+                start = ref.get("instruction_start_address")
+                length = ref.get("instruction_length")
+                mnemonic = ref.get("instruction_mnemonic")
+                if start is None or length is None or mnemonic is None:
+                    missing_instruction_evidence += 1
+                    tainted_sites.add(address)
+                    continue
                 if (_function_key(start) != (space, address) or
                         type(length) is not int or length != 6 or
                         mnemonic != ("CALL" if "CALL" in flow_type else "JMP")):
                     inconsistent_instruction_evidence += 1
+                    tainted_sites.add(address)
                     continue
                 function = _function_key(ref["function_entry"])
-                site = address
-                if site in sites:
+                if address in sites:
                     duplicate_sites += 1
-                row = sites.setdefault(site, {"api_names": set(), "functions": set(), "flow_kinds": set()})
+                row = sites.setdefault(address, {"api_names": set(), "functions": set(), "flow_kinds": set()})
                 row["api_names"].add(api_name)
                 row["functions"].add(function)
                 row["flow_kinds"].add("CALL" if "CALL" in flow_type else "JUMP")
 
     for address, row in sites.items():
         inspected += 1
-        if len(row["api_names"]) != 1 or len(row["functions"]) != 1 or len(row["flow_kinds"]) != 1:
+        if (address in tainted_sites or len(row["api_names"]) != 1 or
+                len(row["functions"]) != 1 or len(row["flow_kinds"]) != 1):
             # Contradictory report attribution is not evidence. This also
             # makes the result independent of private JSON reference order.
             ambiguous_sites += 1
@@ -240,6 +246,9 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
             nonexec += 1
             continue
         mapped_executable += 1
+        if not _candidate_function_contains_site(data, pe, function, address, 6):
+            impossible_api_function_owners += 1
+            continue
         if data[off] != 0xff or data[off + 1] not in (0x15, 0x25):
             continue
         raw_opcode_candidates += 1
@@ -275,6 +284,7 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
         "idf_literal_hits_unmapped_or_mismatched": idf_literals_mismatched,
         "unique_sites_repeated_in_report": duplicate_sites,
         "sites_with_conflicting_reported_attribution": ambiguous_sites,
+        "api_callsites_with_impossible_function_ownership": impossible_api_function_owners,
         "references_missing_ghidra_instruction_boundary_evidence": missing_instruction_evidence,
         "references_with_inconsistent_ghidra_instruction_boundary_evidence": inconsistent_instruction_evidence,
         "sites_in_executable_raw_sections": mapped_executable,
@@ -292,7 +302,8 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
         "idf_decoder_proven": False,
         "limitations": "Raw FF15/FF25 import-table corroboration only. Byte patterns can be data; "
                        "Ghidra-reported instruction boundaries must be explicit, 6-byte, and match xref sources; they are not independently proven. "
-                       "Conflicting API names, functions or flow types for one physical site are excluded. "
+                       "Conflicting or malformed call claims at the same physical site are excluded. "
+                       "Claimed API caller entries must precede the callsite in the same uniquely backed executable PE section; this is not function-boundary proof. "
                        "Dynamic imports, thunks, other encodings and indirect flows are omitted. "
                        "IDF literal bytes are independently checked at reported PE VAs; raw PUSH/MOV immediate-pointer matches are narrow byte candidates. "
                        "A separate stricter counter requires Ghidra-reported DATA reference, matching instruction start, 5-byte length and PUSH/MOV mnemonic, but is not independent disassembly. " 
