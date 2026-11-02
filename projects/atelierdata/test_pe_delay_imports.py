@@ -131,6 +131,56 @@ class DelayImportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Half-populated'):
             parse_delay_imports(data)
 
+    def test_optional_descriptor_tables_valid(self):
+        data = bytearray(fixture())
+        struct.pack_into('<I', data, 0x508, 0x21d0)  # HMODULE storage
+        struct.pack_into('<I', data, 0x514, 0x21b0)  # bound IAT, two DWORDs
+        struct.pack_into('<I', data, 0x518, 0x21c0)  # unload IAT
+        self.assertEqual(len(parse_delay_imports(data)), 1)
+
+    def test_unmapped_module_handle_rejected(self):
+        data = bytearray(fixture())
+        struct.pack_into('<I', data, 0x508, 0x2fff)
+        with self.assertRaisesRegex(ValueError, 'Unmapped'):
+            parse_delay_imports(data)
+
+    def test_bound_iat_truncated_rejected(self):
+        data = bytearray(fixture())
+        struct.pack_into('<I', data, 0x514, 0x21fc)
+        with self.assertRaisesRegex(ValueError, 'Unmapped'):
+            parse_delay_imports(data)
+
+    def test_unload_iat_truncated_rejected(self):
+        data = bytearray(fixture())
+        struct.pack_into('<I', data, 0x518, 0x21fc)
+        with self.assertRaisesRegex(ValueError, 'Unmapped'):
+            parse_delay_imports(data)
+
+    def test_va_optional_descriptor_pointers_valid(self):
+        data = bytearray(fixture(va=True))
+        struct.pack_into('<I', data, 0x508, 0x4021d0)
+        struct.pack_into('<I', data, 0x514, 0x4021b0)
+        struct.pack_into('<I', data, 0x518, 0x4021c0)
+        self.assertEqual(len(parse_delay_imports(data)), 1)
+
+    def test_va_optional_pointer_below_image_base_rejected(self):
+        data = bytearray(fixture(va=True))
+        struct.pack_into('<I', data, 0x508, 0x21d0)
+        with self.assertRaisesRegex(ValueError, 'below image base'):
+            parse_delay_imports(data)
+
+    def test_non_ascii_dll_name_rejected(self):
+        data = bytearray(fixture())
+        data[0x540] = 0xff
+        with self.assertRaisesRegex(ValueError, 'Non-printable or non-ASCII'):
+            parse_delay_imports(data)
+
+    def test_control_character_in_symbol_rejected(self):
+        data = bytearray(fixture())
+        data[0x582] = 0x0a
+        with self.assertRaisesRegex(ValueError, 'Non-printable or non-ASCII'):
+            parse_delay_imports(data)
+
     def test_bad_hash_rejected(self):
         with self.assertRaisesRegex(ValueError, 'SHA256 mismatch'):
             analyze(fixture(), '0' * 64)
