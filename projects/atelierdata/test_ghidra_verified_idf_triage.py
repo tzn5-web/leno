@@ -68,6 +68,7 @@ class VerifiedTriageTests(unittest.TestCase):
         hit['address'] = '00401080'
         hit['references_from'][0].update({
             'source_address': '00401090',
+            'reference_type': 'DATA',
             'reference_is_data': True,
             'instruction_start_address': '00401090',
             'instruction_length': 5,
