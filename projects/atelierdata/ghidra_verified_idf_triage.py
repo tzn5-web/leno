@@ -61,7 +61,7 @@ def analyze_verified(binary, expected_sha256, idf_report, api_report, graph_repo
     (literal_functions, pointer_functions, pointer_sites,
      boundary_functions, boundary_sites, verified_literals,
      missing_addresses, mismatched_literals, claimed_pointer_functions,
-     ambiguous_pointer_sites) = replay_idf_literals(
+     ambiguous_pointer_sites, unterminated_literals) = replay_idf_literals(
          binary, pe, idf_report)
     if (verified['direct_call_sites_verified'] != summary['direct_call_sites_in_graph'] or
             verified['duplicate_call_sites_ignored'] != summary['duplicate_call_sites_ignored'] or
@@ -129,6 +129,7 @@ def analyze_verified(binary, expected_sha256, idf_report, api_report, graph_repo
         'idf_literal_hits_verified_against_original_pe': verified_literals,
         'idf_literal_hits_missing_address': missing_addresses,
         'idf_literal_hits_unmapped_or_mismatched': mismatched_literals,
+        'idf_literal_hits_without_file_backed_nul_terminator': unterminated_literals,
         'ghidra_claimed_idf_functions_with_verified_literal_bytes': len(literal_functions),
         'verified_literal_sources_executable_pe_backed': True,
         'ghidra_claimed_idf_functions_with_raw_pointer_candidate': len(pointer_functions),
@@ -142,7 +143,9 @@ def analyze_verified(binary, expected_sha256, idf_report, api_report, graph_repo
             'Every reported E8 rel32 edge matches original PE bytes, but Ghidra '
             'function boundaries, IDF-string xrefs and API references remain '
             'static metadata assertions. Reported IDF literal bytes are now '
-            'checked against original PE mappings, but containing functions '
+            'checked against original PE mappings and a file-backed NUL suffix; '
+            'unterminated .IDF substrings do not corroborate literal xrefs. '
+            'Containing functions '
             'and raw PUSH/MOV pointer candidates are not independently '
             'disassembled or shown reachable. Function entries in the stricter '
             'source tiers must map to executable PE bytes; their actual '
