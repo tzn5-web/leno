@@ -43,6 +43,31 @@ def get_step_reference(store, step_id, vehicle_id, procedure_id):
 
 
 
+def get_step_reference_snapshot(store, step_id, vehicle_id, procedure_id):
+    """Return current article and attachments for a step, rejecting stale reads.
+
+    The GUI must not show cached article text or attachment paths when a step,
+    vehicle or attachment changes while the document list is being fetched.
+    File opening/preview still performs its own rights and SHA256 checks.
+    This function only reads SQLite and never certifies a content licence.
+    """
+    article = get_step_reference(store, step_id, vehicle_id, procedure_id)
+    if article is None:
+        return None, ()
+    attachments = tuple(list_documents(store, article["id"]))
+    current = get_step_reference(store, step_id, vehicle_id, procedure_id)
+    if current is None or dict(current) != dict(article):
+        raise ValueError("Documentul pasului s-a modificat în timpul citirii")
+    # Re-read the full rows, not just IDs: a path or parent change also
+    # invalidates the previously fetched attachment list.
+    live = tuple(store.db.execute(
+        "SELECT * FROM attachments WHERE article_id=? ORDER BY id",
+        (article["id"],)).fetchall())
+    if tuple(map(tuple, live)) != tuple(map(tuple, attachments)):
+        raise ValueError("Atașamentele documentului s-au modificat în timpul citirii")
+    return article, attachments
+
+
 def resolve_step_attachment(store, step_id, vehicle_id, procedure_id, attachment_id):
     """Resolve a managed file only while it belongs to this step's current link.
 
