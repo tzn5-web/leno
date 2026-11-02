@@ -13,6 +13,7 @@ from procedure_audit_html import export_procedure_audit_html
 from procedure_search_hits import (DEFAULT_LIMIT, PROCEDURE_FIELDS, STEP_FIELDS,
                                    filter_hit_indices, list_procedure_hits, next_hit_index)
 from procedure_search_live import validate_live_hit
+from procedure_search_navigation import require_live_navigation_target
 from repair_procedures import (
     add_step, create_procedure, delete_procedure, delete_step, get_procedure,
     list_procedures, list_steps, list_reference_articles, move_step, procedure_text, update_procedure, update_step
@@ -416,8 +417,22 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
             procedures.see(str(hit["procedure_id"]))
             state["pid"]=hit["procedure_id"]
             refresh_steps(sid)
-            if sid is not None and steps.exists(str(sid)):
-                steps.selection_set(str(sid))
+            # A row can disappear or change ownership while refresh_steps
+            # reads SQLite and Tkinter redraws. Never report a successful
+            # jump unless the live match and final GUI selection still agree.
+            selected_steps=steps.selection()
+            selected_sid=int(selected_steps[0]) if selected_steps else None
+            try:
+                require_live_navigation_target(
+                    app.db,vehicle_id,hit,term,state["pid"],selected_sid)
+            except ValueError as exc:
+                if sid is not None and steps.exists(str(sid)):
+                    steps.delete(str(sid))
+                render("Rezultatul căutării s-a schimbat. Actualizează lista.")
+                messagebox.showerror("Rezultat învechit",
+                    "Navigarea a fost anulată: "+str(exc),parent=popup)
+                return None
+            if sid is not None:
                 steps.see(str(sid))
             top.lift()
             return hit

@@ -147,6 +147,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "LIVE_SEARCH_HIT_SYNTAX_FAILED" }
           python -m unittest discover -s projects/atelierdata -p 'test_procedure_search_live.py' -v
           if ($LASTEXITCODE -ne 0) { throw "LIVE_SEARCH_HIT_TEST_FAILED" }
+          python -m py_compile projects/atelierdata/procedure_search_navigation.py projects/atelierdata/test_procedure_search_navigation.py
+          if ($LASTEXITCODE -ne 0) { throw "FINAL_SEARCH_NAVIGATION_SYNTAX_FAILED" }
+          python -m unittest discover -s projects/atelierdata -p 'test_procedure_search_navigation.py' -v
+          if ($LASTEXITCODE -ne 0) { throw "FINAL_SEARCH_NAVIGATION_TEST_FAILED" }
           python -m unittest discover -s projects/atelierdata -p 'test_*.py' -v
           if ($LASTEXITCODE -ne 0) { throw "ATELIERDATA_REGRESSION_TEST_FAILED" }
           $searchDb = Join-Path $env:RUNNER_TEMP 'atelierdata-search-ci.sqlite3'
