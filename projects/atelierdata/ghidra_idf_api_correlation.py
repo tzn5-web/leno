@@ -69,6 +69,26 @@ _API_FAMILIES = {
 }
 _DIRECT_IO_FAMILIES = ("file_open", "file_read", "file_position", "file_mapping")
 
+# Match Ghidra RefType names exactly. A substring check such as
+# "CALL" in type would incorrectly classify arbitrary metadata like
+# "NOT_CALL" or "CALL_HINT" as a verified control-flow reference.
+_FLOW_REF_TYPES = frozenset((
+    "UNCONDITIONAL_CALL", "CONDITIONAL_CALL", "COMPUTED_CALL",
+    "UNCONDITIONAL_JUMP", "CONDITIONAL_JUMP", "COMPUTED_JUMP",
+))
+_NONFLOW_REF_TYPES = frozenset((
+    "DATA", "READ", "WRITE", "READ_WRITE", "PARAM", "INDIRECTION",
+    "EXTERNAL_REF", "DATA_IND",
+))
+
+
+def _reference_flow_from_type(reference_type):
+    if reference_type in _FLOW_REF_TYPES:
+        return True
+    if reference_type in _NONFLOW_REF_TYPES:
+        return False
+    return None
+
 
 _IDF_CAP_FLAGS = ("block_scan_cap_reached", "keyword_match_cap_reached",
                   "keyword_xref_cap_reached", "short_memory_read")
@@ -163,18 +183,16 @@ def correlate(idf_report, api_report, expected_sha256):
                     reference_type = ref.get("reference_type")
                     if reference_type is not None and not isinstance(reference_type, str):
                         raise ValueError("Invalid Ghidra reference type")
-                    if flow is not None and reference_type is not None:
-                        upper_type = reference_type.upper()
-                        derived_flow = ("CALL" in upper_type or "JUMP" in upper_type)
-                        if flow is not derived_flow:
-                            raise ValueError("Contradictory Ghidra flow evidence")
+                    derived_flow = (_reference_flow_from_type(reference_type)
+                                    if reference_type is not None else None)
+                    if flow is not None and derived_flow is not None and flow is not derived_flow:
+                        raise ValueError("Contradictory Ghidra flow evidence")
                     if flow is None:
-                        if reference_type is None:
+                        if derived_flow is None:
                             unknown_flow_refs += 1
                             is_call_or_jump = False
                         else:
-                            upper_type = reference_type.upper()
-                            is_call_or_jump = ("CALL" in upper_type or "JUMP" in upper_type)
+                            is_call_or_jump = derived_flow
                     else:
                         is_call_or_jump = flow
                     if is_call_or_jump:
