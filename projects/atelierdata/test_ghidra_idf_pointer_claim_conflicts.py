@@ -1,0 +1,49 @@
+"""Synthetic regression: contradictory Ghidra IDF pointer claims are not ownership evidence."""
+import copy
+import unittest
+
+from ghidra_api_callsite_replay import replay
+from test_ghidra_idf_pointer_ownership import pointer_fixture
+
+
+def source_ref(report):
+    return report["keyword_hits"][".rdata"]["MODELS.IDF:ascii"][0]["references_from"]
+
+
+class ConflictingPointerClaimsTests(unittest.TestCase):
+    def test_two_function_owners_same_physical_pointer_are_rejected(self):
+        data, sha, idf, api = pointer_fixture("00401000")
+        second = copy.deepcopy(source_ref(idf)[0])
+        second["function_entry"] = "00401010"
+        source_ref(idf).append(second)
+        result = replay(data, sha, idf, api)
+        self.assertEqual(result["idf_xrefs_with_raw_push_or_mov_literal_va"], 1)
+        self.assertEqual(result["idf_raw_pointer_sites_with_conflicting_ghidra_claims"], 1)
+        self.assertEqual(result["matching_api_sites_in_idf_raw_pointer_functions"], 0)
+        self.assertEqual(result["matching_api_sites_in_ghidra_idf_pointer_functions"], 0)
+        self.assertFalse(result["idf_decoder_proven"])
+
+    def test_conflicting_instruction_metadata_invalidates_strict_tiers(self):
+        data, sha, idf, api = pointer_fixture("00401000")
+        second = copy.deepcopy(source_ref(idf)[0])
+        second["instruction_mnemonic"] = "MOV"
+        source_ref(idf).append(second)
+        result = replay(data, sha, idf, api)
+        self.assertEqual(result["idf_xrefs_with_raw_push_or_mov_literal_va"], 1)
+        self.assertEqual(result["idf_raw_pointer_sites_with_conflicting_ghidra_claims"], 1)
+        self.assertEqual(result["matching_api_sites_in_idf_raw_pointer_functions"], 0)
+        self.assertEqual(result["idf_xrefs_with_ghidra_boundary_and_raw_pointer"], 0)
+
+    def test_identical_duplicate_claim_is_not_ambiguous(self):
+        data, sha, idf, api = pointer_fixture("00401000")
+        source_ref(idf).append(copy.deepcopy(source_ref(idf)[0]))
+        result = replay(data, sha, idf, api)
+        self.assertEqual(result["idf_raw_pointer_sites_with_conflicting_ghidra_claims"], 0)
+        self.assertEqual(result["idf_xrefs_with_raw_push_or_mov_literal_va"], 1)
+        self.assertEqual(result["idf_xrefs_with_ghidra_boundary_and_raw_pointer"], 1)
+        self.assertEqual(result["matching_api_sites_in_idf_raw_pointer_functions"], 1)
+        self.assertEqual(result["matching_api_sites_in_ghidra_idf_pointer_functions"], 1)
+
+
+if __name__ == "__main__":
+    unittest.main()
