@@ -43,6 +43,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "GHIDRA_IDF_POINTER_OWNERSHIP_SYNTAX_FAILED" }
           python -m unittest discover -s projects/atelierdata -p 'test_ghidra_idf_pointer_ownership.py' -v
           if ($LASTEXITCODE -ne 0) { throw "GHIDRA_IDF_POINTER_OWNERSHIP_TEST_FAILED" }
+          python -m py_compile projects/atelierdata/test_ghidra_idf_pointer_claim_conflicts.py
+          if ($LASTEXITCODE -ne 0) { throw "GHIDRA_IDF_POINTER_CLAIM_CONFLICT_SYNTAX_FAILED" }
+          python -m unittest discover -s projects/atelierdata -p 'test_ghidra_idf_pointer_claim_conflicts.py' -v
+          if ($LASTEXITCODE -ne 0) { throw "GHIDRA_IDF_POINTER_CLAIM_CONFLICT_TEST_FAILED" }
           python -m unittest discover -s projects/atelierdata -p 'test_ghidra_idf_api_correlation.py' -v
           if ($LASTEXITCODE -ne 0) { throw "GHIDRA_IDF_API_CORRELATION_TEST_FAILED" }
           python -m py_compile tools/ghidra/AtelierData_Direct_Callgraph.py projects/atelierdata/ghidra_idf_callgraph_triage.py projects/atelierdata/test_ghidra_idf_callgraph_triage.py projects/atelierdata/test_ghidra_direct_rel32.py
