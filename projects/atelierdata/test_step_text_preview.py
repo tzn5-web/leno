@@ -130,7 +130,7 @@ class StepTextPreviewTests(unittest.TestCase):
                      "Synthetic note", "User-owned fixture",
                      rights_basis="neconfirmat")
         before = self.store.db.total_changes
-        with patch("repair_procedures_gui.messagebox.showerror") as error:
+        with patch("tkinter.messagebox.showerror") as error:
             self.assertIsNone(popup.preview_attachment(self.attachment))
             self.assertTrue(error.called)
         self.assertEqual(self.store.db.total_changes, before)
