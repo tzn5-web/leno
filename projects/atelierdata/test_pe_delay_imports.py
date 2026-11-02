@@ -151,6 +151,29 @@ class DelayImportTests(unittest.TestCase):
         struct.pack_into('<I', data, 0x518, 0x21c0)  # unload IAT
         self.assertEqual(len(parse_delay_imports(data)), 1)
 
+    def test_bound_iat_nonzero_terminator_rejected(self):
+        data = bytearray(fixture())
+        struct.pack_into('<I', data, 0x514, 0x21b0)
+        # One import requires a second, null DWORD in the bound IAT.
+        struct.pack_into('<II', data, 0x5b0, 0x12345678, 0x12345678)
+        with self.assertRaisesRegex(ValueError, 'Nonzero delay bound IAT terminator'):
+            parse_delay_imports(data)
+
+    def test_unload_iat_nonzero_terminator_rejected(self):
+        data = bytearray(fixture())
+        struct.pack_into('<I', data, 0x518, 0x21c0)
+        struct.pack_into('<II', data, 0x5c0, 0x12345678, 0x87654321)
+        with self.assertRaisesRegex(ValueError, 'Nonzero delay unload IAT terminator'):
+            parse_delay_imports(data)
+
+    def test_initialized_optional_iats_with_zero_terminators_accepted(self):
+        data = bytearray(fixture())
+        struct.pack_into('<I', data, 0x514, 0x21b0)
+        struct.pack_into('<I', data, 0x518, 0x21c0)
+        struct.pack_into('<II', data, 0x5b0, 0x12345678, 0)
+        struct.pack_into('<II', data, 0x5c0, 0x87654321, 0)
+        self.assertEqual(len(parse_delay_imports(data)[0]['entries']), 1)
+
     def test_unmapped_module_handle_rejected(self):
         data = bytearray(fixture())
         struct.pack_into('<I', data, 0x508, 0x2fff)
