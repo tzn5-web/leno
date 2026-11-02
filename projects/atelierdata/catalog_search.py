@@ -1,7 +1,7 @@
 """Read-only cross-module search over user-owned AtelierData SQLite records.
 
 No remote calls, technical values, original Autodata data, or IDF decoding.
-Search treats SQL LIKE metacharacters as literal text.
+Search treats metacharacters as literal text with Unicode casefold.
 """
 from __future__ import annotations
 
@@ -21,7 +21,8 @@ _SOURCES = (
      "substr(r.system || ' — ' || r.summary,1,240)",
      'r.source', ('r.title','r.system','r.summary','r.precautions','r.source'),
      "EXISTS (SELECT 1 FROM procedure_steps s WHERE s.procedure_id=r.id "
-     "AND (s.instruction LIKE ? ESCAPE '\\' OR s.safety_note LIKE ? ESCAPE '\\'))"),
+     "AND (atelierdata_literal_contains(s.instruction, ?) " 
+     "OR atelierdata_literal_contains(s.safety_note, ?)))"),
     ('specification', 'technical_specs', 'r', 'r.id',
      "r.system || ' / ' || r.parameter",
      "substr(r.value || ' ' || r.unit || ' — ' || r.conditions,1,240)",
@@ -45,24 +46,31 @@ def _validated(term, vehicle_id, limit, offset):
         raise ValueError('Limita trebuie să fie între 1 și 200')
     if type(offset) is not int or not 0 <= offset <= 100000:
         raise ValueError('Offset invalid')
-    return '%' + term.strip().replace('\\','\\\\').replace('%','\\%').replace('_','\\_') + '%'
+    return term.strip()
+
+
+def _literal_contains(value, needle):
+    return int(isinstance(value, str) and isinstance(needle, str)
+               and needle.casefold() in value.casefold())
 
 
 def search_catalog(store, term, vehicle_id=None, limit=100, offset=0):
-    """Return a stable page of provenance-bearing, cross-module results.
+    """Return a stable page of provenance-bearing Unicode literal results.
 
-    The query is read-only, does not modify SQLite schema, and scopes every
-    result (including matching procedure steps) to its owning vehicle.
+    The deterministic two-argument SQLite function avoids LIKE's ASCII-only
+    case folding and wildcard behavior. Every result is vehicle-scoped.
     """
-    pattern = _validated(term, vehicle_id, limit, offset)
+    needle = _validated(term, vehicle_id, limit, offset)
+    store.db.create_function('atelierdata_literal_contains', 2,
+                             _literal_contains, deterministic=True)
     selects, parameters = [], []
     for kind, table, alias, ident, title, excerpt, source, fields, extra in _SOURCES:
         join = '' if kind == 'vehicle' else f' JOIN vehicles v ON v.id={alias}.vehicle_id'
-        clauses = [f"{field} LIKE ? ESCAPE '\\'" for field in fields]
-        term_args = [pattern] * len(fields)
+        clauses = [f'atelierdata_literal_contains({field}, ?)' for field in fields]
+        term_args = [needle] * len(fields)
         if extra:
             clauses.append(extra)
-            term_args.extend([pattern, pattern])
+            term_args.extend([needle, needle])
         where = ' OR '.join(clauses)
         if vehicle_id is not None:
             where = f'v.id=? AND ({where})'
