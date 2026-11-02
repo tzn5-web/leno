@@ -81,6 +81,50 @@ class LibraryInspectionTests(unittest.TestCase):
                 self.assertEqual(self.store.db.total_changes, before)
         self.assertEqual(self.store.db.execute("PRAGMA quick_check").fetchone()[0], "ok")
 
+    def test_binary_and_empty_txt_are_inventory_only(self):
+        """Single-file TXT imports must pass the same launch gate as batch imports."""
+        fixtures = (
+            ("exe", b"MZ" + bytes([0x90, 0]) + b"synthetic"),
+            ("archive", b"PK" + bytes([3, 4]) + b"synthetic"),
+            ("nul", b"synthetic" + bytes([0]) + b"payload"),
+            ("empty", b""),
+        )
+        for label, payload in fixtures:
+            with self.subTest(label=label):
+                source = self.root / ("disguised_" + label + ".txt")
+                source.write_bytes(payload)
+                attachment = import_local_file(
+                    self.store, self.vehicle, source, "Manual de atelier",
+                    "Synthetic " + label, "User fixture",
+                    rights_basis="document_propriu")
+                article = self.store.db.execute(
+                    "SELECT article_id FROM attachments WHERE id=?",
+                    (attachment,)).fetchone()[0]
+                before = self.store.db.total_changes
+                # The SHA256 still matches; the extra gate is for GUI launch only.
+                self.assertEqual(resolve_document(self.store, attachment).read_bytes(), payload)
+                result = inspect_library_entry(
+                    self.store, attachment, self.vehicle, article)
+                self.assertFalse(result["ok"], result)
+                self.assertIn("TXT nu pare text", result["message"])
+                with self.assertRaisesRegex(ValueError, "TXT nu pare text"):
+                    verified_library_file(
+                        self.store, attachment, vehicle_id=self.vehicle,
+                        article_id=article, require_declared_rights=True)
+                self.assertEqual(self.store.db.total_changes, before)
+        self.assertEqual(self.store.db.execute("PRAGMA quick_check").fetchone()[0], "ok")
+
+    def test_plain_utf8_txt_remains_openable(self):
+        source = self.root / "valid.txt"
+        source.write_text("Procedură sintetică autorizată\n", encoding="utf-8")
+        attachment = import_local_file(
+            self.store, self.vehicle, source, "Manual de atelier",
+            "Synthetic text", "User fixture", rights_basis="document_propriu")
+        before = self.store.db.total_changes
+        result = inspect_library_entry(self.store, attachment, self.vehicle)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(self.store.db.total_changes, before)
+
     def test_rights_revoked_after_selection_fail_closed(self):
         set_metadata(self.store, self.attachment, "Manual de atelier",
                      "Synthetic fixture", "User fixture",
