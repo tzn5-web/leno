@@ -108,6 +108,77 @@ class StepTextPreviewTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "modificat"):
                 self.preview()
 
+    def test_attachment_reassigned_during_text_read_is_rejected(self):
+        from document_library import read_verified_text_preview as original
+        changes_after_reassignment = []
+
+        def reassign(*args, **kwargs):
+            content = original(*args, **kwargs)
+            self.store.db.execute(
+                "UPDATE attachments SET article_id=? WHERE id=?",
+                (self.other_article, self.attachment))
+            self.store.db.commit()
+            changes_after_reassignment.append(self.store.db.total_changes)
+            return content
+
+        with patch("document_library.read_verified_text_preview", side_effect=reassign):
+            with self.assertRaisesRegex(ValueError, "reasociat"):
+                self.preview()
+        self.assertEqual(self.store.db.total_changes, changes_after_reassignment[0])
+        self.assertEqual(self.store.db.execute("PRAGMA quick_check").fetchone()[0], "ok")
+
+    def test_rights_revoked_during_text_read_are_rechecked(self):
+        from document_library import read_verified_text_preview as original
+        changes_after_revocation = []
+
+        def revoke(*args, **kwargs):
+            content = original(*args, **kwargs)
+            set_metadata(self.store, self.attachment, "Manual de atelier",
+                         "Synthetic note", "User-owned fixture",
+                         rights_basis="neconfirmat")
+            changes_after_revocation.append(self.store.db.total_changes)
+            return content
+
+        with patch("document_library.read_verified_text_preview", side_effect=revoke):
+            with self.assertRaisesRegex(ValueError, "Drepturi neconfirmate"):
+                self.preview()
+        self.assertEqual(self.store.db.total_changes, changes_after_revocation[0])
+
+    def test_gui_refuses_txt_revoked_while_being_read(self):
+        from document_library import read_verified_text_preview as original
+        from repair_procedures_gui import open_procedures_window
+        try:
+            root = tk.Tk()
+        except tk.TclError as exc:
+            self.skipTest("Tk display unavailable: " + str(exc))
+        self.addCleanup(root.destroy)
+        root.withdraw()
+        app = SimpleNamespace(root=root, tk=tk, db=self.store, vid=self.vehicle)
+        window = open_procedures_window(
+            app, object, selected_procedure_id=self.procedure,
+            selected_step_id=self.step)
+        self.addCleanup(window.destroy)
+        window.update_idletasks()
+        window.steps_tree.selection_set(str(self.step))
+        popup = window.open_step_reference()
+        self.assertIsNotNone(popup)
+        self.addCleanup(popup.destroy)
+
+        def revoke(*args, **kwargs):
+            content = original(*args, **kwargs)
+            set_metadata(self.store, self.attachment, "Manual de atelier",
+                         "Synthetic note", "User-owned fixture",
+                         rights_basis="neconfirmat")
+            return content
+
+        with patch("document_library.read_verified_text_preview", side_effect=revoke), \\
+             patch("tkinter.messagebox.showerror") as error:
+            self.assertIsNone(popup.preview_attachment(self.attachment))
+            self.assertTrue(error.called)
+        self.assertFalse(any(
+            child.title() == "AtelierData — TXT verificat din pas"
+            for child in popup.winfo_children() if isinstance(child, tk.Toplevel)))
+
     def test_gui_opens_internal_preview_and_rejects_revocation(self):
         from repair_procedures_gui import open_procedures_window
         try:
