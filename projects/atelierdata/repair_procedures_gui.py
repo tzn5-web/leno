@@ -14,6 +14,7 @@ from procedure_search_hits import (DEFAULT_LIMIT, PROCEDURE_FIELDS, STEP_FIELDS,
                                    filter_hit_indices, list_procedure_hits, next_hit_index)
 from procedure_search_live import validate_live_hit
 from procedure_search_navigation import require_live_navigation_target
+from procedure_audit_navigation import require_live_audit_step
 from repair_procedures import (
     add_step, create_procedure, delete_procedure, delete_step, get_procedure,
     list_procedures, list_steps, list_reference_articles, move_step, procedure_text, update_procedure, update_step
@@ -1138,15 +1139,36 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
             ttk.Label(pane,text="Nu au fost detectate probleme în verificările efectuate."
                       ).pack(anchor="w",pady=(7,0))
         def go_to_step(event=None):
+            """Navigate only while the exact audit finding remains current."""
             picked=table.selection()
             if not picked:
-                return
+                return None
             issue=report["issues"][int(picked[0])]
+            if issue["step_id"] is None:
+                return None
             sid=issue["step_id"]
-            if sid is not None and steps.exists(str(sid)):
-                steps.selection_set(str(sid))
+            try:
+                if state["pid"]!=pid:
+                    raise ValueError("Procedura selectată s-a schimbat")
+                require_live_audit_step(app.db,vehicle_id,pid,issue)
+                refresh_steps(sid)
+                if state["pid"]!=pid or not steps.exists(str(sid)):
+                    raise ValueError("Pasul nu mai este disponibil")
+                # A redraw can race a SQLite edit. Re-audit before accepting
+                # the final selection, rather than trusting the old report.
+                require_live_audit_step(app.db,vehicle_id,pid,issue)
+                if steps.selection()!=(str(sid),):
+                    raise ValueError("Selecția pasului s-a schimbat")
                 steps.see(str(sid))
                 top.lift()
+                return sid
+            except ValueError as exc:
+                if steps.selection()==(str(sid),):
+                    steps.selection_remove(str(sid))
+                messagebox.showerror("Audit învechit",
+                    "Actualizează auditul înainte de navigare: "+str(exc),
+                    parent=audit)
+                return None
         table.bind("<Double-1>",go_to_step)
         ttk.Button(pane,text="Mergi la pasul selectat",command=go_to_step
                    ).pack(anchor="w",pady=(8,0))
