@@ -124,8 +124,8 @@ class StepReferenceSnapshotTests(unittest.TestCase):
                                  (self.alternative, self.step))
                 store.db.commit()
                 return rows
-            with patch("procedure_audit.list_documents", side_effect=mutate), \\
-                 patch("tkinter.messagebox.showerror") as error:
+            with (patch("procedure_audit.list_documents", side_effect=mutate),
+                  patch("tkinter.messagebox.showerror") as error):
                 window.open_step_reference()
             error.assert_called_once()
             self.assertEqual(tuple(window.winfo_children()), before_children)
