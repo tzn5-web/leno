@@ -12,7 +12,7 @@ permissions:
   statuses: write
 concurrency:
   group: atelierdata-windows-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   windows:
     runs-on: windows-latest
