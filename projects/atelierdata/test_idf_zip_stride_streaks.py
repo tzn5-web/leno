@@ -29,7 +29,7 @@ class StrideStreakTests(unittest.TestCase):
             self.assertNotIn('A.IDF', str(result))
 
     def test_repetitive_zero_not_diverse(self):
-        longest, diverse = longest_streak(b'\\x00' * 4096, 21)
+        longest, diverse = longest_streak(b'\x00' * 4096, 21)
         self.assertGreater(longest, 32)
         self.assertEqual(diverse, 0)
 
