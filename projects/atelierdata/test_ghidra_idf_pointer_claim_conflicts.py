@@ -3,6 +3,8 @@ import copy
 import unittest
 
 from ghidra_api_callsite_replay import replay
+from ghidra_verified_idf_triage import analyze_verified
+from test_ghidra_verified_idf_distance_tiers import with_literal
 from test_ghidra_idf_pointer_ownership import pointer_fixture
 
 
@@ -33,6 +35,17 @@ class ConflictingPointerClaimsTests(unittest.TestCase):
         self.assertEqual(result["idf_raw_pointer_sites_with_conflicting_ghidra_claims"], 1)
         self.assertEqual(result["matching_api_sites_in_idf_raw_pointer_functions"], 0)
         self.assertEqual(result["idf_xrefs_with_ghidra_boundary_and_raw_pointer"], 0)
+
+    def test_verified_callgraph_excludes_conflicting_pointer_ownership(self):
+        binary, sha, idf, api, graph = with_literal(pointer=True, boundary=True)
+        second = copy.deepcopy(source_ref(idf)[0])
+        second["function_entry"] = "00401010"
+        source_ref(idf).append(second)
+        result = analyze_verified(binary, sha, idf, api, graph)
+        self.assertEqual(result["idf_pointer_sites_with_conflicting_ghidra_claims"], 1)
+        self.assertEqual(result["verified_raw_pointer_source_function_count"], 0)
+        self.assertEqual(result["verified_boundary_pointer_source_function_count"], 0)
+        self.assertFalse(result["idf_decoder_proven"])
 
     def test_identical_duplicate_claim_is_not_ambiguous(self):
         data, sha, idf, api = pointer_fixture("00401000")
