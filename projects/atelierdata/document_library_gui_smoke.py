@@ -251,7 +251,7 @@ def main():
                          "preview pdf fixture","Local synthetic fixture",
                          rights_basis="neconfirmat")
             after_pdf_revocation=store.db.total_changes
-            with patch("document_library_gui.messagebox.showerror") as error, \\
+            with patch("document_library_gui.messagebox.showerror") as error, \
                  patch("document_library_gui.os.startfile") as launch:
                 assert win.library_preview_pdf() is None
                 assert error.called and not launch.called
