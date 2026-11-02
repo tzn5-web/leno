@@ -673,6 +673,97 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
             ttk.Button(display,text="Previzualizează imagine verificată",
                        command=preview_image_attachment).pack(pady=5)
             display.preview_image_attachment=preview_image_attachment
+            def preview_pdf_attachment(attachment_id=None):
+                """Navigate a step's PDF, revalidating its current link per page."""
+                if attachment_id is None:
+                    choice=1 if len(linked)==1 else simpledialog.askinteger(
+                        "Atașamente PDF",
+                        "Alege numărul atașamentului (1–"+str(len(linked))+"):",
+                        minvalue=1,maxvalue=len(linked),parent=display)
+                    if choice is None:
+                        return None
+                    attachment_id=linked[choice-1]["id"]
+                try:
+                    if type(attachment_id) is not int or attachment_id not in {
+                            row["id"] for row in linked}:
+                        raise ValueError("Atașamentul nu este în lista acestui pas")
+                    from step_pdf_preview import read_step_pdf_page
+                    from PIL import Image, ImageTk
+                    def read_page(number):
+                        return read_step_pdf_page(
+                            app.db,selected_step_id,vehicle_id,selected_procedure_id,
+                            attachment_id,page_number=number)
+                    picture,count=read_page(1)
+                    preview=tk.Toplevel(display)
+                    preview.title("AtelierData — PDF verificat din pas")
+                    preview.geometry("1050x780")
+                    preview.transient(display)
+                    frame=ttk.Frame(preview,padding=12)
+                    frame.pack(fill="both",expand=True)
+                    ttk.Label(frame,text=(
+                        "PDF local verificat la fiecare pagină; drepturile sunt "
+                        "declarate, nu certificate independent. Numai citire."),
+                        wraplength=1000).pack(anchor="w",pady=(0,8))
+                    controls=ttk.Frame(frame)
+                    controls.pack(fill="x")
+                    page=tk.IntVar(value=1)
+                    label=tk.StringVar(value=f"Pagina 1/{count}")
+                    previous=ttk.Button(controls,text="Pagina anterioară")
+                    previous.pack(side="left")
+                    ttk.Label(controls,textvariable=label).pack(side="left",padx=12)
+                    following=ttk.Button(controls,text="Pagina următoare")
+                    following.pack(side="left")
+                    canvas=ttk.Label(frame)
+                    canvas.pack(fill="both",expand=True)
+                    def display_page(image):
+                        image.thumbnail((1000,690),Image.Resampling.LANCZOS)
+                        photo=ImageTk.PhotoImage(image,master=preview)
+                        canvas.configure(image=photo)
+                        preview.pdf_photo=photo
+                    def invalidate():
+                        canvas.configure(image="")
+                        preview.pdf_photo=None
+                        preview.pdf_invalidated=True
+                        label.set("Previzualizare invalidată")
+                        previous.configure(state="disabled")
+                        following.configure(state="disabled")
+                    def show_page(number):
+                        if preview.pdf_invalidated or number<1 or number>count:
+                            return False
+                        try:
+                            image,new_count=read_page(number)
+                            if new_count!=count:
+                                raise ValueError("Numărul paginilor PDF s-a schimbat")
+                            display_page(image)
+                        except (ValueError,FileNotFoundError,OSError,RuntimeError,tk.TclError) as exc:
+                            invalidate()
+                            messagebox.showerror("Previzualizare indisponibilă",str(exc),
+                                                 parent=preview)
+                            return False
+                        page.set(number)
+                        label.set(f"Pagina {number}/{count}")
+                        previous.configure(state="normal" if number>1 else "disabled")
+                        following.configure(state="normal" if number<count else "disabled")
+                        return True
+                    previous.configure(command=lambda:show_page(page.get()-1))
+                    following.configure(command=lambda:show_page(page.get()+1))
+                    preview.pdf_invalidated=False
+                    display_page(picture)
+                    previous.configure(state="disabled")
+                    following.configure(state="normal" if count>1 else "disabled")
+                    preview.pdf_page_number=page
+                    preview.pdf_page_count=count
+                    preview.pdf_page_label=label
+                    preview.pdf_next=lambda:show_page(page.get()+1)
+                    preview.pdf_previous=lambda:show_page(page.get()-1)
+                    return preview
+                except (ValueError,FileNotFoundError,OSError,RuntimeError,tk.TclError) as exc:
+                    messagebox.showerror("Previzualizare indisponibilă",str(exc),
+                                         parent=display)
+                    return None
+            ttk.Button(display,text="Previzualizează PDF verificat",
+                       command=preview_pdf_attachment).pack(pady=5)
+            display.preview_pdf_attachment=preview_pdf_attachment
         display.reference_article_id=article["id"]
         display.reference_text_widget=area
         return display
