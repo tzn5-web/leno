@@ -58,7 +58,7 @@ class LibraryInspectionTests(unittest.TestCase):
         for suffix in (".pdf", ".png", ".jpg", ".jpeg"):
             with self.subTest(suffix=suffix):
                 source = self.root / ("masquerade" + suffix)
-                source.write_bytes(b"MZ\\x90\\x00synthetic non-document")
+                source.write_bytes(b"MZ\x90\x00synthetic non-document")
                 attachment = import_local_file(
                     self.store, self.vehicle, source, "Manual de atelier",
                     "Synthetic masquerade", "User fixture",
