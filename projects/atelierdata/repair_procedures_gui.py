@@ -12,6 +12,7 @@ from procedure_audit_export import export_procedure_audit_json
 from procedure_audit_html import export_procedure_audit_html
 from procedure_search_hits import (DEFAULT_LIMIT, PROCEDURE_FIELDS, STEP_FIELDS,
                                    filter_hit_indices, list_procedure_hits, next_hit_index)
+from procedure_search_live import validate_live_hit
 from repair_procedures import (
     add_step, create_procedure, delete_procedure, delete_step, get_procedure,
     list_procedures, list_steps, list_reference_articles, move_step, procedure_text, update_procedure, update_step
@@ -364,6 +365,11 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
             selected=table.selection()
             if not selected:return None
             hit=hits[int(selected[0])]
+            try:
+                validate_live_hit(app.db,vehicle_id,hit,term)
+            except ValueError as exc:
+                messagebox.showerror("Rezultat învechit",str(exc),parent=popup)
+                return None
             procedure=get_procedure(app.db,hit["procedure_id"])
             if procedure is None or procedure["vehicle_id"]!=vehicle_id:
                 messagebox.showerror("Referință invalidă",
@@ -395,6 +401,11 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                         parent=popup)
                     return None
             refresh_proc(hit["procedure_id"])
+            try:
+                validate_live_hit(app.db,vehicle_id,hit,term)
+            except ValueError as exc:
+                messagebox.showerror("Rezultat învechit",str(exc),parent=popup)
+                return None
             if not procedures.exists(str(hit["procedure_id"])):
                 messagebox.showinfo("Căutare modificată",
                     "Procedura nu mai corespunde filtrului curent.",parent=popup)
@@ -423,7 +434,10 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
             # open_reference separately revalidates the article's vehicle.
             if go_to_hit() is None:
                 return None
-            return open_reference()
+            # A document-field hit identifies a specific article snapshot.
+            # Do not open a different document if the link changes after jump.
+            return open_reference(expected_article_id=hit["article_id"]) if (
+                hit["article_id"] is not None) else open_reference()
 
         table.bind("<Double-1>",go_to_hit)
         actions=ttk.Frame(box)
