@@ -89,7 +89,7 @@ def _idf_functions(data, pe, report):
     # Group all claims by physical pointer site before accepting a function owner.
     # Conflicting Ghidra rows must not corroborate one another.
     pointer_claims = {}
-    verified = missing = mismatched = 0
+    verified = missing = mismatched = unterminated = 0
     for block in report["keyword_hits"].values():
         for name, hits in block.items():
             if not isinstance(name, str) or ":" not in name:
@@ -110,6 +110,18 @@ def _idf_functions(data, pe, report):
                 mapped = _raw_offset(data, pe, va, len(needle))
                 if mapped is None or data[mapped[0]:mapped[0] + len(needle)] != needle:
                     mismatched += 1
+                    continue
+                # A matching prefix is not a complete .IDF filename.  In
+                # particular, MODELS.IDFX and MODELS.IDF.backup must not
+                # establish literal/xref evidence for MODELS.IDF.  Require a
+                # file-backed NUL terminator in the same uniquely mapped PE
+                # section; a virtual-only terminator is not source evidence.
+                terminator = b"\x00" if encoding == "ascii" else b"\x00\x00"
+                suffix = _raw_offset(data, pe, va, len(needle) + len(terminator))
+                if (suffix is None or
+                        data[suffix[0] + len(needle):
+                             suffix[0] + len(needle) + len(terminator)] != terminator):
+                    unterminated += 1
                     continue
                 verified += 1
                 for ref in hit["references_from"]:
@@ -171,7 +183,7 @@ def _idf_functions(data, pe, report):
     return (functions, direct_pointer_functions, len(direct_pointer_sites),
             boundary_pointer_functions, len(boundary_pointer_sites),
             verified, missing, mismatched, claimed_pointer_functions,
-            ambiguous_pointer_sites)
+            ambiguous_pointer_sites, unterminated)
 
 def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict) -> dict:
     """Corroborate narrow raw IAT patterns without emitting private addresses."""
@@ -193,7 +205,7 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
      boundary_idf_functions, boundary_idf_pointer_refs,
      idf_literals_verified, idf_literals_missing_address,
      idf_literals_mismatched, claimed_idf_pointer_functions,
-     ambiguous_idf_pointer_sites) = _idf_functions(
+     ambiguous_idf_pointer_sites, idf_literals_unterminated) = _idf_functions(
          data, pe, idf_report)
     inspected = mapped_executable = nonexec = unmapped = 0
     raw_opcode_candidates = import_matched = shared_idf_matched = 0
@@ -324,6 +336,7 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
         "matching_api_sites_in_ghidra_idf_pointer_functions": boundary_idf_shared_sites,
         "idf_literal_hits_missing_address": idf_literals_missing_address,
         "idf_literal_hits_unmapped_or_mismatched": idf_literals_mismatched,
+        "idf_literal_hits_without_file_backed_nul_terminator": idf_literals_unterminated,
         "unique_sites_repeated_in_report": duplicate_sites,
         "sites_with_conflicting_reported_attribution": ambiguous_sites,
         "api_callsites_with_impossible_function_ownership": impossible_api_function_owners,
