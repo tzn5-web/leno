@@ -123,6 +123,10 @@ jobs:
           python -m py_compile projects/atelierdata/idf_probe_safe.py projects/atelierdata/test_idf_probe_safe.py
           python -m unittest discover -s projects/atelierdata -p 'test_idf_probe_safe.py' -v
           if ($LASTEXITCODE -ne 0) { throw "IDF_PROBE_SAFE_TEST_FAILED" }
+          python -m py_compile projects/atelierdata/step_pdf_preview.py projects/atelierdata/test_step_pdf_preview.py
+          if ($LASTEXITCODE -ne 0) { throw "STEP_PDF_PREVIEW_SYNTAX_FAILED" }
+          python -m unittest discover -s projects/atelierdata -p 'test_step_pdf_preview.py' -v
+          if ($LASTEXITCODE -ne 0) { throw "STEP_PDF_PREVIEW_TEST_FAILED" }
           python -m unittest discover -s projects/atelierdata -p 'test_*.py' -v
           if ($LASTEXITCODE -ne 0) { throw "ATELIERDATA_REGRESSION_TEST_FAILED" }
           $searchDb = Join-Path $env:RUNNER_TEMP 'atelierdata-search-ci.sqlite3'
