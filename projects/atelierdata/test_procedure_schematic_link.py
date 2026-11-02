@@ -109,14 +109,18 @@ class LiveSchematicLinkTests(unittest.TestCase):
             app, object, selected_procedure_id=self.procedure,
             selected_step_id=self.step)
         self.addCleanup(window.destroy)
+        # Set the selection explicitly; do not depend on deferred Tk events.
+        window.steps_tree.selection_set(str(self.step))
         return window
 
     def test_tk_opens_verified_current_schematic(self):
         window = self._window()
         sentinel = object()
-        with patch("schematic_viewer.open_schematics_window",
-                   return_value=sentinel) as opened:
+        with (patch("schematic_viewer.open_schematics_window",
+                    return_value=sentinel) as opened,
+              patch("tkinter.messagebox.showinfo") as info):
             self.assertIs(window.open_schematic_reference(), sentinel)
+        info.assert_not_called()
         opened.assert_called_once()
         self.assertEqual(opened.call_args.kwargs["selected_article_id"],
                          self.schematic)
