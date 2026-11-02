@@ -153,9 +153,10 @@ def _idf_functions(data, pe, report):
             ambiguous_pointer_sites += 1
             continue
         function, ref, opcode = claims[0]
-        if not _candidate_function_contains_site(data, pe, function, src_va, 5):
-            continue
-        direct_pointer_functions.add(function)
+        plausible_owner = _candidate_function_contains_site(
+            data, pe, function, src_va, 5)
+        if plausible_owner:
+            direct_pointer_functions.add(function)
         expected_mnemonic = "PUSH" if opcode == 0x68 else "MOV"
         start = ref.get("instruction_start_address")
         if (ref.get("reference_is_data") is True and
@@ -165,7 +166,8 @@ def _idf_functions(data, pe, report):
                 ref["instruction_length"] == 5 and
                 ref.get("instruction_mnemonic") == expected_mnemonic):
             boundary_pointer_sites.add((src_va, va))
-            boundary_pointer_functions.add(function)
+            if plausible_owner:
+                boundary_pointer_functions.add(function)
     return (functions, direct_pointer_functions, len(direct_pointer_sites),
             boundary_pointer_functions, len(boundary_pointer_sites),
             verified, missing, mismatched, claimed_pointer_functions,
