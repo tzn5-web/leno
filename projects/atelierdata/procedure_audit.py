@@ -66,6 +66,37 @@ def resolve_step_attachment(store, step_id, vehicle_id, procedure_id, attachment
     return resolve_document(store, attachment_id)
 
 
+
+def read_step_text_preview(store, step_id, vehicle_id, procedure_id, attachment_id):
+    """Read an authorized TXT from the step's *current* same-vehicle link.
+
+    Both the linked article and attachment are checked before reading. The
+    linked article is checked again afterwards so a changed step cannot
+    silently yield a different article's bytes. No SQLite writes or external
+    viewer launches are performed.
+    """
+    from document_library import read_verified_text_preview
+
+    for label, value in (("step", step_id), ("vehicle", vehicle_id),
+                         ("procedure", procedure_id), ("attachment", attachment_id)):
+        if type(value) is not int or value <= 0:
+            raise ValueError("Invalid " + label + " ID")
+    article = get_step_reference(store, step_id, vehicle_id, procedure_id)
+    if article is None:
+        raise ValueError("Pasul nu mai are document asociat")
+    linked = store.db.execute(
+        "SELECT 1 FROM attachments WHERE id=? AND article_id=?",
+        (attachment_id, article["id"])).fetchone()
+    if linked is None:
+        raise ValueError("Atașamentul nu mai aparține documentului asociat")
+    content = read_verified_text_preview(
+        store, attachment_id, vehicle_id=vehicle_id, article_id=article["id"])
+    current = get_step_reference(store, step_id, vehicle_id, procedure_id)
+    if current is None or current["id"] != article["id"]:
+        raise ValueError("Legătura pasului s-a modificat în timpul previzualizării")
+    return content
+
+
 def audit_procedure(store, procedure_id):
     """Return a deterministic, read-only report with per-step findings.
 
