@@ -32,6 +32,7 @@ def with_literal(pointer=False, boundary=False):
         ref['source_address'] = '00401090'
     if boundary:
         ref.update({
+            'reference_type': 'DATA',
             'reference_is_data': True,
             'instruction_start_address': '00401090',
             'instruction_length': 5,
