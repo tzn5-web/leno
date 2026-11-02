@@ -237,8 +237,10 @@ def main():
             win.library_tree.selection_set(str(pdf_id))
             root.update_idletasks()
             before_pdf=store.db.total_changes
-            with patch("document_library_gui.os.startfile") as launch:
+            with patch("document_library_gui.os.startfile") as launch, \
+                 patch("document_library_gui.messagebox.showerror") as error:
                 pdf_window=win.library_preview_pdf()
+                assert not error.called, "Unexpected PDF preview error: "+str(error.call_args)
                 assert pdf_window is not None, "Authorized PDF must preview internally"
                 assert pdf_window.pdf_page_count==1
                 assert pdf_window.pdf_page_label.get()=="Pagina 1/1"
