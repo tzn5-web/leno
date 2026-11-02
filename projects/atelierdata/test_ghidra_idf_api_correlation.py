@@ -107,6 +107,29 @@ class CorrelationTests(unittest.TestCase):
         self.assertEqual(result["api_references_with_unknown_flow_type"], 1)
         self.assertTrue(result["api_flow_reference_classification_incomplete_or_unknown"])
 
+    def test_unrecognized_type_containing_call_is_not_a_flow_edge(self):
+        idf, api = fixtures()
+        ref = api["api_symbols"]["ReadFile"][0]["references"][0]
+        ref["reference_type"] = "NOT_CALL"
+        result = correlate(idf, api, SHA)
+        self.assertEqual(result["shared_idf_and_direct_file_io_call_or_jump_functions"], 0)
+        self.assertEqual(result["api_references_with_unknown_flow_type"], 1)
+
+    def test_unrecognized_type_with_explicit_false_is_not_a_call(self):
+        idf, api = fixtures()
+        ref = api["api_symbols"]["ReadFile"][0]["references"][0]
+        ref["reference_type"] = "CALL_HINT"
+        ref["reference_is_call_or_jump"] = False
+        result = correlate(idf, api, SHA)
+        self.assertEqual(result["shared_idf_and_direct_file_io_call_or_jump_functions"], 0)
+        self.assertEqual(result["api_references_with_unknown_flow_type"], 0)
+
+    def test_known_computed_jump_is_a_flow_edge(self):
+        idf, api = fixtures()
+        api["api_symbols"]["ReadFile"][0]["references"][0]["reference_type"] = "COMPUTED_JUMP"
+        result = correlate(idf, api, SHA)
+        self.assertEqual(result["shared_idf_and_direct_file_io_call_or_jump_functions"], 1)
+
     def test_explicit_ghidra_flow_flag_controls_classification(self):
         idf, api = fixtures()
         ref = api["api_symbols"]["ReadFile"][0]["references"][0]
