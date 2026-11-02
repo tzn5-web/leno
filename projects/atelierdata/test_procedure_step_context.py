@@ -6,6 +6,7 @@ import tkinter as tk
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from atelierdata import Store
 from procedure_step_context import step_context_text
@@ -133,6 +134,66 @@ class SelectedStepContextTests(unittest.TestCase):
             self.assertNotIn("PRIVATE OTHER VEHICLE", text)
         finally:
             window.destroy()
+
+
+    def test_tk_reassigned_procedure_clears_foreign_context_and_rows(self):
+        try:
+            root = tk.Tk()
+        except tk.TclError as exc:
+            self.skipTest("Tk display unavailable: " + str(exc))
+        self.addCleanup(root.destroy)
+        root.withdraw()
+        app = SimpleNamespace(root=root, tk=tk, db=self.store, vid=self.vehicle)
+        window = open_procedures_window(
+            app, object, selected_procedure_id=self.procedure,
+            selected_step_id=self.first)
+        try:
+            self.assertIn("Synthetic first instruction", window.render_selected_step())
+            self.store.db.execute(
+                "UPDATE procedures SET vehicle_id=? WHERE id=?",
+                (self.other, self.procedure))
+            self.store.db.commit()
+            before = self.store.db.total_changes
+            self.assertIsNone(window.render_selected_step())
+            self.assertEqual(window.steps_tree.get_children(), ())
+            self.assertFalse(window.procedures_tree.exists(str(self.procedure)))
+            text = window.procedure_detail_text.get("1.0", "end")
+            self.assertIn("nu mai aparține", text)
+            self.assertNotIn("Synthetic first instruction", text)
+            self.assertNotIn("Authorized fixture", text)
+            self.assertEqual(self.store.db.total_changes, before)
+        finally:
+            window.destroy()
+
+    def test_tk_reassigned_procedure_blocks_step_mutation(self):
+        try:
+            root = tk.Tk()
+        except tk.TclError as exc:
+            self.skipTest("Tk display unavailable: " + str(exc))
+        self.addCleanup(root.destroy)
+        root.withdraw()
+        app = SimpleNamespace(root=root, tk=tk, db=self.store, vid=self.vehicle)
+        window = open_procedures_window(
+            app, object, selected_procedure_id=self.procedure,
+            selected_step_id=self.first)
+        try:
+            self.store.db.execute(
+                "UPDATE procedures SET vehicle_id=? WHERE id=?",
+                (self.other, self.procedure))
+            self.store.db.commit()
+            before = self.store.db.total_changes
+            with patch("tkinter.messagebox.showerror") as error:
+                self.assertIsNone(window.move_selected_step(1))
+            error.assert_called_once()
+            self.assertEqual(self.store.db.total_changes, before)
+            self.assertEqual(
+                self.store.db.execute(
+                    "SELECT step_number FROM procedure_steps WHERE id=?",
+                    (self.first,)).fetchone()[0], 1)
+            self.assertEqual(window.steps_tree.get_children(), ())
+        finally:
+            window.destroy()
+
 
 
 if __name__ == "__main__":
