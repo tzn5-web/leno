@@ -55,6 +55,22 @@ class IncompletePointerClaimTests(unittest.TestCase):
         self.assertEqual(result["idf_xrefs_with_ghidra_boundary_and_raw_pointer"], 1)
         self.assertEqual(result["matching_api_sites_in_ghidra_idf_pointer_functions"], 1)
 
+    def test_conflicting_reference_types_taint_same_pointer_site_in_both_orders(self):
+        data, sha, idf, api = pointer_fixture("00401000")
+        refs = _refs(idf)
+        refs[0]["reference_type"] = "READ"
+        contradictory = copy.deepcopy(refs[0])
+        contradictory["reference_type"] = "UNCONDITIONAL_CALL"
+        refs.append(contradictory)
+        for ordered in (list(refs), list(reversed(refs))):
+            refs[:] = ordered
+            result = replay(data, sha, idf, api)
+            self.assertEqual(result["idf_xrefs_with_raw_push_or_mov_literal_va"], 1)
+            self.assertEqual(result["idf_raw_pointer_sites_with_conflicting_ghidra_claims"], 1)
+            self.assertEqual(result["matching_api_sites_in_idf_raw_pointer_functions"], 0)
+            self.assertEqual(result["idf_xrefs_with_ghidra_boundary_and_raw_pointer"], 0)
+            self.assertFalse(result["idf_decoder_proven"])
+
     def test_missing_reference_type_cannot_validate_boundary_tier(self):
         data, sha, idf, api = pointer_fixture("00401000")
         _refs(idf)[0].pop("reference_type")
