@@ -1,7 +1,7 @@
 """Synthetic-only regressions for bounded-memory full-phase matching."""
 import unittest
 from unittest.mock import patch
-from idf_full_phase import phase_summary, MATCH_CHUNK
+from idf_full_phase import phase_summary, MATCH_CHUNK, _np
 
 
 def rows(stride, count, token=b'ABCD1234'):
@@ -27,8 +27,8 @@ class BoundedFullPhaseTests(unittest.TestCase):
 
     def test_complete_row_and_saturation(self):
         data = rows(17, 65550)
-        for mode in (True, False):
-            with patch('idf_full_phase._np', None if not mode else __import__('numpy')):
+        for mode in (None, _np):
+            with patch('idf_full_phase._np', mode):
                 result = phase_summary(data, 17)
                 self.assertEqual(result['longest_qualified_run'], 65535)
                 self.assertEqual(result['qualified_coverage_bytes'], 65535 * 17)
