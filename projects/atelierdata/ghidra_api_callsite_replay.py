@@ -86,6 +86,9 @@ def _idf_functions(data, pe, report):
     # It is still Ghidra-reported evidence, not independently decoded code.
     boundary_pointer_functions = set()
     boundary_pointer_sites = set()
+    # Group all claims by physical pointer site before accepting a function owner.
+    # Conflicting Ghidra rows must not corroborate one another.
+    pointer_claims = {}
     verified = missing = mismatched = 0
     for block in report["keyword_hits"].values():
         for name, hits in block.items():
@@ -131,29 +134,42 @@ def _idf_functions(data, pe, report):
                     opcode = data[offset]
                     if (opcode == 0x68 or 0xb8 <= opcode <= 0xbf) and (
                             struct.unpack_from("<I", data, offset + 1)[0] == va):
-                        direct_pointer_sites.add((src_va, va))
-                        claimed_pointer_functions.add(function)
-                        # The raw bytes are real even if the reported containing
-                        # function is impossible. Keep site counts separate from
-                        # function-level correlation.
-                        plausible_owner = _candidate_function_contains_site(
-                            data, pe, function, src_va, 5)
-                        if plausible_owner:
-                            direct_pointer_functions.add(function)
-                        expected_mnemonic = "PUSH" if opcode == 0x68 else "MOV"
-                        start = ref.get("instruction_start_address")
-                        if (ref.get("reference_is_data") is True and
-                                start is not None and
-                                _function_key(start) == (src_space, src_va) and
-                                type(ref.get("instruction_length")) is int and
-                                ref["instruction_length"] == 5 and
-                                ref.get("instruction_mnemonic") == expected_mnemonic):
-                            boundary_pointer_sites.add((src_va, va))
-                            if plausible_owner:
-                                boundary_pointer_functions.add(function)
+                        pointer_claims.setdefault((src_va, va), []).append(
+                            (function, ref, opcode))
+    ambiguous_pointer_sites = 0
+    for (src_va, va), claims in pointer_claims.items():
+        # A byte-matched pointer is physical evidence even if the associated
+        # Ghidra function/metadata is contradictory. Keep that count separate.
+        direct_pointer_sites.add((src_va, va))
+        claimed_pointer_functions.update(function for function, _, _ in claims)
+        signatures = set()
+        for function, ref, opcode in claims:
+            signatures.add((
+                function, ref.get("reference_is_data"),
+                ref.get("instruction_start_address"),
+                ref.get("instruction_length"),
+                ref.get("instruction_mnemonic")))
+        if len(signatures) != 1:
+            ambiguous_pointer_sites += 1
+            continue
+        function, ref, opcode = claims[0]
+        if not _candidate_function_contains_site(data, pe, function, src_va, 5):
+            continue
+        direct_pointer_functions.add(function)
+        expected_mnemonic = "PUSH" if opcode == 0x68 else "MOV"
+        start = ref.get("instruction_start_address")
+        if (ref.get("reference_is_data") is True and
+                start is not None and
+                _function_key(start) == ("ram", src_va) and
+                type(ref.get("instruction_length")) is int and
+                ref["instruction_length"] == 5 and
+                ref.get("instruction_mnemonic") == expected_mnemonic):
+            boundary_pointer_sites.add((src_va, va))
+            boundary_pointer_functions.add(function)
     return (functions, direct_pointer_functions, len(direct_pointer_sites),
             boundary_pointer_functions, len(boundary_pointer_sites),
-            verified, missing, mismatched, claimed_pointer_functions)
+            verified, missing, mismatched, claimed_pointer_functions,
+            ambiguous_pointer_sites)
 
 def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict) -> dict:
     """Corroborate narrow raw IAT patterns without emitting private addresses."""
@@ -174,7 +190,8 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
     (idf_functions, direct_idf_functions, direct_idf_pointer_refs,
      boundary_idf_functions, boundary_idf_pointer_refs,
      idf_literals_verified, idf_literals_missing_address,
-     idf_literals_mismatched, claimed_idf_pointer_functions) = _idf_functions(
+     idf_literals_mismatched, claimed_idf_pointer_functions,
+     ambiguous_idf_pointer_sites) = _idf_functions(
          data, pe, idf_report)
     inspected = mapped_executable = nonexec = unmapped = 0
     raw_opcode_candidates = import_matched = shared_idf_matched = 0
@@ -296,6 +313,7 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
         "reported_api_flow_sites_with_address_inspected": inspected,
         "idf_literal_hits_verified_against_source_pe": idf_literals_verified,
         "idf_xrefs_with_raw_push_or_mov_literal_va": direct_idf_pointer_refs,
+        "idf_raw_pointer_sites_with_conflicting_ghidra_claims": ambiguous_idf_pointer_sites,
         "ghidra_claimed_idf_pointer_function_count": len(claimed_idf_pointer_functions),
         "ghidra_claimed_idf_pointer_functions_rejected_by_pe_ownership":
             len(claimed_idf_pointer_functions - direct_idf_functions),
@@ -331,6 +349,7 @@ def replay(data: bytes, expected_sha256: str, idf_report: dict, api_report: dict
                        "Dynamic imports, thunks, other encodings and indirect flows are omitted. "
                        "IDF literal bytes are independently checked at reported PE VAs; raw PUSH/MOV immediate-pointer matches are narrow byte candidates. "
                        "A separate stricter counter requires Ghidra-reported DATA reference, matching instruction start, 5-byte length and PUSH/MOV mnemonic, but is not independent disassembly. " 
+                       "Conflicting Ghidra function or instruction-metadata claims for the same raw IDF pointer site invalidate its function-level correlation; raw byte counts remain separate. "
                        "Pointer-source function correlation additionally requires a unique, file-backed executable mapping with the reported function entry preceding the source in the same section; this does not prove ownership. " 
                        "Other IDF string xrefs and containing functions remain Ghidra claims. "
                        "No evidence of an IDF decoder or licensed data access."
