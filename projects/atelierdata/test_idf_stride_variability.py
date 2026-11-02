@@ -4,7 +4,8 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
-from idf_stride_variability import has_variable_payload_streak
+from idf_stride_variability import (has_variable_payload_streak,
+                                    longest_variable_payload_streak)
 from idf_zip_stride_streaks import audit
 
 
@@ -45,6 +46,37 @@ class StrideVariabilityTests(unittest.TestCase):
         self.assertFalse(has_variable_payload_streak(sample, 19))
 
 
+    def test_longest_qualified_chain_counts_complete_rows(self):
+        token = b"ABCD1234"
+        for stride in (17, 19, 21):
+            with self.subTest(stride=stride):
+                sample = b"".join(
+                    token + bytes([i % 251, (i * 7) % 251])
+                    + b"X" * (stride - 10)
+                    for i in range(64)
+                )
+                self.assertEqual(
+                    longest_variable_payload_streak(sample, stride), 64)
+                self.assertEqual(
+                    longest_variable_payload_streak(
+                        (token + b"X" * (stride - 8)) * 64, stride), 0)
+                # A truncated row must never increase the reported count.
+                self.assertEqual(
+                    longest_variable_payload_streak(sample + token, stride),
+                    64)
+
+    def test_longest_chain_selects_qualified_not_just_longest_token(self):
+        stride = 19
+        token = b"ABCD1234"
+        constant = (token + b"X" * 11) * 100
+        varied = b"".join(
+            token + bytes([i, i * 3]) + b"Y" * 9
+            for i in range(48)
+        )
+        self.assertEqual(
+            longest_variable_payload_streak(
+                constant + b"unrelatedseparator" + varied, stride), 48)
+
     def test_zip_audit_separates_constant_and_variable_payload(self):
         token = b"ABCD1234"
         varied = b"".join(
@@ -65,6 +97,14 @@ class StrideVariabilityTests(unittest.TestCase):
             )
             self.assertEqual(
                 result["files_with_32_diverse_tokens_and_variable_payload_by_stride"]["19"], 1
+            )
+            self.assertEqual(
+                result["longest_variable_payload_streak_by_stride"]["19"],
+                64
+            )
+            self.assertEqual(
+                result["longest_variable_payload_streak_by_stride"]["17"],
+                0
             )
             self.assertFalse(result["idf_decoder_proven"])
             self.assertNotIn("var.IDF", str(result))
