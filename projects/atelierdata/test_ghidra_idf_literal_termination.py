@@ -7,6 +7,8 @@ import struct
 import unittest
 
 from ghidra_api_callsite_replay import replay
+from ghidra_verified_idf_triage import analyze_verified
+from test_ghidra_verified_idf_distance_tiers import with_literal
 from test_ghidra_api_callsite_replay import fixtures
 
 
@@ -57,6 +59,23 @@ class IDFLiteralTerminationTests(unittest.TestCase):
         result = replay(data, sha, idf, api)
         self.assertEqual(result["idf_literal_hits_without_file_backed_nul_terminator"], 1)
         self.assertEqual(result["idf_literal_hits_verified_against_source_pe"], 0)
+
+    def test_unterminated_literal_cannot_enter_verified_callgraph_tier(self):
+        data, _, idf, api, graph = with_literal(pointer=True, boundary=True)
+        changed = bytearray(data)
+        changed[0x28a] = ord("X")
+        data = bytes(changed)
+        sha = hashlib.sha256(data).hexdigest()
+        md5 = hashlib.md5(data).hexdigest()
+        for report in (idf, api, graph):
+            report["source_sha256"] = sha
+            report["source_md5"] = md5
+        result = analyze_verified(data, sha, idf, api, graph)
+        self.assertEqual(result["idf_literal_hits_without_file_backed_nul_terminator"], 1)
+        self.assertEqual(result["verified_literal_source_function_count"], 0)
+        self.assertEqual(result["verified_raw_pointer_source_function_count"], 0)
+        self.assertEqual(result["verified_boundary_pointer_source_function_count"], 0)
+        self.assertFalse(result["idf_decoder_proven"])
 
     def test_exact_terminated_ascii_literal_remains_valid(self):
         data, sha, idf, api = fixtures()
