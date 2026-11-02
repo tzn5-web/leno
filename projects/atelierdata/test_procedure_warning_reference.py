@@ -175,5 +175,48 @@ class WarningDocumentNavigationTests(unittest.TestCase):
                 (self.first,)).fetchone()[0], self.second_document)
 
 
+    def test_gui_rejects_warning_revoked_during_document_snapshot(self):
+        window, popup = self.open_window()
+        from repair_procedures_gui import get_step_reference_snapshot
+        original = get_step_reference_snapshot
+
+        def revoke_after_snapshot(*args, **kwargs):
+            snapshot = original(*args, **kwargs)
+            self.store.db.execute(
+                "UPDATE procedure_steps SET safety_note='' WHERE id=?",
+                (self.first,))
+            self.store.db.commit()
+            return snapshot
+
+        before = self.store.db.total_changes
+        with patch("repair_procedures_gui.get_step_reference_snapshot",
+                   side_effect=revoke_after_snapshot):
+            with patch("tkinter.messagebox.showerror") as error:
+                self.assertIsNone(popup.open_warning_reference())
+        error.assert_called_once()
+        self.assertEqual(self.store.db.total_changes, before + 1)
+        self.assertEqual(self.store.db.execute(
+            "SELECT safety_note FROM procedure_steps WHERE id=?",
+            (self.first,)).fetchone()[0], "")
+
+    def test_gui_rejects_selection_changed_during_document_snapshot(self):
+        window, popup = self.open_window()
+        from repair_procedures_gui import get_step_reference_snapshot
+        original = get_step_reference_snapshot
+
+        def change_selection_after_snapshot(*args, **kwargs):
+            snapshot = original(*args, **kwargs)
+            window.steps_tree.selection_set(str(self.no_document))
+            return snapshot
+
+        before = self.store.db.total_changes
+        with patch("repair_procedures_gui.get_step_reference_snapshot",
+                   side_effect=change_selection_after_snapshot):
+            with patch("tkinter.messagebox.showerror") as error:
+                self.assertIsNone(popup.open_warning_reference())
+        error.assert_called_once()
+        self.assertEqual(self.store.db.total_changes, before)
+
+
 if __name__ == "__main__":
     unittest.main()

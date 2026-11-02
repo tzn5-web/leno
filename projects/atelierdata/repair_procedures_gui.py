@@ -762,7 +762,9 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                 if warning_step_reference_id(
                         app.db,vehicle_id,pid,step_id)!=(article_id,warning):
                     raise ValueError("Avertismentul sau documentul s-a schimbat")
-                return open_reference(expected_article_id=article_id)
+                return open_reference(expected_article_id=article_id,
+                                      expected_warning=warning,
+                                      expected_step_id=step_id)
             except ValueError as exc:
                 refresh_overview()
                 messagebox.showinfo("Document indisponibil",str(exc),parent=popup)
@@ -812,7 +814,8 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
             messagebox.showerror("Eroare schemă",str(exc),parent=top)
             return None
 
-    def open_reference(expected_article_id=None):
+    def open_reference(expected_article_id=None, expected_warning=None,
+                       expected_step_id=None):
         selected=steps.selection()
         if not selected:return
         selected_step_id=int(selected[0])
@@ -829,6 +832,23 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                 "Documentul asociat s-a schimbat în timpul navigării; actualizează lista.",
                 parent=top)
             return None
+        # Warning-driven navigation must validate the warning again AFTER
+        # loading the document snapshot. A concurrent edit may revoke the
+        # warning without changing its article_id during that read.
+        if expected_warning is not None:
+            try:
+                if (type(expected_step_id) is not int
+                        or selected_step_id != expected_step_id
+                        or state["pid"] != selected_procedure_id
+                        or steps.selection() != (str(expected_step_id),)):
+                    raise ValueError("Selecția pasului s-a schimbat")
+                current_reference=warning_step_reference_id(
+                    app.db,vehicle_id,selected_procedure_id,expected_step_id)
+                if current_reference != (expected_article_id,expected_warning):
+                    raise ValueError("Avertismentul sau documentul s-a schimbat")
+            except ValueError as exc:
+                messagebox.showerror("Avertisment schimbat",str(exc),parent=top)
+                return None
         if article is None:
             return messagebox.showinfo("Referință","Pasul nu are document asociat.",parent=top)
         display=tk.Toplevel(top)
