@@ -4,22 +4,28 @@ Only complete NUL-terminated literals in initialized section bytes qualify.
 This is not a disassembler, data-flow analysis, or IDF decoder.
 """
 from __future__ import annotations
+import re
 
 ASCII_WORD = frozenset(b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_')
 
 
 def mapped_literal_positions(data: bytes, sections: list[dict], term: str,
-                             encoding: str, limit: int = 1024):
+                             encoding: str, limit: int = 1024, *,
+                             allow_word_prefix: bool = False,
+                             case_insensitive: bool = False):
     """Return (file_offset, RVA) hits and a truthful truncation flag.
 
-    Ignore overlay, virtual-only tails, raw alignment padding, embedded word
-    suffixes, and unterminated prefixes. A hit's NUL must be file-backed in
+    Ignore overlay, virtual-only tails, raw alignment padding, embedded API
+    names, and unterminated strings. Filename-extension probes may explicitly
+    allow word prefixes and ASCII-only case-insensitive matching. A hit's NUL must be file-backed in
     the *same, unambiguously mapped* section. Positions are private.
     """
     if encoding not in ('ascii', 'utf-16le') or not isinstance(term, str) or not term:
         raise ValueError('Unsupported literal encoding or empty term')
     if type(limit) is not int or limit < 1:
         raise ValueError('Invalid literal limit')
+    if type(allow_word_prefix) is not bool or type(case_insensitive) is not bool:
+        raise ValueError('Invalid literal matching policy')
     needle = term.encode(encoding)
     terminator = b'\x00' if encoding == 'ascii' else b'\x00\x00'
     found = []
@@ -29,17 +35,25 @@ def mapped_literal_positions(data: bytes, sections: list[dict], term: str,
         if backed <= 0 or start < 0 or start + backed > len(data):
             continue
         raw = data[start:start + backed]
-        at = raw.find(needle)
+        # Only extension probes opt into ASCII case folding and filename
+        # prefixes. API symbol probes retain exact whole-identifier matching.
+        matcher = re.compile(re.escape(needle), re.IGNORECASE) if case_insensitive else None
+        def next_hit(position):
+            if matcher is None:
+                return raw.find(needle, position)
+            match = matcher.search(raw, position)
+            return -1 if match is None else match.start()
+        at = next_hit(0)
         while at >= 0:
             end = at + len(needle)
             extent = end + len(terminator) - at
             terminated = end + len(terminator) <= len(raw) and raw[end:end + len(terminator)] == terminator
             if encoding == 'ascii':
-                embedded = at > 0 and raw[at - 1] in ASCII_WORD
+                embedded = not allow_word_prefix and at > 0 and raw[at - 1] in ASCII_WORD
             else:
                 if at >= 2:
                     preceding = chr(int.from_bytes(raw[at - 2:at], 'little'))
-                    embedded = preceding.isalnum() or preceding == '_'
+                    embedded = not allow_word_prefix and (preceding.isalnum() or preceding == '_')
                 else:
                     embedded = False
             rva = sec['rva'] + at
@@ -67,5 +81,5 @@ def mapped_literal_positions(data: bytes, sections: list[dict], term: str,
                     if len(found) == limit:
                         return found, True
                     found.append((file_at, rva))
-            at = raw.find(needle, at + 1)
+            at = next_hit(at + 1)
     return found, False
