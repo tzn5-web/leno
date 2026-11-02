@@ -18,7 +18,7 @@ class PEFileIOLiteralIntegrationTests(unittest.TestCase):
 
     def test_suffix_must_not_be_counted_as_api_name(self):
         data = bytearray(sample_pe())
-        data[0x240:0x24d] = b'CreateFileAX\0\0'
+        data[0x240:0x24d] = b'CreateFileAX\0'
         result = scan(data)
         self.assertEqual(result['literal_probes']['CreateFileA']['ascii']['literal_count_at_most_1024'], 0)
 
