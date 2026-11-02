@@ -37,7 +37,11 @@ def mapped_literal_positions(data: bytes, sections: list[dict], term: str,
             if encoding == 'ascii':
                 embedded = at > 0 and raw[at - 1] in ASCII_WORD
             else:
-                embedded = (at >= 2 and (lambda c: c.isalnum() or c == '_')(\n                    chr(int.from_bytes(raw[at - 2:at], 'little'))))
+                if at >= 2:
+                    preceding = chr(int.from_bytes(raw[at - 2:at], 'little'))
+                    embedded = preceding.isalnum() or preceding == '_'
+                else:
+                    embedded = False
             rva = sec['rva'] + at
             file_at = start + at
             # Raw aliases or overlapping RVAs make the source of a literal
