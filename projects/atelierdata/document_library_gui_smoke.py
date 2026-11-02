@@ -153,7 +153,7 @@ def main():
             win.library_tree.selection_set(str(txt_id))
             root.update_idletasks()
             before = store.db.total_changes
-            with patch("document_library_gui.os.startfile") as launch, \\
+            with patch("document_library_gui.os.startfile") as launch, \
                  patch("document_library_gui.messagebox.showerror") as error:
                 result = win.library_verify_selected()
                 assert not result["ok"] and "TXT nu pare text" in result["message"]
