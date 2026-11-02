@@ -190,6 +190,38 @@ def main():
                 assert win.library_preview_text() is None
                 assert error.called and not launch.called
             assert store.db.total_changes>=before
+            # A generated, user-owned PNG must preview in Tk without launching
+            # an OS viewer. Revocation after selection must block preview.
+            from PIL import Image
+            image_source=Path(directory)/"preview_owned.png"
+            Image.new("RGB",(4,3),(15,40,80)).save(image_source)
+            image_id=import_local_file(
+                store,vid,image_source,"Manual de atelier",
+                "preview image fixture","Local synthetic fixture",
+                rights_basis="document_propriu")
+            win.library_search.set("preview image fixture")
+            root.update_idletasks()
+            assert len(win.library_tree.get_children())==1
+            win.library_tree.selection_set(str(image_id))
+            root.update_idletasks()
+            before_image=store.db.total_changes
+            with patch("document_library_gui.os.startfile") as launch:
+                image_window=win.library_preview_image()
+                assert image_window is not None, "Authorized image must preview"
+                assert image_window.preview_image.width()==4
+                assert image_window.preview_image.height()==3
+                assert not launch.called, "Image preview must remain internal"
+                image_window.destroy()
+            assert store.db.total_changes==before_image
+            set_metadata(store,image_id,"Manual de atelier",
+                         "preview image fixture","Local synthetic fixture",
+                         rights_basis="neconfirmat")
+            after_revocation=store.db.total_changes
+            with patch("document_library_gui.messagebox.showerror") as error, \
+                 patch("document_library_gui.os.startfile") as launch:
+                assert win.library_preview_image() is None
+                assert error.called and not launch.called
+            assert store.db.total_changes==after_revocation
             win.destroy()
             print("DOCUMENT_LIBRARY_GUI_SMOKE=PASS")
         finally:

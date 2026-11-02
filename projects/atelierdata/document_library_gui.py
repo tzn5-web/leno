@@ -14,6 +14,7 @@ from document_library import (
     DOCUMENT_TYPES,ACCESS_RIGHTS,ensure_schema,import_local_file,
     list_library,set_metadata,verified_library_file,inspect_library_entry,
     read_verified_text_preview)
+from document_image_preview import read_verified_image_preview
 from technical_sources import normalize
 from document_bulk_import import bulk_import_folder
 
@@ -346,13 +347,45 @@ def open_document_library(app):
         preview.preview_text_widget=viewer
         return preview
 
+    def preview_image():
+        """Show a bounded, SHA256-verified, authorized PNG/JPEG inside Tk."""
+        row=selected()
+        if not row:
+            return messagebox.showinfo("Selectare","Selectează o imagine PNG/JPG.",parent=win)
+        try:
+            image=read_verified_image_preview(
+                app.db,row["attachment_id"],vehicle_id=row["vehicle_id"],
+                article_id=row["article_id"])
+            from PIL import Image,ImageTk
+            image.thumbnail((1000,700),Image.Resampling.LANCZOS)
+            preview=tk.Toplevel(win)
+            preview.title("AtelierData — previzualizare imagine verificată")
+            preview.geometry("1050x780")
+            preview.transient(win)
+            frame=ttk.Frame(preview,padding=12)
+            frame.pack(fill="both",expand=True)
+            ttk.Label(frame,text="Imagine locală verificată SHA256. "
+                      "Drepturile sunt declarate; conținutul nu este validat tehnic.",
+                      wraplength=1000).pack(anchor="w",pady=(0,8))
+            photo=ImageTk.PhotoImage(image,master=preview)
+            ttk.Label(frame,image=photo).pack(expand=True)
+            preview.preview_image=photo
+            return preview
+        except (ValueError,FileNotFoundError,OSError,RuntimeError) as exc:
+            messagebox.showerror("Previzualizare indisponibilă",str(exc),parent=win)
+            return None
+
+    preview_actions=ttk.Frame(outer)
+    preview_actions.pack(fill="x",pady=(3,2))
+    ttk.Button(preview_actions,text="Previzualizare TXT",command=preview_text).pack(side="left",padx=(0,7))
+    ttk.Button(preview_actions,text="Previzualizare imagine",command=preview_image).pack(side="left",padx=(0,7))
+
     actions=ttk.Frame(outer)
     actions.pack(fill="x",pady=(4,1))
     ttk.Button(actions,text="Importă fișier local",command=import_file).pack(side="left",padx=(0,7))
     ttk.Button(actions,text="Importă dosar local",command=import_folder).pack(side="left",padx=(0,7))
     ttk.Button(actions,text="Editează proveniența",command=edit_metadata).pack(side="left",padx=(0,7))
     ttk.Button(actions,text="Verifică integritatea",command=verify_selected).pack(side="left",padx=(0,7))
-    ttk.Button(actions,text="Previzualizare TXT",command=preview_text).pack(side="left",padx=(0,7))
     ttk.Button(actions,text="Deschide verificat",command=open_verified).pack(side="left",padx=(0,7))
     ttk.Button(actions,text="Închide",command=win.destroy).pack(side="right")
     for var in (search,make,year,category):var.trace_add("write",refresh)
@@ -365,5 +398,6 @@ def open_document_library(app):
     win.library_details=details
     win.library_verify_selected=verify_selected
     win.library_preview_text=preview_text
+    win.library_preview_image=preview_image
     win.library_open_verified=open_verified
     return win
