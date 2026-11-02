@@ -4,7 +4,8 @@ from __future__ import annotations
 from procedure_step_navigation import adjacent_step_id
 from procedure_step_context import step_context_text
 from repair_export import export_procedure_html,export_procedures_json
-from procedure_audit import audit_procedure, get_step_reference, resolve_step_attachment
+from procedure_audit import (audit_procedure, get_step_reference,
+                             get_step_reference_snapshot, resolve_step_attachment)
 from procedure_audit_export import export_procedure_audit_json
 from procedure_audit_html import export_procedure_audit_html
 from procedure_search_hits import (DEFAULT_LIMIT, PROCEDURE_FIELDS, STEP_FIELDS,
@@ -662,14 +663,12 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         selected_step_id=int(selected[0])
         selected_procedure_id=state["pid"]
         try:
-            article=get_step_reference(
+            article,linked=get_step_reference_snapshot(
                 app.db,selected_step_id,vehicle_id,selected_procedure_id)
         except ValueError as exc:
             return messagebox.showerror("Referință invalidă",str(exc),parent=top)
         if article is None:
             return messagebox.showinfo("Referință","Pasul nu are document asociat.",parent=top)
-        from atelierdata_extensions import list_documents
-        linked=list_documents(app.db,article["id"])
         display=tk.Toplevel(top)
         display.title("Document asociat: "+article["title"])
         display.geometry("700x500")
