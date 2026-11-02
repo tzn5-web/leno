@@ -82,6 +82,25 @@ def parse_pe32(data):
         sections.append(dict(name=name, rva=rva, vsize=vsize, raw_size=raw_size,
                              raw_at=raw_at, executable=bool(flags & 0x20000000)))
 
+    # A raw file byte range must not be claimed by multiple initialized
+    # sections. Otherwise an RVA can appear unique while its physical bytes
+    # have conflicting provenance. Refuse header aliases for the same reason.
+    header_end = min(len(data), header_size)
+    for index, section in enumerate(sections):
+        backed = min(section['raw_size'], section['vsize'])
+        if backed <= 0:
+            continue
+        first = section['raw_at']
+        last = first + backed
+        if first < header_end:
+            raise ValueError('Initialized PE section aliases header bytes')
+        for earlier in sections[:index]:
+            earlier_backed = min(earlier['raw_size'], earlier['vsize'])
+            if (earlier_backed > 0 and
+                    first < earlier['raw_at'] + earlier_backed and
+                    earlier['raw_at'] < last):
+                raise ValueError('Ambiguous overlapping PE section raw data')
+
     def rva_offset(rva, need=1):
         # An RVA must map uniquely to initialized bytes in the PE image.
         # Raw alignment padding is not evidence of an imported name or thunk.
@@ -118,10 +137,12 @@ def parse_pe32(data):
     if imp_rva and imp_size:
         if imp_size < 40 or imp_size % 20:
             raise ValueError('Invalid PE import directory extent')
+        descriptors_terminated = False
         for idx in range(min(MAX_IMPORTS, imp_size // 20)):
             at = rva_offset(imp_rva + idx * 20, 20)
             original, timestamp, forward, name_rva, first = (_u32(data, at + x) for x in (0, 4, 8, 12, 16))
             if not any((original, timestamp, forward, name_rva, first)):
+                descriptors_terminated = True
                 break
             if not name_rva or not first:
                 raise ValueError('Malformed import descriptor')
@@ -139,11 +160,15 @@ def parse_pe32(data):
                 iat_va = image_base + first + n * 4
                 if iat_va > 0xffffffff:
                     raise ValueError('IAT address overflows PE32')
+                if iat_va in imports:
+                    raise ValueError('Duplicate IAT slot attribution')
                 imports[iat_va] = dict(dll=dll, symbol=symbol, iat_rva=first + n * 4)
             else:
                 raise ValueError('Excessive imported functions')
         else:
-            raise ValueError('Excessive import descriptors')
+            raise ValueError('Import directory missing terminating descriptor')
+        if not descriptors_terminated:
+            raise ValueError('Import directory missing terminating descriptor')
     return dict(sections=sections, imports=imports, image_base=image_base)
 
 
