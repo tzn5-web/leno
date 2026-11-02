@@ -43,6 +43,24 @@ class DelayImportTests(unittest.TestCase):
         self.assertEqual((result['ordinal_symbols'], result['va_descriptors']), (1, 1))
         self.assertEqual(private['descriptors'][0]['entries'][0]['symbol'], '#42')
 
+    def test_delay_iat_overlaps_classic_import_rejected(self):
+        data = bytearray(fixture())
+        # Classic sample_pe() already owns IAT slot 0x20c0.
+        struct.pack_into('<I', data, 0x50c, 0x20c0)
+        with self.assertRaisesRegex(ValueError, 'duplicate classic/delay IAT slot'):
+            parse_delay_imports(data)
+
+    def test_duplicate_delay_iat_across_descriptors_rejected(self):
+        data = bytearray(fixture())
+        # Relocate DLL string so the third 32-byte descriptor can terminate.
+        data[0x5a0:0x5ad] = data[0x540:0x54d]
+        data[0x540:0x54d] = b'\\0' * 13
+        struct.pack_into('<I', data, 0x504, 0x21a0)
+        data[0x520:0x540] = data[0x500:0x520]
+        struct.pack_into('<II', data, 0x98 + 96 + 13 * 8, 0x2100, 96)
+        with self.assertRaisesRegex(ValueError, 'duplicate classic/delay IAT slot'):
+            parse_delay_imports(data)
+
     def test_missing_terminator_rejected(self):
         data = bytearray(fixture())
         struct.pack_into('<I', data, 0x520, 1)
