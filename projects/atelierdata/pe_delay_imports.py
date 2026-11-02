@@ -72,7 +72,11 @@ def parse_delay_imports(data):
         for i in range(257):
             b = data[map_rva(rva, i + 1) + i]
             if b == 0:
-                return out.decode('ascii', errors='replace')
+                # Import names are evidence, not display text: replacement
+                # characters would silently fabricate an API/DLL identity.
+                if any(ch < 0x20 or ch > 0x7e for ch in out):
+                    raise ValueError('Non-printable or non-ASCII delay import name')
+                return out.decode('ascii')
             if i == 256:
                 break
             out.append(b)
@@ -110,6 +114,11 @@ def parse_delay_imports(data):
         if index >= MAX_DESCRIPTORS or not dll or not iat or not names:
             raise ValueError('Malformed or excessive delay descriptor')
         is_rva = bool(attrs & 1)
+        # These optional descriptor pointers must be file-backed if present.
+        # Otherwise the metadata is internally inconsistent even when its
+        # DLL and import-name tables happen to look plausible.
+        if hmod:
+            map_rva(to_rva(hmod, is_rva), 4)
         dll_rva = to_rva(dll, is_rva)
         iat_rva = to_rva(iat, is_rva)
         names_rva = to_rva(names, is_rva)
@@ -146,6 +155,12 @@ def parse_delay_imports(data):
                     raise ValueError('Empty delay import symbol')
                 ordinal = False
             entries.append({'symbol': symbol, 'ordinal': ordinal, 'iat_rva': iat_rva + n * 4})
+        # Bound and unload IATs, when declared, must cover the same number
+        # of slots plus a terminator. Merely mapping their first DWORD is
+        # insufficient and can accept truncated metadata as valid.
+        for optional_table in (bound, unload):
+            if optional_table:
+                map_rva(to_rva(optional_table, is_rva), 4 * (len(entries) + 1))
         result.append({'dll': dll_name, 'descriptor_rva': directory_rva + 32 * index,
                        'rva_based': is_rva, 'entries': entries})
     if not terminated:
