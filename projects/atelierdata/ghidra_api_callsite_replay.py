@@ -163,6 +163,9 @@ def _idf_functions(data, pe, report):
         for function, ref, opcode in claims:
             signatures.add((
                 function, ref.get("reference_is_data"),
+                # DATA/READ and CALL/JUMP are not interchangeable evidence.
+                # Include the declared xref kind in sibling-claim conflicts.
+                ref.get("reference_type"),
                 ref.get("instruction_start_address"),
                 ref.get("instruction_length"),
                 ref.get("instruction_mnemonic")))
