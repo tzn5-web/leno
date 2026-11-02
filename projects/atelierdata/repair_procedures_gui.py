@@ -588,6 +588,50 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                     messagebox.showerror("Atașament invalid",str(exc),parent=display)
             ttk.Button(display,text="Deschide atașament verificat SHA256",
                        command=open_attachment).pack(pady=8)
+            def preview_attachment(attachment_id=None):
+                """Preview the selected authorized TXT without external launch."""
+                if attachment_id is None:
+                    choice=1 if len(linked)==1 else simpledialog.askinteger(
+                        "Atașamente TXT",
+                        "Alege numărul atașamentului (1–"+str(len(linked))+"):",
+                        minvalue=1,maxvalue=len(linked),parent=display)
+                    if choice is None:
+                        return None
+                    attachment_id=linked[choice-1]["id"]
+                try:
+                    if type(attachment_id) is not int or attachment_id not in {
+                            row["id"] for row in linked}:
+                        raise ValueError("Atașamentul nu este în lista acestui pas")
+                    from procedure_audit import read_step_text_preview
+                    content=read_step_text_preview(
+                        app.db,selected_step_id,vehicle_id,selected_procedure_id,
+                        attachment_id)
+                    preview=tk.Toplevel(display)
+                    preview.title("AtelierData — TXT verificat din pas")
+                    preview.geometry("850x590")
+                    preview.transient(display)
+                    ttk.Label(preview,text=(
+                        "Previzualizare locală numai pentru citire; drepturile "
+                        "sunt declarate, nu certificate independent."),
+                        wraplength=800).pack(anchor="w",padx=12,pady=9)
+                    frame=ttk.Frame(preview,padding=10)
+                    frame.pack(fill="both",expand=True)
+                    scrollbar=ttk.Scrollbar(frame,orient="vertical")
+                    viewer=tk.Text(frame,wrap="word",yscrollcommand=scrollbar.set)
+                    scrollbar.configure(command=viewer.yview)
+                    scrollbar.pack(side="right",fill="y")
+                    viewer.pack(side="left",fill="both",expand=True)
+                    viewer.insert("1.0",content)
+                    viewer.configure(state="disabled")
+                    preview.preview_text_widget=viewer
+                    return preview
+                except (ValueError,FileNotFoundError,OSError) as exc:
+                    messagebox.showerror("Previzualizare indisponibilă",str(exc),
+                                         parent=display)
+                    return None
+            ttk.Button(display,text="Previzualizează TXT verificat",
+                       command=preview_attachment).pack(pady=5)
+            display.preview_attachment=preview_attachment
         display.reference_article_id=article["id"]
         display.reference_text_widget=area
         return display
