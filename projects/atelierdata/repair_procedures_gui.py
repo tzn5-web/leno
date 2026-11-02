@@ -739,7 +739,6 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
 
         show(initial)
         show_targets(initial_targets)
-        from tkinter import ttk
         controls=ttk.Frame(popup)
         controls.pack(fill="x",padx=12,pady=(0,12))
         ttk.Button(controls,text="Mergi la pasul selectat",
