@@ -14,6 +14,7 @@ import stat
 import zipfile
 from array import array
 from pathlib import Path
+from idf_stride_variability import has_variable_payload_streak
 
 STRIDES = (17, 19, 21)
 TOKEN = 8
@@ -62,6 +63,7 @@ def audit(archive_path: Path, expected_sha256: str) -> dict:
     total = count = 0
     hits = {str(s): 0 for s in STRIDES}
     diverse_hits = {str(s): 0 for s in STRIDES}
+    variable_payload_hits = {str(s): 0 for s in STRIDES}
     seen = set()
     with zipfile.ZipFile(archive_path) as archive:
         # Validate *all* selected entries before consuming any member.
@@ -99,6 +101,9 @@ def audit(archive_path: Path, expected_sha256: str) -> dict:
                 any_run, diverse_run = longest_streak(data, stride)
                 hits[str(stride)] += int(any_run >= MIN_RUN)
                 diverse_hits[str(stride)] += int(diverse_run >= MIN_RUN)
+                if diverse_run >= MIN_RUN:
+                    variable_payload_hits[str(stride)] += int(
+                        has_variable_payload_streak(data, stride))
     return {
         'schema': 'atelierdata-idf-zip-stride-streaks-v1',
         'archive_sha256_verified': True,
@@ -110,10 +115,13 @@ def audit(archive_path: Path, expected_sha256: str) -> dict:
         'minimum_consecutive_occurrences': MIN_RUN,
         'files_with_32_repeated_tokens_by_stride': hits,
         'files_with_32_diverse_repeated_tokens_by_stride': diverse_hits,
+        'files_with_32_diverse_tokens_and_variable_payload_by_stride': variable_payload_hits,
         'original_executed': False,
         'idf_decoder_proven': False,
-        'limitations': ('First 2 MiB per IDF only. Exact byte repetition is not proof '
-                        'of field boundaries, record widths, compression, encryption or a decoder.'),
+        'limitations': ('First 2 MiB per IDF only. Variable payload requires >=4 distinct '
+                        'suffixes and >=2 varying non-token columns in sampled complete rows. '
+                        'These are heuristics, not proof of field boundaries, record widths, '
+                        'compression, encryption or a decoder.'),
     }
 
 
