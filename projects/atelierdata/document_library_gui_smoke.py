@@ -222,6 +222,40 @@ def main():
                 assert win.library_preview_image() is None
                 assert error.called and not launch.called
             assert store.db.total_changes==after_revocation
+
+            # Synthetic valid PDF: internal page rendering and fail-closed rights.
+            from test_workshop_atlas_viewer import create_minimal_pdf
+            pdf_source=Path(directory)/"preview_owned.pdf"
+            create_minimal_pdf(pdf_source)
+            pdf_id=import_local_file(
+                store,vid,pdf_source,"Manual de atelier",
+                "preview pdf fixture","Local synthetic fixture",
+                rights_basis="document_propriu")
+            win.library_search.set("preview pdf fixture")
+            root.update_idletasks()
+            assert len(win.library_tree.get_children())==1
+            win.library_tree.selection_set(str(pdf_id))
+            root.update_idletasks()
+            before_pdf=store.db.total_changes
+            with patch("document_library_gui.os.startfile") as launch:
+                pdf_window=win.library_preview_pdf()
+                assert pdf_window is not None, "Authorized PDF must preview internally"
+                assert pdf_window.pdf_page_count==1
+                assert pdf_window.pdf_page_label.get()=="Pagina 1/1"
+                assert pdf_window.pdf_photo.width()>0
+                assert pdf_window.pdf_next() is False
+                assert not launch.called
+                pdf_window.destroy()
+            assert store.db.total_changes==before_pdf
+            set_metadata(store,pdf_id,"Manual de atelier",
+                         "preview pdf fixture","Local synthetic fixture",
+                         rights_basis="neconfirmat")
+            after_pdf_revocation=store.db.total_changes
+            with patch("document_library_gui.messagebox.showerror") as error, \\
+                 patch("document_library_gui.os.startfile") as launch:
+                assert win.library_preview_pdf() is None
+                assert error.called and not launch.called
+            assert store.db.total_changes==after_pdf_revocation
             win.destroy()
             print("DOCUMENT_LIBRARY_GUI_SMOKE=PASS")
         finally:

@@ -15,6 +15,7 @@ from document_library import (
     list_library,set_metadata,verified_library_file,inspect_library_entry,
     read_verified_text_preview)
 from document_image_preview import read_verified_image_preview
+from document_pdf_preview import read_verified_pdf_page
 from technical_sources import normalize
 from document_bulk_import import bulk_import_folder
 
@@ -375,10 +376,80 @@ def open_document_library(app):
             messagebox.showerror("Previzualizare indisponibilă",str(exc),parent=win)
             return None
 
+
+    def preview_pdf():
+        """Show a SHA256-verified PDF page in Tk; revalidate on every page change."""
+        row=selected()
+        if not row:
+            return messagebox.showinfo("Selectare","Selectează un PDF.",parent=win)
+        try:
+            from PIL import Image,ImageTk
+            image,count=read_verified_pdf_page(
+                app.db,row["attachment_id"],vehicle_id=row["vehicle_id"],
+                article_id=row["article_id"],page_number=1)
+            preview=tk.Toplevel(win)
+            preview.title("AtelierData — previzualizare PDF verificat")
+            preview.geometry("1050x780")
+            preview.transient(win)
+            frame=ttk.Frame(preview,padding=12)
+            frame.pack(fill="both",expand=True)
+            ttk.Label(frame,text="PDF local verificat SHA256 la fiecare pagină. "
+                      "Drepturile sunt declarate; conținutul nu este validat tehnic.",
+                      wraplength=1000).pack(anchor="w",pady=(0,8))
+            controls=ttk.Frame(frame)
+            controls.pack(fill="x")
+            page=tk.IntVar(value=1)
+            label=tk.StringVar(value=f"Pagina 1/{count}")
+            previous=ttk.Button(controls,text="Pagina anterioară")
+            previous.pack(side="left")
+            ttk.Label(controls,textvariable=label).pack(side="left",padx=12)
+            following=ttk.Button(controls,text="Pagina următoare")
+            following.pack(side="left")
+            canvas=ttk.Label(frame)
+            canvas.pack(fill="both",expand=True)
+            def display(picture):
+                picture.thumbnail((1000,690),Image.Resampling.LANCZOS)
+                photo=ImageTk.PhotoImage(picture,master=preview)
+                canvas.configure(image=photo)
+                preview.pdf_photo=photo
+            def show_page(number):
+                if number<1 or number>count:
+                    return False
+                try:
+                    picture,new_count=read_verified_pdf_page(
+                        app.db,row["attachment_id"],vehicle_id=row["vehicle_id"],
+                        article_id=row["article_id"],page_number=number)
+                    if new_count!=count:
+                        raise ValueError("Numărul paginilor PDF s-a schimbat")
+                    display(picture)
+                except (ValueError,FileNotFoundError,OSError,RuntimeError,tk.TclError) as exc:
+                    messagebox.showerror("Previzualizare indisponibilă",str(exc),parent=preview)
+                    return False
+                page.set(number)
+                label.set(f"Pagina {number}/{count}")
+                previous.configure(state="normal" if number>1 else "disabled")
+                following.configure(state="normal" if number<count else "disabled")
+                return True
+            previous.configure(command=lambda:show_page(page.get()-1))
+            following.configure(command=lambda:show_page(page.get()+1))
+            display(image)
+            previous.configure(state="disabled")
+            following.configure(state="normal" if count>1 else "disabled")
+            preview.pdf_page_number=page
+            preview.pdf_page_count=count
+            preview.pdf_page_label=label
+            preview.pdf_next=lambda:show_page(page.get()+1)
+            preview.pdf_previous=lambda:show_page(page.get()-1)
+            return preview
+        except (ValueError,FileNotFoundError,OSError,RuntimeError,tk.TclError) as exc:
+            messagebox.showerror("Previzualizare indisponibilă",str(exc),parent=win)
+            return None
+
     preview_actions=ttk.Frame(outer)
     preview_actions.pack(fill="x",pady=(3,2))
     ttk.Button(preview_actions,text="Previzualizare TXT",command=preview_text).pack(side="left",padx=(0,7))
     ttk.Button(preview_actions,text="Previzualizare imagine",command=preview_image).pack(side="left",padx=(0,7))
+    ttk.Button(preview_actions,text="Previzualizare PDF",command=preview_pdf).pack(side="left",padx=(0,7))
 
     actions=ttk.Frame(outer)
     actions.pack(fill="x",pady=(4,1))
@@ -399,5 +470,6 @@ def open_document_library(app):
     win.library_verify_selected=verify_selected
     win.library_preview_text=preview_text
     win.library_preview_image=preview_image
+    win.library_preview_pdf=preview_pdf
     win.library_open_verified=open_verified
     return win
