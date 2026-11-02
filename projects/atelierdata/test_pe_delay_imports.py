@@ -52,9 +52,9 @@ class DelayImportTests(unittest.TestCase):
 
     def test_duplicate_delay_iat_across_descriptors_rejected(self):
         data = bytearray(fixture())
-        # Relocate DLL string so the third 32-byte descriptor can terminate.
+        # Relocate DLL string to make room for the third (null) descriptor.
         data[0x5a0:0x5ad] = data[0x540:0x54d]
-        data[0x540:0x54d] = b'\\0' * 13
+        data[0x540:0x54d] = bytes(13)
         struct.pack_into('<I', data, 0x504, 0x21a0)
         data[0x520:0x540] = data[0x500:0x520]
         struct.pack_into('<II', data, 0x98 + 96 + 13 * 8, 0x2100, 96)
