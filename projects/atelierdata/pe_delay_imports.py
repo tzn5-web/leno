@@ -163,9 +163,19 @@ def parse_delay_imports(data):
         # Bound and unload IATs, when declared, must cover the same number
         # of slots plus a terminator. Merely mapping their first DWORD is
         # insufficient and can accept truncated metadata as valid.
-        for optional_table in (bound, unload):
+        for table_name, optional_table in (('bound', bound), ('unload', unload)):
             if optional_table:
-                map_rva(to_rva(optional_table, is_rva), 4 * (len(entries) + 1))
+                table_rva = to_rva(optional_table, is_rva)
+                # The optional tables are parallel null-terminated thunk
+                # arrays. Mapping their extent alone is not sufficient:
+                # a nonzero final slot would claim another import without
+                # a corresponding INT entry.
+                map_rva(table_rva, 4 * (len(entries) + 1))
+                terminator = _u32(
+                    data, map_rva(table_rva + 4 * len(entries), 4))
+                if terminator != 0:
+                    raise ValueError('Nonzero delay ' + table_name +
+                                     ' IAT terminator')
         result.append({'dll': dll_name, 'descriptor_rva': directory_rva + 32 * index,
                        'rva_based': is_rva, 'entries': entries})
     if not terminated:
