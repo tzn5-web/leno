@@ -227,6 +227,29 @@ def list_library(store,make="",model="",engine="",year="",category="",query="",
         rows=[x for x in rows if matches(x["years"])]
     return rows
 
+
+def _check_document_signature(path):
+    """Check a managed file's basic type marker before GUI launch.
+
+    This is not a full parser, malware scan, or content authenticity check.
+    TXT has no reliable magic marker; its integrity is checked by SHA256 only.
+    """
+    suffix=path.suffix.lower()
+    signatures={
+        ".pdf": b"%PDF-",
+        ".png": b"\x89PNG\r\n\x1a\n",
+        ".jpg": b"\xff\xd8\xff",
+        ".jpeg": b"\xff\xd8\xff",
+    }
+    marker=signatures.get(suffix)
+    if marker is None:
+        return
+    with path.open("rb") as stream:
+        prefix=stream.read(len(marker))
+    if prefix != marker:
+        raise ValueError("Semnătură fișier invalidă pentru "+suffix.upper().lstrip("."))
+
+
 def verified_library_file(store,attachment_id,vehicle_id=None,article_id=None,
                           require_declared_rights=False):
     """Recheck a selected row immediately before opening a local document.
@@ -259,7 +282,10 @@ def verified_library_file(store,attachment_id,vehicle_id=None,article_id=None,
             (attachment_id,)).fetchone() if indexed else None)
         if rights is None or rights["rights_basis"] not in ACCESS_RIGHTS[1:]:
             raise ValueError("Drepturi neconfirmate: document disponibil doar în inventar")
-    return resolve_document(store,attachment_id)
+    path=resolve_document(store,attachment_id)
+    if require_declared_rights:
+        _check_document_signature(path)
+    return path
 
 
 def inspect_library_entry(store, attachment_id, vehicle_id=None, article_id=None):
