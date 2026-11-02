@@ -101,6 +101,19 @@ class DelayImportTests(unittest.TestCase):
         struct.pack_into('<II', data, 0x98 + 96 + 13 * 8, 0x2100, 96)
         self.assertEqual(len(parse_delay_imports(data)), 1)
 
+    def test_nonzero_delay_iat_terminator_rejected(self):
+        data = bytearray(fixture())
+        # The INT ends at 0x564; the parallel IAT ends at 0x574.
+        # A nonzero IAT tail is not a valid matching terminator.
+        struct.pack_into('<I', data, 0x574, 0x12345678)
+        with self.assertRaisesRegex(ValueError, 'Delay IAT terminator is nonzero'):
+            parse_delay_imports(data)
+
+    def test_zero_delay_iat_terminator_accepted(self):
+        data = bytearray(fixture())
+        struct.pack_into('<I', data, 0x574, 0)
+        self.assertEqual(len(parse_delay_imports(data)[0]['entries']), 1)
+
     def test_missing_terminator_rejected(self):
         data = bytearray(fixture())
         struct.pack_into('<I', data, 0x520, 1)
