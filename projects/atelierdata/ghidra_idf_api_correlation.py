@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 from pathlib import Path
 
@@ -288,7 +289,10 @@ def main():
     parser.add_argument("--public-output", type=Path, required=True)
     args = parser.parse_args()
     paths = (args.idf_private_report, args.api_private_report, args.public_output)
-    if len({p.resolve() for p in paths}) != 3 or args.public_output.is_symlink():
+    if (len({p.resolve() for p in paths}) != 3 or args.public_output.is_symlink() or
+            (args.public_output.exists() and any(
+                os.path.samefile(args.public_output, private)
+                for private in paths[:2]))):
         parser.error("Private input and public output paths must differ and not be links")
     summary = correlate(load_private(args.idf_private_report),
                         load_private(args.api_private_report), args.expected_sha256)
