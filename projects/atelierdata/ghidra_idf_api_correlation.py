@@ -52,8 +52,15 @@ def load_private(path):
             result[key] = value
         return result
 
+    # JSON permits neither NaN nor Infinity. Python accepts these extensions by
+    # default, which can make a private evidence document non-portable.
+    def reject_nonfinite(value):
+        raise ValueError("Non-finite number in private Ghidra report")
+
+    # Read exactly the size checked above; strict UTF-8 rejects malformed input.
     return json.loads(path.read_text(encoding="utf-8"),
-                      object_pairs_hook=unique_object)
+                      object_pairs_hook=unique_object,
+                      parse_constant=reject_nonfinite)
 
 
 def _identity(report, expected_sha256):
