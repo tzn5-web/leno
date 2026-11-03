@@ -268,8 +268,12 @@ def add_step(store,procedure_id,instruction,safety_note="",article_id=None,posit
     # Acquire the writer lock BEFORE checking article ownership and step order.
     # Otherwise another SQLite connection can reassign a document or insert a
     # step between validation and the write, producing a stale reference/order.
+    nested = store.db.in_transaction
     try:
-        store.db.execute("BEGIN IMMEDIATE")
+        if nested:
+            store.db.execute("SAVEPOINT atelierdata_add_step")
+        else:
+            store.db.execute("BEGIN IMMEDIATE")
         ref=_article_reference(store,procedure_id,article_id)
         current=[s["id"] for s in list_steps(store,procedure_id)]
         if position is None:
@@ -283,10 +287,17 @@ def add_step(store,procedure_id,instruction,safety_note="",article_id=None,posit
         new_id=cursor.lastrowid
         current.insert(position-1,new_id)
         _renumber(store,procedure_id,current)
-        store.db.commit()
+        if nested:
+            store.db.execute("RELEASE SAVEPOINT atelierdata_add_step")
+        else:
+            store.db.commit()
         return new_id
     except BaseException:
-        store.db.rollback()
+        if nested:
+            store.db.execute("ROLLBACK TO SAVEPOINT atelierdata_add_step")
+            store.db.execute("RELEASE SAVEPOINT atelierdata_add_step")
+        else:
+            store.db.rollback()
         raise
 
 
