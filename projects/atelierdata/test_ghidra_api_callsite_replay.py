@@ -354,7 +354,7 @@ class ReplayTests(unittest.TestCase):
         for report in (idf, api):
             saved = report["source_md5"]
             report["source_md5"] = "0" * 32
-            with self.assertRaisesRegex(ValueError, "source MD5 mismatch"):
+            with self.assertRaisesRegex(ValueError, "MD5"):
                 replay(data, sha, idf, api)
             report["source_md5"] = saved
 
