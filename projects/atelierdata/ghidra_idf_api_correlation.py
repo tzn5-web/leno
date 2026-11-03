@@ -196,7 +196,7 @@ def correlate(idf_report, api_report, expected_sha256):
             # Keys are typically NAME.IDF:ascii or NAME.IDF:utf16. A
             # Windows drive prefix (C:\\...) must not be mistaken for the
             # encoding delimiter. Match the .IDF boundary explicitly.
-            marker = re.search(r"(?i)\\.idf(?=:(?:ascii|utf16|utf-16|unicode)\\Z|\\Z)", key)
+            marker = re.search(r"(?i)\.idf(?=:(?:ascii|utf16|utf-16|unicode)\Z|\Z)", key)
             if marker is None:
                 continue
             filename = key[:marker.end()]
