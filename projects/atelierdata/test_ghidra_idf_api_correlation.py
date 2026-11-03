@@ -45,6 +45,21 @@ def fixtures():
 
 class CorrelationTests(unittest.TestCase):
 
+    def test_private_report_read_accepts_exact_byte_limit(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "report.json"
+            path.write_bytes(b"{}")
+            with mock.patch("ghidra_idf_api_correlation.MAX_REPORT", 2):
+                self.assertEqual(load_private(path), {})
+
+    def test_private_report_read_rejects_over_byte_limit(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "report.json"
+            path.write_bytes(b"{} ")
+            with mock.patch("ghidra_idf_api_correlation.MAX_REPORT", 2):
+                with self.assertRaisesRegex(ValueError, "oversized"):
+                    load_private(path)
+
     def test_private_report_rejects_duplicate_top_level_identity(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "report.json"
