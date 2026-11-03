@@ -70,12 +70,20 @@ def create_procedure(store, vehicle_id, system, title, summary="", precautions="
               _text(summary,"summary",MAX_SUMMARY),
               _text(precautions,"precautions",MAX_WARNING),
               _text(source,"source",MAX_SOURCE,True))
-    if store.db.execute("SELECT 1 FROM vehicles WHERE id=?",(vehicle_id,)).fetchone() is None:
-        raise ValueError("Vehicle does not exist")
-    cur=store.db.execute("INSERT INTO procedures(vehicle_id,system,title,summary,precautions,source)"
-        " VALUES(?,?,?,?,?,?)",(vehicle_id,*fields))
-    store.db.commit()
-    return cur.lastrowid
+    # Keep vehicle existence validation and insertion in one writer transaction.
+    # A concurrent connection must not delete the vehicle after validation.
+    try:
+        store.db.execute("BEGIN IMMEDIATE")
+        if store.db.execute("SELECT 1 FROM vehicles WHERE id=?",(vehicle_id,)).fetchone() is None:
+            raise ValueError("Vehicle does not exist")
+        cur=store.db.execute("INSERT INTO procedures(vehicle_id,system,title,summary,precautions,source)"
+            " VALUES(?,?,?,?,?,?)",(vehicle_id,*fields))
+        result=cur.lastrowid
+        store.db.commit()
+        return result
+    except BaseException:
+        store.db.rollback()
+        raise
 
 
 def update_procedure(store, procedure_id, system, title, summary="",precautions="",source=""):
