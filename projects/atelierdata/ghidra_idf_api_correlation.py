@@ -10,6 +10,7 @@ import argparse
 import json
 import os
 import re
+import stat
 from pathlib import Path
 
 MAX_REPORT = 16 * 1024 * 1024
@@ -60,10 +61,29 @@ def load_private(path):
 
     # Recheck the actual bytes consumed: the file can grow after stat().
     # Decode strictly before parsing so malformed UTF-8 cannot be normalized.
-    with path.open("rb") as stream:
-        payload = stream.read(MAX_REPORT + 1)
-    if len(payload) > MAX_REPORT:
-        raise ValueError("Private Ghidra report grew beyond size limit")
+    # Open a file descriptor rather than re-resolving a path via Path.open.
+    # O_NOFOLLOW prevents a symlink swapped in after the path preflight on
+    # platforms supporting it. fstat checks the actual opened object.
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(path, flags)
+    try:
+        with os.fdopen(fd, "rb") as stream:
+            fd = -1  # descriptor ownership transferred to the stream
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_REPORT:
+                raise ValueError("Private report is not a bounded regular file")
+            payload = stream.read(MAX_REPORT + 1)
+            if len(payload) > MAX_REPORT:
+                raise ValueError("Private Ghidra report grew beyond size limit")
+            # A concurrent in-place rewrite must not silently become evidence.
+            after = os.fstat(stream.fileno())
+            if (after.st_size != info.st_size or
+                    after.st_mtime_ns != info.st_mtime_ns):
+                raise ValueError("Private Ghidra report changed during read")
+    finally:
+        if fd >= 0:
+            os.close(fd)
     return json.loads(payload.decode("utf-8"),
                       object_pairs_hook=unique_object,
                       parse_constant=reject_nonfinite)
