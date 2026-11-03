@@ -333,6 +333,9 @@ def correlate(idf_report, api_report, expected_sha256):
         "shared_idf_and_api_call_or_jump_functions": len(idf_functions & api_code_functions),
         "shared_idf_and_direct_file_io_functions": len(idf_functions & direct_functions),
         "shared_idf_and_direct_file_io_call_or_jump_functions": len(idf_functions & direct_code_functions),
+        # A complete scan can still contain no actionable direct file-I/O
+        # intersection. Keep evidence completeness distinct from a candidate.
+        "direct_file_io_triage_candidate_present": bool(idf_functions & direct_code_functions),
         "shared_idf_and_api_family_functions": family_shared,
         "shared_idf_and_api_family_call_or_jump_functions": family_shared_code,
         "target_executed": False,
