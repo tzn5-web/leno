@@ -198,12 +198,18 @@ def correlate(idf_report, api_report, expected_sha256):
     # Bound container entries as well as references: zero-xref records can
     # otherwise bypass MAX_ITEMS and exhaust memory/CPU during correlation.
     idf_match_records = api_symbol_records = 0
+    idf_keyword_records = 0
     # Unowned references cannot support a function-level intersection.
     idf_unowned_refs = api_unowned_refs = 0
     for block in hits.values():
         if not isinstance(block, dict):
             raise ValueError("Invalid IDF block")
         for key, matches in block.items():
+            # Bound every keyword entry, not just names ending in .IDF.
+            # Otherwise a report full of unrelated keywords bypasses the cap.
+            idf_keyword_records += 1
+            if idf_keyword_records > MAX_ITEMS:
+                raise ValueError("Too many IDF keyword records")
             if not isinstance(key, str) or not isinstance(matches, list):
                 raise ValueError("Invalid IDF matches")
             # Keys are typically NAME.IDF:ascii or NAME.IDF:utf16. A
