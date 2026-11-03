@@ -1,6 +1,9 @@
 """Synthetic-only tests for static Ghidra xref correlation."""
 import copy
 import json
+import os
+import sys
+from unittest import mock
 import tempfile
 import unittest
 from pathlib import Path
@@ -371,6 +374,29 @@ class CorrelationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "reference type"):
             correlate(idf, api, SHA)
 
+
+    def test_public_output_hardlink_to_private_report_is_rejected(self):
+        from ghidra_idf_api_correlation import main
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            idf, api = fixtures()
+            source = root / "idf-private.json"
+            other = root / "api-private.json"
+            output = root / "public.json"
+            source.write_text(json.dumps(idf), encoding="utf-8")
+            other.write_text(json.dumps(api), encoding="utf-8")
+            try:
+                os.link(source, output)
+            except OSError:
+                self.skipTest("Hard links unavailable")
+            original = source.read_bytes()
+            argv = ["ghidra_idf_api_correlation.py", "--idf-private-report", str(source),
+                    "--api-private-report", str(other), "--expected-sha256", SHA,
+                    "--public-output", str(output)]
+            with mock.patch.object(sys, "argv", argv):
+                with self.assertRaises(SystemExit):
+                    main()
+            self.assertEqual(source.read_bytes(), original)
 
 if __name__ == "__main__":
     unittest.main()
