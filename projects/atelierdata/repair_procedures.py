@@ -243,15 +243,18 @@ def add_step(store,procedure_id,instruction,safety_note="",article_id=None,posit
     _require_id(procedure_id, "procedure")
     instruction=_text(instruction,"instruction",MAX_INSTRUCTION,True)
     safety_note=_text(safety_note,"safety note",MAX_WARNING)
-    ref=_article_reference(store,procedure_id,article_id)
-    current=[s["id"] for s in list_steps(store,procedure_id)]
-    if position is None:
-        position=len(current)+1
-    # bool is a subclass of int: True must not silently mean position 1.
-    if type(position) is not int or not 1 <= position <= len(current)+1:
-        raise ValueError("Invalid step position")
+    # Acquire the writer lock BEFORE checking article ownership and step order.
+    # Otherwise another SQLite connection can reassign a document or insert a
+    # step between validation and the write, producing a stale reference/order.
     try:
         store.db.execute("BEGIN IMMEDIATE")
+        ref=_article_reference(store,procedure_id,article_id)
+        current=[s["id"] for s in list_steps(store,procedure_id)]
+        if position is None:
+            position=len(current)+1
+        # bool is a subclass of int: True must not silently mean position 1.
+        if type(position) is not int or not 1 <= position <= len(current)+1:
+            raise ValueError("Invalid step position")
         cursor=store.db.execute(
             "INSERT INTO procedure_steps(procedure_id,step_number,instruction,safety_note,article_id)"
             " VALUES(?,?,?,?,?)",(procedure_id,len(current)+1,instruction,safety_note,ref))
@@ -267,25 +270,31 @@ def add_step(store,procedure_id,instruction,safety_note="",article_id=None,posit
 
 def update_step(store,step_id,instruction,safety_note="",article_id=None):
     _require_id(step_id, "step")
-    old=store.db.execute("SELECT * FROM procedure_steps WHERE id=?",(step_id,)).fetchone()
-    if old is None:
-        raise ValueError("Step does not exist")
-    fields=(_text(instruction,"instruction",MAX_INSTRUCTION,True),
-            _text(safety_note,"safety note",MAX_WARNING),
-            _article_reference(store,old["procedure_id"],article_id))
-    store.db.execute("UPDATE procedure_steps SET instruction=?,safety_note=?,article_id=? "
-                     "WHERE id=?",(*fields,step_id))
-    store.db.commit()
+    instruction=_text(instruction,"instruction",MAX_INSTRUCTION,True)
+    safety_note=_text(safety_note,"safety note",MAX_WARNING)
+    try:
+        store.db.execute("BEGIN IMMEDIATE")
+        old=store.db.execute("SELECT * FROM procedure_steps WHERE id=?",(step_id,)).fetchone()
+        if old is None:
+            raise ValueError("Step does not exist")
+        ref=_article_reference(store,old["procedure_id"],article_id)
+        store.db.execute("UPDATE procedure_steps SET instruction=?,safety_note=?,article_id=? "
+                         "WHERE id=?",(instruction,safety_note,ref,step_id))
+        store.db.commit()
+    except BaseException:
+        store.db.rollback()
+        raise
 
 
 def delete_step(store,step_id):
     _require_id(step_id, "step")
-    old=store.db.execute("SELECT procedure_id FROM procedure_steps WHERE id=?",(step_id,)).fetchone()
-    if old is None:
-        return
-    pid=old[0]
     try:
         store.db.execute("BEGIN IMMEDIATE")
+        old=store.db.execute("SELECT procedure_id FROM procedure_steps WHERE id=?",(step_id,)).fetchone()
+        if old is None:
+            store.db.commit()
+            return
+        pid=old[0]
         store.db.execute("DELETE FROM procedure_steps WHERE id=?",(step_id,))
         _renumber(store,pid,[s["id"] for s in list_steps(store,pid)])
         store.db.commit()
@@ -299,18 +308,19 @@ def move_step(store,step_id,delta):
     # Membership equality would accept True and 1.0 as the direction +1.
     if type(delta) is not int or delta not in (-1,1):
         raise ValueError("Direction must be +1 or -1")
-    old=store.db.execute("SELECT procedure_id FROM procedure_steps WHERE id=?",(step_id,)).fetchone()
-    if old is None:
-        raise ValueError("Step does not exist")
-    pid=old[0]
-    ids=[s["id"] for s in list_steps(store,pid)]
-    pos=ids.index(step_id)
-    target=pos+delta
-    if target<0 or target>=len(ids):
-        return False
-    ids[pos],ids[target]=ids[target],ids[pos]
     try:
         store.db.execute("BEGIN IMMEDIATE")
+        old=store.db.execute("SELECT procedure_id FROM procedure_steps WHERE id=?",(step_id,)).fetchone()
+        if old is None:
+            raise ValueError("Step does not exist")
+        pid=old[0]
+        ids=[s["id"] for s in list_steps(store,pid)]
+        pos=ids.index(step_id)
+        target=pos+delta
+        if target<0 or target>=len(ids):
+            store.db.commit()
+            return False
+        ids[pos],ids[target]=ids[target],ids[pos]
         _renumber(store,pid,ids)
         store.db.commit()
     except BaseException:
