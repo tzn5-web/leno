@@ -521,5 +521,23 @@ class CorrelationTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "changed during read"):
                     load_private(report)
 
+
+    def test_zero_xref_idf_records_respect_limit(self):
+        idf, api = fixtures()
+        idf["keyword_hits"][".rdata"]["MODELS.IDF:ascii"] = [
+            {"references_from": []}, {"references_from": []}]
+        with mock.patch("ghidra_idf_api_correlation.MAX_ITEMS", 1):
+            with self.assertRaisesRegex(ValueError, "Too many IDF match records"):
+                correlate(idf, api, SHA)
+
+    def test_zero_xref_api_symbols_respect_limit(self):
+        idf, api = fixtures()
+        idf["keyword_hits"][".rdata"]["MODELS.IDF:ascii"] = []
+        api["api_symbols"]["ReadFile"] = [
+            {"references": []}, {"references": []}]
+        with mock.patch("ghidra_idf_api_correlation.MAX_ITEMS", 1):
+            with self.assertRaisesRegex(ValueError, "Too many API symbol records"):
+                correlate(idf, api, SHA)
+
 if __name__ == "__main__":
     unittest.main()
