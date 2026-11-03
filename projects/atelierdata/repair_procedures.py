@@ -107,12 +107,28 @@ def update_procedure(store, procedure_id, system, title, summary="",precautions=
             _text(summary,"summary",MAX_SUMMARY),
             _text(precautions,"precautions",MAX_WARNING),
             _text(source,"source",MAX_SOURCE,True))
-    row=store.db.execute("UPDATE procedures SET system=?,title=?,summary=?,precautions=?,source=?"
-                         " WHERE id=?",(*fields,procedure_id))
-    if row.rowcount == 0:
-        raise ValueError("Procedure does not exist")
-    store.db.commit()
-
+    # Preserve pending caller writes; a missing procedure must not commit them.
+    nested = store.db.in_transaction
+    try:
+        if nested:
+            store.db.execute("SAVEPOINT atelierdata_update_procedure")
+        else:
+            store.db.execute("BEGIN IMMEDIATE")
+        row=store.db.execute("UPDATE procedures SET system=?,title=?,summary=?,precautions=?,source=?"
+                             " WHERE id=?",(*fields,procedure_id))
+        if row.rowcount == 0:
+            raise ValueError("Procedure does not exist")
+        if nested:
+            store.db.execute("RELEASE SAVEPOINT atelierdata_update_procedure")
+        else:
+            store.db.commit()
+    except BaseException:
+        if nested:
+            store.db.execute("ROLLBACK TO SAVEPOINT atelierdata_update_procedure")
+            store.db.execute("RELEASE SAVEPOINT atelierdata_update_procedure")
+        else:
+            store.db.rollback()
+        raise
 
 def _casefold_contains(value, needle):
     """SQLite UDF: Unicode-aware, literal substring matching (no wildcards).
