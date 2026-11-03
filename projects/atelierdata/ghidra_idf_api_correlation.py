@@ -134,6 +134,8 @@ def correlate(idf_report, api_report, expected_sha256):
     family_functions = {name: set() for name in _API_FAMILIES}
     family_code_functions = {name: set() for name in _API_FAMILIES}
     idf_refs = api_refs = 0
+    # Unowned references cannot support a function-level intersection.
+    idf_unowned_refs = api_unowned_refs = 0
     for block in hits.values():
         if not isinstance(block, dict):
             raise ValueError("Invalid IDF block")
@@ -154,6 +156,8 @@ def correlate(idf_report, api_report, expected_sha256):
                     entry = ref.get("function_entry")
                     if entry is not None:
                         idf_functions.add(_function_key(entry))
+                    else:
+                        idf_unowned_refs += 1
     for api_name, symbols in api_symbols.items():
         if not isinstance(api_name, str) or len(api_name) > 100 or not isinstance(symbols, list):
             raise ValueError("Invalid API symbol list")
@@ -204,6 +208,8 @@ def correlate(idf_report, api_report, expected_sha256):
                             family_functions[family].add(key)
                             if is_call_or_jump:
                                 family_code_functions[family].add(key)
+                else:
+                    api_unowned_refs += 1
     direct_functions = set().union(*(family_functions[n] for n in _DIRECT_IO_FAMILIES))
     direct_code_functions = set().union(*(family_code_functions[n] for n in _DIRECT_IO_FAMILIES))
     family_shared = {
@@ -218,16 +224,18 @@ def correlate(idf_report, api_report, expected_sha256):
         "schema": "atelierdata-ghidra-idf-api-correlation-v1",
         "source_sha256_claims_match": True,
         "idf_reference_count": idf_refs,
+        "idf_references_without_function_owner": idf_unowned_refs,
         "idf_coverage_status": idf_coverage,
-        "idf_coverage_incomplete_or_unknown": idf_coverage != "complete",
+        "idf_coverage_incomplete_or_unknown": idf_coverage != "complete" or bool(idf_unowned_refs),
         "api_reference_count": api_refs,
+        "api_references_without_function_owner": api_unowned_refs,
         "api_scan_or_reference_coverage_truncated": scan_truncated or bool(truncated_symbol_refs),
         "api_symbols_with_truncated_references": truncated_symbol_refs,
         "idf_referencing_functions": len(idf_functions),
         "api_referencing_functions": len(api_functions),
         "api_call_or_jump_functions": len(api_code_functions),
         "api_references_with_unknown_flow_type": unknown_flow_refs,
-        "api_flow_reference_classification_incomplete_or_unknown": bool(unknown_flow_refs),
+        "api_flow_reference_classification_incomplete_or_unknown": bool(unknown_flow_refs or api_unowned_refs),
         "shared_idf_and_api_functions": len(idf_functions & api_functions),
         "shared_idf_and_api_call_or_jump_functions": len(idf_functions & api_code_functions),
         "shared_idf_and_direct_file_io_functions": len(idf_functions & direct_functions),
@@ -243,6 +251,8 @@ def correlate(idf_report, api_report, expected_sha256):
                         "API families are xref-only triage, not proven calls. "
                         "Flow references use Ghidra reference type, never mnemonic alone; "
                         "older reports without reference type are unclassified. "
+                        "References without a containing function are counted but "
+                        "cannot support function-level correlation. "
                         "GetProcAddress alone is not direct file I/O. "
                         "Dynamically resolved calls, cross-function paths and "
                         "indirect edges may be missed.")
