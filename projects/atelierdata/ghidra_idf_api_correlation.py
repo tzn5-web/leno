@@ -179,6 +179,7 @@ def correlate(idf_report, api_report, expected_sha256):
     truncated_symbol_refs = 0
     unknown_flow_refs = 0
     idf_functions = set()
+    idf_filenames_with_xrefs = set()
     api_functions = set()
     api_code_functions = set()
     family_functions = {name: set() for name in _API_FAMILIES}
@@ -192,11 +193,15 @@ def correlate(idf_report, api_report, expected_sha256):
         for key, matches in block.items():
             if not isinstance(key, str) or not isinstance(matches, list):
                 raise ValueError("Invalid IDF matches")
-            if not key.split(":", 1)[0].upper().endswith(".IDF"):
+            filename = key.split(":", 1)[0]
+            if not filename.upper().endswith(".IDF"):
                 continue
             for match in matches:
                 if not isinstance(match, dict) or not isinstance(match.get("references_from"), list):
                     raise ValueError("Invalid IDF xref")
+                if match["references_from"]:
+                    # Aggregate only; never disclose private filenames.
+                    idf_filenames_with_xrefs.add(filename.casefold())
                 for ref in match["references_from"]:
                     if not isinstance(ref, dict):
                         raise ValueError("Invalid IDF reference")
@@ -277,6 +282,7 @@ def correlate(idf_report, api_report, expected_sha256):
         "schema": "atelierdata-ghidra-idf-api-correlation-v1",
         "source_sha256_claims_match": True,
         "idf_reference_count": idf_refs,
+        "idf_distinct_filenames_with_xrefs": len(idf_filenames_with_xrefs),
         "idf_references_without_function_owner": idf_unowned_refs,
         "idf_coverage_status": idf_coverage,
         "idf_coverage_incomplete_or_unknown": idf_coverage != "complete" or bool(idf_unowned_refs),
