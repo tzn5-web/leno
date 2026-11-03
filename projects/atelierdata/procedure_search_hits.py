@@ -70,13 +70,12 @@ def next_hit_index(hit_count, current_index=None, direction=1):
     This pure helper is shared by the Windows results dialog and unit tests.
     A missing selection starts at the first (next) or last (previous) row.
     """
-    if (isinstance(hit_count, bool) or not isinstance(hit_count, int)
-            or not 0 <= hit_count <= 1000):
+    if (type(hit_count) is not int or not 0 <= hit_count <= 1000):
         raise ValueError("Invalid search result count")
     if type(direction) is not int or direction not in (-1, 1):
         raise ValueError("Invalid search navigation direction")
     if current_index is not None and (
-            isinstance(current_index, bool) or not isinstance(current_index, int)
+            type(current_index) is not int
             or not 0 <= current_index < hit_count):
         raise ValueError("Invalid selected search result")
     if not hit_count:
