@@ -365,8 +365,14 @@ def move_step(store,step_id,delta):
     # Membership equality would accept True and 1.0 as the direction +1.
     if type(delta) is not int or delta not in (-1,1):
         raise ValueError("Direction must be +1 or -1")
+    # Reordering must preserve an existing caller transaction, including
+    # the no-op boundary case. Keep lookup and renumbering in one write scope.
+    nested = store.db.in_transaction
     try:
-        store.db.execute("BEGIN IMMEDIATE")
+        if nested:
+            store.db.execute("SAVEPOINT atelierdata_move_step")
+        else:
+            store.db.execute("BEGIN IMMEDIATE")
         old=store.db.execute("SELECT procedure_id FROM procedure_steps WHERE id=?",(step_id,)).fetchone()
         if old is None:
             raise ValueError("Step does not exist")
@@ -374,16 +380,22 @@ def move_step(store,step_id,delta):
         ids=[s["id"] for s in list_steps(store,pid)]
         pos=ids.index(step_id)
         target=pos+delta
-        if target<0 or target>=len(ids):
+        moved=0 <= target < len(ids)
+        if moved:
+            ids[pos],ids[target]=ids[target],ids[pos]
+            _renumber(store,pid,ids)
+        if nested:
+            store.db.execute("RELEASE SAVEPOINT atelierdata_move_step")
+        else:
             store.db.commit()
-            return False
-        ids[pos],ids[target]=ids[target],ids[pos]
-        _renumber(store,pid,ids)
-        store.db.commit()
     except BaseException:
-        store.db.rollback()
+        if nested:
+            store.db.execute("ROLLBACK TO SAVEPOINT atelierdata_move_step")
+            store.db.execute("RELEASE SAVEPOINT atelierdata_move_step")
+        else:
+            store.db.rollback()
         raise
-    return True
+    return moved
 
 
 def procedure_text(store,pid):
