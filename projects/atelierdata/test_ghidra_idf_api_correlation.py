@@ -439,7 +439,8 @@ class CorrelationTests(unittest.TestCase):
                 calls[0] += 1
                 if calls[0] == 2:
                     return mock.Mock(st_mode=info.st_mode, st_size=info.st_size,
-                                     st_mtime_ns=info.st_mtime_ns + 1)
+                                     st_mtime_ns=info.st_mtime_ns + 1,
+                                     st_ctime_ns=info.st_ctime_ns)
                 return info
             with mock.patch.object(module.os, "fstat", side_effect=altered):
                 with self.assertRaisesRegex(ValueError, "changed during read"):
