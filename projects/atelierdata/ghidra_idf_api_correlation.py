@@ -42,7 +42,18 @@ def load_private(path):
     path = Path(path)
     if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_REPORT:
         raise ValueError("Private report missing, linked, or oversized")
-    return json.loads(path.read_text(encoding="utf-8"))
+    # Duplicate JSON keys can silently replace identity, coverage or reference
+    # fields. Reject ambiguous private evidence rather than trusting last-wins.
+    def unique_object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("Duplicate key in private Ghidra report")
+            result[key] = value
+        return result
+
+    return json.loads(path.read_text(encoding="utf-8"),
+                      object_pairs_hook=unique_object)
 
 
 def _identity(report, expected_sha256):
