@@ -74,6 +74,20 @@ class CorrelationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Duplicate key"):
                 load_private(path)
 
+    def test_distinct_idf_filenames_are_aggregated_without_disclosure(self):
+        idf, api = fixtures()
+        idf["keyword_hits"][".rdata"]["models.idf:utf16"] = [
+            {"references_from": [{"function_entry": "00401000"}]}]
+        idf["keyword_hits"][".rdata"]["EMPTY.IDF:ascii"] = [
+            {"references_from": []}]
+        idf["keyword_hits"][".rdata"]["OTHER.IDF:ascii"] = [
+            {"references_from": [{"function_entry": None}]}]
+        result = correlate(idf, api, SHA)
+        self.assertEqual(result["idf_distinct_filenames_with_xrefs"], 2)
+        self.assertEqual(result["idf_reference_count"], 3)
+        self.assertNotIn("MODELS.IDF", json.dumps(result))
+        self.assertNotIn("OTHER.IDF", json.dumps(result))
+
     def test_shared_function_is_only_a_candidate(self):
         idf, api = fixtures()
         result = correlate(idf, api, SHA)
