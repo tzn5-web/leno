@@ -413,5 +413,37 @@ class CorrelationTests(unittest.TestCase):
                     main()
             self.assertEqual(source.read_bytes(), original)
 
+    def test_private_report_rejects_nonregular_opened_descriptor(self):
+        import ghidra_idf_api_correlation as module
+        with tempfile.TemporaryDirectory() as folder:
+            report = Path(folder) / "report.json"
+            report.write_text("{}", encoding="utf-8")
+            original = module.os.fstat
+            def altered(fd):
+                info = original(fd)
+                return mock.Mock(st_mode=0, st_size=info.st_size,
+                                 st_mtime_ns=info.st_mtime_ns)
+            with mock.patch.object(module.os, "fstat", side_effect=altered):
+                with self.assertRaisesRegex(ValueError, "regular file"):
+                    load_private(report)
+
+    def test_private_report_detects_mutation_during_read(self):
+        import ghidra_idf_api_correlation as module
+        with tempfile.TemporaryDirectory() as folder:
+            report = Path(folder) / "report.json"
+            report.write_text("{}", encoding="utf-8")
+            original = module.os.fstat
+            calls = [0]
+            def altered(fd):
+                info = original(fd)
+                calls[0] += 1
+                if calls[0] == 2:
+                    return mock.Mock(st_mode=info.st_mode, st_size=info.st_size,
+                                     st_mtime_ns=info.st_mtime_ns + 1)
+                return info
+            with mock.patch.object(module.os, "fstat", side_effect=altered):
+                with self.assertRaisesRegex(ValueError, "changed during read"):
+                    load_private(report)
+
 if __name__ == "__main__":
     unittest.main()
