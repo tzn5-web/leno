@@ -24,6 +24,8 @@ def validate_live_hit(store, vehicle_id, hit, search):
     if type(pid) is not int or pid <= 0:
         raise ValueError("Invalid procedure ID")
     label = hit.get("field")
+    if not isinstance(label, str):
+        raise ValueError("Invalid search field")
     procedure_columns = dict((display, column) for column, display in PROCEDURE_FIELDS)
     step_columns = dict((display, column) for column, display in STEP_FIELDS)
     if label in procedure_columns:
