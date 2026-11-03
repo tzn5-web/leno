@@ -303,6 +303,12 @@ def correlate(idf_report, api_report, expected_sha256):
                     api_unowned_refs += 1
     direct_functions = set().union(*(family_functions[n] for n in _DIRECT_IO_FAMILIES))
     direct_code_functions = set().union(*(family_code_functions[n] for n in _DIRECT_IO_FAMILIES))
+    # Stronger static triage signal: the same containing function references
+    # an IDF literal and Ghidra-classified control-flow xrefs to both an
+    # open and a read API. This remains only a candidate, not a call graph,
+    # proven reachability, file access, or an IDF decoder.
+    open_read_candidates = (idf_functions & family_code_functions["file_open"]
+                            & family_code_functions["file_read"])
     family_shared = {
         name: len(idf_functions & family_functions[name])
         for name in _API_FAMILIES
@@ -351,6 +357,16 @@ def correlate(idf_report, api_report, expected_sha256):
         # exposing a strict actionable triage gate for downstream consumers.
         "direct_file_io_triage_candidate_with_complete_coverage": (
             bool(idf_functions & direct_code_functions)
+            and idf_coverage == "complete"
+            and idf_unowned_refs == 0
+            and api_unowned_refs == 0
+            and not scan_truncated
+            and truncated_symbol_refs == 0
+            and unknown_flow_refs == 0
+        ),
+        "shared_idf_and_file_open_and_read_call_or_jump_functions": len(open_read_candidates),
+        "open_read_idf_triage_candidate_with_complete_coverage": (
+            bool(open_read_candidates)
             and idf_coverage == "complete"
             and idf_unowned_refs == 0
             and api_unowned_refs == 0
