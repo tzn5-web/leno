@@ -318,6 +318,17 @@ def correlate(idf_report, api_report, expected_sha256):
         "api_call_or_jump_functions": len(api_code_functions),
         "api_references_with_unknown_flow_type": unknown_flow_refs,
         "api_flow_reference_classification_incomplete_or_unknown": bool(unknown_flow_refs or api_unowned_refs),
+        # This gate indicates whether aggregate static evidence is sufficiently
+        # complete for prioritizing manual inspection. It is never a decoder
+        # or runtime file-access claim. Unknown/legacy coverage fails closed.
+        "static_triage_coverage_adequate": (
+            idf_coverage == "complete"
+            and idf_unowned_refs == 0
+            and api_unowned_refs == 0
+            and not scan_truncated
+            and truncated_symbol_refs == 0
+            and unknown_flow_refs == 0
+        ),
         "shared_idf_and_api_functions": len(idf_functions & api_functions),
         "shared_idf_and_api_call_or_jump_functions": len(idf_functions & api_code_functions),
         "shared_idf_and_direct_file_io_functions": len(idf_functions & direct_functions),
