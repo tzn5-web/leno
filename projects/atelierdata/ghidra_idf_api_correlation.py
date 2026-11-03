@@ -76,10 +76,15 @@ def load_private(path):
             payload = stream.read(MAX_REPORT + 1)
             if len(payload) > MAX_REPORT:
                 raise ValueError("Private Ghidra report grew beyond size limit")
+            # A short read must not be accepted as a complete snapshot even
+            # when metadata timestamps are coarse or preserved by a writer.
+            if len(payload) != info.st_size:
+                raise ValueError("Private Ghidra report short read or changed size")
             # A concurrent in-place rewrite must not silently become evidence.
             after = os.fstat(stream.fileno())
             if (after.st_size != info.st_size or
-                    after.st_mtime_ns != info.st_mtime_ns):
+                    after.st_mtime_ns != info.st_mtime_ns or
+                    after.st_ctime_ns != info.st_ctime_ns):
                 raise ValueError("Private Ghidra report changed during read")
     finally:
         if fd >= 0:
