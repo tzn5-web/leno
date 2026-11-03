@@ -174,6 +174,20 @@ def correlate(idf_report, api_report, expected_sha256):
                 api_refs += 1
                 if api_refs > MAX_ITEMS:
                     raise ValueError("Too many API references")
+                # Validate every reference, including those without a containing
+                # function. Unowned evidence must not bypass schema checks.
+                flow = ref.get("reference_is_call_or_jump")
+                if flow is not None and type(flow) is not bool:
+                    raise ValueError("Invalid Ghidra reference flow flag")
+                reference_type = ref.get("reference_type")
+                if reference_type is not None and not isinstance(reference_type, str):
+                    raise ValueError("Invalid Ghidra reference type")
+                derived_flow = (_reference_flow_from_type(reference_type)
+                                if reference_type is not None else None)
+                if flow is not None and derived_flow is not None and flow is not derived_flow:
+                    raise ValueError("Contradictory Ghidra flow evidence")
+                if derived_flow is None:
+                    unknown_flow_refs += 1
                 entry = ref.get("function_entry")
                 if entry is not None:
                     key = _function_key(entry)
@@ -181,23 +195,12 @@ def correlate(idf_report, api_report, expected_sha256):
                     # An instruction mnemonic alone is insufficient: a CALL
                     # instruction can have a DATA reference to a different
                     # operand. Count only Ghidra flow references.
-                    flow = ref.get("reference_is_call_or_jump")
-                    if flow is not None and type(flow) is not bool:
-                        raise ValueError("Invalid Ghidra reference flow flag")
-                    reference_type = ref.get("reference_type")
-                    if reference_type is not None and not isinstance(reference_type, str):
-                        raise ValueError("Invalid Ghidra reference type")
-                    derived_flow = (_reference_flow_from_type(reference_type)
-                                    if reference_type is not None else None)
-                    if flow is not None and derived_flow is not None and flow is not derived_flow:
-                        raise ValueError("Contradictory Ghidra flow evidence")
                     # A Boolean emitted by a report is not independent proof
                     # of an instruction-flow xref. Only a recognized Ghidra
                     # RefType may establish that classification. In particular,
                     # NOT_CALL + true and legacy type-less + true must remain
                     # unknown rather than inflate confirmed call counts.
                     if derived_flow is None:
-                        unknown_flow_refs += 1
                         is_call_or_jump = False
                     else:
                         is_call_or_jump = derived_flow
