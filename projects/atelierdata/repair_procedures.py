@@ -222,8 +222,26 @@ def get_procedure(store,pid):
 
 def delete_procedure(store,pid):
     _require_id(pid, "procedure")
-    store.db.execute("DELETE FROM procedures WHERE id=?",(pid,))
-    store.db.commit()
+    # Do not commit unrelated caller edits when deleting a procedure and its
+    # cascaded steps inside an existing transaction.
+    nested = store.db.in_transaction
+    try:
+        if nested:
+            store.db.execute("SAVEPOINT atelierdata_delete_procedure")
+        else:
+            store.db.execute("BEGIN IMMEDIATE")
+        store.db.execute("DELETE FROM procedures WHERE id=?", (pid,))
+        if nested:
+            store.db.execute("RELEASE SAVEPOINT atelierdata_delete_procedure")
+        else:
+            store.db.commit()
+    except BaseException:
+        if nested:
+            store.db.execute("ROLLBACK TO SAVEPOINT atelierdata_delete_procedure")
+            store.db.execute("RELEASE SAVEPOINT atelierdata_delete_procedure")
+        else:
+            store.db.rollback()
+        raise
 
 
 def list_steps(store,procedure_id):
