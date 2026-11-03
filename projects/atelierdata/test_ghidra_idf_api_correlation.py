@@ -324,5 +324,38 @@ class CorrelationTests(unittest.TestCase):
         self.assertFalse(result["api_flow_reference_classification_incomplete_or_unknown"])
 
 
+    def test_unowned_api_invalid_flow_flag_rejected(self):
+        idf, api = fixtures()
+        api["api_symbols"]["ReadFile"][0]["references"].append(
+            {"function_entry": None, "reference_type": "DATA",
+             "reference_is_call_or_jump": "false"})
+        with self.assertRaisesRegex(ValueError, "flow flag"):
+            correlate(idf, api, SHA)
+
+    def test_unowned_api_contradictory_flow_rejected(self):
+        idf, api = fixtures()
+        api["api_symbols"]["ReadFile"][0]["references"].append(
+            {"function_entry": None, "reference_type": "DATA",
+             "reference_is_call_or_jump": True})
+        with self.assertRaisesRegex(ValueError, "Contradictory Ghidra flow"):
+            correlate(idf, api, SHA)
+
+    def test_unowned_api_unknown_flow_is_counted(self):
+        idf, api = fixtures()
+        api["api_symbols"]["ReadFile"][0]["references"].append(
+            {"function_entry": None, "reference_type": "NOT_CALL"})
+        result = correlate(idf, api, SHA)
+        self.assertEqual(result["api_references_without_function_owner"], 1)
+        self.assertEqual(result["api_references_with_unknown_flow_type"], 1)
+        self.assertTrue(result["api_flow_reference_classification_incomplete_or_unknown"])
+
+    def test_unowned_api_invalid_reference_type_rejected(self):
+        idf, api = fixtures()
+        api["api_symbols"]["ReadFile"][0]["references"].append(
+            {"function_entry": None, "reference_type": 42})
+        with self.assertRaisesRegex(ValueError, "reference type"):
+            correlate(idf, api, SHA)
+
+
 if __name__ == "__main__":
     unittest.main()
