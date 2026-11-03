@@ -445,5 +445,48 @@ class CorrelationTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "changed during read"):
                     load_private(report)
 
+
+    def test_private_report_rejects_short_read_with_unchanged_metadata(self):
+        import ghidra_idf_api_correlation as module
+        with tempfile.TemporaryDirectory() as folder:
+            report = Path(folder) / "report.json"
+            report.write_text('{"ok":true}', encoding="utf-8")
+            original = module.os.fdopen
+            class ShortReader:
+                def __init__(self, stream):
+                    self.stream = stream
+                def __enter__(self):
+                    self.stream.__enter__()
+                    return self
+                def __exit__(self, *args):
+                    return self.stream.__exit__(*args)
+                def fileno(self):
+                    return self.stream.fileno()
+                def read(self, size):
+                    return self.stream.read(2)
+            with mock.patch.object(module.os, "fdopen",
+                                   side_effect=lambda *a, **kw: ShortReader(original(*a, **kw))):
+                with self.assertRaisesRegex(ValueError, "short read"):
+                    load_private(report)
+
+    def test_private_report_detects_ctime_change_without_mtime_change(self):
+        import ghidra_idf_api_correlation as module
+        with tempfile.TemporaryDirectory() as folder:
+            report = Path(folder) / "report.json"
+            report.write_text("{}", encoding="utf-8")
+            original = module.os.fstat
+            calls = [0]
+            def altered(fd):
+                info = original(fd)
+                calls[0] += 1
+                if calls[0] == 2:
+                    return mock.Mock(st_mode=info.st_mode, st_size=info.st_size,
+                                     st_mtime_ns=info.st_mtime_ns,
+                                     st_ctime_ns=info.st_ctime_ns + 1)
+                return info
+            with mock.patch.object(module.os, "fstat", side_effect=altered):
+                with self.assertRaisesRegex(ValueError, "changed during read"):
+                    load_private(report)
+
 if __name__ == "__main__":
     unittest.main()
