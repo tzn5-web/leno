@@ -269,7 +269,8 @@ def _article_reference(store, procedure_id, article_id):
         if not candidate.isascii() or not candidate.isdecimal():
             raise ValueError("Article reference must be a positive integer")
         article_id = int(candidate)
-    elif not isinstance(article_id, int):
+    elif type(article_id) is not int:
+        # Reject int subclasses with custom conversion/equality semantics.
         raise ValueError("Article reference must be a positive integer")
     if article_id <= 0:
         raise ValueError("Article reference must be a positive integer")
