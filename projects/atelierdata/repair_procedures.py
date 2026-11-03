@@ -72,17 +72,31 @@ def create_procedure(store, vehicle_id, system, title, summary="", precautions="
               _text(source,"source",MAX_SOURCE,True))
     # Keep vehicle existence validation and insertion in one writer transaction.
     # A concurrent connection must not delete the vehicle after validation.
+    # Existing callers may have an open transaction (e.g. synthetic fixture
+    # setup or a multi-operation editor). SQLite forbids nested BEGIN. A
+    # savepoint preserves the caller's pending changes and rollback boundary.
+    nested = store.db.in_transaction
     try:
-        store.db.execute("BEGIN IMMEDIATE")
+        if nested:
+            store.db.execute("SAVEPOINT atelierdata_create_procedure")
+        else:
+            store.db.execute("BEGIN IMMEDIATE")
         if store.db.execute("SELECT 1 FROM vehicles WHERE id=?",(vehicle_id,)).fetchone() is None:
             raise ValueError("Vehicle does not exist")
         cur=store.db.execute("INSERT INTO procedures(vehicle_id,system,title,summary,precautions,source)"
             " VALUES(?,?,?,?,?,?)",(vehicle_id,*fields))
         result=cur.lastrowid
-        store.db.commit()
+        if nested:
+            store.db.execute("RELEASE SAVEPOINT atelierdata_create_procedure")
+        else:
+            store.db.commit()
         return result
     except BaseException:
-        store.db.rollback()
+        if nested:
+            store.db.execute("ROLLBACK TO SAVEPOINT atelierdata_create_procedure")
+            store.db.execute("RELEASE SAVEPOINT atelierdata_create_procedure")
+        else:
+            store.db.rollback()
         raise
 
 
