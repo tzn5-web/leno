@@ -183,6 +183,9 @@ def correlate(idf_report, api_report, expected_sha256):
     api_symbols = api_report.get("api_symbols")
     if not isinstance(hits, dict) or not isinstance(api_symbols, dict):
         raise ValueError("Missing Ghidra xref collections")
+    # Missing scan-cap metadata is unknown, never evidence of a complete scan.
+    # Legacy reports remain readable, but cannot pass strict triage gates.
+    api_scan_coverage_known = "symbol_scan_truncated" in api_report
     scan_truncated = api_report.get("symbol_scan_truncated", False)
     if type(scan_truncated) is not bool:
         raise ValueError("Invalid API scan truncation flag")
@@ -328,6 +331,7 @@ def correlate(idf_report, api_report, expected_sha256):
         "api_reference_count": api_refs,
         "api_references_without_function_owner": api_unowned_refs,
         "api_scan_or_reference_coverage_truncated": scan_truncated or bool(truncated_symbol_refs),
+        "api_scan_coverage_known": api_scan_coverage_known,
         "api_symbols_with_truncated_references": truncated_symbol_refs,
         "idf_referencing_functions": len(idf_functions),
         "api_referencing_functions": len(api_functions),
@@ -341,6 +345,7 @@ def correlate(idf_report, api_report, expected_sha256):
             idf_coverage == "complete"
             and idf_unowned_refs == 0
             and api_unowned_refs == 0
+            and api_scan_coverage_known
             and not scan_truncated
             and truncated_symbol_refs == 0
             and unknown_flow_refs == 0
@@ -360,6 +365,7 @@ def correlate(idf_report, api_report, expected_sha256):
             and idf_coverage == "complete"
             and idf_unowned_refs == 0
             and api_unowned_refs == 0
+            and api_scan_coverage_known
             and not scan_truncated
             and truncated_symbol_refs == 0
             and unknown_flow_refs == 0
@@ -370,6 +376,7 @@ def correlate(idf_report, api_report, expected_sha256):
             and idf_coverage == "complete"
             and idf_unowned_refs == 0
             and api_unowned_refs == 0
+            and api_scan_coverage_known
             and not scan_truncated
             and truncated_symbol_refs == 0
             and unknown_flow_refs == 0
