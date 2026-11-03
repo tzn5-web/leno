@@ -112,6 +112,29 @@ class CorrelationTests(unittest.TestCase):
         api["api_symbols"]["ReadFile"][0]["references"][0]["reference_type"] = "DATA"
         self.assertFalse(correlate(idf, api, SHA)["direct_file_io_triage_candidate_present"])
 
+    def test_direct_io_complete_coverage_gate_rejects_legacy_and_truncated_reports(self):
+        idf, api = fixtures()
+        raw = correlate(idf, api, SHA)
+        self.assertTrue(raw["direct_file_io_triage_candidate_present"])
+        self.assertFalse(raw["direct_file_io_triage_candidate_with_complete_coverage"])
+        idf.update({
+            "block_scan_cap_reached": False,
+            "keyword_match_cap_reached": False,
+            "keyword_xref_cap_reached": False,
+            "short_memory_read": False,
+            "keyword_scan_coverage_complete": True,
+        })
+        complete = correlate(idf, api, SHA)
+        self.assertTrue(complete["direct_file_io_triage_candidate_with_complete_coverage"])
+        api["symbol_scan_truncated"] = True
+        truncated = correlate(idf, api, SHA)
+        self.assertTrue(truncated["direct_file_io_triage_candidate_present"])
+        self.assertFalse(truncated["direct_file_io_triage_candidate_with_complete_coverage"])
+        api["symbol_scan_truncated"] = False
+        api["api_symbols"]["ReadFile"][0]["references"][0]["reference_type"] = "UNKNOWN_CALL"
+        unknown = correlate(idf, api, SHA)
+        self.assertFalse(unknown["direct_file_io_triage_candidate_with_complete_coverage"])
+
     def test_no_idf_evidence_is_not_a_direct_io_candidate(self):
         idf, api = fixtures()
         idf["keyword_hits"] = {}
