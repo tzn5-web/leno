@@ -201,6 +201,10 @@ def correlate(idf_report, api_report, expected_sha256):
     idf_keyword_records = 0
     # Unowned references cannot support a function-level intersection.
     idf_unowned_refs = api_unowned_refs = 0
+    # Count top-level containers too: arbitrarily many empty sections or
+    # API names otherwise bypass the per-record limits below.
+    if len(hits) > MAX_ITEMS or len(api_symbols) > MAX_ITEMS:
+        raise ValueError("Too many Ghidra report containers")
     for block in hits.values():
         if not isinstance(block, dict):
             raise ValueError("Invalid IDF block")
