@@ -291,5 +291,38 @@ class CorrelationTests(unittest.TestCase):
                 load_private(link)
 
 
+
+    def test_unowned_idf_reference_prevents_complete_claim(self):
+        idf, api = fixtures()
+        idf.update(block_scan_cap_reached=False, keyword_match_cap_reached=False,
+                   keyword_xref_cap_reached=False, short_memory_read=False,
+                   keyword_scan_coverage_complete=True)
+        idf["keyword_hits"][".rdata"]["MODELS.IDF:ascii"][0]["references_from"].append(
+            {"function_entry": None, "source_address": "00401050"})
+        result = correlate(idf, api, SHA)
+        self.assertEqual(result["idf_reference_count"], 2)
+        self.assertEqual(result["idf_references_without_function_owner"], 1)
+        self.assertEqual(result["idf_referencing_functions"], 1)
+        self.assertEqual(result["idf_coverage_status"], "complete")
+        self.assertTrue(result["idf_coverage_incomplete_or_unknown"])
+
+    def test_unowned_api_reference_prevents_complete_claim(self):
+        idf, api = fixtures()
+        api["api_symbols"]["ReadFile"][0]["references"].append(
+            {"function_entry": None, "reference_type": "UNCONDITIONAL_CALL"})
+        result = correlate(idf, api, SHA)
+        self.assertEqual(result["api_reference_count"], 3)
+        self.assertEqual(result["api_references_without_function_owner"], 1)
+        self.assertTrue(result["api_flow_reference_classification_incomplete_or_unknown"])
+        self.assertEqual(result["shared_idf_and_api_call_or_jump_functions"], 1)
+
+    def test_all_owned_references_have_no_owner_warning(self):
+        idf, api = fixtures()
+        result = correlate(idf, api, SHA)
+        self.assertEqual(result["idf_references_without_function_owner"], 0)
+        self.assertEqual(result["api_references_without_function_owner"], 0)
+        self.assertFalse(result["api_flow_reference_classification_incomplete_or_unknown"])
+
+
 if __name__ == "__main__":
     unittest.main()
