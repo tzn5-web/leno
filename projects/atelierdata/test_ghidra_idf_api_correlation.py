@@ -106,6 +106,19 @@ class CorrelationTests(unittest.TestCase):
         self.assertNotIn("PRIVATE", json.dumps(result))
         self.assertNotIn("MODELS.IDF", json.dumps(result))
 
+    def test_direct_io_candidate_requires_shared_flow_reference(self):
+        idf, api = fixtures()
+        self.assertTrue(correlate(idf, api, SHA)["direct_file_io_triage_candidate_present"])
+        api["api_symbols"]["ReadFile"][0]["references"][0]["reference_type"] = "DATA"
+        self.assertFalse(correlate(idf, api, SHA)["direct_file_io_triage_candidate_present"])
+
+    def test_no_idf_evidence_is_not_a_direct_io_candidate(self):
+        idf, api = fixtures()
+        idf["keyword_hits"] = {}
+        result = correlate(idf, api, SHA)
+        self.assertFalse(result["direct_file_io_triage_candidate_present"])
+        self.assertEqual(result["shared_idf_and_direct_file_io_call_or_jump_functions"], 0)
+
     def test_shared_function_is_only_a_candidate(self):
         idf, api = fixtures()
         result = correlate(idf, api, SHA)
