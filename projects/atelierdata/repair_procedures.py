@@ -305,17 +305,30 @@ def update_step(store,step_id,instruction,safety_note="",article_id=None):
     _require_id(step_id, "step")
     instruction=_text(instruction,"instruction",MAX_INSTRUCTION,True)
     safety_note=_text(safety_note,"safety note",MAX_WARNING)
+    # Preserve the caller's pending edits when this operation runs inside an
+    # existing SQLite transaction. Keep ownership validation and update atomic.
+    nested = store.db.in_transaction
     try:
-        store.db.execute("BEGIN IMMEDIATE")
+        if nested:
+            store.db.execute("SAVEPOINT atelierdata_update_step")
+        else:
+            store.db.execute("BEGIN IMMEDIATE")
         old=store.db.execute("SELECT * FROM procedure_steps WHERE id=?",(step_id,)).fetchone()
         if old is None:
             raise ValueError("Step does not exist")
         ref=_article_reference(store,old["procedure_id"],article_id)
         store.db.execute("UPDATE procedure_steps SET instruction=?,safety_note=?,article_id=? "
                          "WHERE id=?",(instruction,safety_note,ref,step_id))
-        store.db.commit()
+        if nested:
+            store.db.execute("RELEASE SAVEPOINT atelierdata_update_step")
+        else:
+            store.db.commit()
     except BaseException:
-        store.db.rollback()
+        if nested:
+            store.db.execute("ROLLBACK TO SAVEPOINT atelierdata_update_step")
+            store.db.execute("RELEASE SAVEPOINT atelierdata_update_step")
+        else:
+            store.db.rollback()
         raise
 
 
