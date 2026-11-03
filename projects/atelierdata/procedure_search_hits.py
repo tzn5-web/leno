@@ -101,9 +101,9 @@ def list_procedure_hits(store, vehicle_id, search, limit=DEFAULT_LIMIT, offset=0
         raise ValueError("Invalid vehicle id")
     if not isinstance(search, str) or not search.strip():
         raise ValueError("Introduce un termen de căutare")
-    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
+    if type(limit) is not int or not 1 <= limit <= 1000:
         raise ValueError("Limită invalidă")
-    if isinstance(offset, bool) or not isinstance(offset, int) or not 0 <= offset <= 1000000:
+    if type(offset) is not int or not 0 <= offset <= 1000000:
         raise ValueError("Invalid search offset")
     valid_fields = {label for _, label in (*PROCEDURE_FIELDS, *STEP_FIELDS)}
     if field is not None and (not isinstance(field, str) or field not in valid_fields):
