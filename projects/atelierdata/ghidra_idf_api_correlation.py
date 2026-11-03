@@ -193,9 +193,13 @@ def correlate(idf_report, api_report, expected_sha256):
         for key, matches in block.items():
             if not isinstance(key, str) or not isinstance(matches, list):
                 raise ValueError("Invalid IDF matches")
-            filename = key.split(":", 1)[0]
-            if not filename.upper().endswith(".IDF"):
+            # Keys are typically NAME.IDF:ascii or NAME.IDF:utf16. A
+            # Windows drive prefix (C:\\...) must not be mistaken for the
+            # encoding delimiter. Match the .IDF boundary explicitly.
+            marker = re.search(r"(?i)\\.idf(?=:(?:ascii|utf16|utf-16|unicode)\\Z|\\Z)", key)
+            if marker is None:
                 continue
+            filename = key[:marker.end()]
             for match in matches:
                 if not isinstance(match, dict) or not isinstance(match.get("references_from"), list):
                     raise ValueError("Invalid IDF xref")
