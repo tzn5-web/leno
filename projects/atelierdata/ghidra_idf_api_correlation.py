@@ -166,6 +166,16 @@ def correlate(idf_report, api_report, expected_sha256):
         raise ValueError("Expected lowercase SHA256 required")
     _identity(idf_report, expected_sha256)
     _identity(api_report, expected_sha256)
+    # A matching SHA256 claim alone does not ensure the two independent
+    # Ghidra exports describe the same imported program. Compare available
+    # MD5 identities as a cross-report consistency check (not proof of origin).
+    md5_values = [report.get("source_md5") for report in (idf_report, api_report)]
+    for md5 in md5_values:
+        if md5 is not None and (not isinstance(md5, str) or
+                                re.fullmatch(r"[0-9a-f]{32}", md5) is None):
+            raise ValueError("Invalid Ghidra source MD5 identity")
+    if all(md5 is not None for md5 in md5_values) and md5_values[0] != md5_values[1]:
+        raise ValueError("Ghidra reports disagree on imported source MD5")
     idf_coverage = _idf_coverage(idf_report)
     if api_report.get("schema") != "atelierdata-ghidra-file-api-xrefs-v1":
         raise ValueError("Unsupported API report")
