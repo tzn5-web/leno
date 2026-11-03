@@ -58,8 +58,13 @@ def load_private(path):
     def reject_nonfinite(value):
         raise ValueError("Non-finite number in private Ghidra report")
 
-    # Read exactly the size checked above; strict UTF-8 rejects malformed input.
-    return json.loads(path.read_text(encoding="utf-8"),
+    # Recheck the actual bytes consumed: the file can grow after stat().
+    # Decode strictly before parsing so malformed UTF-8 cannot be normalized.
+    with path.open("rb") as stream:
+        payload = stream.read(MAX_REPORT + 1)
+    if len(payload) > MAX_REPORT:
+        raise ValueError("Private Ghidra report grew beyond size limit")
+    return json.loads(payload.decode("utf-8"),
                       object_pairs_hook=unique_object,
                       parse_constant=reject_nonfinite)
 
