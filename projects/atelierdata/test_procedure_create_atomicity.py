@@ -55,6 +55,29 @@ class ProcedureCreateAtomicityTests(unittest.TestCase):
         self.peer.db.commit()
         self.assertEqual(self.store.db.execute("PRAGMA quick_check").fetchone()[0], "ok")
 
+    def test_existing_transaction_keeps_pending_changes(self):
+        self.store.db.execute("UPDATE vehicles SET model=? WHERE id=?", ("PENDING", self.vehicle))
+        self.assertTrue(self.store.db.in_transaction)
+        pid = procedures.create_procedure(
+            self.store, self.vehicle, "Synthetic", "Task", source="OWN TEST")
+        self.assertTrue(self.store.db.in_transaction)
+        self.assertEqual(procedures.get_procedure(self.store, pid)["vehicle_id"], self.vehicle)
+        self.store.db.rollback()
+        self.assertIsNone(procedures.get_procedure(self.store, pid))
+        self.assertNotEqual(self.store.db.execute(
+            "SELECT model FROM vehicles WHERE id=?", (self.vehicle,)).fetchone()[0], "PENDING")
+
+    def test_failed_nested_creation_preserves_caller_transaction(self):
+        self.store.db.execute("UPDATE vehicles SET model=? WHERE id=?", ("PENDING", self.vehicle))
+        with self.assertRaises(ValueError):
+            procedures.create_procedure(
+                self.store, 999999, "Synthetic", "Task", source="OWN TEST")
+        self.assertTrue(self.store.db.in_transaction)
+        self.assertEqual(self.store.db.execute(
+            "SELECT model FROM vehicles WHERE id=?", (self.vehicle,)).fetchone()[0], "PENDING")
+        self.store.db.rollback()
+
+
 
 if __name__ == "__main__":
     unittest.main()
