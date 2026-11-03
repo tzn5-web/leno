@@ -195,6 +195,9 @@ def correlate(idf_report, api_report, expected_sha256):
     family_functions = {name: set() for name in _API_FAMILIES}
     family_code_functions = {name: set() for name in _API_FAMILIES}
     idf_refs = api_refs = 0
+    # Bound container entries as well as references: zero-xref records can
+    # otherwise bypass MAX_ITEMS and exhaust memory/CPU during correlation.
+    idf_match_records = api_symbol_records = 0
     # Unowned references cannot support a function-level intersection.
     idf_unowned_refs = api_unowned_refs = 0
     for block in hits.values():
@@ -211,6 +214,9 @@ def correlate(idf_report, api_report, expected_sha256):
                 continue
             filename = key[:marker.end()]
             for match in matches:
+                idf_match_records += 1
+                if idf_match_records > MAX_ITEMS:
+                    raise ValueError("Too many IDF match records")
                 if not isinstance(match, dict) or not isinstance(match.get("references_from"), list):
                     raise ValueError("Invalid IDF xref")
                 if match["references_from"]:
@@ -231,6 +237,9 @@ def correlate(idf_report, api_report, expected_sha256):
         if not isinstance(api_name, str) or len(api_name) > 100 or not isinstance(symbols, list):
             raise ValueError("Invalid API symbol list")
         for symbol in symbols:
+            api_symbol_records += 1
+            if api_symbol_records > MAX_ITEMS:
+                raise ValueError("Too many API symbol records")
             if not isinstance(symbol, dict) or not isinstance(symbol.get("references"), list):
                 raise ValueError("Invalid API symbol")
             refs_truncated = symbol.get("references_truncated", False)
