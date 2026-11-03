@@ -11,6 +11,7 @@ import json
 import os
 import re
 import stat
+import tempfile
 from pathlib import Path
 
 MAX_REPORT = 16 * 1024 * 1024
@@ -326,7 +327,25 @@ def main():
         parser.error("Private input and public output paths must differ and not be links")
     summary = correlate(load_private(args.idf_private_report),
                         load_private(args.api_private_report), args.expected_sha256)
-    args.public_output.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    # Publish the sanitized summary atomically. A direct write can truncate an
+    # existing public report on disk-full/interruption; os.replace never opens
+    # the destination for writing and cannot modify a hard-linked private input.
+    output = args.public_output
+    staged = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8",
+                                         newline="\n", dir=output.parent,
+                                         prefix=".atelierdata-summary-",
+                                         suffix=".tmp", delete=False) as stream:
+            staged = Path(stream.name)
+            stream.write(json.dumps(summary, indent=2) + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(staged, output)
+        staged = None
+    finally:
+        if staged is not None:
+            staged.unlink(missing_ok=True)
     print("GHIDRA_IDF_API_CORRELATION=PASS (metadata validation only)")
 
 
