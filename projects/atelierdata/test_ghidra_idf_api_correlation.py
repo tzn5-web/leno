@@ -41,6 +41,21 @@ def fixtures():
 
 
 class CorrelationTests(unittest.TestCase):
+
+    def test_private_report_rejects_duplicate_top_level_identity(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "report.json"
+            path.write_text('{"source_sha256":"a","source_sha256":"b"}', encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Duplicate key"):
+                load_private(path)
+
+    def test_private_report_rejects_nested_duplicate_evidence(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "report.json"
+            path.write_text('{"api_symbols":{"ReadFile":{"references":[],"references":[1]}}}', encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Duplicate key"):
+                load_private(path)
+
     def test_shared_function_is_only_a_candidate(self):
         idf, api = fixtures()
         result = correlate(idf, api, SHA)
