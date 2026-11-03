@@ -342,6 +342,18 @@ def correlate(idf_report, api_report, expected_sha256):
         # A complete scan can still contain no actionable direct file-I/O
         # intersection. Keep evidence completeness distinct from a candidate.
         "direct_file_io_triage_candidate_present": bool(idf_functions & direct_code_functions),
+        # A candidate from capped/legacy evidence is only provisional.
+        # Keep the historical raw candidate flag for compatibility, while
+        # exposing a strict actionable triage gate for downstream consumers.
+        "direct_file_io_triage_candidate_with_complete_coverage": (
+            bool(idf_functions & direct_code_functions)
+            and idf_coverage == "complete"
+            and idf_unowned_refs == 0
+            and api_unowned_refs == 0
+            and not scan_truncated
+            and truncated_symbol_refs == 0
+            and unknown_flow_refs == 0
+        ),
         "shared_idf_and_api_family_functions": family_shared,
         "shared_idf_and_api_family_call_or_jump_functions": family_shared_code,
         "target_executed": False,
