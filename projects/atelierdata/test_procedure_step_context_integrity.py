@@ -36,7 +36,7 @@ class StepContextIntegrityTests(unittest.TestCase):
     def test_nul_instruction_rejected_and_valid_whitespace_trimmed(self):
         self.db.execute("UPDATE procedure_steps SET instruction=? WHERE id=2",
                         ("synthetic\x00unsafe",))
-        with self.assertRaisesRegex(ValueError, "NUL"):
+        with self.assertRaisesRegex(ValueError, "forbidden control character"):
             step_context_text(self.store, 10, 1, 2)
         self.db.execute("UPDATE procedure_steps SET instruction=?,step_number=1 WHERE id=2",
                         ("  Synthetic instruction  ",))
