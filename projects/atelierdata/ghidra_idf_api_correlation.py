@@ -360,6 +360,7 @@ def correlate(idf_report, api_report, expected_sha256):
         "static_triage_coverage_adequate": (
             idf_coverage == "complete"
             and idf_unowned_refs == 0
+            and idf_legacy_provenance_refs == 0
             and api_unowned_refs == 0
             and api_scan_coverage_known
             and not scan_truncated
@@ -380,6 +381,7 @@ def correlate(idf_report, api_report, expected_sha256):
             bool(idf_functions & direct_code_functions)
             and idf_coverage == "complete"
             and idf_unowned_refs == 0
+            and idf_legacy_provenance_refs == 0
             and api_unowned_refs == 0
             and api_scan_coverage_known
             and not scan_truncated
@@ -391,6 +393,7 @@ def correlate(idf_report, api_report, expected_sha256):
             bool(open_read_candidates)
             and idf_coverage == "complete"
             and idf_unowned_refs == 0
+            and idf_legacy_provenance_refs == 0
             and api_unowned_refs == 0
             and api_scan_coverage_known
             and not scan_truncated
