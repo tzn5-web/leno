@@ -124,6 +124,7 @@ class CorrelationTests(unittest.TestCase):
             "short_memory_read": False,
             "keyword_scan_coverage_complete": True,
         })
+        api["symbol_scan_truncated"] = False
         complete = correlate(idf, api, SHA)
         self.assertTrue(complete["direct_file_io_triage_candidate_with_complete_coverage"])
         api["symbol_scan_truncated"] = True
@@ -568,7 +569,7 @@ class CorrelationTests(unittest.TestCase):
 
     def test_zero_xref_api_symbols_respect_limit(self):
         idf, api = fixtures()
-        idf["keyword_hits"][".rdata"]["MODELS.IDF:ascii"] = []
+        idf["keyword_hits"] = {}
         api["api_symbols"]["ReadFile"] = [
             {"references": []}, {"references": []}]
         with mock.patch("ghidra_idf_api_correlation.MAX_ITEMS", 1):
