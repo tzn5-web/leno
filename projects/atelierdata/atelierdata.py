@@ -734,9 +734,14 @@ def main():
                     finally:
                         delete_step(ui.db,temporary_step)
                         window.refresh_steps(step_id)
+                    database_rows=tuple(str(row['id']) for row in list_steps(ui.db,pid))
+                    if database_rows!=(str(step_id),):
+                        raise RuntimeError(
+                            'PROCEDURES_GUI_REORDER_SQLITE_RESTORE_FAILED: '
+                            f'database={database_rows!r}, expected={(str(step_id),)!r}, '
+                            f'procedure={pid!r}, temporary={temporary_step!r}')
                     if window.steps_tree.get_children()!=(str(step_id),):
                         actual_rows=window.steps_tree.get_children()
-                        database_rows=tuple(str(row['id']) for row in list_steps(ui.db,pid))
                         raise RuntimeError(
                             'PROCEDURES_GUI_REORDER_RESTORE_FAILED: '
                             f'visible={actual_rows!r}, database={database_rows!r}, '
