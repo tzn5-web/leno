@@ -39,6 +39,14 @@ class IDFProvenanceRegression(unittest.TestCase):
         self.assertEqual(report["idf_legacy_unknown_provenance_reference_count"], 1)
         self.assertFalse(report["idf_reference_provenance_fully_classified"])
 
+    def test_legacy_provenance_fails_strict_coverage_gate(self):
+        legacy = correlate(*make_reports([None]), SHA)
+        exact = correlate(*make_reports(["exact_match"]), SHA)
+        self.assertFalse(legacy["static_triage_coverage_adequate"])
+        self.assertTrue(exact["static_triage_coverage_adequate"])
+        self.assertFalse(legacy["direct_file_io_triage_candidate_with_complete_coverage"])
+        self.assertFalse(legacy["open_read_idf_triage_candidate_with_complete_coverage"])
+
     def test_unknown_provenance_rejected(self):
         with self.assertRaisesRegex(ValueError, "provenance"):
             correlate(*make_reports(["guessed_exact"]), SHA)
