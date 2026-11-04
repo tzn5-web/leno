@@ -21,6 +21,17 @@ from repair_procedures import (
 )
 
 
+def _safe_search_preview(value, limit=420):
+    """Keep untrusted SQLite search snippets on one visible Tkinter row."""
+    if not isinstance(value, str):
+        return ""
+    if type(limit) is not int or limit <= 0:
+        raise ValueError("Invalid preview limit")
+    forbidden = "\\u202a\\u202b\\u202c\\u202d\\u202e\\u2066\\u2067\\u2068\\u2069"
+    return "".join(" " if ord(ch) < 32 or 127 <= ord(ch) <= 159 or ch in forbidden else ch
+                   for ch in value).strip()[:limit]
+
+
 def _step_tree_values(step):
     """Build a safe, single-line Tk tree preview from possibly incomplete SQLite rows."""
     def preview(value, limit):
@@ -326,7 +337,8 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                 table.insert("","end",iid=str(index),values=(
                     hit["procedure_title"],
                     hit["step_number"] if hit["step_number"] is not None else "—",
-                    hit["field"],hit["excerpt"],hit["source"]))
+                    hit["field"],_safe_search_preview(hit["excerpt"]),
+                    _safe_search_preview(hit["source"],190)))
             first=page_state["offset"]+1 if hits else 0
             last=page_state["offset"]+len(hits)
             more="; există rezultate pe pagina următoare" if page_state["has_more"] else ""
