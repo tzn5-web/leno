@@ -18,16 +18,14 @@ class StepTreePreviewTests(unittest.TestCase):
         self.assertEqual(db.total_changes, before)
 
     def test_controls_cannot_forge_extra_tree_lines(self):
-        row = {"step_number": 2, "instruction": "Inspect\\nPAS 99: forged",
-               "safety_note": "Warning\\rInjected", "reference_title": "Diagram\\x00name"}
-        row = {key: value.replace("\\n", "\n").replace("\\r", "\r").replace("\\x00", "\x00")
-               if isinstance(value, str) else value for key, value in row.items()}
+        row = {"step_number": 2, "instruction": "Inspect" + chr(10) + "PAS 99: forged",
+               "safety_note": "Warning" + chr(13) + "Injected",
+               "reference_title": "Diagram" + chr(0) + "name"}
         values = _step_tree_values(row)
         self.assertEqual(values, (2, "Inspect PAS 99: forged", "Warning Injected", "Diagram name"))
         for value in values[1:]:
-            self.assertNotIn("\n", value)
-            self.assertNotIn("\r", value)
-            self.assertNotIn("\x00", value)
+            for code in (0, 10, 13):
+                self.assertNotIn(chr(code), value)
 
     def test_invalid_values_and_bounded_preview(self):
         row = {"step_number": True, "instruction": "x" * 200,
