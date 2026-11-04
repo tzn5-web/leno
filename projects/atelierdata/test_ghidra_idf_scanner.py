@@ -77,6 +77,9 @@ def load_scanner(data, cap=None, stop_at=None):
         "zeros": lambda size, kind: [0] * size,
         "monitor": Monitor(),
         "currentProgram": Program(data, stop_at),
+        # The Ghidra runtime supplies this helper; no defined data is present
+        # in the synthetic byte-only scanner fixture.
+        "getDataContaining": lambda addr: None,
     }
     exec(compile(module, str(SCRIPT), "exec"), namespace)
     return namespace["scan_block"]
