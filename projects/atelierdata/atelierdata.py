@@ -746,7 +746,12 @@ def main():
                             'PROCEDURES_GUI_REORDER_RESTORE_FAILED: '
                             f'visible={actual_rows!r}, database={database_rows!r}, '
                             f'expected={(str(step_id),)!r}, '
-                            f'procedure={pid!r}, temporary={temporary_step!r}')
+                            f'procedure={pid!r}, temporary={temporary_step!r}, '
+                            f'parent_selection={window.procedures_tree.selection()!r}, '
+                            f'parent_exists={window.procedures_tree.exists(str(pid))!r}, '
+                            f'visible_parents={window.procedures_tree.get_children()!r}, '
+                            f'child_selection={window.steps_tree.selection()!r}, '
+                            f'detail={window.procedure_detail_text.get("1.0", "end")[:240]!r}')
                     # Packaged GUI: a damaged/imported cross-vehicle link
                     # must show a warning, never another vehicle's title.
                     foreign_vehicle=ui.db.add_vehicle('FOREIGN SYNTHETIC','GUI TEST')
