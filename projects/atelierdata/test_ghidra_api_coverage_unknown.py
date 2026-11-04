@@ -7,7 +7,7 @@ SHA = "a" * 64
 def evidence(with_flag):
     base = dict(source_sha256=SHA, idf_decoder_proven=False, target_executed=False)
     idf = dict(base, keyword_hits={"b": {"SYNTHETIC.IDF:utf16le": [
-        {"references_from": [{"function_entry": "RAM:00401000"}]}]}},
+        {"references_from": [{"function_entry": "RAM:00401000", "reference_target_provenance": "exact_match"}]}]}},
         block_scan_cap_reached=False, keyword_match_cap_reached=False,
         keyword_xref_cap_reached=False, short_memory_read=False,
         keyword_scan_coverage_complete=True)
