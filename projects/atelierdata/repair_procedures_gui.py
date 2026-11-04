@@ -217,7 +217,15 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
             state["pid"]=None
         refresh_steps()
 
-    def refresh_steps(prefer=None):
+    def refresh_steps(prefer=None, procedure_id=None):
+        # Explicit callers (including reorder restore) can retain their verified
+        # procedure context even when Tk queues a transient empty selection.
+        # Never recover a hidden or cross-vehicle procedure.
+        if procedure_id is not None:
+            require_live_procedure(procedure_id)
+            if not procedures.exists(str(procedure_id)):
+                raise ValueError("Procedura nu este vizibilă în lista curentă")
+            state["pid"] = procedure_id
         # Validate and fetch before mutating the visible tree. A transient
         # empty selection must not erase otherwise valid SQLite-backed rows.
         pid=state["pid"]
