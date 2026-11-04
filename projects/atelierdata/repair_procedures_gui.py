@@ -636,7 +636,13 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         if selected and messagebox.askyesno("Ștergere","Ștergi pasul selectat?",parent=top):
             if not ensure_live_for_edit(state["pid"]):
                 return None
+            pid=state["pid"]
             delete_step(app.db,int(selected[0]))
+            # Restore the still-live parent selection before rebuilding its steps.
+            # Tk can queue selection events while deleting the selected child.
+            if procedures.exists(str(pid)):
+                procedures.selection_set(str(pid))
+                state["pid"]=pid
             refresh_steps()
 
     def choose_reference():
