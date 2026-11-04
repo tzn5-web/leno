@@ -236,6 +236,7 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         render_selected_step()
 
     def selection(event=None):
+        previous_pid=state["pid"]
         items=procedures.selection()
         if not items:
             # Tk queues TreeviewSelect while refresh_proc deletes/reinserts rows.
@@ -247,6 +248,10 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
             state["pid"]=None
         else:
             state["pid"]=int(items[0])
+        # Ignore queued Tk selection events that do not change the procedure.
+        # Rebuilding the tree here discards a newer step selection after reorder.
+        if state["pid"] is not None and state["pid"]==previous_pid:
+            return
         selected=(selected_step_id if state["pid"]==selected_procedure_id else None)
         refresh_steps(selected)
 
