@@ -15,7 +15,7 @@ def reports(read_type="DATA", read_flow=False):
                     target_executed=False)
     idf = dict(identity, **COVERAGE, keyword_hits={
         "synthetic": {"EXAMPLE.IDF:ascii": [{
-            "references_from": [{"function_entry": "RAM:00401000"}]
+            "references_from": [{"function_entry": "RAM:00401000", "reference_target_provenance": "exact_match"}]
         }]}})
     def ref(kind, flow):
         return dict(function_entry="RAM:00401000",
