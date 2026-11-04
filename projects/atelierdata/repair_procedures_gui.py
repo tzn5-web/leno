@@ -250,15 +250,13 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         previous_pid=state["pid"]
         items=procedures.selection()
         if not items:
-            # Tk queues TreeviewSelect while refresh_proc deletes/reinserts rows.
-            # An obsolete empty-selection event must not erase the active
-            # procedure after refresh_proc has restored it from SQLite.
-            current=state["pid"]
-            if current is not None and procedures.exists(str(current)):
-                return
-            state["pid"]=None
-        else:
-            state["pid"]=int(items[0])
+            # TreeviewSelect with an empty selection is also queued when
+            # refresh_proc deletes/reinserts filtered rows. refresh_proc owns
+            # clearing state["pid"] when the chosen row is no longer visible;
+            # processing the queued event here can clear a newer selection and
+            # empty the step list after a successful SQLite reorder.
+            return
+        state["pid"]=int(items[0])
         # Ignore queued Tk selection events that do not change the procedure.
         # Rebuilding the tree here discards a newer step selection after reorder.
         if state["pid"] is not None and state["pid"]==previous_pid:
