@@ -36,8 +36,12 @@ def step_context_text(store, vehicle_id, procedure_id, step_id):
         if row["reference_title"] is None:
             lines.append("AVERTISMENT REFERINȚĂ: Document indisponibil sau asociat "
                          "altui vehicul; verifică auditul.")
+        elif not isinstance(row["reference_title"], str) or not row["reference_title"].strip():
+            # Imported/corrupt metadata must not crash the GUI or expose a
+            # misleading document reference. Treat it as unavailable.
+            lines.append("AVERTISMENT REFERINȚĂ: Titlul documentului este invalid; verifică auditul.")
         else:
-            lines.append("DOCUMENT ASOCIAT: " + row["reference_title"])
+            lines.append("DOCUMENT ASOCIAT: " + row["reference_title"].strip())
             if isinstance(row["reference_source"], str) and row["reference_source"].strip():
                 lines.append("SURSĂ DOCUMENT: " + row["reference_source"].strip())
     return "\n".join(lines)
