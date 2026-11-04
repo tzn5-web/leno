@@ -5,6 +5,16 @@ Technical content is user-authored/licensed; this module never supplies repair v
 from __future__ import annotations
 
 
+def _safe_display_text(value):
+    """Reject control characters that could forge extra GUI context lines."""
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    if not value or any(ord(char) < 32 or ord(char) == 127 for char in value):
+        return None
+    return value
+
+
 def step_context_text(store, vehicle_id, procedure_id, step_id):
     """Render a current SQLite step with warnings and provenance, without foreign data."""
     for label, value in (("vehicle", vehicle_id), ("procedure", procedure_id),
@@ -30,22 +40,25 @@ def step_context_text(store, vehicle_id, procedure_id, step_id):
     if "\0" in row["instruction"]:
         raise ValueError("Step instruction contains NUL")
     lines = [f"PAS {row['step_number']}: {row['instruction'].strip()}"]
-    if isinstance(row["procedure_source"], str) and row["procedure_source"].strip():
-        lines.append("SURSĂ PROCEDURĂ: " + row["procedure_source"].strip())
-    if isinstance(row["precautions"], str) and row["precautions"].strip():
-        lines.append("AVERTISMENT GENERAL: " + row["precautions"].strip())
-    if isinstance(row["safety_note"], str) and row["safety_note"].strip():
-        lines.append("ATENȚIE LA ACEST PAS: " + row["safety_note"].strip())
+    for column, label in (
+        ("procedure_source", "SURSĂ PROCEDURĂ"),
+        ("precautions", "AVERTISMENT GENERAL"),
+        ("safety_note", "ATENȚIE LA ACEST PAS"),
+    ):
+        value = _safe_display_text(row[column])
+        if value is not None:
+            lines.append(f"{label}: {value}")
     if row["article_id"] is not None:
         if row["reference_title"] is None:
             lines.append("AVERTISMENT REFERINȚĂ: Document indisponibil sau asociat "
                          "altui vehicul; verifică auditul.")
-        elif not isinstance(row["reference_title"], str) or not row["reference_title"].strip():
+        elif _safe_display_text(row["reference_title"]) is None:
             # Imported/corrupt metadata must not crash the GUI or expose a
             # misleading document reference. Treat it as unavailable.
             lines.append("AVERTISMENT REFERINȚĂ: Titlul documentului este invalid; verifică auditul.")
         else:
-            lines.append("DOCUMENT ASOCIAT: " + row["reference_title"].strip())
-            if isinstance(row["reference_source"], str) and row["reference_source"].strip():
-                lines.append("SURSĂ DOCUMENT: " + row["reference_source"].strip())
+            lines.append("DOCUMENT ASOCIAT: " + _safe_display_text(row["reference_title"]))
+            reference_source = _safe_display_text(row["reference_source"])
+            if reference_source is not None:
+                lines.append("SURSĂ DOCUMENT: " + reference_source)
     return "\n".join(lines)
