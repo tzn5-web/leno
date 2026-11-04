@@ -733,7 +733,7 @@ def main():
                             raise RuntimeError('PROCEDURES_GUI_REORDER_DOWN_FAILED')
                     finally:
                         delete_step(ui.db,temporary_step)
-                        window.refresh_steps(step_id)
+                        window.refresh_steps(step_id, procedure_id=pid)
                     database_rows=tuple(str(row['id']) for row in list_steps(ui.db,pid))
                     if database_rows!=(str(step_id),):
                         raise RuntimeError(
