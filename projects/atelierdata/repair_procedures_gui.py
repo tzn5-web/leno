@@ -335,9 +335,9 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
             for index in visible_indices:
                 hit=hits[index]
                 table.insert("","end",iid=str(index),values=(
-                    hit["procedure_title"],
-                    hit["step_number"] if hit["step_number"] is not None else "—",
-                    hit["field"],_safe_search_preview(hit["excerpt"]),
+                    _safe_search_preview(hit["procedure_title"],190),
+                    hit["step_number"] if type(hit["step_number"]) is int and hit["step_number"] > 0 else "—",
+                    _safe_search_preview(hit["field"],160),_safe_search_preview(hit["excerpt"]),
                     _safe_search_preview(hit["source"],190)))
             first=page_state["offset"]+1 if hits else 0
             last=page_state["offset"]+len(hits)
