@@ -555,8 +555,13 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         if edit:
             if not selected:
                 return messagebox.showinfo("Selectare","Selectează un pas.",parent=top)
-            current=app.db.db.execute("SELECT * FROM procedure_steps WHERE id=?",
-                                      (int(selected[0]),)).fetchone()
+            current=app.db.db.execute(
+                "SELECT * FROM procedure_steps WHERE id=? AND procedure_id=?",
+                (int(selected[0]),pid)).fetchone()
+            if current is None:
+                refresh_steps()
+                return messagebox.showerror("Pas indisponibil",
+                    "Pasul nu mai aparține procedurii selectate.",parent=top)
         fields=[("safety_note","Avertisment la acest pas",
                  current["safety_note"] if current else ""),
                 ("article_id","ID document asociat din același vehicul (opțional)",
