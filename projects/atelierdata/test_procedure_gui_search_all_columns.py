@@ -20,9 +20,9 @@ class SearchHitColumnSafetyTests(unittest.TestCase):
     def test_untrusted_text_is_one_line_and_bounded(self):
         for value in ("Procedura\nINJECTAT", "Titlu\u202eINJECTAT", "Câmp\x00fals"):
             result = self.preview(value, 190)
-            self.assertNotIn("\\n", result)
-            self.assertNotIn("\\x00", result)
-            self.assertNotIn("\\u202e", result)
+            self.assertNotIn("\n", result)
+            self.assertNotIn("\x00", result)
+            self.assertNotIn("\u202e", result)
             self.assertLessEqual(len(result), 190)
 
     def test_valid_romanian_is_preserved(self):
