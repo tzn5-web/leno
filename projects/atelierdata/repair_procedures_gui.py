@@ -221,11 +221,10 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         refresh_steps()
 
     def refresh_steps(prefer=None):
-        steps.delete(*steps.get_children())
+        # Validate and fetch before mutating the visible tree. A transient
+        # empty selection must not erase otherwise valid SQLite-backed rows.
         pid=state["pid"]
         if pid is None:
-            # Recover only the live, visibly selected parent after queued
-            # Treeview events; never select a hidden or foreign procedure.
             selected_parent=procedures.selection()
             if len(selected_parent)==1 and procedures.exists(selected_parent[0]):
                 try:
@@ -236,6 +235,7 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                 else:
                     state["pid"]=pid=candidate
         if pid is None:
+            steps.delete(*steps.get_children())
             render("Selectează o procedură sau adaugă una nouă.")
             return
         try:
@@ -244,13 +244,18 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
             invalidate_stale_procedure(pid)
             return
         live_rows=list_steps(app.db,pid)
-        # The procedure may be reassigned while SQLite rows are being fetched.
-        # Revalidate before inserting any cached rows into the visible tree.
         try:
             require_live_procedure(pid)
         except ValueError:
             invalidate_stale_procedure(pid)
             return
+        # Tk queues <<TreeviewSelect>> when the selected child is deleted.
+        # Rebuild only after obtaining a valid snapshot; restore the parent
+        # and the requested child independently of queued selection events.
+        if procedures.exists(str(pid)):
+            procedures.selection_set(str(pid))
+        state["pid"]=pid
+        steps.delete(*steps.get_children())
         for step in live_rows:
             steps.insert("","end",iid=str(step["id"]),
                          values=_step_tree_values(step))
