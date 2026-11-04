@@ -198,6 +198,9 @@ def correlate(idf_report, api_report, expected_sha256):
     family_functions = {name: set() for name in _API_FAMILIES}
     family_code_functions = {name: set() for name in _API_FAMILIES}
     idf_refs = api_refs = 0
+    idf_containing_data_start_refs = 0
+    idf_exact_match_refs = 0
+    idf_legacy_provenance_refs = 0
     # Bound container entries as well as references: zero-xref records can
     # otherwise bypass MAX_ITEMS and exhaust memory/CPU during correlation.
     idf_match_records = api_symbol_records = 0
@@ -239,6 +242,15 @@ def correlate(idf_report, api_report, expected_sha256):
                     if not isinstance(ref, dict):
                         raise ValueError("Invalid IDF reference")
                     idf_refs += 1
+                    provenance = ref.get("reference_target_provenance")
+                    if provenance is None:
+                        idf_legacy_provenance_refs += 1
+                    elif provenance == "exact_match":
+                        idf_exact_match_refs += 1
+                    elif provenance == "containing_data_start":
+                        idf_containing_data_start_refs += 1
+                    else:
+                        raise ValueError("Invalid IDF reference target provenance")
                     if idf_refs > MAX_ITEMS:
                         raise ValueError("Too many IDF references")
                     entry = ref.get("function_entry")
@@ -324,6 +336,10 @@ def correlate(idf_report, api_report, expected_sha256):
         "schema": "atelierdata-ghidra-idf-api-correlation-v1",
         "source_sha256_claims_match": True,
         "idf_reference_count": idf_refs,
+        "idf_exact_match_reference_count": idf_exact_match_refs,
+        "idf_containing_data_start_reference_count": idf_containing_data_start_refs,
+        "idf_legacy_unknown_provenance_reference_count": idf_legacy_provenance_refs,
+        "idf_reference_provenance_fully_classified": idf_legacy_provenance_refs == 0,
         "idf_distinct_filenames_with_xrefs": len(idf_filenames_with_xrefs),
         "idf_references_without_function_owner": idf_unowned_refs,
         "idf_coverage_status": idf_coverage,
