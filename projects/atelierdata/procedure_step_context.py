@@ -23,8 +23,11 @@ def step_context_text(store, vehicle_id, procedure_id, step_id):
         (procedure_id, vehicle_id, step_id)).fetchone()
     if row is None:
         raise ValueError("Step no longer belongs to selected vehicle and procedure")
-    lines = [f"PAS {row['step_number']}: {row['instruction']}",
-             f"SURSĂ PROCEDURĂ: {row['procedure_source']}"]
+    if not isinstance(row["instruction"], str) or not row["instruction"].strip():
+        raise ValueError("Step instruction is missing or empty")
+    lines = [f"PAS {row['step_number']}: {row['instruction']}"]
+    if row["procedure_source"]:
+        lines.append("SURSĂ PROCEDURĂ: " + row["procedure_source"])
     if row["precautions"]:
         lines.append("AVERTISMENT GENERAL: " + row["precautions"])
     if row["safety_note"]:
