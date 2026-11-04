@@ -12,6 +12,7 @@ class CoverageGateTests(unittest.TestCase):
                    keyword_xref_cap_reached=False,
                    short_memory_read=False,
                    keyword_scan_coverage_complete=True)
+        api["symbol_scan_truncated"] = False
         return idf, api
 
     def test_complete_owned_typed_evidence_allows_static_triage(self):
