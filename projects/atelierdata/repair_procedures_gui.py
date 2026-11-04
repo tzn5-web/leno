@@ -26,7 +26,7 @@ def _step_tree_values(step):
     def preview(value, limit):
         if not isinstance(value, str):
             return ""
-        return "".join(" " if ord(ch) < 32 or ord(ch) == 127 else ch
+        return "".join(" " if ord(ch) < 32 or 127 <= ord(ch) <= 159 or ch in "\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069" else ch
                        for ch in value).strip()[:limit]
 
     number = step["step_number"]
