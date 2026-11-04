@@ -224,6 +224,18 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         steps.delete(*steps.get_children())
         pid=state["pid"]
         if pid is None:
+            # Recover only the live, visibly selected parent after queued
+            # Treeview events; never select a hidden or foreign procedure.
+            selected_parent=procedures.selection()
+            if len(selected_parent)==1 and procedures.exists(selected_parent[0]):
+                try:
+                    candidate=int(selected_parent[0])
+                    require_live_procedure(candidate)
+                except (ValueError, TypeError):
+                    pass
+                else:
+                    state["pid"]=pid=candidate
+        if pid is None:
             render("Selectează o procedură sau adaugă una nouă.")
             return
         try:
