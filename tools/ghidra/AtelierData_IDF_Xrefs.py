@@ -52,25 +52,42 @@ def scan_block(block, refs):
                     if pos >= 0 and pos < size and pos + len(pattern) > offset:
                         addr = block.getStart().add(pos)
                         xrefs = []
-                        for ref in refs.getReferencesTo(addr):
+                        # Ghidra can attach a data reference to the start of
+                        # a defined string rather than to the embedded .IDF
+                        # substring. Inspect both sites, but label provenance
+                        # explicitly; a containing-data reference is only a
+                        # candidate and must not be treated as an exact xref.
+                        sites = [(addr, 'exact_match')]
+                        containing = getDataContaining(addr)
+                        if containing is not None:
+                            start = containing.getMinAddress()
+                            if start != addr:
+                                sites.append((start, 'containing_data_start'))
+                        seen_sources = set()
+                        for site, provenance in sites:
+                            for ref in refs.getReferencesTo(site):
+                                if len(xrefs) >= MAX_XREFS_PER_MATCH:
+                                    break
+                                source = ref.getFromAddress()
+                                identity = (str(source), str(site), str(ref.getReferenceType()))
+                                if identity in seen_sources:
+                                    continue
+                                seen_sources.add(identity)
+                                function = getFunctionContaining(source)
+                                ref_type = ref.getReferenceType()
+                                instruction = getInstructionAt(source)
+                                xrefs.append({'source_address': str(source),
+                                              'reference_target_address': str(site),
+                                              'reference_target_provenance': provenance,
+                                              'containing_function': (str(function.getName()) if function else None),
+                                              'function_entry': (str(function.getEntryPoint()) if function else None),
+                                              'reference_type': str(ref_type),
+                                              'reference_is_data': bool(ref_type.isData()),
+                                              'instruction_start_address': (str(instruction.getAddress()) if instruction else None),
+                                              'instruction_length': (int(instruction.getLength()) if instruction else None),
+                                              'instruction_mnemonic': (str(instruction.getMnemonicString()).upper() if instruction else None)})
                             if len(xrefs) >= MAX_XREFS_PER_MATCH:
                                 break
-                            source = ref.getFromAddress()
-                            function = getFunctionContaining(source)
-                            # Export explicit instruction evidence for each
-                            # data xref. getInstructionAt() deliberately does
-                            # not accept a reference from the middle of an
-                            # instruction; the offline replay checks this again.
-                            ref_type = ref.getReferenceType()
-                            instruction = getInstructionAt(source)
-                            xrefs.append({'source_address': str(source),
-                                          'containing_function': (str(function.getName()) if function else None),
-                                          'function_entry': (str(function.getEntryPoint()) if function else None),
-                                          'reference_type': str(ref_type),
-                                          'reference_is_data': bool(ref_type.isData()),
-                                          'instruction_start_address': (str(instruction.getAddress()) if instruction else None),
-                                          'instruction_length': (int(instruction.getLength()) if instruction else None),
-                                          'instruction_mnemonic': (str(instruction.getMnemonicString()).upper() if instruction else None)})
                         entries.append({'address': str(addr), 'references_from': xrefs})
                     at = idx + 1
         carry = data[-overlap:]
