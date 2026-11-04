@@ -237,7 +237,16 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
 
     def selection(event=None):
         items=procedures.selection()
-        state["pid"]=int(items[0]) if items else None
+        if not items:
+            # Tk queues TreeviewSelect while refresh_proc deletes/reinserts rows.
+            # An obsolete empty-selection event must not erase the active
+            # procedure after refresh_proc has restored it from SQLite.
+            current=state["pid"]
+            if current is not None and procedures.exists(str(current)):
+                return
+            state["pid"]=None
+        else:
+            state["pid"]=int(items[0])
         selected=(selected_step_id if state["pid"]==selected_procedure_id else None)
         refresh_steps(selected)
 
