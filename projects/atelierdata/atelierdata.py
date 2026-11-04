@@ -8,7 +8,7 @@ from idf_probe_safe import probe_idf
 from technical_specs import (ensure_schema,add_spec,update_spec,remove_spec,get_spec,
                              list_specs,import_specs,export_specs)
 from repair_procedures import (ensure_schema as ensure_procedures_schema,
-                               create_procedure,add_step,delete_step)
+                               create_procedure,add_step,delete_step,list_steps)
 from repair_export import export_procedures_json,export_procedure_html
 from dtc_catalog import ensure_schema as ensure_dtc_schema, add_dtc
 from dtc_gui import open_dtc_window
