@@ -231,6 +231,21 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                     pass
                 else:
                     state["pid"]=pid=candidate
+        if pid is None and prefer is not None:
+            # A caller may explicitly request a still-live step after Tk has
+            # queued an empty parent-selection event. Recover only its verified
+            # parent, and only if that parent remains visible for this vehicle.
+            try:
+                _validate_navigation_id(prefer, "step")
+                linked=app.db.db.execute(
+                    "SELECT p.id FROM procedure_steps AS s "
+                    "JOIN procedures AS p ON p.id=s.procedure_id "
+                    "WHERE s.id=? AND p.vehicle_id=?", (prefer,vehicle_id)).fetchone()
+                if linked is not None and procedures.exists(str(linked["id"])):
+                    pid=require_live_procedure(linked["id"])
+                    state["pid"]=pid
+            except (ValueError, TypeError):
+                pass
         if pid is None:
             steps.delete(*steps.get_children())
             render("Selectează o procedură sau adaugă una nouă.")
