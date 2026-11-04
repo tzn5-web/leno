@@ -18,11 +18,13 @@ class SearchHitColumnSafetyTests(unittest.TestCase):
         cls.source = source
 
     def test_untrusted_text_is_one_line_and_bounded(self):
-        for value in ("Procedura\nINJECTAT", "Titlu\u202eINJECTAT", "Câmp\x00fals"):
+        for value in ("Procedura\nINJECTAT", "Titlu\u202eINJECTAT", "Câmp\x00fals", "Linie\u2028falsă", "Paragraf\u2029fals"):
             result = self.preview(value, 190)
             self.assertNotIn("\n", result)
             self.assertNotIn("\x00", result)
             self.assertNotIn("\u202e", result)
+            self.assertNotIn("\u2028", result)
+            self.assertNotIn("\u2029", result)
             self.assertLessEqual(len(result), 190)
 
     def test_valid_romanian_is_preserved(self):
