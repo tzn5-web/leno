@@ -204,7 +204,7 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                     (row["id"],vehicle_id)).fetchone() is None:
                 continue
             procedures.insert("","end",iid=str(row["id"]),
-                              text=f"{row['system']} / {row['title']}")
+                              text=f"{_safe_search_preview(row['system'], 100)} / {_safe_search_preview(row['title'], 180)}")
             visible_count+=1
         if candidates:
             search_notice.set(f"{visible_count} proceduri găsite")
