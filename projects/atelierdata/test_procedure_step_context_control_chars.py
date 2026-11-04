@@ -26,12 +26,12 @@ class StepContextControlCharacterTests(unittest.TestCase):
                 (1, 1, 1, ' Authorized step ', 'Warning\\tforged', 1);
         """)
         self.db.execute("UPDATE procedures SET precautions=?, source=? WHERE id=1",
-                        ("Safety\\nPAS 999: forged".replace("\\\\n", "\\n"),
-                         "Source\\rforged".replace("\\\\r", "\\r")))
+                        ("Safety" + chr(10) + "PAS 999: forged",
+                         "Source" + chr(13) + "forged"))
         self.db.execute("UPDATE articles SET source=? WHERE id=1",
-                        ("Source\\nforged".replace("\\\\n", "\\n"),))
+                        ("Source" + chr(10) + "forged",))
         self.db.execute("UPDATE procedure_steps SET safety_note=? WHERE id=1",
-                        ("Warning\\tforged".replace("\\\\t", "\\t"),))
+                        ("Warning" + chr(9) + "forged",))
         self.store = SimpleNamespace(db=self.db)
 
     def tearDown(self):
@@ -40,12 +40,12 @@ class StepContextControlCharacterTests(unittest.TestCase):
     def test_control_metadata_does_not_inject_gui_lines(self):
         before = self.db.total_changes
         result = step_context_text(self.store, 10, 1, 1)
-        self.assertEqual(result, "PAS 1: Authorized step\\nDOCUMENT ASOCIAT: Authorized document".replace("\\n", "\n"))
+        self.assertEqual(result, "PAS 1: Authorized step" + chr(10) + "DOCUMENT ASOCIAT: Authorized document")
         self.assertNotIn("forged", result)
         self.assertEqual(self.db.total_changes, before)
 
     def test_invalid_document_title_is_not_rendered(self):
-        self.db.execute("UPDATE articles SET title=? WHERE id=1", ("Title\\nPAS 2: forged".replace("\\n", "\n"),))
+        self.db.execute("UPDATE articles SET title=? WHERE id=1", ("Title" + chr(10) + "PAS 2: forged",))
         before = self.db.total_changes
         result = step_context_text(self.store, 10, 1, 1)
         self.assertIn("AVERTISMENT REFERINȚĂ:", result)
