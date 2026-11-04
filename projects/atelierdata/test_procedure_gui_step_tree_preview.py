@@ -27,6 +27,16 @@ class StepTreePreviewTests(unittest.TestCase):
             for code in (0, 10, 13):
                 self.assertNotIn(chr(code), value)
 
+    def test_unicode_line_separators_and_bidi_controls(self):
+        row = {"step_number": 3,
+               "instruction": "Inspect\u2028NEXT\u2029LINE".encode().decode("unicode_escape"),
+               "safety_note": "Alert\u202eHidden".encode().decode("unicode_escape"),
+               "reference_title": "Schema\u2066Ref".encode().decode("unicode_escape")}
+        values = _step_tree_values(row)
+        self.assertEqual(values, (3, "Inspect NEXT LINE", "Alert Hidden", "Schema Ref"))
+        for value in values[1:]:
+            self.assertFalse(any(char in value for char in ("\u2028", "\u2029", "\u202e", "\u2066")))
+
     def test_invalid_values_and_bounded_preview(self):
         row = {"step_number": True, "instruction": "x" * 200,
                "safety_note": 123, "reference_title": object()}
