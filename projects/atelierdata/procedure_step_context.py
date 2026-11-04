@@ -26,18 +26,18 @@ def step_context_text(store, vehicle_id, procedure_id, step_id):
     if not isinstance(row["instruction"], str) or not row["instruction"].strip():
         raise ValueError("Step instruction is missing or empty")
     lines = [f"PAS {row['step_number']}: {row['instruction']}"]
-    if row["procedure_source"]:
-        lines.append("SURSĂ PROCEDURĂ: " + row["procedure_source"])
-    if row["precautions"]:
-        lines.append("AVERTISMENT GENERAL: " + row["precautions"])
-    if row["safety_note"]:
-        lines.append("ATENȚIE LA ACEST PAS: " + row["safety_note"])
+    if isinstance(row["procedure_source"], str) and row["procedure_source"].strip():
+        lines.append("SURSĂ PROCEDURĂ: " + row["procedure_source"].strip())
+    if isinstance(row["precautions"], str) and row["precautions"].strip():
+        lines.append("AVERTISMENT GENERAL: " + row["precautions"].strip())
+    if isinstance(row["safety_note"], str) and row["safety_note"].strip():
+        lines.append("ATENȚIE LA ACEST PAS: " + row["safety_note"].strip())
     if row["article_id"] is not None:
         if row["reference_title"] is None:
             lines.append("AVERTISMENT REFERINȚĂ: Document indisponibil sau asociat "
                          "altui vehicul; verifică auditul.")
         else:
             lines.append("DOCUMENT ASOCIAT: " + row["reference_title"])
-            if row["reference_source"]:
-                lines.append("SURSĂ DOCUMENT: " + row["reference_source"])
+            if isinstance(row["reference_source"], str) and row["reference_source"].strip():
+                lines.append("SURSĂ DOCUMENT: " + row["reference_source"].strip())
     return "\n".join(lines)
