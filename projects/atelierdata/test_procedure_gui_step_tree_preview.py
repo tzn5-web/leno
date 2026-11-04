@@ -29,9 +29,9 @@ class StepTreePreviewTests(unittest.TestCase):
 
     def test_unicode_line_separators_and_bidi_controls(self):
         row = {"step_number": 3,
-               "instruction": "Inspect\u2028NEXT\u2029LINE".encode().decode("unicode_escape"),
-               "safety_note": "Alert\u202eHidden".encode().decode("unicode_escape"),
-               "reference_title": "Schema\u2066Ref".encode().decode("unicode_escape")}
+               "instruction": "Inspect\u2028NEXT\u2029LINE",
+               "safety_note": "Alert\u202eHidden",
+               "reference_title": "Schema\u2066Ref"}
         values = _step_tree_values(row)
         self.assertEqual(values, (3, "Inspect NEXT LINE", "Alert Hidden", "Schema Ref"))
         for value in values[1:]:
