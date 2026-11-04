@@ -37,8 +37,8 @@ def step_context_text(store, vehicle_id, procedure_id, step_id):
         raise ValueError("Step instruction is missing or empty")
     if type(row["step_number"]) is not int or row["step_number"] <= 0:
         raise ValueError("Step number is invalid")
-    if "\0" in row["instruction"]:
-        raise ValueError("Step instruction contains NUL")
+    if any(char in row["instruction"] for char in ("\0", "\r", "\n")):
+        raise ValueError("Step instruction contains a forbidden control character")
     lines = [f"PAS {row['step_number']}: {row['instruction'].strip()}"]
     for column, label in (
         ("procedure_source", "SURSĂ PROCEDURĂ"),
