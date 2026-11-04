@@ -25,6 +25,13 @@ class StepContextControlCharacterTests(unittest.TestCase):
             INSERT INTO procedure_steps VALUES
                 (1, 1, 1, ' Authorized step ', 'Warning\\tforged', 1);
         """)
+        self.db.execute("UPDATE procedures SET precautions=?, source=? WHERE id=1",
+                        ("Safety\\nPAS 999: forged".replace("\\\\n", "\\n"),
+                         "Source\\rforged".replace("\\\\r", "\\r")))
+        self.db.execute("UPDATE articles SET source=? WHERE id=1",
+                        ("Source\\nforged".replace("\\\\n", "\\n"),))
+        self.db.execute("UPDATE procedure_steps SET safety_note=? WHERE id=1",
+                        ("Warning\\tforged".replace("\\\\t", "\\t"),))
         self.store = SimpleNamespace(db=self.db)
 
     def tearDown(self):
