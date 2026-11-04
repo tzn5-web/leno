@@ -30,6 +30,12 @@ class SelectionStabilityTests(unittest.TestCase):
         namespace['selection']()
         self.assertEqual(refreshes, [])
         self.assertEqual(namespace['state']['pid'], 7)
+        # A queued empty selection must not override refresh_proc's newer
+        # active procedure, even if the row was temporarily filtered out.
+        namespace['procedures'].selected = ()
+        namespace['selection']()
+        self.assertEqual(namespace['state']['pid'], 7)
+        self.assertEqual(refreshes, [])
         namespace['procedures'].selected = ('8',)
         namespace['selection']()
         self.assertEqual(namespace['state']['pid'], 8)
