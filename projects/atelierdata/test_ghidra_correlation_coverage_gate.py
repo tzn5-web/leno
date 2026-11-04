@@ -12,6 +12,7 @@ class CoverageGateTests(unittest.TestCase):
                    keyword_xref_cap_reached=False,
                    short_memory_read=False,
                    keyword_scan_coverage_complete=True)
+        idf["keyword_hits"][".rdata"]["MODELS.IDF:ascii"][0]["references_from"][0]["reference_target_provenance"] = "exact_match"
         api["symbol_scan_truncated"] = False
         return idf, api
 
