@@ -21,6 +21,22 @@ from repair_procedures import (
 )
 
 
+def _step_tree_values(step):
+    """Build a safe, single-line Tk tree preview from possibly incomplete SQLite rows."""
+    def preview(value, limit):
+        if not isinstance(value, str):
+            return ""
+        return "".join(" " if ord(ch) < 32 or ord(ch) == 127 else ch
+                       for ch in value).strip()[:limit]
+
+    number = step["step_number"]
+    if type(number) is not int or number <= 0:
+        number = ""
+    return (number, preview(step["instruction"], 130),
+            preview(step["safety_note"], 95),
+            preview(step["reference_title"], 130))
+
+
 def _validate_navigation_id(value, label):
     """Require exact positive SQLite IDs before resolving GUI navigation."""
     if type(value) is not int or value <= 0:
@@ -213,9 +229,8 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
             invalidate_stale_procedure(pid)
             return
         for step in live_rows:
-            steps.insert("","end",iid=str(step["id"]),values=(
-                step["step_number"],step["instruction"][:130],
-                step["safety_note"][:95],step["reference_title"] or ""))
+            steps.insert("","end",iid=str(step["id"]),
+                         values=_step_tree_values(step))
         if prefer is not None and steps.exists(str(prefer)):
             steps.selection_set(str(prefer))
         render_selected_step()
