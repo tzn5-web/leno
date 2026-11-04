@@ -27,7 +27,7 @@ def _safe_search_preview(value, limit=420):
         return ""
     if type(limit) is not int or limit <= 0:
         raise ValueError("Invalid preview limit")
-    forbidden = "\\u202a\\u202b\\u202c\\u202d\\u202e\\u2066\\u2067\\u2068\\u2069"
+    forbidden = "\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069"
     return "".join(" " if ord(ch) < 32 or 127 <= ord(ch) <= 159 or ch in forbidden else ch
                    for ch in value).strip()[:limit]
 
