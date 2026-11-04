@@ -11,7 +11,7 @@ def reports(read_function="RAM:00401000", complete=True):
                     target_executed=False)
     idf = dict(identity, keyword_hits={
         "block": {"SYNTHETIC.IDF:ascii": [
-            {"references_from": [{"function_entry": "RAM:00401000"}]}
+            {"references_from": [{"function_entry": "RAM:00401000", "reference_target_provenance": "exact_match"}]}
         ]}
     })
     if complete:
