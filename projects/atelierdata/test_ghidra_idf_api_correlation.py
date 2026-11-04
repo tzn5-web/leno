@@ -124,6 +124,10 @@ class CorrelationTests(unittest.TestCase):
             "short_memory_read": False,
             "keyword_scan_coverage_complete": True,
         })
+        # Strict coverage requires classified IDF xref provenance, not just
+        # scan-cap flags. Legacy fixtures intentionally remain incomplete.
+        idf["keyword_hits"][".rdata"]["MODELS.IDF:ascii"][0]["references_from"][0][
+            "reference_target_provenance"] = "exact_match"
         api["symbol_scan_truncated"] = False
         complete = correlate(idf, api, SHA)
         self.assertTrue(complete["direct_file_io_triage_candidate_with_complete_coverage"])
