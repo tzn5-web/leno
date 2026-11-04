@@ -25,7 +25,11 @@ def step_context_text(store, vehicle_id, procedure_id, step_id):
         raise ValueError("Step no longer belongs to selected vehicle and procedure")
     if not isinstance(row["instruction"], str) or not row["instruction"].strip():
         raise ValueError("Step instruction is missing or empty")
-    lines = [f"PAS {row['step_number']}: {row['instruction']}"]
+    if type(row["step_number"]) is not int or row["step_number"] <= 0:
+        raise ValueError("Step number is invalid")
+    if "\\0" in row["instruction"]:
+        raise ValueError("Step instruction contains NUL")
+    lines = [f"PAS {row['step_number']}: {row['instruction'].strip()}"]
     if isinstance(row["procedure_source"], str) and row["procedure_source"].strip():
         lines.append("SURSĂ PROCEDURĂ: " + row["procedure_source"].strip())
     if isinstance(row["precautions"], str) and row["precautions"].strip():
