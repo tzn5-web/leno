@@ -22,6 +22,24 @@ class TestIdfHeaderTriage(unittest.TestCase):
             self.assertFalse(result["format_identified"])
             self.assertFalse(result["decoder_verified"])
 
+    def test_empty_file_has_finite_statistics(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "empty.idf"
+            path.write_bytes(b"")
+            result = inspect(path, hashlib.sha256(b"").hexdigest())
+            self.assertEqual(result["size_bytes"], 0)
+            self.assertEqual(result["sample_bytes"], 0)
+            self.assertEqual(result["sample_entropy_bits_per_byte"], 0.0)
+
+    def test_sample_is_bounded_independently_of_file_size(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "large.idf"
+            data = b"ABCD" * 20000
+            path.write_bytes(data)
+            result = inspect(path, hashlib.sha256(data).hexdigest(), sample_size=64)
+            self.assertEqual(result["size_bytes"], len(data))
+            self.assertEqual(result["sample_bytes"], 64)
+
     def test_wrong_digest_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "sample.idf"
