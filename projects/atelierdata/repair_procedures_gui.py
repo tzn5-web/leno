@@ -189,8 +189,25 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                 render("Pasul nu mai aparține procedurii selectate. "
                        "Actualizează lista înainte de a continua.")
             else:
-                render("Detaliile pasului nu sunt disponibile sau referința nu mai "
-                       "este validă. Actualizează lista înainte de a continua.")
+                # Preserve the security warning even when malformed step text
+                # prevents the normal context renderer from completing.
+                # Resolve only the link's existence for this vehicle; never
+                # display metadata from a foreign document.
+                reference = app.db.db.execute(
+                    "SELECT s.article_id, a.id AS authorized_article_id "
+                    "FROM procedure_steps AS s "
+                    "JOIN procedures AS p ON p.id=s.procedure_id "
+                    "LEFT JOIN articles AS a ON a.id=s.article_id "
+                    "AND a.vehicle_id=p.vehicle_id "
+                    "WHERE s.id=? AND p.id=? AND p.vehicle_id=?",
+                    (int(chosen[0]), pid, vehicle_id)).fetchone()
+                detail = ("Detaliile pasului nu sunt disponibile sau referința nu mai "
+                          "este validă. Actualizează lista înainte de a continua.")
+                if (reference is not None and reference["article_id"] is not None
+                        and reference["authorized_article_id"] is None):
+                    detail += ("\\nAVERTISMENT REFERINȚĂ: Document indisponibil "
+                               "sau asociat altui vehicul; verifică auditul.")
+                render(detail)
             return None
         render(context)
         return context
