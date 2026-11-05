@@ -183,10 +183,14 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
             live = app.db.db.execute(
                 "SELECT 1 FROM procedure_steps WHERE id=? AND procedure_id=?",
                 (int(chosen[0]), pid)).fetchone()
-            if live is None and steps.exists(chosen[0]):
-                steps.delete(chosen[0])
-            render("Detaliile pasului nu sunt disponibile sau referința nu mai "
-                   "este validă. Actualizează lista înainte de a continua.")
+            if live is None:
+                if steps.exists(chosen[0]):
+                    steps.delete(chosen[0])
+                render("Pasul nu mai aparține procedurii selectate. "
+                       "Actualizează lista înainte de a continua.")
+            else:
+                render("Detaliile pasului nu sunt disponibile sau referința nu mai "
+                       "este validă. Actualizează lista înainte de a continua.")
             return None
         render(context)
         return context
