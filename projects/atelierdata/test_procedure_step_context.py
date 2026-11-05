@@ -127,6 +127,8 @@ class SelectedStepContextTests(unittest.TestCase):
                 (self.foreign, self.first))
             self.store.db.commit()
             self.assertIn("AVERTISMENT REFERINȚĂ", window.render_selected_step())
+            # An invalid document reference must not be mistaken for a deleted step.
+            self.assertTrue(window.steps_tree.exists(str(self.first)))
             delete_step(self.store, self.first)
             before = self.store.db.total_changes
             self.assertIsNone(window.render_selected_step())
