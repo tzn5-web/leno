@@ -1,6 +1,7 @@
 """Synthetic-only tests for IDF metadata triage; no proprietary fixtures."""
 import hashlib
 import json
+import os
 import sys
 from unittest.mock import patch
 import tempfile
@@ -39,6 +40,27 @@ class TestIdfHeaderTriage(unittest.TestCase):
             result = inspect(path, hashlib.sha256(data).hexdigest(), sample_size=64)
             self.assertEqual(result["size_bytes"], len(data))
             self.assertEqual(result["sample_bytes"], 64)
+
+    def test_same_size_in_place_change_detected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "sample.idf"
+            data = b"synthetic-static-sample"
+            path.write_bytes(data)
+            real_fstat = os.fstat
+            calls = 0
+
+            def changed_fstat(fd):
+                nonlocal calls
+                calls += 1
+                result = real_fstat(fd)
+                if calls == 2:
+                    os.utime(path, ns=(result.st_atime_ns, result.st_mtime_ns + 2_000_000_000))
+                    return real_fstat(fd)
+                return result
+
+            with patch("idf_header_triage.os.fstat", side_effect=changed_fstat):
+                with self.assertRaisesRegex(ValueError, "source changed during triage"):
+                    inspect(path, hashlib.sha256(data).hexdigest())
 
     def test_wrong_digest_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
