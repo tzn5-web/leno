@@ -130,6 +130,22 @@ class IDFStrideTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'ZIP source changed during read'):
                     analyze(manifest, root, ('FAS.IDF',))
 
+    def test_encrypted_member_refused_without_password_attempt(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            manifest = manifest_and_parts(root, [('FAS.IDF', b'synthetic')])
+            archive_path = root / 'autodata_part_0001.zip'
+            data = bytearray(archive_path.read_bytes())
+            local = data.index(b'PK\\x03\\x04')
+            central = data.index(b'PK\\x01\\x02')
+            # ZIP general-purpose flag bit 0 marks encryption. Synthetic
+            # fixture only; no encrypted proprietary data or passwords.
+            data[local + 6] |= 1
+            data[central + 8] |= 1
+            archive_path.write_bytes(data)
+            with self.assertRaisesRegex(ValueError, 'Encrypted ZIP member refused'):
+                analyze(manifest, root, ('FAS.IDF',))
+
     def test_missing_archive_is_rejected(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
