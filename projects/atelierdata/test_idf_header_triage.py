@@ -80,7 +80,10 @@ class TestIdfHeaderTriage(unittest.TestCase):
                 nonlocal calls
                 calls += 1
                 if calls == 2:
-                    os.replace(replacement, path)
+                    try:
+                        os.replace(replacement, path)
+                    except PermissionError:
+                        self.skipTest("platform prevents replacing an open file")
                 return real_fstat(fd)
 
             with patch("idf_header_triage.os.fstat", side_effect=replace_on_final_fstat):
@@ -103,11 +106,11 @@ class TestIdfHeaderTriage(unittest.TestCase):
                 nonlocal calls
                 calls += 1
                 if calls == 2:
-                    path.unlink()
                     try:
+                        path.unlink()
                         path.symlink_to(target)
                     except OSError:
-                        self.skipTest("symlink unavailable")
+                        self.skipTest("platform prevents swapping an open file")
                 return real_fstat(fd)
 
             with patch("idf_header_triage.os.fstat", side_effect=swap_on_final_fstat):
