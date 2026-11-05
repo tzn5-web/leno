@@ -1,0 +1,28 @@
+{
+  "target": "GT-P5100",
+  "codename": "espresso3g",
+  "platform_baseline": "LineageOS 14.1 / Android 7.1.2",
+  "warning": "Baseline only: these are not Android 14 sources or a working Android 14 port.",
+  "repositories": [
+    {
+      "repo": "LineageOS/android_device_samsung_espresso3g",
+      "revision": "8f821ec65e689e53b5f5d2925d184fa357d4ca02",
+      "path": "device/samsung/espresso3g"
+    },
+    {
+      "repo": "LineageOS/android_device_samsung_espressowifi",
+      "revision": "f561c863c5e6121ede8f537ecdd0af1f8f0cfcff",
+      "path": "device/samsung/espressowifi"
+    },
+    {
+      "repo": "LineageOS/android_kernel_ti_omap4",
+      "revision": "3e3684e9d008f688b6066e6577fdde4dc8bd8291",
+      "path": "kernel/ti/omap4"
+    },
+    {
+      "repo": "LineageOS/android_hardware_ti_omap4",
+      "revision": "d8470c05570557c09b7cad91b7963d1e22ba948a",
+      "path": "hardware/ti/omap4"
+    }
+  ]
+}
