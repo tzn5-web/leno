@@ -90,6 +90,11 @@ def first_verified_chunk(manifest, directory, name):
             raise ValueError("ZIP source must be a regular file")
         if archive_path.is_symlink():
             raise ValueError("Symlink ZIP refused after open")
+        opened = os.fstat(source.fileno())
+        path_before = os.stat(archive_path, follow_symlinks=False)
+        if (opened.st_dev, opened.st_ino, opened.st_size) != (
+                path_before.st_dev, path_before.st_ino, path_before.st_size):
+            raise ValueError("ZIP source changed before read")
         with zipfile.ZipFile(source) as archive:
             # ZIP permits duplicate member names; getinfo() silently chooses the last.
             # Refuse ambiguous provenance rather than hashing an arbitrary member.
@@ -110,6 +115,15 @@ def first_verified_chunk(manifest, directory, name):
                     checksum.update(block)
                     if len(sample) < MAX_SAMPLE:
                         sample.extend(block[:MAX_SAMPLE - len(sample)])
+        path_after = os.stat(archive_path, follow_symlinks=False)
+        opened_after = os.fstat(source.fileno())
+        if (path_after.st_dev, path_after.st_ino, path_after.st_size,
+                path_after.st_mtime_ns) != (
+                opened.st_dev, opened.st_ino, opened.st_size, opened.st_mtime_ns):
+            raise ValueError("ZIP source changed during read")
+        if (opened_after.st_size, opened_after.st_mtime_ns) != (
+                opened.st_size, opened.st_mtime_ns):
+            raise ValueError("ZIP descriptor changed during read")
     if count != expected_size or checksum.hexdigest() != chunk["sha256"].lower():
         raise ValueError("SHA256 mismatch for " + name)
     return bytes(sample), count
