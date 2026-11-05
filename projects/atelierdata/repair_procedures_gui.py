@@ -754,7 +754,9 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                 docs=list_reference_articles(app.db,pid,search_ref.get())
                 for article in docs:
                     references.insert("","end",iid=str(article["id"]),
-                                      values=(article["category"],article["title"],article["source"]))
+                                      values=(_safe_search_preview(article["category"], 170),
+                                              _safe_search_preview(article["title"], 280),
+                                              _safe_search_preview(article["source"], 250)))
                 if original["article_id"] is not None and references.exists(str(original["article_id"])):
                     references.selection_set(str(original["article_id"]))
                 notice.set(f"{len(docs)} documente; sursa este afișată pentru verificare.")
