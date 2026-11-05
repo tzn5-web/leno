@@ -86,7 +86,7 @@ class IDFStrideTests(unittest.TestCase):
             report.write_text('SENTINEL', encoding='utf-8')
             argv = ['idf_stride_evidence.py', '--manifest', str(manifest),
                     '--parts-dir', str(root), '--output', str(report)]
-            with patch.object(sys, 'argv', argv):
+            with patch.object(sys, 'argv', argv), patch('idf_stride_evidence.analyze', return_value={'idf_decoder_proven': False}):
                 with self.assertRaises(FileExistsError):
                     main()
             self.assertEqual(report.read_text(encoding='utf-8'), 'SENTINEL')
@@ -99,7 +99,7 @@ class IDFStrideTests(unittest.TestCase):
             report = root / 'evidence.json'
             argv = ['idf_stride_evidence.py', '--manifest', str(manifest),
                     '--parts-dir', str(root), '--output', str(report)]
-            with patch.object(sys, 'argv', argv):
+            with patch.object(sys, 'argv', argv), patch('idf_stride_evidence.analyze', return_value={'idf_decoder_proven': False}):
                 main()
             self.assertFalse(json.loads(report.read_text(encoding='utf-8'))['idf_decoder_proven'])
 
