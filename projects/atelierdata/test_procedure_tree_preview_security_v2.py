@@ -13,7 +13,7 @@ class ProcedureTreePreviewSecurityTests(unittest.TestCase):
     def test_bidi_controls_and_line_breaks_do_not_enter_tree(self):
         raw = "START\u202eREVERSED\u202c\nNEXT\r\tEND\u2067RTL\u2069"
         preview = _safe_search_preview(raw)
-        self.assertEqual(preview, "START REVERSED  NEXT  END RTL ")
+        self.assertEqual(preview, "START REVERSED  NEXT  END RTL")
         self.assertFalse(any(c in preview for c in ("\u202e", "\u202c", "\u2067", "\u2069", "\n")))
 
     def test_each_step_column_has_its_own_bound(self):
