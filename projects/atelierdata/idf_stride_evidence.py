@@ -123,10 +123,19 @@ def analyze(manifest, directory, names=DEFAULT_NAMES):
     same_pair = ("SGOPS.IDF" in private_tokens and "SGINT.IDF" in private_tokens and
                  private_tokens["SGOPS.IDF"] is not None and
                  private_tokens["SGOPS.IDF"] == private_tokens["SGINT.IDF"])
+    aligned_pair = (same_pair and evidence["SGOPS.IDF"]["motif_stride_bytes"] ==
+                    evidence["SGINT.IDF"]["motif_stride_bytes"] and
+                    evidence["SGOPS.IDF"]["motif_start_offset"] ==
+                    evidence["SGINT.IDF"]["motif_start_offset"] and
+                    evidence["SGOPS.IDF"]["motif_end_offset"] ==
+                    evidence["SGINT.IDF"]["motif_end_offset"] and
+                    evidence["SGOPS.IDF"]["motif_run_count"] ==
+                    evidence["SGINT.IDF"]["motif_run_count"])
     return dict(schema="atelierdata-idf-stride-aggregate-v1",
                 analyzed_files=len(evidence), sample_limit_bytes=MAX_SAMPLE,
                 target_executed=False, idf_decoder_proven=False,
                 sgops_sgint_same_dominant_token=same_pair,
+                sgops_sgint_dominant_run_aligned=bool(aligned_pair),
                 files=evidence,
                 interpretation="Fixed-stride byte repetitions are structural evidence only; not a format decoder.")
 
