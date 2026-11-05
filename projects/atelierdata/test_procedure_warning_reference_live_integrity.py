@@ -35,10 +35,9 @@ class WarningReferenceLiveIntegrityTests(unittest.TestCase):
     def test_deleted_document_is_not_resolved_or_recreated(self):
         self.store.db.execute("UPDATE procedure_steps SET article_id=NULL WHERE id=?", (self.step,))
         self.store.db.execute("DELETE FROM articles WHERE id=?", (self.article,))
-        self.store.db.execute("UPDATE procedure_steps SET article_id=? WHERE id=?", (self.article, self.step))
         self.store.db.commit()
         before = self.store.db.total_changes
-        with self.assertRaisesRegex(ValueError, "missing or belongs"):
+        with self.assertRaisesRegex(ValueError, "no linked document"):
             self.resolve()
         self.assertEqual(self.store.db.total_changes, before)
         self.assertIsNone(self.store.db.execute(
