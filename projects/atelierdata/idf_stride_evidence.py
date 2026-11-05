@@ -102,6 +102,11 @@ def first_verified_chunk(manifest, directory, name):
             if len(matches) != 1:
                 raise ValueError("ZIP member missing or ambiguous")
             entry = matches[0]
+            # A ZIP entry can itself be a Unix symbolic link even when the
+            # outer archive is an ordinary file. Do not interpret link text
+            # as IDF data or follow link-like archive metadata.
+            if entry.create_system == 3 and stat.S_ISLNK(entry.external_attr >> 16):
+                raise ValueError("Symlink ZIP member refused")
             if entry.flag_bits & 0x1:
                 # Never attempt passwords or encrypted-member processing.
                 raise ValueError("Encrypted ZIP member refused")
