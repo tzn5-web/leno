@@ -117,6 +117,31 @@ class TestIdfHeaderTriage(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     inspect(path, hashlib.sha256(data).hexdigest())
 
+    def test_path_replaced_between_lstat_and_open_rejected(self):
+        # Deterministic race simulation: the initial metadata belongs to A,
+        # but os.open resolves the same path to B. No proprietary input used.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "sample.idf"
+            replacement = root / "replacement.idf"
+            data = b"synthetic-original"
+            source.write_bytes(data)
+            replacement.write_bytes(b"X" * len(data))
+            real_open = os.open
+            swapped = False
+
+            def swap_before_open(path, flags, *args, **kwargs):
+                nonlocal swapped
+                if not swapped:
+                    swapped = True
+                    os.replace(replacement, source)
+                return real_open(path, flags, *args, **kwargs)
+
+            with patch("idf_header_triage.os.open", side_effect=swap_before_open):
+                with self.assertRaisesRegex(ValueError, "source changed before triage read"):
+                    inspect(source, hashlib.sha256(data).hexdigest())
+            self.assertTrue(swapped)
+
     def test_wrong_digest_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "sample.idf"
