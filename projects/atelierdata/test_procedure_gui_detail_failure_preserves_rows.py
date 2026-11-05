@@ -46,7 +46,7 @@ class DetailFailureTests(unittest.TestCase):
     def test_deleted_row_is_removed(self):
         rows, messages = self._run(False)
         self.assertEqual(rows, [])
-        self.assertIn("Detaliile", messages[0])
+        self.assertIn("Pasul nu mai aparține procedurii", messages[0])
 
 
 if __name__ == "__main__":
