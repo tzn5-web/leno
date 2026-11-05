@@ -25,11 +25,17 @@ def inspect(path: Path, expected_sha256: str, sample_size: int = MAX_SAMPLE) -> 
         raise ValueError("file too large for bounded triage")
     digest = hashlib.sha256()
     sample = bytearray()
+    bytes_read = 0
     with path.open("rb") as stream:
         while chunk := stream.read(1024 * 1024):
+            bytes_read += len(chunk)
+            if bytes_read > MAX_FILE:
+                raise ValueError("file grew beyond safe bound during triage")
             digest.update(chunk)
             if len(sample) < sample_size:
                 sample.extend(chunk[:sample_size - len(sample)])
+        if bytes_read != size or path.stat().st_size != size:
+            raise ValueError("file size changed during triage")
     if digest.hexdigest() != expected_sha256.lower():
         raise ValueError("SHA256 mismatch")
     counts = [0] * 256
