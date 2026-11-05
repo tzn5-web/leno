@@ -8,6 +8,7 @@ import hashlib
 import json
 import math
 import os
+import stat
 from pathlib import Path
 
 MAX_SAMPLE = 65536
@@ -19,18 +20,21 @@ def inspect(path: Path, expected_sha256: str, sample_size: int = MAX_SAMPLE) -> 
         raise ValueError("sample_size outside safe bound")
     if len(expected_sha256) != 64 or any(c not in "0123456789abcdef" for c in expected_sha256.lower()):
         raise ValueError("expected SHA256 required")
-    if not path.is_file() or path.is_symlink():
-        raise ValueError("regular non-symlink file required")
     initial = path.lstat()
+    if not stat.S_ISREG(initial.st_mode):
+        raise ValueError("regular non-symlink file required")
     size = initial.st_size
     if size > MAX_FILE:
         raise ValueError("file too large for bounded triage")
     digest = hashlib.sha256()
     sample = bytearray()
     bytes_read = 0
-    with path.open("rb") as stream:
+    # O_NOFOLLOW closes the check/open symlink race on platforms that support it.
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(path, flags)
+    with os.fdopen(fd, "rb") as stream:
         before = os.fstat(stream.fileno())
-        if (not os.path.isfile(path) or before.st_size != size or
+        if (not stat.S_ISREG(before.st_mode) or before.st_size != size or
                 (before.st_dev, before.st_ino) != (initial.st_dev, initial.st_ino)):
             raise ValueError("source changed before triage read")
         while chunk := stream.read(1024 * 1024):
