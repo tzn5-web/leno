@@ -106,6 +106,30 @@ class IDFStrideTests(unittest.TestCase):
                 with self.assertRaises((ValueError, OSError)):
                     analyze(manifest, root, ('FAS.IDF',))
 
+    def test_zip_source_replaced_during_read_is_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            manifest = manifest_and_parts(root, [('FAS.IDF', b'synthetic')])
+            original = root / 'autodata_part_0001.zip'
+            replacement = root / 'replacement.zip'
+            with zipfile.ZipFile(replacement, 'w') as z:
+                z.writestr('Fake/FAS.IDF', b'synthetic')
+            real_zip = zipfile.ZipFile
+
+            def replace_after_open(*args, **kwargs):
+                archive = real_zip(*args, **kwargs)
+                try:
+                    original.unlink()
+                    replacement.rename(original)
+                except OSError:
+                    archive.close()
+                    raise unittest.SkipTest('Cannot replace an open ZIP on this runner')
+                return archive
+
+            with patch('idf_stride_evidence.zipfile.ZipFile', side_effect=replace_after_open):
+                with self.assertRaisesRegex(ValueError, 'ZIP source changed during read'):
+                    analyze(manifest, root, ('FAS.IDF',))
+
     def test_missing_archive_is_rejected(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
