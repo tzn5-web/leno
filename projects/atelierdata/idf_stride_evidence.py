@@ -138,7 +138,9 @@ def main():
     result = analyze(manifest, args.parts_dir)
     output = json.dumps(result, indent=2, ensure_ascii=False) + "\n"
     if args.output:
-        args.output.write_text(output, encoding="utf-8")
+        # Exclusive creation refuses existing reports and symlink targets.
+        with args.output.open("x", encoding="utf-8") as stream:
+            stream.write(output)
     print(output)
 
 
