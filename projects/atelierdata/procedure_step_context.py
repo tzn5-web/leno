@@ -52,9 +52,14 @@ def step_context_text(store, vehicle_id, procedure_id, step_id):
         ("precautions", "AVERTISMENT GENERAL"),
         ("safety_note", "ATENȚIE LA ACEST PAS"),
     ):
-        value = _safe_display_text(row[column])
+        raw = row[column]
+        value = _safe_display_text(raw)
         if value is not None:
             lines.append(f"{label}: {value}")
+        elif raw is not None and (not isinstance(raw, str) or raw.strip()):
+            # Imported/corrupt warnings or provenance must not disappear
+            # silently: users need to know the safety context is incomplete.
+            lines.append(f"AVERTISMENT DATE: {label} indisponibil(ă); verifică sursa.")
     if row["article_id"] is not None:
         if row["reference_title"] is None:
             lines.append("AVERTISMENT REFERINȚĂ: Document indisponibil sau asociat "
