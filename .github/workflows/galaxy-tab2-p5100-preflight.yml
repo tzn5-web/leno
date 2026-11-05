@@ -1,0 +1,41 @@
+name: Galaxy Tab 2 P5100 - source-preflight
+on:
+  push:
+    branches: [galaxy-tab2-p5100-port-20261105]
+    paths:
+      - 'projects/galaxy-tab2-p5100/**'
+      - '.github/workflows/galaxy-tab2-p5100-preflight.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check scripts and pin manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          P=projects/galaxy-tab2-p5100
+          python3 -m json.tool "$P/sources.lock.json" >/dev/null
+          python3 -m py_compile "$P/scripts/preflight.py"
+          bash -n "$P/scripts/bootstrap-sources.sh"
+          python3 - "$P/sources.lock.json" <<'PY'
+          import json,sys
+          src=json.load(open(sys.argv[1],encoding="utf-8"))
+          assert src["target"]=="GT-P5100" and src["codename"]=="espresso3g"
+          assert len(src["repositories"])==4
+          for r in src["repositories"]:
+              assert len(r["revision"])==40
+          PY
+          set +e
+          python3 "$P/scripts/preflight.py" "$RUNNER_TEMP/p5100-missing" >"$RUNNER_TEMP/p5100-audit.json"
+          rc=$?
+          set -e
+          test "$rc" -eq 2
+          grep -q '"result": "BLOCKED"' "$RUNNER_TEMP/p5100-audit.json"
+          grep -q '"flash_allowed": false' "$RUNNER_TEMP/p5100-audit.json"
+          grep -q 'NO_FLASH=YES' "$RUNNER_TEMP/p5100-audit.json"
+          echo "STATIC_AUDIT=PASS"
