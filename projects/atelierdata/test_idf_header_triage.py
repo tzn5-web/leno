@@ -1,9 +1,12 @@
 """Synthetic-only tests for IDF metadata triage; no proprietary fixtures."""
 import hashlib
+import json
+import sys
+from unittest.mock import patch
 import tempfile
 import unittest
 from pathlib import Path
-from idf_header_triage import inspect
+from idf_header_triage import inspect, main
 
 
 class TestIdfHeaderTriage(unittest.TestCase):
@@ -32,6 +35,52 @@ class TestIdfHeaderTriage(unittest.TestCase):
             path.write_bytes(b"")
             with self.assertRaises(ValueError):
                 inspect(path, hashlib.sha256(b"").hexdigest(), 65537)
+
+    def test_existing_report_is_not_overwritten(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "sample.idf"
+            source.write_bytes(b"synthetic")
+            report = root / "report.json"
+            report.write_text("sentinel", encoding="utf-8")
+            argv = ["idf_header_triage.py", "--file", str(source),
+                    "--expected-sha256", hashlib.sha256(b"synthetic").hexdigest(),
+                    "--output", str(report)]
+            with patch.object(sys, "argv", argv), self.assertRaises(SystemExit):
+                main()
+            self.assertEqual(report.read_text(encoding="utf-8"), "sentinel")
+
+    def test_new_report_created_exclusively(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "sample.idf"
+            source.write_bytes(b"synthetic")
+            report = root / "report.json"
+            argv = ["idf_header_triage.py", "--file", str(source),
+                    "--expected-sha256", hashlib.sha256(b"synthetic").hexdigest(),
+                    "--output", str(report)]
+            with patch.object(sys, "argv", argv):
+                main()
+            self.assertTrue(json.loads(report.read_text(encoding="utf-8"))["sha256_verified"])
+
+    def test_output_symlink_does_not_overwrite_target(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "sample.idf"
+            source.write_bytes(b"synthetic")
+            target = root / "target.json"
+            target.write_text("sentinel", encoding="utf-8")
+            report = root / "report.json"
+            try:
+                report.symlink_to(target)
+            except OSError:
+                self.skipTest("symlink unavailable")
+            argv = ["idf_header_triage.py", "--file", str(source),
+                    "--expected-sha256", hashlib.sha256(b"synthetic").hexdigest(),
+                    "--output", str(report)]
+            with patch.object(sys, "argv", argv), self.assertRaises(SystemExit):
+                main()
+            self.assertEqual(target.read_text(encoding="utf-8"), "sentinel")
 
     def test_symlink_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
