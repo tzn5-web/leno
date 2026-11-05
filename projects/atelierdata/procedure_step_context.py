@@ -4,13 +4,20 @@ Technical content is user-authored/licensed; this module never supplies repair v
 """
 from __future__ import annotations
 
+import unicodedata
+
+
+def _has_unsafe_display_controls(value):
+    """Block Unicode format controls that can visually reorder GUI evidence."""
+    return any(unicodedata.category(char) in ("Cc", "Cf") for char in value)
+
 
 def _safe_display_text(value):
     """Reject control characters that could forge extra GUI context lines."""
     if not isinstance(value, str):
         return None
     value = value.strip()
-    if not value or any(ord(char) < 32 or ord(char) == 127 for char in value):
+    if not value or _has_unsafe_display_controls(value):
         return None
     return value
 
@@ -37,7 +44,7 @@ def step_context_text(store, vehicle_id, procedure_id, step_id):
         raise ValueError("Step instruction is missing or empty")
     if type(row["step_number"]) is not int or row["step_number"] <= 0:
         raise ValueError("Step number is invalid")
-    if any(char in row["instruction"] for char in ("\0", "\r", "\n")):
+    if _has_unsafe_display_controls(row["instruction"]):
         raise ValueError("Step instruction contains a forbidden control character")
     lines = [f"PAS {row['step_number']}: {row['instruction'].strip()}"]
     for column, label in (
