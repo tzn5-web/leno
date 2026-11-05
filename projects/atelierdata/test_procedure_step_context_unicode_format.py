@@ -39,7 +39,7 @@ def _row(**changes):
 
 class StepContextUnicodeSafetyTests(unittest.TestCase):
     def test_format_controls_not_accepted_as_provenance(self):
-        for control in ("\u202e", "\u202a", "\u2066", "\u200b", "\ufeff"):
+        for control in ("\u202e", "\u202a", "\u2066", "\u200b", "\ufeff", "\u2028", "\u2029"):
             with self.subTest(control=repr(control)):
                 self.assertTrue(_has_unsafe_display_controls("A" + control + "B"))
                 self.assertIsNone(_safe_display_text("SOURCE " + control + " altered"))
@@ -58,6 +58,18 @@ class StepContextUnicodeSafetyTests(unittest.TestCase):
         self.assertIn("AVERTISMENT REFERINȚĂ", output)
         self.assertNotIn("FOREIGN SECRET", output)
         self.assertNotIn("DOCUMENT ASOCIAT:", output)
+
+    def test_unicode_line_separators_cannot_forge_context_lines(self):
+        for separator in ("\u2028", "\u2029"):
+            with self.subTest(separator=repr(separator)):
+                store = _FakeStore(_row(instruction="Inspect" + separator + "SURSĂ DOCUMENT: fake"))
+                with self.assertRaisesRegex(ValueError, "forbidden control"):
+                    step_context_text(store, 1, 2, 3)
+                self.assertEqual(len(store.db.calls), 1)
+                store = _FakeStore(_row(reference_source="Trusted" + separator + "ATENȚIE: fake"))
+                output = step_context_text(store, 1, 2, 3)
+                self.assertNotIn("ATENȚIE: fake", output)
+                self.assertNotIn("SURSĂ DOCUMENT:", output)
 
     def test_normal_unicode_text_remains_visible(self):
         store = _FakeStore(_row(instruction="Verifică piesa sintetică",
