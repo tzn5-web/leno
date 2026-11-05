@@ -205,7 +205,7 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
                           "este validă. Actualizează lista înainte de a continua.")
                 if (reference is not None and reference["article_id"] is not None
                         and reference["authorized_article_id"] is None):
-                    detail += ("\\nAVERTISMENT REFERINȚĂ: Document indisponibil "
+                    detail += ("\nAVERTISMENT REFERINȚĂ: Document indisponibil "
                                "sau asociat altui vehicul; verifică auditul.")
                 render(detail)
             return None
