@@ -59,7 +59,14 @@ def main() -> None:
     if args.output.resolve() == args.file.resolve():
         parser.error("output cannot overwrite input")
     report = inspect(args.file, args.expected_sha256)
-    args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    # Exclusive creation prevents replacing an existing report or following an output symlink.
+    # Keep the source file untouched even if a caller supplies an existing output path.
+    try:
+        with args.output.open("x", encoding="utf-8") as stream:
+            json.dump(report, stream, indent=2)
+            stream.write("\n")
+    except FileExistsError as exc:
+        parser.error(f"output already exists: {args.output}")
 
 
 if __name__ == "__main__":
