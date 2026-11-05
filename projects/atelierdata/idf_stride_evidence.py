@@ -102,6 +102,9 @@ def first_verified_chunk(manifest, directory, name):
             if len(matches) != 1:
                 raise ValueError("ZIP member missing or ambiguous")
             entry = matches[0]
+            if entry.flag_bits & 0x1:
+                # Never attempt passwords or encrypted-member processing.
+                raise ValueError("Encrypted ZIP member refused")
             if entry.is_dir() or entry.file_size != expected_size:
                 raise ValueError("ZIP member size mismatch")
             with archive.open(entry) as stream:
