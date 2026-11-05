@@ -62,6 +62,58 @@ class TestIdfHeaderTriage(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "source changed during triage"):
                     inspect(path, hashlib.sha256(data).hexdigest())
 
+    def test_same_size_path_replacement_detected(self):
+        # Simulate atomic replacement after the file descriptor has been opened.
+        # The old descriptor still hashes the expected bytes; path identity must
+        # nevertheless fail, even when replacement bytes have identical length.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "sample.idf"
+            data = b"synthetic-original"
+            path.write_bytes(data)
+            replacement = root / "replacement.idf"
+            replacement.write_bytes(b"X" * len(data))
+            real_fstat = os.fstat
+            calls = 0
+
+            def replace_on_final_fstat(fd):
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    os.replace(replacement, path)
+                return real_fstat(fd)
+
+            with patch("idf_header_triage.os.fstat", side_effect=replace_on_final_fstat):
+                with self.assertRaisesRegex(ValueError, "file size changed during triage"):
+                    inspect(path, hashlib.sha256(data).hexdigest())
+            self.assertEqual(path.read_bytes(), b"X" * len(data))
+
+    def test_source_path_swapped_to_symlink_detected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "sample.idf"
+            data = b"synthetic-original"
+            path.write_bytes(data)
+            target = root / "target.idf"
+            target.write_bytes(data)
+            real_fstat = os.fstat
+            calls = 0
+
+            def swap_on_final_fstat(fd):
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    path.unlink()
+                    try:
+                        path.symlink_to(target)
+                    except OSError:
+                        self.skipTest("symlink unavailable")
+                return real_fstat(fd)
+
+            with patch("idf_header_triage.os.fstat", side_effect=swap_on_final_fstat):
+                with self.assertRaises(ValueError):
+                    inspect(path, hashlib.sha256(data).hexdigest())
+
     def test_wrong_digest_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "sample.idf"
