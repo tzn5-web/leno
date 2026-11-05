@@ -55,6 +55,29 @@ class InvalidContextMetadataTests(unittest.TestCase):
         self.assertNotIn("Unsafe", result)
         self.assertNotIn("spoof", result)
 
+    def test_invalid_document_provenance_is_flagged_without_leak(self):
+        for source in ("Forged\\u202e origin", "Line\\u2029 forged", 42):
+            if isinstance(source, str):
+                source = source.replace("\\u202e", "\u202e").replace("\\u2029", "\u2029")
+            with self.subTest(source=repr(source)):
+                store = _Store(article_id=7, reference_title="Authorized synthetic document",
+                               reference_source=source)
+                before = len(store.db.calls)
+                result = step_context_text(store, 1, 2, 3)
+                self.assertIn("DOCUMENT ASOCIAT: Authorized synthetic document", result)
+                self.assertIn("AVERTISMENT DATE: SURSĂ DOCUMENT indisponibil", result)
+                self.assertNotIn("Forged", result)
+                self.assertNotIn("forged", result)
+                self.assertNotIn("SURSĂ DOCUMENT: ", result)
+                self.assertEqual(len(store.db.calls), before + 1)
+
+    def test_empty_document_provenance_remains_optional(self):
+        store = _Store(article_id=7, reference_title="Authorized synthetic document",
+                       reference_source="  ")
+        result = step_context_text(store, 1, 2, 3)
+        self.assertIn("DOCUMENT ASOCIAT:", result)
+        self.assertNotIn("AVERTISMENT DATE: SURSĂ DOCUMENT", result)
+
     def test_optional_empty_warning_is_not_flagged(self):
         store = _Store(safety_note="  ", precautions="", procedure_source="OWN")
         result = step_context_text(store, 1, 2, 3)
