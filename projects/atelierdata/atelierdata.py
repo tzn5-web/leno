@@ -760,7 +760,11 @@ def main():
                             'UPDATE articles SET vehicle_id=? WHERE id=?',
                             (foreign_vehicle,second_article))
                         ui.db.db.commit()
-                        window.refresh_steps(step_id)
+                        # Restore the verified procedure context explicitly: queued
+                        # TreeviewSelect events can transiently clear the parent.
+                        window.refresh_steps(step_id, procedure_id=pid)
+                        window.steps_tree.selection_set(str(step_id))
+                        window.render_selected_step()
                         shown=window.procedure_detail_text.get('1.0','end')
                         if 'AVERTISMENT REFERINȚĂ:' not in shown:
                             raise RuntimeError('PROCEDURES_GUI_INVALID_REFERENCE_WARNING_MISSING')
