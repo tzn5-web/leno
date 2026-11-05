@@ -81,7 +81,12 @@ def first_verified_chunk(manifest, directory, name):
     sample = bytearray()
     count = 0
     with zipfile.ZipFile(archive_path) as archive:
-        entry = archive.getinfo(chunk["entry"])
+        # ZIP permits duplicate member names; getinfo() silently chooses the last.
+        # Refuse ambiguous provenance rather than hashing an arbitrary member.
+        matches = [item for item in archive.infolist() if item.filename == chunk["entry"]]
+        if len(matches) != 1:
+            raise ValueError("ZIP member missing or ambiguous")
+        entry = matches[0]
         if entry.is_dir() or entry.file_size != expected_size:
             raise ValueError("ZIP member size mismatch")
         with archive.open(entry) as stream:
