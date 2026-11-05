@@ -49,11 +49,18 @@ def inspect(path: Path, expected_sha256: str, sample_size: int = MAX_SAMPLE) -> 
         if (bytes_read != size or after.st_size != size or final.st_size != size or
                 (final.st_dev, final.st_ino) != (before.st_dev, before.st_ino)):
             raise ValueError("file size changed during triage")
+        # Windows st_ctime is creation time and can be reported with
+        # differing precision between fstat() and lstat(). Identity, size,
+        # mtime and the caller-provided full-file SHA256 remain mandatory.
+        # POSIX ctime additionally detects metadata/inode changes.
+        ctime_changed = (
+            os.name != "nt" and
+            (before.st_ctime_ns != after.st_ctime_ns or
+             before.st_ctime_ns != final.st_ctime_ns)
+        )
         if (before.st_mtime_ns != after.st_mtime_ns or
                 before.st_mtime_ns != final.st_mtime_ns or
-                before.st_ctime_ns != after.st_ctime_ns or
-                before.st_ctime_ns != final.st_ctime_ns or
-                before.st_ino != after.st_ino):
+                ctime_changed or before.st_ino != after.st_ino):
             raise ValueError("source changed during triage")
     if digest.hexdigest() != expected_sha256.lower():
         raise ValueError("SHA256 mismatch")
