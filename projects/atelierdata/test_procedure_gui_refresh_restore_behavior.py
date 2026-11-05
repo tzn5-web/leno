@@ -60,6 +60,28 @@ class RefreshRestoreTests(unittest.TestCase):
         self.assertEqual(state["pid"], 7)
         self.assertEqual(renders, ["step"])
 
+    def test_hidden_parent_is_rejected_without_clearing_existing_steps(self):
+        source = Path(__file__).with_name("repair_procedures_gui.py").read_text(encoding="utf-8")
+        outer = next(node for node in ast.walk(ast.parse(source))
+                     if isinstance(node, ast.FunctionDef) and node.name == "open_procedures_window")
+        callback = next(node for node in outer.body
+                        if isinstance(node, ast.FunctionDef) and node.name == "refresh_steps")
+        procedures = FakeTree(("8",))
+        steps = FakeTree(("existing",))
+        state = {"pid": 8}
+        ns = dict(procedures=procedures, steps=steps, state=state,
+                  require_live_procedure=lambda pid: None,
+                  list_steps=lambda *args: self.fail("must not read hidden parent"),
+                  app=type("App", (), {"db": object()})(),
+                  _validate_navigation_id=lambda value, label: value,
+                  vehicle_id=1)
+        exec(compile(ast.fix_missing_locations(ast.Module(body=[callback], type_ignores=[])),
+                     "<refresh_steps>", "exec"), ns)
+        with self.assertRaisesRegex(ValueError, "vizibil"):
+            ns["refresh_steps"](procedure_id=7)
+        self.assertEqual(steps.get_children(), ("existing",))
+        self.assertEqual(state["pid"], 8)
+
 
 if __name__ == "__main__":
     unittest.main()
