@@ -73,6 +73,39 @@ class IDFStrideTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'ambiguous'):
                 analyze(manifest, root, ('FAS.IDF',))
 
+    def test_zip_symlink_refused_before_open(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            manifest = manifest_and_parts(root, [('FAS.IDF', b'synthetic')])
+            original = root / 'autodata_part_0001.zip'
+            target = root / 'archive-target.zip'
+            original.rename(target)
+            try:
+                original.symlink_to(target)
+            except (OSError, NotImplementedError):
+                self.skipTest('Symlink creation not available on this runner')
+            with self.assertRaisesRegex(ValueError, 'Symlink ZIP refused'):
+                analyze(manifest, root, ('FAS.IDF',))
+
+    def test_zip_source_replaced_with_symlink_at_open_is_refused(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            manifest = manifest_and_parts(root, [('FAS.IDF', b'synthetic')])
+            original = root / 'autodata_part_0001.zip'
+            target = root / 'archive-target.zip'
+            original.rename(target)
+            real_open = __import__('os').open
+            def swap_at_open(path, flags, *args, **kwargs):
+                if Path(path) == original:
+                    try:
+                        original.symlink_to(target)
+                    except (OSError, NotImplementedError):
+                        raise unittest.SkipTest('Symlink creation not available')
+                return real_open(path, flags, *args, **kwargs)
+            with patch('idf_stride_evidence.os.open', side_effect=swap_at_open):
+                with self.assertRaises((ValueError, OSError)):
+                    analyze(manifest, root, ('FAS.IDF',))
+
     def test_missing_archive_is_rejected(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
