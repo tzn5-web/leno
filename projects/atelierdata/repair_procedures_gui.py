@@ -176,12 +176,17 @@ def open_procedures_window(app, editor_class, selected_procedure_id=None,
         try:
             context=step_context_text(app.db,vehicle_id,pid,int(chosen[0]))
         except ValueError:
-            # A deleted or reassigned step must not remain selectable in the GUI.
-            # Keep other live rows intact; this is a read-only view update.
-            if steps.exists(chosen[0]):
+            # A failed detail lookup does not prove that the step itself was
+            # deleted: its document/provenance may have become invalid.
+            # Never remove a valid SQLite-backed row merely because rendering
+            # its detail failed (including queued Tk selection callbacks).
+            live = app.db.db.execute(
+                "SELECT 1 FROM procedure_steps WHERE id=? AND procedure_id=?",
+                (int(chosen[0]), pid)).fetchone()
+            if live is None and steps.exists(chosen[0]):
                 steps.delete(chosen[0])
-            render("Pasul selectat nu mai aparține procedurii sau vehiculului. "
-                   "Actualizează lista înainte de a continua.")
+            render("Detaliile pasului nu sunt disponibile sau referința nu mai "
+                   "este validă. Actualizează lista înainte de a continua.")
             return None
         render(context)
         return context
