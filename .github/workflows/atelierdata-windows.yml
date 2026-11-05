@@ -120,6 +120,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "REA_RESOURCE_AUDIT_TEST_FAILED" }
           python projects/atelierdata/idf_static_evidence.py --self-test
           if ($LASTEXITCODE -ne 0) { throw "IDF_STATIC_EVIDENCE_TEST_FAILED" }
+          python -m py_compile projects/atelierdata/idf_header_triage.py projects/atelierdata/test_idf_header_triage.py
+          if ($LASTEXITCODE -ne 0) { throw "IDF_HEADER_TRIAGE_SYNTAX_FAILED" }
+          python -m unittest discover -s projects/atelierdata -p 'test_idf_header_triage.py' -v
+          if ($LASTEXITCODE -ne 0) { throw "IDF_HEADER_TRIAGE_TEST_FAILED" }
           python -m py_compile projects/atelierdata/idf_probe_safe.py projects/atelierdata/test_idf_probe_safe.py
           python -m unittest discover -s projects/atelierdata -p 'test_idf_probe_safe.py' -v
           if ($LASTEXITCODE -ne 0) { throw "IDF_PROBE_SAFE_TEST_FAILED" }
