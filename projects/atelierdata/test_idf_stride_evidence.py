@@ -1,11 +1,13 @@
 """Only synthetic fixtures. No original proprietary bytes."""
 import hashlib
+import json
+import sys
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
 from unittest.mock import patch
-from idf_stride_evidence import analyze, strongest_stride
+from idf_stride_evidence import analyze, strongest_stride, main
 
 
 def manifest_and_parts(root, rows):
@@ -74,6 +76,32 @@ class IDFStrideTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'Blocked package part_0016'):
                     analyze(manifest, root, ('FAS.IDF',))
                 opener.assert_not_called()
+
+    def test_existing_report_is_preserved(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            manifest = root / 'inventory.json'
+            manifest.write_text(json.dumps({'files': []}), encoding='utf-8')
+            report = root / 'evidence.json'
+            report.write_text('SENTINEL', encoding='utf-8')
+            argv = ['idf_stride_evidence.py', '--manifest', str(manifest),
+                    '--parts-dir', str(root), '--output', str(report)]
+            with patch.object(sys, 'argv', argv):
+                with self.assertRaises(FileExistsError):
+                    main()
+            self.assertEqual(report.read_text(encoding='utf-8'), 'SENTINEL')
+
+    def test_new_report_created(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            manifest = root / 'inventory.json'
+            manifest.write_text(json.dumps({'files': []}), encoding='utf-8')
+            report = root / 'evidence.json'
+            argv = ['idf_stride_evidence.py', '--manifest', str(manifest),
+                    '--parts-dir', str(root), '--output', str(report)]
+            with patch.object(sys, 'argv', argv):
+                main()
+            self.assertFalse(json.loads(report.read_text(encoding='utf-8'))['idf_decoder_proven'])
 
     def test_no_repetition(self):
         self.assertIsNone(strongest_stride(b'123456789'))
