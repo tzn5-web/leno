@@ -8,7 +8,7 @@ class ProcedureTreePreviewTests(unittest.TestCase):
     def test_untrusted_control_and_bidi_text_is_neutralized(self):
         raw = "Inspect\nconnector\r\t\u202eREVERSED\u2066\u2069\u0085\u2028next"
         result = _safe_search_preview(raw)
-        self.assertEqual(result, "Inspect connector   REVERSED   next")
+        self.assertEqual(result, "Inspect connector   REVERSED    next")
         self.assertNotIn("\n", result)
 
     def test_preview_limit_validation_rejects_bool_and_nonpositive(self):
