@@ -21,7 +21,8 @@ def inspect(path: Path, expected_sha256: str, sample_size: int = MAX_SAMPLE) -> 
         raise ValueError("expected SHA256 required")
     if not path.is_file() or path.is_symlink():
         raise ValueError("regular non-symlink file required")
-    size = path.stat().st_size
+    initial = path.lstat()
+    size = initial.st_size
     if size > MAX_FILE:
         raise ValueError("file too large for bounded triage")
     digest = hashlib.sha256()
@@ -29,7 +30,8 @@ def inspect(path: Path, expected_sha256: str, sample_size: int = MAX_SAMPLE) -> 
     bytes_read = 0
     with path.open("rb") as stream:
         before = os.fstat(stream.fileno())
-        if not os.path.isfile(path) or before.st_size != size:
+        if (not os.path.isfile(path) or before.st_size != size or
+                (before.st_dev, before.st_ino) != (initial.st_dev, initial.st_ino)):
             raise ValueError("source changed before triage read")
         while chunk := stream.read(1024 * 1024):
             bytes_read += len(chunk)
@@ -39,9 +41,15 @@ def inspect(path: Path, expected_sha256: str, sample_size: int = MAX_SAMPLE) -> 
             if len(sample) < sample_size:
                 sample.extend(chunk[:sample_size - len(sample)])
         after = os.fstat(stream.fileno())
-        if bytes_read != size or after.st_size != size or path.stat().st_size != size:
+        final = path.lstat()
+        if (bytes_read != size or after.st_size != size or final.st_size != size or
+                (final.st_dev, final.st_ino) != (before.st_dev, before.st_ino)):
             raise ValueError("file size changed during triage")
-        if (before.st_mtime_ns != after.st_mtime_ns or before.st_ino != after.st_ino):
+        if (before.st_mtime_ns != after.st_mtime_ns or
+                before.st_mtime_ns != final.st_mtime_ns or
+                before.st_ctime_ns != after.st_ctime_ns or
+                before.st_ctime_ns != final.st_ctime_ns or
+                before.st_ino != after.st_ino):
             raise ValueError("source changed during triage")
     if digest.hexdigest() != expected_sha256.lower():
         raise ValueError("SHA256 mismatch")
