@@ -40,7 +40,11 @@ class StepContextControlCharacterTests(unittest.TestCase):
     def test_control_metadata_does_not_inject_gui_lines(self):
         before = self.db.total_changes
         result = step_context_text(self.store, 10, 1, 1)
-        self.assertEqual(result, "PAS 1: Authorized step" + chr(10) + "DOCUMENT ASOCIAT: Authorized document")
+        self.assertTrue(result.startswith("PAS 1: Authorized step" + chr(10)))
+        self.assertIn("DOCUMENT ASOCIAT: Authorized document", result)
+        for label in ("SURSĂ PROCEDURĂ", "AVERTISMENT GENERAL",
+                      "ATENȚIE LA ACEST PAS", "SURSĂ DOCUMENT"):
+            self.assertIn("AVERTISMENT DATE: " + label + " indisponibil", result)
         self.assertNotIn("forged", result)
         self.assertEqual(self.db.total_changes, before)
 
