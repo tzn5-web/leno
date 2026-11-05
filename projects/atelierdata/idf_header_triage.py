@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 
 MAX_SAMPLE = 65536
@@ -27,6 +28,9 @@ def inspect(path: Path, expected_sha256: str, sample_size: int = MAX_SAMPLE) -> 
     sample = bytearray()
     bytes_read = 0
     with path.open("rb") as stream:
+        before = os.fstat(stream.fileno())
+        if not os.path.isfile(path) or before.st_size != size:
+            raise ValueError("source changed before triage read")
         while chunk := stream.read(1024 * 1024):
             bytes_read += len(chunk)
             if bytes_read > MAX_FILE:
@@ -34,8 +38,11 @@ def inspect(path: Path, expected_sha256: str, sample_size: int = MAX_SAMPLE) -> 
             digest.update(chunk)
             if len(sample) < sample_size:
                 sample.extend(chunk[:sample_size - len(sample)])
-        if bytes_read != size or path.stat().st_size != size:
+        after = os.fstat(stream.fileno())
+        if bytes_read != size or after.st_size != size or path.stat().st_size != size:
             raise ValueError("file size changed during triage")
+        if (before.st_mtime_ns != after.st_mtime_ns or before.st_ino != after.st_ino):
+            raise ValueError("source changed during triage")
     if digest.hexdigest() != expected_sha256.lower():
         raise ValueError("SHA256 mismatch")
     counts = [0] * 256
