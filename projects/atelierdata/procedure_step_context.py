@@ -73,4 +73,9 @@ def step_context_text(store, vehicle_id, procedure_id, step_id):
             reference_source = _safe_display_text(row["reference_source"])
             if reference_source is not None:
                 lines.append("SURSĂ DOCUMENT: " + reference_source)
+            elif row["reference_source"] is not None and (
+                not isinstance(row["reference_source"], str)
+                or row["reference_source"].strip()
+            ):
+                lines.append("AVERTISMENT DATE: SURSĂ DOCUMENT indisponibil(ă); verifică sursa.")
     return "\n".join(lines)
