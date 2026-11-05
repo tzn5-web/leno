@@ -58,6 +58,21 @@ class IDFStrideTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'SHA256 mismatch'):
                 analyze(manifest, root, ('FAS.IDF',))
 
+    def test_duplicate_zip_member_rejected_even_when_last_hash_matches(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            payload = b'synthetic-original'
+            manifest = manifest_and_parts(root, [('FAS.IDF', payload)])
+            archive_path = root / 'autodata_part_0001.zip'
+            # ZIP allows duplicate names; getinfo() normally selects the last.
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', UserWarning)
+                with zipfile.ZipFile(archive_path, 'a') as archive:
+                    archive.writestr('Fake/FAS.IDF', payload)
+            with self.assertRaisesRegex(ValueError, 'ambiguous'):
+                analyze(manifest, root, ('FAS.IDF',))
+
     def test_missing_archive_is_rejected(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
