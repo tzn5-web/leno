@@ -7,7 +7,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
+import stat
 import zipfile
 from collections import defaultdict
 from pathlib import Path
@@ -80,26 +82,34 @@ def first_verified_chunk(manifest, directory, name):
     checksum = hashlib.sha256()
     sample = bytearray()
     count = 0
-    with zipfile.ZipFile(archive_path) as archive:
-        # ZIP permits duplicate member names; getinfo() silently chooses the last.
-        # Refuse ambiguous provenance rather than hashing an arbitrary member.
-        matches = [item for item in archive.infolist() if item.filename == chunk["entry"]]
-        if len(matches) != 1:
-            raise ValueError("ZIP member missing or ambiguous")
-        entry = matches[0]
-        if entry.is_dir() or entry.file_size != expected_size:
-            raise ValueError("ZIP member size mismatch")
-        with archive.open(entry) as stream:
-            while True:
-                block = stream.read(1024 * 1024)
-                if not block:
-                    break
-                count += len(block)
-                if count > expected_size:
-                    raise ValueError("ZIP member exceeds declared size")
-                checksum.update(block)
-                if len(sample) < MAX_SAMPLE:
-                    sample.extend(block[:MAX_SAMPLE - len(sample)])
+    # Open the archive once; refuse symlink substitution between path check and open.
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(archive_path, flags)
+    with os.fdopen(fd, "rb") as source:
+        if not stat.S_ISREG(os.fstat(source.fileno()).st_mode):
+            raise ValueError("ZIP source must be a regular file")
+        if archive_path.is_symlink():
+            raise ValueError("Symlink ZIP refused after open")
+        with zipfile.ZipFile(source) as archive:
+            # ZIP permits duplicate member names; getinfo() silently chooses the last.
+            # Refuse ambiguous provenance rather than hashing an arbitrary member.
+            matches = [item for item in archive.infolist() if item.filename == chunk["entry"]]
+            if len(matches) != 1:
+                raise ValueError("ZIP member missing or ambiguous")
+            entry = matches[0]
+            if entry.is_dir() or entry.file_size != expected_size:
+                raise ValueError("ZIP member size mismatch")
+            with archive.open(entry) as stream:
+                while True:
+                    block = stream.read(1024 * 1024)
+                    if not block:
+                        break
+                    count += len(block)
+                    if count > expected_size:
+                        raise ValueError("ZIP member exceeds declared size")
+                    checksum.update(block)
+                    if len(sample) < MAX_SAMPLE:
+                        sample.extend(block[:MAX_SAMPLE - len(sample)])
     if count != expected_size or checksum.hexdigest() != chunk["sha256"].lower():
         raise ValueError("SHA256 mismatch for " + name)
     return bytes(sample), count
