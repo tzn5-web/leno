@@ -17,7 +17,7 @@ class ProcedureTreeDisplayTests(unittest.TestCase):
         self.assertEqual(row[0], 2)
         self.assertEqual(row[1], "Verifică  ordinea pașilor")
         self.assertEqual(row[2], "Atenție : oprește operația")
-        self.assertEqual(row[3], "Schemă  electrică ")
+        self.assertEqual(row[3], "Schemă  electrică")
         self.assertEqual(step, original)
 
     def test_step_tree_rejects_boolean_or_invalid_step_numbers(self):
