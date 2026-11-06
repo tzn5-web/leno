@@ -35,7 +35,7 @@ class LoneSurrogateContextTests(unittest.TestCase):
         # SQLite's Python adapter rejects unpaired surrogates in TEXT. Simulate
         # corrupted imported rows through the display validator directly.
         from procedure_step_context import _safe_display_text, _has_unsafe_display_controls
-        for surrogate in ("\\ud800", "\\udfff"):
+        for surrogate in (chr(0xD800), chr(0xDFFF)):
             with self.subTest(surrogate=repr(surrogate)):
                 self.assertTrue(_has_unsafe_display_controls(surrogate))
                 self.assertIsNone(_safe_display_text("Title " + surrogate))
