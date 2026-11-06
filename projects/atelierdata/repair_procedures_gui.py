@@ -24,10 +24,10 @@ from repair_procedures import (
 
 def _safe_search_preview(value, limit=420):
     """Keep untrusted SQLite search snippets on one visible Tkinter row."""
-    if not isinstance(value, str):
-        return ""
     if type(limit) is not int or limit <= 0:
         raise ValueError("Invalid preview limit")
+    if not isinstance(value, str):
+        return ""
     # SQLite imports can contain format controls or lone surrogates that
     # distort Tk labels or fail during Windows Unicode rendering.
     return "".join(" " if unicodedata.category(ch) in ("Cc", "Cf", "Cs", "Zl", "Zp") else ch
