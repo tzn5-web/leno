@@ -67,6 +67,22 @@ class IntegrityTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     verify_local_sample(path, hashlib.sha256(b"original").hexdigest())
 
+    def test_same_inode_mutation_before_open_is_rejected(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "sample.idf"
+            original = b"first payload"
+            path.write_bytes(original)
+            real_open = os.open
+
+            def mutate_then_open(target, flags, *args, **kwargs):
+                # Same inode and size: inode-only checks must not pass.
+                path.write_bytes(b"other payload")
+                return real_open(target, flags, *args, **kwargs)
+
+            with patch("idf_sample_integrity.os.open", side_effect=mutate_then_open):
+                with self.assertRaisesRegex(ValueError, "metadata changed before opening"):
+                    verify_local_sample(path, hashlib.sha256(original).hexdigest())
+
     def test_path_replacement_during_hash_is_rejected(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "sample.idf"
