@@ -19,12 +19,12 @@ def compare_stride_hypotheses(sample: bytes, strides=STRIDES):
     if not isinstance(sample, bytes):
         raise TypeError("Expected immutable bytes")
     strides = tuple(strides)
-    if len(strides) != len(set(strides)) if all(type(s) is int for s in strides) else False:
-        raise ValueError("Duplicate candidate strides")
     if len(sample) > MAX_SAMPLE:
         raise ValueError("Sample exceeds bounded static-analysis limit")
     if not strides or any(type(s) is not int or s < TOKEN_BYTES + 1 or s > 128 for s in strides):
         raise ValueError("Invalid candidate stride")
+    if len(strides) != len(set(strides)):
+        raise ValueError("Duplicate candidate strides")
     # A constant or low-diversity buffer can match every candidate stride.
     # Report this confounder instead of treating repetition as record evidence.
     distinct_bytes = len(set(sample))
