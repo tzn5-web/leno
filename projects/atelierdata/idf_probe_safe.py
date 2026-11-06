@@ -29,7 +29,7 @@ def _entry_name(name):
     if not isinstance(name, str) or not name or "\x00" in name or "\\" in name:
         raise ValueError("Unsafe ZIP entry name")
     path = PurePosixPath(name)
-    if path.is_absolute() or any(part in (".", "..") for part in name.split("/")):
+    if path.is_absolute() or any(part in ("", ".", "..") for part in name.rstrip("/").split("/")):
         raise ValueError("Unsafe ZIP entry path")
     if ":" in name.split("/")[0]:
         raise ValueError("Windows drive path forbidden")
@@ -91,7 +91,7 @@ def probe_idf(root):
             seen = set()
             for member in members:
                 name = _entry_name(member.filename)
-                canonical = member.filename.casefold()
+                canonical = member.filename.rstrip("/").casefold()
                 if canonical in seen:
                     raise ValueError("Duplicate ZIP member name")
                 seen.add(canonical)
