@@ -17,10 +17,10 @@ class SearchPreviewRadiusTests(unittest.TestCase):
         self.assertEqual(_excerpt("prefix schemă sufix", "schemă", radius=0), "…schemă…")
 
     def test_maximum_radius_retains_unicode_and_neutralizes_controls(self):
-        preview = _excerpt("A\\nSchemă\\u202eB", "schemă", radius=1000)
+        preview = _excerpt("A" + chr(10) + "Schemă" + chr(0x202e) + "B", "schemă", radius=1000)
         self.assertIn("Schemă", preview)
-        self.assertNotIn("\\n", preview)
-        self.assertNotIn("\\u202e", preview)
+        self.assertNotIn(chr(10), preview)
+        self.assertNotIn(chr(0x202e), preview)
 
 
 if __name__ == "__main__":
