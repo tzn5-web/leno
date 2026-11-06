@@ -16,10 +16,10 @@ def _safe_display_text(value):
     """Reject control characters that could forge extra GUI context lines."""
     if not isinstance(value, str):
         return None
-    value = value.strip()
-    if not value or _has_unsafe_display_controls(value):
+    if _has_unsafe_display_controls(value):
         return None
-    return value
+    value = value.strip()
+    return value or None
 
 
 def step_context_text(store, vehicle_id, procedure_id, step_id):
