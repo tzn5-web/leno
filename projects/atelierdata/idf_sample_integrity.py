@@ -65,6 +65,10 @@ def verify_local_sample(path, expected_sha256, *, max_bytes=1024 * 1024 * 1024):
         raise ValueError("Sample path disappeared during hashing") from exc
     if not stat.S_ISREG(final.st_mode) or not os.path.samestat(opened, final):
         raise ValueError("Sample path changed during hashing")
+    if (final.st_size, final.st_mtime_ns, final.st_ctime_ns) != (opened.st_size, opened.st_mtime_ns, opened.st_ctime_ns):
+        raise ValueError("Sample path metadata changed during hashing")
+    if count != opened.st_size:
+        raise ValueError("Sample byte count differs from initial file size")
     return {"schema": "atelierdata-private-integrity-v1",
             "sample_bytes": count,
             "sha256_matches_expected": digest.hexdigest().lower() == expected_sha256.lower(),
