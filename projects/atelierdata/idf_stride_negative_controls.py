@@ -34,7 +34,12 @@ def rank_stride_evidence(sample: bytes, strides=STRIDES):
                         for r in neighbors if r["possible_window_pairs"]), default=0.0)
         # Small samples can produce a perfect equality rate by chance.
         # Require independent comparison opportunities and a material margin.
-        insufficient_pairs = denom < 32
+        # Adjacent 8-byte windows overlap by seven bytes, so their counts
+        # cannot be interpreted as independent evidence. A conservative
+        # upper bound on non-overlapping opportunities is floor(denom / 8).
+        # Even these opportunities are not necessarily independent.
+        effective_pairs_upper_bound = denom // TOKEN_BYTES
+        insufficient_pairs = effective_pairs_upper_bound < 32
         weak_margin = (rate - baseline) < 0.05
         inconclusive = (insufficient_pairs or weak_margin or current["low_diversity_confounder"]
                         or current["global_periodicity_confounder"]
@@ -44,6 +49,7 @@ def rank_stride_evidence(sample: bytes, strides=STRIDES):
                      "excess_over_controls": round(rate - baseline, 6),
                      "qualified_runs": current["qualified_runs"],
                      "insufficient_pairs": insufficient_pairs,
+                     "nonoverlapping_pair_upper_bound": effective_pairs_upper_bound,
                      "weak_control_margin": weak_margin,
                      "inconclusive": bool(inconclusive),
                      "record_format_proven": False})
@@ -51,4 +57,4 @@ def rank_stride_evidence(sample: bytes, strides=STRIDES):
             "sample_bytes": len(sample), "token_bytes": TOKEN_BYTES,
             "source_executed": False, "idf_decoder_proven": False,
             "results": rows,
-            "warning": "Minimum 32 pairs and 0.05 margin are conservative heuristic gates, not statistical significance or proof of record boundaries."}
+            "warning": "Minimum 32 non-overlapping pair opportunities (upper bound) and 0.05 margin are conservative heuristic gates, not statistical significance or proof of record boundaries."}
