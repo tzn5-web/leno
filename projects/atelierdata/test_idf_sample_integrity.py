@@ -3,6 +3,8 @@ import hashlib
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+import os
 from idf_sample_integrity import verify_local_sample
 
 
@@ -46,6 +48,44 @@ class IntegrityTests(unittest.TestCase):
                 self.skipTest("Symlinks unavailable on this runner")
             with self.assertRaises(ValueError):
                 verify_local_sample(link, hashlib.sha256(b"test").hexdigest())
+
+
+    def test_path_replacement_before_open_is_rejected(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "sample.idf"
+            replacement = Path(folder) / "replacement.idf"
+            path.write_bytes(b"original")
+            replacement.write_bytes(b"replacement")
+            real_open = os.open
+
+            def replace_then_open(target, flags, *args, **kwargs):
+                path.unlink()
+                replacement.rename(path)
+                return real_open(target, flags, *args, **kwargs)
+
+            with patch("idf_sample_integrity.os.open", side_effect=replace_then_open):
+                with self.assertRaises(ValueError):
+                    verify_local_sample(path, hashlib.sha256(b"original").hexdigest())
+
+    def test_path_replacement_during_hash_is_rejected(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "sample.idf"
+            replacement = Path(folder) / "replacement.idf"
+            path.write_bytes(b"original")
+            replacement.write_bytes(b"replacement")
+            real_fstat = os.fstat
+            calls = [0]
+
+            def swap_on_second_fstat(fd):
+                calls[0] += 1
+                if calls[0] == 2:
+                    path.unlink()
+                    replacement.rename(path)
+                return real_fstat(fd)
+
+            with patch("idf_sample_integrity.os.fstat", side_effect=swap_on_second_fstat):
+                with self.assertRaises(ValueError):
+                    verify_local_sample(path, hashlib.sha256(b"original").hexdigest())
 
 
 if __name__ == "__main__":
