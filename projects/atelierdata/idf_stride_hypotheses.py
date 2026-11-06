@@ -39,8 +39,14 @@ def compare_stride_hypotheses(sample: bytes, strides=STRIDES):
                 length += 1
             if length >= 7:  # 7 equalities imply 8 repeated token positions.
                 chains.append((start, length + 1))
+        possible_pairs = max(0, len(sample) - stride - TOKEN_BYTES + 1)
+        # Near-total equality across all offsets indicates whole-buffer
+        # periodicity, not evidence of discrete record boundaries.
+        global_periodicity = possible_pairs > 0 and len(matches) / possible_pairs >= 0.95
         result[str(stride)] = {
             "matching_window_pairs": len(matches),
+            "possible_window_pairs": possible_pairs,
+            "global_periodicity_confounder": global_periodicity,
             "qualified_runs": len(chains),
             "longest_run_tokens": max((length for _, length in chains), default=0),
             "qualified_phase_count": len({start % stride for start, _ in chains}),
@@ -51,4 +57,4 @@ def compare_stride_hypotheses(sample: bytes, strides=STRIDES):
             "distinct_byte_values": distinct_bytes,
             "source_executed": False, "idf_decoder_proven": False,
             "hypotheses": result,
-            "interpretation": "Repeated windows alone cannot establish records or decode IDF; low-diversity inputs can generate spurious matches."}
+            "interpretation": "Repeated windows alone cannot establish records or decode IDF; low-diversity or globally periodic inputs can generate spurious matches."}
