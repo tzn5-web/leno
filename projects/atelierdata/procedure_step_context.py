@@ -8,8 +8,8 @@ import unicodedata
 
 
 def _has_unsafe_display_controls(value):
-    """Block controls and Unicode line separators that can forge GUI evidence."""
-    return any(unicodedata.category(char) in ("Cc", "Cf", "Zl", "Zp") for char in value)
+    """Block controls, lone surrogates and separators unsafe for GUI rendering."""
+    return any(unicodedata.category(char) in ("Cc", "Cf", "Cs", "Zl", "Zp") for char in value)
 
 
 def _safe_display_text(value):
