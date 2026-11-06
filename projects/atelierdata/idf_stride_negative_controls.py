@@ -39,7 +39,10 @@ def rank_stride_evidence(sample: bytes, strides=STRIDES):
         # upper bound on non-overlapping opportunities is floor(denom / 8).
         # Even these opportunities are not necessarily independent.
         effective_pairs_upper_bound = denom // TOKEN_BYTES
-                # Separate complete comparison spans [i, i+stride+TOKEN_BYTES)\n        # to avoid sharing any source byte across selected comparisons.\n        # This deliberately undercounts usable disjoint pairs.\n        disjoint_span_pairs = denom // (stride + TOKEN_BYTES)\n        insufficient_pairs = disjoint_span_pairs < 32
+        # Compare byte-disjoint spans of length stride + TOKEN_BYTES.
+        # This conservative count is an upper bound, not independence proof.
+        disjoint_span_pairs = denom // (stride + TOKEN_BYTES)
+        insufficient_pairs = disjoint_span_pairs < 32
         weak_margin = (rate - baseline) < 0.05
         inconclusive = (insufficient_pairs or weak_margin or current["low_diversity_confounder"]
                         or current["global_periodicity_confounder"]
@@ -49,7 +52,8 @@ def rank_stride_evidence(sample: bytes, strides=STRIDES):
                      "excess_over_controls": round(rate - baseline, 6),
                      "qualified_runs": current["qualified_runs"],
                      "insufficient_pairs": insufficient_pairs,
-                     "nonoverlapping_pair_upper_bound": effective_pairs_upper_bound,\n                     "disjoint_span_pair_count": disjoint_span_pairs,
+                     "nonoverlapping_pair_upper_bound": effective_pairs_upper_bound,
+                     "disjoint_span_pair_count": disjoint_span_pairs,
                      "weak_control_margin": weak_margin,
                      "inconclusive": bool(inconclusive),
                      "record_format_proven": False})
