@@ -6,6 +6,8 @@ stored in AtelierData are queried; no external data or technical values.
 """
 from __future__ import annotations
 
+import unicodedata
+
 from repair_procedures import list_procedures
 
 DEFAULT_LIMIT = 250
@@ -26,6 +28,11 @@ STEP_FIELDS = (
 )
 
 
+def _safe_excerpt_display(value):
+    """Neutralize invisible controls in search previews without changing hit IDs."""
+    return "".join(" " if unicodedata.category(char) in ("Cc", "Cf", "Cs", "Zl", "Zp") else char for char in value)
+
+
 def _excerpt(value, needle, radius=85):
     """Bound text displayed in the results table, preserving the match."""
     value = str(value or "")
@@ -44,12 +51,12 @@ def _excerpt(value, needle, radius=85):
     folded_needle = str(needle).casefold()
     index = "".join(folded_parts).find(folded_needle)
     if index < 0 or not folded_needle:
-        return value[:radius * 2].replace("\r", " ").replace("\n", " ")
+        return _safe_excerpt_display(value[:radius * 2])
     match_start = original_positions[index]
     match_end = original_positions[index + len(folded_needle) - 1] + 1
     start = max(0, match_start - radius)
     end = min(len(value), match_end + radius)
-    excerpt = value[start:end].replace("\r", " ").replace("\n", " ")
+    excerpt = _safe_excerpt_display(value[start:end])
     return ("…" if start else "") + excerpt + ("…" if end < len(value) else "")
 
 
