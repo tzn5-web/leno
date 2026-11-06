@@ -1,5 +1,6 @@
 """Native Windows/Tkinter procedure navigator for user-owned, sourced workshop data."""
 from __future__ import annotations
+import unicodedata
 
 from procedure_step_navigation import adjacent_step_id
 from procedure_step_context import step_context_text
@@ -27,8 +28,9 @@ def _safe_search_preview(value, limit=420):
         return ""
     if type(limit) is not int or limit <= 0:
         raise ValueError("Invalid preview limit")
-    forbidden = "\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069"
-    return "".join(" " if ord(ch) < 32 or 127 <= ord(ch) <= 159 or ch in forbidden or ch in "\u2028\u2029" else ch
+    # SQLite imports can contain format controls or lone surrogates that
+    # distort Tk labels or fail during Windows Unicode rendering.
+    return "".join(" " if unicodedata.category(ch) in ("Cc", "Cf", "Cs", "Zl", "Zp") else ch
                    for ch in value).strip()[:limit]
 
 
