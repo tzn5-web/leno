@@ -35,6 +35,20 @@ class StrideHypothesisTests(unittest.TestCase):
         result = compare_stride_hypotheses(sample)
         self.assertFalse(result['hypotheses']['19']['low_diversity_confounder'])
 
+    def test_global_periodicity_is_not_record_proof(self):
+        # Entire buffer repeats at 19 bytes: all sliding windows match.
+        report = compare_stride_hypotheses(bytes(range(19)) * 20)
+        self.assertTrue(report['hypotheses']['19']['global_periodicity_confounder'])
+        self.assertFalse(report['hypotheses']['21']['global_periodicity_confounder'])
+        self.assertFalse(report['idf_decoder_proven'])
+
+    def test_sparse_repeated_token_not_globally_periodic(self):
+        # A single 8-byte marker at 19-byte spacing, varying payloads.
+        sample = b''.join(b'ABCDEFGH' + bytes([i]) * 11 for i in range(20))
+        report = compare_stride_hypotheses(sample)
+        self.assertGreater(report['hypotheses']['19']['qualified_runs'], 0)
+        self.assertFalse(report['hypotheses']['19']['global_periodicity_confounder'])
+
     def test_bounded_and_invalid_inputs(self):
         with self.assertRaises(ValueError):
             compare_stride_hypotheses(b'a' * (256 * 1024 + 1))
