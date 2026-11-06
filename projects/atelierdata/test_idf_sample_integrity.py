@@ -77,6 +77,7 @@ class IntegrityTests(unittest.TestCase):
             def mutate_then_open(target, flags, *args, **kwargs):
                 # Same inode and size: inode-only checks must not pass.
                 path.write_bytes(b"other payload")
+                os.utime(path, ns=(path.stat().st_atime_ns, path.stat().st_mtime_ns + 2_000_000_000))
                 return real_open(target, flags, *args, **kwargs)
 
             with patch("idf_sample_integrity.os.open", side_effect=mutate_then_open):
@@ -95,8 +96,11 @@ class IntegrityTests(unittest.TestCase):
             def swap_on_second_fstat(fd):
                 calls[0] += 1
                 if calls[0] == 2:
-                    path.unlink()
-                    replacement.rename(path)
+                    try:
+                        path.unlink()
+                        replacement.rename(path)
+                    except PermissionError:
+                        raise unittest.SkipTest("Windows locks open files; replacement cannot be simulated")
                 return real_fstat(fd)
 
             with patch("idf_sample_integrity.os.fstat", side_effect=swap_on_second_fstat):
