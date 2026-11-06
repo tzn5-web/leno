@@ -35,6 +35,8 @@ def _safe_excerpt_display(value):
 
 def _excerpt(value, needle, radius=85):
     """Bound text displayed in the results table, preserving the match."""
+    if type(radius) is not int or not 0 <= radius <= 1000:
+        raise ValueError("Invalid search preview radius")
     value = str(value or "")
     # Search the original text before flattening line breaks. SQLite matches
     # literal multiline text; normalizing first would lose that match and
