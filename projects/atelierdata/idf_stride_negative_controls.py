@@ -32,7 +32,7 @@ def rank_stride_evidence(sample: bytes, strides=STRIDES):
                         for r in neighbors if r["possible_window_pairs"]), default=0.0)
         inconclusive = (denom == 0 or current["low_diversity_confounder"]
                         or current["global_periodicity_confounder"]
-                        or current["qualified_runs"] == 0)
+                        or current["qualified_runs"] == 0 or rate <= baseline)
         rows.append({"stride": stride, "equality_rate": round(rate, 6),
                      "neighbor_control_max_rate": round(baseline, 6),
                      "excess_over_controls": round(rate - baseline, 6),
