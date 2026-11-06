@@ -28,6 +28,14 @@ def compare_stride_hypotheses(sample: bytes, strides=STRIDES):
     for stride in strides:
         matches = [i for i in range(max(0, len(sample) - stride - TOKEN_BYTES + 1))
                    if sample[i:i + TOKEN_BYTES] == sample[i + stride:i + stride + TOKEN_BYTES]]
+        # Concentration across residue classes is descriptive, not record proof.
+        # A repeated token at a single phase differs from broad accidental
+        # equality spread across many phases. No offsets or tokens are emitted.
+        phase_counts = [0] * stride
+        for position in matches:
+            phase_counts[position % stride] += 1
+        dominant_phase_matches = max(phase_counts, default=0)
+        phase_concentration = (dominant_phase_matches / len(matches)) if matches else 0.0
         # Each run is a chain of successive positions spaced exactly by stride.
         present = set(matches)
         chains = []
@@ -48,6 +56,8 @@ def compare_stride_hypotheses(sample: bytes, strides=STRIDES):
             "possible_window_pairs": possible_pairs,
             "global_periodicity_confounder": global_periodicity,
             "qualified_runs": len(chains),
+            "dominant_phase_match_count": dominant_phase_matches,
+            "dominant_phase_fraction": round(phase_concentration, 6),
             "longest_run_tokens": max((length for _, length in chains), default=0),
             "qualified_phase_count": len({start % stride for start, _ in chains}),
             "low_diversity_confounder": low_diversity,
