@@ -56,7 +56,7 @@ def step_context_text(store, vehicle_id, procedure_id, step_id):
         value = _safe_display_text(raw)
         if value is not None:
             lines.append(f"{label}: {value}")
-        elif raw is not None and (not isinstance(raw, str) or raw.strip()):
+        elif raw is not None and (not isinstance(raw, str) or raw.strip() or _has_unsafe_display_controls(raw)):
             # Imported/corrupt warnings or provenance must not disappear
             # silently: users need to know the safety context is incomplete.
             lines.append(f"AVERTISMENT DATE: {label} indisponibil(ă); verifică sursa.")
@@ -76,6 +76,7 @@ def step_context_text(store, vehicle_id, procedure_id, step_id):
             elif row["reference_source"] is not None and (
                 not isinstance(row["reference_source"], str)
                 or row["reference_source"].strip()
+                or _has_unsafe_display_controls(row["reference_source"])
             ):
                 lines.append("AVERTISMENT DATE: SURSĂ DOCUMENT indisponibil(ă); verifică sursa.")
     return "\n".join(lines)
