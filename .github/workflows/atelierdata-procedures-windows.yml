@@ -1,0 +1,60 @@
+name: AtelierData Procedures Windows EXE
+on:
+  push:
+    branches: [atelierdata-20261030]
+    paths:
+      - 'projects/atelierdata/**'
+      - '.github/workflows/atelierdata-procedures-windows.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  procedures-windows:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install viewer dependencies
+        run: python -m pip install "Pillow>=11,<13" "pypdfium2>=4,<6"
+      - name: Procedure and GUI regression tests (separate from REA/Ghidra)
+        shell: pwsh
+        run: |
+          python -m compileall -q projects/atelierdata
+          if ($LASTEXITCODE -ne 0) { throw "SYNTAX_FAILED" }
+          $patterns = @('test_repair_procedures.py', 'test_procedure_*.py', 'test_schematic_viewer.py', 'test_step_pdf_preview.py', 'test_document_image_preview.py', 'test_document_pdf_preview.py')
+          foreach ($pattern in $patterns) {
+            python -m unittest discover -s projects/atelierdata -p $pattern -v
+            if ($LASTEXITCODE -ne 0) { throw "PROCEDURES_TEST_FAILED: $pattern" }
+          }
+          python projects/atelierdata/atelierdata.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw "APP_SELF_TEST_FAILED" }
+          python projects/atelierdata/atelierdata.py --ui-smoke
+          if ($LASTEXITCODE -ne 0) { throw "GUI_SMOKE_FAILED" }
+      - name: Build real Windows EXE
+        shell: pwsh
+        run: |
+          python -m pip install pyinstaller
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --collect-all pypdfium2 --name AtelierData projects/atelierdata/atelierdata.py
+          if ($LASTEXITCODE -ne 0) { throw "PYINSTALLER_FAILED" }
+      - name: Verify packaged EXE
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path '.\dist\AtelierData.exe').Path
+          foreach ($arg in @('--self-test', '--ui-smoke')) {
+            $p = Start-Process -FilePath $exe -ArgumentList $arg -Wait -PassThru
+            if ($p.ExitCode -ne 0) { throw "EXE_TEST_FAILED: $arg exit=$($p.ExitCode)" }
+          }
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash
+          Write-Host "PROCEDURES_WINDOWS_EXE_PASS sha256=$hash"
+          "Original application; user-owned/licensed documentation only. No proprietary IDF decoder." | Set-Content dist/README_IMPORTANTE.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AtelierData_Procedures_Windows_EXE
+          path: |
+            dist/AtelierData.exe
+            dist/README_IMPORTANTE.txt
+          if-no-files-found: error
+          retention-days: 14
