@@ -136,8 +136,8 @@ class IDFStrideTests(unittest.TestCase):
             manifest = manifest_and_parts(root, [('FAS.IDF', b'synthetic')])
             archive_path = root / 'autodata_part_0001.zip'
             data = bytearray(archive_path.read_bytes())
-            local = data.index(b'PK\\x03\\x04')
-            central = data.index(b'PK\\x01\\x02')
+            local = data.index(b'PK\x03\x04')
+            central = data.index(b'PK\x01\x02')
             # ZIP general-purpose flag bit 0 marks encryption. Synthetic
             # fixture only; no encrypted proprietary data or passwords.
             data[local + 6] |= 1
