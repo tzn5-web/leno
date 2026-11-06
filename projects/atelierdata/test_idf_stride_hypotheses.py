@@ -22,6 +22,19 @@ class StrideHypothesisTests(unittest.TestCase):
         result = compare_stride_hypotheses(b'abcdefgh')
         self.assertEqual(result['hypotheses']['19']['qualified_runs'], 0)
 
+    def test_constant_data_is_flagged_as_confounder(self):
+        result = compare_stride_hypotheses(b'Z' * 1024)
+        self.assertEqual(result['distinct_byte_values'], 1)
+        for hypothesis in result['hypotheses'].values():
+            self.assertTrue(hypothesis['low_diversity_confounder'])
+            self.assertGreater(hypothesis['qualified_runs'], 0)
+        self.assertFalse(result['idf_decoder_proven'])
+
+    def test_repeated_structured_fixture_is_not_low_diversity(self):
+        sample = (b'ABCDEFGH' + b'x' * 11) * 20
+        result = compare_stride_hypotheses(sample)
+        self.assertFalse(result['hypotheses']['19']['low_diversity_confounder'])
+
     def test_bounded_and_invalid_inputs(self):
         with self.assertRaises(ValueError):
             compare_stride_hypotheses(b'a' * (256 * 1024 + 1))
