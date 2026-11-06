@@ -1,5 +1,6 @@
 """Regression: every text column in search hits is safe for Tkinter."""
 import ast
+import unicodedata
 from pathlib import Path
 import unittest
 
@@ -11,7 +12,8 @@ class SearchHitColumnSafetyTests(unittest.TestCase):
         tree = ast.parse(source)
         helper = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
                       and node.name == "_safe_search_preview")
-        scope = {}
+        # Extracted helpers retain the module globals used by their generator.
+        scope = {"unicodedata": unicodedata}
         exec(compile(ast.fix_missing_locations(ast.Module(body=[helper], type_ignores=[])),
                      "<search-preview>", "exec"), scope)
         cls.preview = staticmethod(scope["_safe_search_preview"])
