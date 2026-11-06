@@ -42,6 +42,8 @@ def verify_local_sample(path, expected_sha256, *, max_bytes=1024 * 1024 * 1024):
             raise ValueError("Opened sample is not a regular file")
         if not os.path.samestat(before, opened):
             raise ValueError("Sample changed before opening")
+        if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (opened.st_size, opened.st_mtime_ns, opened.st_ctime_ns):
+            raise ValueError("Sample metadata changed before opening")
         with os.fdopen(fd, "rb", closefd=False) as stream:
             while True:
                 chunk = stream.read(min(CHUNK_BYTES, max_bytes - count + 1))
