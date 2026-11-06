@@ -3,7 +3,6 @@
 This is NOT a decoder. Use only authorized, SHA256-verified samples.
 No sample bytes, motifs, offsets or private paths are emitted.
 """
-from math import gcd
 from idf_stride_hypotheses import compare_stride_hypotheses, STRIDES, TOKEN_BYTES
 
 
@@ -17,6 +16,8 @@ def rank_stride_evidence(sample: bytes, strides=STRIDES):
     if not isinstance(sample, bytes):
         raise TypeError("Expected immutable bytes")
     candidates = tuple(strides)
+    if any(type(s) is not int or s < TOKEN_BYTES + 2 or s >= 128 for s in candidates):
+        raise ValueError("Candidate stride must allow valid neighboring controls")
     if len(candidates) != len(set(candidates)):
         raise ValueError("Duplicate candidate strides")
     controls = sorted(set(candidates) | {n for s in candidates for n in (s - 1, s + 1) if n > TOKEN_BYTES})
