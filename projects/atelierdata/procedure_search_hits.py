@@ -141,10 +141,10 @@ def list_procedure_hits(store, vehicle_id, search, limit=DEFAULT_LIMIT, offset=0
             value = procedure[key] or ""
             if needle in value.casefold():
                 if collect({
-                    "procedure_id": pid, "procedure_title": procedure["title"],
+                    "procedure_id": pid, "procedure_title": _safe_excerpt_display(procedure["title"] or ""),
                     "step_id": None, "step_number": None, "article_id": None,
                     "field": label, "excerpt": _excerpt(value, search),
-                    "source": procedure["source"],
+                    "source": _safe_excerpt_display(procedure["source"] or ""),
                 }):
                     return results
         if len(results) >= limit:
@@ -170,11 +170,11 @@ def list_procedure_hits(store, vehicle_id, search, limit=DEFAULT_LIMIT, offset=0
                 if needle in value.casefold():
                     doc_field = key.startswith("article_")
                     if collect({
-                        "procedure_id": pid, "procedure_title": procedure["title"],
+                        "procedure_id": pid, "procedure_title": _safe_excerpt_display(procedure["title"] or ""),
                         "step_id": step["id"], "step_number": step["step_number"],
                         "article_id": step["article_id"] if doc_field else None,
                         "field": label, "excerpt": _excerpt(value, search),
-                        "source": step["article_source"] if doc_field else procedure["source"],
+                        "source": _safe_excerpt_display((step["article_source"] if doc_field else procedure["source"]) or ""),
                     }):
                         return results
             if len(results) >= limit:
