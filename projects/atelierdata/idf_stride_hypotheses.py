@@ -20,6 +20,10 @@ def compare_stride_hypotheses(sample: bytes, strides=STRIDES):
         raise ValueError("Sample exceeds bounded static-analysis limit")
     if not strides or any(type(s) is not int or s < TOKEN_BYTES + 1 or s > 128 for s in strides):
         raise ValueError("Invalid candidate stride")
+    # A constant or low-diversity buffer can match every candidate stride.
+    # Report this confounder instead of treating repetition as record evidence.
+    distinct_bytes = len(set(sample))
+    low_diversity = bool(sample) and distinct_bytes <= 2
     result = {}
     for stride in strides:
         matches = [i for i in range(max(0, len(sample) - stride - TOKEN_BYTES + 1))
@@ -40,9 +44,11 @@ def compare_stride_hypotheses(sample: bytes, strides=STRIDES):
             "qualified_runs": len(chains),
             "longest_run_tokens": max((length for _, length in chains), default=0),
             "qualified_phase_count": len({start % stride for start, _ in chains}),
+            "low_diversity_confounder": low_diversity,
         }
     return {"schema": "atelierdata-idf-stride-hypotheses-v1",
             "sample_bytes": len(sample), "token_bytes": TOKEN_BYTES,
+            "distinct_byte_values": distinct_bytes,
             "source_executed": False, "idf_decoder_proven": False,
             "hypotheses": result,
-            "interpretation": "Repeated windows alone cannot establish records or decode IDF."}
+            "interpretation": "Repeated windows alone cannot establish records or decode IDF; low-diversity inputs can generate spurious matches."}
