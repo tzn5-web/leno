@@ -25,6 +25,15 @@ class TkPreviewUnicodeTests(unittest.TestCase):
         for text in values[1:]:
             text.encode("utf-8")
 
+    def test_invalid_limit_is_rejected_even_for_missing_sqlite_values(self):
+        # A malformed GUI limit must not be silently accepted just because
+        # an optional SQLite column is NULL or has an unexpected type.
+        for value in (None, 42, object()):
+            for limit in (True, 0, -1, 1.5):
+                with self.subTest(value_type=type(value).__name__, limit=limit):
+                    with self.assertRaisesRegex(ValueError, "Invalid preview limit"):
+                        _safe_search_preview(value, limit)
+
     def test_invalid_limit_and_non_string_inputs(self):
         self.assertEqual(_safe_search_preview(None), "")
         for limit in (True, 0, -1, 2.0):
