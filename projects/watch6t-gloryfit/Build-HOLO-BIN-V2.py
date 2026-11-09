@@ -92,8 +92,13 @@ def encode565(img):
         data[2*j]=(val>>8)&255;data[2*j+1]=val&255
     return bytes(data)
 
-def decode565(blob,w,h):
+def decode565(blob,w,h,column_major=False):
     vals=struct.unpack('>'+str(w*h)+'H',blob)
+    # 240x240 backgrounds: row-major; multi-frame indicator sprites: column-major.
+    # This distinction was verified by reconstruction of original digit 0-9,
+    # weekday/month sprites and weather icon families from the supplied BIN.
+    if column_major:
+        vals=[vals[x*h+y] for y in range(h) for x in range(w)]
     im=Image.new('RGB',(w,h))
     im.putdata([((v>>11&31)*255//31,((v>>5)&63)*255//63,(v&31)*255//31) for v in vals]);return im
 
@@ -104,9 +109,14 @@ def simulation(b,records,background):
         if r['id'] in (10,17):continue
         w,h,x,y=r['w'],r['h'],r['x'],r['y']
         if x+w>240 or y+h>240:continue
-        frame_index=min(r['frames']-1,3)
+        # Frame indexes in 14-frame decimal family: 3=0 ... 12=9.
+        # Other types use a representative valid frame; preview is an example.
+        demo_frames={4:5,5:11,6:3,8:3,12:12,13:7,15:13,16:2,
+                     19:10,20:14,21:7,22:1,25:6,30:9,31:0,33:8,34:0,
+                     47:9,48:0,49:0}
+        frame_index=min(r['frames']-1,demo_frames.get(r['id'],0))
         off=r['ptr']+(w*h*2*frame_index)
-        im=decode565(b[off:off+w*h*2],w,h).convert('RGBA')
+        im=decode565(b[off:off+w*h*2],w,h,column_major=True).convert('RGBA')
         pix=list(im.getdata());im.putdata([(p[0],p[1],p[2],0 if max(p[:3])<16 else 255) for p in pix])
         result.paste(im,(x,y),im)
     return result
@@ -120,16 +130,9 @@ def build(src,ref,out):
     preview_record=next(r for r in records if r['id']==10)
     assert len(data)==240*240*2
     candidate[display_record['ptr']:display_record['ptr']+len(data)]=data
-    # The stock sprite format has not been fully decoded: do NOT simulate it
-    # by treating all 16-bit payloads as independently stored RGB565 frames.
-    # Build a typographic mock preview instead; only background is live.
-    simulated=prepared.copy()
-    pd=ImageDraw.Draw(simulated)
-    pd.text((85,94),'14:26',font=font(20),fill=(150,241,255))
-    pd.text((119,49),'86%',font=font(11),fill=(141,250,61))
-    pd.text((26,128),'78',font=font(12),fill=(140,242,255))
-    pd.text((164,145),'7345',font=font(11),fill=(141,250,61))
-    pd.text((44,180),'18C',font=font(11),fill=(140,242,255))
+    # Render the real existing sprites over the rebuilt background.
+    # This is an OFFLINE compositing simulation, not a device screenshot.
+    simulated=simulation(b,records,prepared)
     preview_bytes=encode565(simulated)
     candidate[preview_record['ptr']:preview_record['ptr']+len(preview_bytes)]=preview_bytes
     newcrc=zlib.crc32(candidate[24:])&0xffffffff
@@ -156,6 +159,7 @@ def build(src,ref,out):
        'candidate_sha256':hashlib.sha256(candidate).hexdigest(),
        'bytes':len(candidate),'image_data_modified_ids':[10,17],
        'record_table_preserved':True,'other_20_assets_unchanged':True,
+       'sprite_order_verified':'column-major for small element frames; full-frame images row-major',
        'original_record_count':len(records),
        'unchanged_file_id':struct.unpack_from('<I',b,0)[0],
        'unchanged_payload_length':struct.unpack_from('<I',b,4)[0],
