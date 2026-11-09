@@ -49,6 +49,17 @@ jobs:
             --lib "$ANDROID_JAR" \
             --output build/dex $(find build/classes -name '*.class' | sort)
           test -s build/dex/classes.dex
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Rebind test keeps the original LatinIME service identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          mkdir -p build/rebind-fixture build/rebind-output
+          "$SDK/build-tools/35.0.0/d8" --min-api 30             --lib "$SDK/platforms/android-35/android.jar"             --output build/rebind-fixture             build/stubs/com/android/inputmethod/latin/LatinIME.class
+          gradle --no-daemon -p projects/s24-latinime-glass/dex-rebind run             --args="build/rebind-fixture/classes.dex build/dex/classes.dex build/rebind-output/base.dex build/rebind-output/addon.dex"
       - name: Source privacy gate (only appearance preferences)
         run: |
           python3 - <<'PY'
