@@ -19,7 +19,7 @@ This is an **extension of the original, working Xiaomi LatinIME APK**, not a new
 2. Prepare the previously working, signed `LatinIME_S24_OriginalUI_Test.apk` (this personal APK is **not** committed publicly).
 3. Use `repack_glass.py` or a verified local repacker to preserve the original LatinIME resources and create an unsigned APK containing the updated `classes2.dex`. Run `python3 patch_picker_gear.py input-unsigned.apk picker-unsigned.apk` to point the IME's `settingsActivity` to `GlassActivity` and remove the app launcher category. The patcher keeps both DEX files and all keyboard resources unchanged.
 4. Sign the unsigned APK with Android SDK `zipalign` and `apksigner`, using **the same signing certificate as the previously installed working APK**. Reinstalling with a different certificate causes `INSTALL_FAILED_UPDATE_INCOMPATIBLE`.
-5. Open the keyboard's settings from Android/Samsung keyboard settings if offered. The standard settings gear routes to GlassActivity. Set opacity and reopen the keyboard to apply. The quick Samsung IME chooser's gear is OEM-controlled and may still appear only for Samsung Keyboard; this APK cannot force that UI.
+5. Open the keyboard's settings from Android/Samsung keyboard settings if offered. The standard settings gear routes to GlassActivity. Set opacity and reopen the keyboard to apply. The quick Samsung IME chooser's gear is OEM-controlled and may still appear only for Samsung Keyboard; this APK cannot force that UI. As a reliable fallback, long-press the **☺ Emoji** key in the keyboard's own top bar to open Glass settings; tap it briefly to open the emoji picker.
 6. To use advanced emoji, tap **☺ Emoji** above the original keyboard; search remains entirely in RAM.
 
 The original keyboard APK and private signing key must not be uploaded to this public repository. Compilation and static integrity checks do not replace installation and visual validation on the Samsung phone.
@@ -34,3 +34,5 @@ The extension's GitHub Actions job compiles against Android API 35 and checks th
 - It removes the only `android.intent.category.LAUNCHER` entry from the manifest. GlassActivity stays exported for system settings.
 - The original `classes.dex` and keyboard assets remain byte-identical; the replacement addon `classes2.dex` no longer includes a Glass settings toolbar button.
 - GitHub Actions compiles and checks the addon, but the completed APK is signed locally using the same development certificate as the user's working test installation; the signing key is never committed.
+
+**Settings UX:** A short press on the dedicated emoji key opens categories/search; long press opens Glass appearance settings. No separate settings button is displayed. The system IME metadata points to the same GlassActivity, subject to One UI rendering the settings gear.
