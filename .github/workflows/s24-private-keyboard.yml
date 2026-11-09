@@ -1,0 +1,39 @@
+name: Build S24 Private Keyboard
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/s24-private-keyboard-20261109
+    paths:
+      - 'projects/s24-private-keyboard/**'
+      - '.github/workflows/s24-private-keyboard.yml'
+  pull_request:
+    paths:
+      - 'projects/s24-private-keyboard/**'
+      - '.github/workflows/s24-private-keyboard.yml'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Verify zero-permission privacy policy
+        run: python3 projects/s24-private-keyboard/scripts/privacy_audit.py
+      - name: Compile debug APK
+        run: gradle -p projects/s24-private-keyboard --no-daemon :app:assembleDebug
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: S24PrivateKeyboard-debug
+          path: projects/s24-private-keyboard/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
