@@ -1,0 +1,58 @@
+name: Compile Xiaomi LatinIME Glass and Emoji extension
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/s24-original-latinime-20261109]
+    paths:
+      - 'projects/s24-latinime-original/addon/**'
+      - '.github/workflows/s24-latinime-glass-emoji-addon.yml'
+  pull_request:
+    paths:
+      - 'projects/s24-latinime-original/addon/**'
+      - '.github/workflows/s24-latinime-glass-emoji-addon.yml'
+permissions:
+  contents: read
+jobs:
+  compile-addon:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Ensure Android SDK compiler available
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(command -v sdkmanager || true)"
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -1)"
+          fi
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
+      - name: Build Glass + advanced emoji classes2.dex
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="projects/s24-latinime-original/addon"
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          mkdir -p build/glass-classes build/glass-dex
+          find "$SRC/stubs" "$SRC/src" -name '*.java' -print0 | xargs -0 javac -encoding UTF-8 -source 17 -target 17 -cp "$SDK/platforms/android-35/android.jar" -d build/glass-classes
+          mapfile -d '' ADDON_CLASSES < <(find build/glass-classes/dev/tzn5/glass -name '*.class' -print0)
+          "$SDK/build-tools/35.0.0/d8" --min-api 26 --lib "$SDK/platforms/android-35/android.jar" --output build/glass-dex "${ADDON_CLASSES[@]}"
+          test -s build/glass-dex/classes.dex
+          mv build/glass-dex/classes.dex build/glass-dex/classes2.dex
+      - name: Verify no networking, logging or key-history code in add-on
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -nE 'INTERNET|HttpURLConnection|java.net.|android.util.Log|SQLite|FileOutputStream|TypedTextHistory|AccessibilityService' projects/s24-latinime-original/addon/src; then
+            echo "Unexpected privacy-sensitive API in Glass add-on"; exit 1
+          fi
+          echo 'PASS: appearance settings only, no key history/network API in new code'
+      - name: Publish addon DEX for local repack of original Xiaomi APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Xiaomi-Glass-Emoji-classes2
+          path: build/glass-dex/classes2.dex
+          if-no-files-found: error
