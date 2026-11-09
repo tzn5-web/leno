@@ -120,6 +120,13 @@ jobs:
           script: |
             set -eu
             adb install -r build/ui/smoke.apk
+            adb shell pm path dev.tzn5.glassuitest
+            echo "Registered input methods:"
+            adb shell ime list -a -s || true
+            echo "Package declaration for GlassIME:"
+            adb shell dumpsys package dev.tzn5.glassuitest | grep -A 5 -B 3 GlassIME || true
+            sleep 5
+            adb shell ime list -a -s || true
             adb shell settings put secure show_ime_with_hard_keyboard 1
             adb shell ime enable dev.tzn5.glassuitest/com.android.inputmethod.latin.GlassIME
             adb shell ime set dev.tzn5.glassuitest/com.android.inputmethod.latin.GlassIME
@@ -157,6 +164,13 @@ jobs:
             assert any('Opacitate' in s for s in texts), 'Glass slider not shown'
             print('PASS: settings and opacity slider displayed')
             PY
+      - name: Upload smoke APK for manifest inspection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Glass-Emoji-smoke-fixture-APK
+          path: build/ui/smoke.apk
+          if-no-files-found: ignore
       - name: Upload UI diagnostics when failing
         if: failure()
         uses: actions/upload-artifact@v4
