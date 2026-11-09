@@ -1,0 +1,8 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+repositories { mavenCentral() }
+dependencies { implementation 'org.smali:dexlib2:2.5.2' }
+application { mainClass = 'dev.tzn5.rebind.DexServiceRebind' }
+java { toolchain { languageVersion = JavaLanguageVersion.of(17) } }
