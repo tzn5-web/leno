@@ -59,7 +59,7 @@ jobs:
           SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           mkdir -p build/rebind-fixture build/rebind-output
           "$SDK/build-tools/35.0.0/d8" --min-api 30             --lib "$SDK/platforms/android-35/android.jar"             --output build/rebind-fixture             build/stubs/com/android/inputmethod/latin/LatinIME.class
-          gradle --no-daemon -p projects/s24-latinime-glass/dex-rebind run             --args="build/rebind-fixture/classes.dex build/dex/classes.dex build/rebind-output/base.dex build/rebind-output/addon.dex"
+          gradle --no-daemon -p projects/s24-latinime-glass/dex-rebind run             --args="$PWD/build/rebind-fixture/classes.dex $PWD/build/dex/classes.dex $PWD/build/rebind-output/base.dex $PWD/build/rebind-output/addon.dex"
       - name: Source privacy gate (only appearance preferences)
         run: |
           python3 - <<'PY'
