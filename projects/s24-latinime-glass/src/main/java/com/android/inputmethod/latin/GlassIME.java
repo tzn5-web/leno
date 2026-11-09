@@ -1,7 +1,6 @@
 package com.android.inputmethod.latin;
 
 import android.content.Context;
-import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.ColorDrawable;
@@ -52,22 +51,8 @@ public final class GlassIME extends LatinIME {
         toolbar = new LinearLayout(this);
         toolbar.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
 
-        TextView glassSettings = new TextView(this);
-        glassSettings.setText("Glass  ⚙");
-        glassSettings.setTextColor(Color.WHITE);
-        glassSettings.setTextSize(13);
-        glassSettings.setGravity(Gravity.CENTER);
-        glassSettings.setPadding(dp(12), 0, dp(12), 0);
-        toolbar.addView(glassSettings, new LinearLayout.LayoutParams(
-                0, dp(34), 1));
-        glassSettings.setOnClickListener(v -> {
-            Intent open = new Intent();
-            open.setClassName(getPackageName(),
-                    "com.android.inputmethod.latin.setup.GlassActivity");
-            open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(open);
-        });
-
+        // Glass preferences are now opened through IME settingsActivity, like
+        // Android's settings gear. No duplicate settings button inside keyboard.
         emojiButton = new TextView(this);
         emojiButton.setText("☺ Emoji");
         emojiButton.setTextColor(Color.WHITE);
