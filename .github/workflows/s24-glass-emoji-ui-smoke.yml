@@ -4,6 +4,8 @@ on:
   push:
     branches: [feature/s24-glass-emoji-20261109]
     paths: ['.github/workflows/s24-glass-emoji-ui-smoke.yml']
+  pull_request:
+    paths: ['.github/workflows/s24-glass-emoji-ui-smoke.yml']
 permissions:
   contents: read
 jobs:
