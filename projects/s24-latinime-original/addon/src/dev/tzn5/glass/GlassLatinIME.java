@@ -67,6 +67,24 @@ public final class GlassLatinIME extends LatinIME {
         return b;
     }
 
+    @Override public void onCreate() {
+        // Disable original LatinIME's configurable personalization before initialization.
+        // This does not remove all original dictionary code, so no zero-retention claim.
+        android.content.SharedPreferences prefs =
+                android.preference.PreferenceManager.getDefaultSharedPreferences(this);
+        android.content.SharedPreferences.Editor editor = prefs.edit();
+        editor.putBoolean("pref_key_use_personalized_dicts", false);
+        editor.putBoolean("pref_key_use_contacts_dict", false);
+        int personalId = getResources().getIdentifier(
+                "pref_key_use_personalized_dicts", "string", getPackageName());
+        if (personalId != 0) editor.putBoolean(getString(personalId), false);
+        int contactsId = getResources().getIdentifier(
+                "pref_key_use_contacts_dict", "string", getPackageName());
+        if (contactsId != 0) editor.putBoolean(getString(contactsId), false);
+        editor.apply();
+        super.onCreate();
+    }
+
     @Override public View onCreateInputView() {
         latinView = super.onCreateInputView();
         if (latinView == null) return null;
