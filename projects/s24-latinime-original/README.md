@@ -23,3 +23,22 @@ Each workflow run uses a disposable signing key, so updating a previous test ins
 For local builds, run `python3 prepare_original.py LatinIME.apk unsigned.apk`, then zipalign and sign with official Android SDK `apksigner`.
 
 Never rely on this candidate for highly sensitive typing until it has been verified on-device and the privacy requirement fully implemented.
+
+
+## Glass + advanced emoji extension (2026-11-09)
+
+The updated project keeps the original Xiaomi `classes.dex`, original letters, layout and **every key-border image unchanged**. It adds a small secondary DEX containing:
+- `GlassLatinIME` extending the original `com.android.inputmethod.latin.LatinIME`. The existing service is redirected to this subclass, not replaced with a new keyboard renderer.
+- `GlassSettingsActivity` accessible through the tiny ⚙ icon over the suggestion bar. Background opacity range is **0–100%**, with independent blur radius. Appearance preferences only; typed content is not persisted by this extension.
+- An integrated **☺+** emoji panel with eight categories, recent Unicode glyphs, and a skin-tone selector. Emoji are committed to the focused app using `InputConnection.commitText`. No clipboard access, telemetry or emoji history.
+- Original keyboard and suggestion-strip nine-patch backgrounds are made transparent while their compiled nine-patch metadata is preserved. The alpha overlay is rendered underneath the original keys. Glass blur depends on One UI window blur support.
+
+**Security/privacy caveat:** the unchanged original `classes.dex` still contains dictionary and storage code. We explicitly set the existing preferences for personalized dictionaries and contacts access to off at service startup, but a full dynamic no-storage guarantee requires instrumentation and device verification. This is a test candidate.
+
+### Reproduce in GitHub
+
+See [Compile Xiaomi LatinIME Glass and Emoji extension](../../.github/workflows/s24-latinime-glass-emoji-addon.yml). PR/push builds the extra DEX on GitHub and runs a static extension privacy check. A manual `workflow_dispatch` with an HTTPS `apk_url` builds a full signed test APK using `prepare_original.py` and `build_glass_apk.py`. The original user-supplied binary is never committed to this public repository.
+
+When GitHub creates a new temporary signing key, **uninstalling a previous user-installed test build may be necessary** because Android prohibits updating with a different signature. Never uninstall a system keyboard.
+
+Static compilation and ZIP integrity are checked. Actual appearance and behavior have **not** been verified on a physical S24 running One UI 8.5.
