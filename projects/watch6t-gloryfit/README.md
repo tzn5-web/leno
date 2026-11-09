@@ -42,4 +42,11 @@ Inspect `watchface_related` file paths, assets, resources and any downloaded dia
 
 Once the actual installed APK is available, locate code references to `DialCustom`, `com.yc.gloryfit`, dial asset paths, sync methods, ZIP unpacking, image scaling and BLE commands. Distinguish cloud-fetched artwork from bundled resources. Validate any rebuilt dial against a **known-working backup** before considering synchronization, and do not write/flash the device until compatibility is established.
 
-Current status: **acquisition and initial dial archive analysis complete; application APK not yet provided; app decompilation not started.**
+## Update — APK acquired and inspected (2026-11-09)
+
+The user provided \`GloryFit_APK_20261109_170204.zip\`. Local analysis confirmed five APK splits, **two built-in 240×240 dial templates**, and one valid 240×240 RGB565 binary watchface with **22 element records and a verified CRC32**. Its image payloads have been decoded.
+
+Detailed report: [FINDINGS-2026-11-09.md](FINDINGS-2026-11-09.md).  
+Read-only analyzer: [Analyze-GloryFit.py](Analyze-GloryFit.py).
+
+**Status:** APK package and dial assets analyzed; cached .bin format partially decoded. Full JADX-level code decompilation, verified BLE upload route, and safe installation of a modified HOLO dial are **not yet complete**. Proprietary APK and proprietary watchface images stay out of this public repository.
