@@ -79,7 +79,7 @@ jobs:
                 <meta-data android:name="android.view.im" android:resource="@xml/method"/>
               </service>
               <activity android:name="com.android.inputmethod.latin.setup.GlassActivity" android:exported="true"/>
-              <activity android:name="harness.DemoActivity" android:exported="true">
+              <activity android:name="harness.DemoActivity" android:exported="true" android:windowSoftInputMode="stateAlwaysVisible|adjustResize">
                 <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
               </activity>
             </application>
@@ -127,7 +127,12 @@ jobs:
           adb shell am start -n dev.tzn5.glassuitest/harness.DemoActivity
           sleep 6
           adb shell input tap 170 180
-          sleep 2
+          sleep 3
+          adb shell dumpsys input_method > build/ui/ime-state.txt || true
+          adb shell dumpsys window windows > build/ui/window-state.txt || true
+          adb logcat -d -v time > build/ui/logcat.txt || true
+          adb shell screencap -p /sdcard/keyboard-screen.png
+          adb pull /sdcard/keyboard-screen.png build/ui/keyboard-screen.png >/dev/null
           adb shell uiautomator dump /sdcard/ui.xml >/dev/null
           adb pull /sdcard/ui.xml build/ui/open.xml >/dev/null
           python3 - <<'PY'
@@ -184,5 +189,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Glass-Emoji-UI-smoke-debug
-          path: build/ui/*.xml
+          path: |
+            build/ui/*.xml
+            build/ui/*.txt
+            build/ui/*.png
           if-no-files-found: ignore
