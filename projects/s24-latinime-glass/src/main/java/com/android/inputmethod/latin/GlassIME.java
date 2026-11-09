@@ -38,6 +38,8 @@ public final class GlassIME extends LatinIME {
     private View emojiPane;
     private GlassEmojiPanel picker;
     private final List<Drawable> backgroundLayers = new ArrayList<>();
+    private boolean windowConfigured;
+    private Boolean previousBlur;
 
     private int dp(int n) {
         return Math.round(n * getResources().getDisplayMetrics().density);
@@ -182,18 +184,24 @@ public final class GlassIME extends LatinIME {
         try {
             Window window = getWindow().getWindow();
             if (window != null) {
-                window.setFormat(PixelFormat.TRANSLUCENT);
-                window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+                if (!windowConfigured) {
+                    window.setFormat(PixelFormat.TRANSLUCENT);
+                    window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+                    windowConfigured = true;
+                }
                 if (Build.VERSION.SDK_INT >= 31) {
                     boolean blur = getSharedPreferences("s24_glass", Context.MODE_PRIVATE)
                             .getBoolean("blur", false);
-                    if (blur) {
-                        WindowManager.LayoutParams params = window.getAttributes();
-                        params.flags |= WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
-                        params.setBlurBehindRadius(dp(12));
-                        window.setAttributes(params);
-                    } else {
-                        window.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
+                    if (previousBlur == null || previousBlur.booleanValue() != blur) {
+                        if (blur) {
+                            WindowManager.LayoutParams params = window.getAttributes();
+                            params.flags |= WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
+                            params.setBlurBehindRadius(dp(12));
+                            window.setAttributes(params);
+                        } else {
+                            window.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
+                        }
+                        previousBlur = blur;
                     }
                 }
             }
