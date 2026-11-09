@@ -1,0 +1,69 @@
+name: S24 Xiaomi LatinIME Glass + Emoji addon
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/s24-glass-emoji-20261109
+    paths:
+      - "projects/s24-latinime-glass/**"
+      - ".github/workflows/s24-glass-emoji-addon.yml"
+  pull_request:
+    paths:
+      - "projects/s24-latinime-glass/**"
+      - ".github/workflows/s24-glass-emoji-addon.yml"
+permissions:
+  contents: read
+jobs:
+  build-addon:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Android SDK build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(command -v sdkmanager || true)"
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -1)"
+          fi
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
+      - name: Compile GlassIME and advanced emoji without altering original LatinIME
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          ANDROID_JAR="$SDK/platforms/android-35/android.jar"
+          SOURCE="projects/s24-latinime-glass"
+          mkdir -p build/stubs build/classes build/dex
+          javac -encoding UTF-8 -source 8 -target 8 \
+            -cp "$ANDROID_JAR" -d build/stubs \
+            "$SOURCE/src/stub/com/android/inputmethod/latin/LatinIME.java"
+          find "$SOURCE/src/main/java" -name '*.java' -print0 | \
+            xargs -0 javac -encoding UTF-8 -source 8 -target 8 \
+              -cp "$ANDROID_JAR:build/stubs" -d build/classes
+          "$SDK/build-tools/35.0.0/d8" --min-api 30 \
+            --lib "$ANDROID_JAR" \
+            --output build/dex $(find build/classes -name '*.class' | sort)
+          test -s build/dex/classes.dex
+      - name: Source privacy gate (only appearance preferences)
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("projects/s24-latinime-glass/src/main/java")
+          text="\n".join(f.read_text() for f in p.rglob("*.java"))
+          for forbidden in ["java.net.", "HttpURLConnection", "FileOutputStream", "FileWriter",
+                            "android.util.Log", "getClipboard", "Firebase", "Analytics",
+                            "android.permission.INTERNET"]:
+              assert forbidden not in text, forbidden
+          assert '"s24_glass"' in text
+          print("PASS: no network, telemetry, clipboard or keystroke file recording in addon")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: S24-LatinIME-Glass-Emoji-DEX
+          path: build/dex/classes.dex
+          if-no-files-found: error
