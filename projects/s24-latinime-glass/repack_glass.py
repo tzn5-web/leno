@@ -11,6 +11,7 @@ import argparse
 import copy
 import zipfile
 from pathlib import Path
+from add_launcher import patch as add_launcher_category
 
 CLASS_MAP = {
     "com.android.inputmethod.latin.LatinIME":
@@ -39,7 +40,7 @@ def main(source: Path, addon: Path, output: Path):
         assert "classes.dex" in names
         if "classes2.dex" in names:
             raise ValueError("Source already contains classes2.dex; use a clean original APK")
-        manifest = patch_axml(src.read("AndroidManifest.xml"))
+        manifest = add_launcher_category(patch_axml(src.read("AndroidManifest.xml")))
         output.parent.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(output, "w", allowZip64=True) as dst:
             for old in src.infolist():
@@ -56,6 +57,7 @@ def main(source: Path, addon: Path, output: Path):
                    for n in a.namelist()
                    if n.startswith("res/") or n.startswith("assets/") or n.startswith("lib/"))
         assert all(new.encode("utf-16le") in b.read("AndroidManifest.xml") for new in CLASS_MAP.values())
+        assert "android.intent.category.LAUNCHER".encode("utf-16le") in b.read("AndroidManifest.xml")
     print("PASS: original classes.dex, resources, original keys and letters preserved")
     print("Addon: translucent background slider (0-100%), optional blur, emoji browser")
     print("Caution: learning/persistence code in original classes.dex remains unchanged")
