@@ -1,6 +1,7 @@
 package com.android.inputmethod.latin;
 
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.ColorDrawable;
@@ -13,6 +14,7 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 /**
@@ -24,6 +26,7 @@ import android.widget.TextView;
  */
 public final class GlassIME extends LatinIME {
     private FrameLayout glassRoot;
+    private LinearLayout toolbar;
     private View originalKeyboard;
     private TextView emojiButton;
     private View emojiPane;
@@ -42,24 +45,51 @@ public final class GlassIME extends LatinIME {
         originalKeyboard = super.onCreateInputView();
         if (originalKeyboard == null) return null;
 
+        // Own narrow toolbar: the original Xiaomi suggestion strip and keys
+        // remain unoccluded and retain their exact drawing/layout.
+        LinearLayout outer = new LinearLayout(this);
+        outer.setOrientation(LinearLayout.VERTICAL);
+        toolbar = new LinearLayout(this);
+        toolbar.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
+
+        TextView glassSettings = new TextView(this);
+        glassSettings.setText("Glass  ⚙");
+        glassSettings.setTextColor(Color.WHITE);
+        glassSettings.setTextSize(13);
+        glassSettings.setGravity(Gravity.CENTER);
+        glassSettings.setPadding(dp(12), 0, dp(12), 0);
+        toolbar.addView(glassSettings, new LinearLayout.LayoutParams(
+                0, dp(34), 1));
+        glassSettings.setOnClickListener(v -> {
+            Intent open = new Intent();
+            open.setClassName(getPackageName(),
+                    "com.android.inputmethod.latin.setup.GlassActivity");
+            open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(open);
+        });
+
+        emojiButton = new TextView(this);
+        emojiButton.setText("☺ Emoji");
+        emojiButton.setTextColor(Color.WHITE);
+        emojiButton.setTextSize(17);
+        emojiButton.setGravity(Gravity.CENTER);
+        toolbar.addView(emojiButton, new LinearLayout.LayoutParams(dp(88), dp(34)));
+        emojiButton.setContentDescription("Deschide emoji avansate");
+        emojiButton.setOnClickListener(v -> {
+            if (emojiPane == null) showEmoji();
+            else closeEmoji();
+        });
+        outer.addView(toolbar, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(34)));
+
         glassRoot = new FrameLayout(this);
         glassRoot.addView(originalKeyboard, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        outer.addView(glassRoot, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        emojiButton = new TextView(this);
-        emojiButton.setText("☺");
-        emojiButton.setTextColor(Color.WHITE);
-        emojiButton.setTextSize(22);
-        emojiButton.setGravity(Gravity.CENTER);
-        emojiButton.setBackground(new ColorDrawable(Color.argb(165, 45, 51, 66)));
-        FrameLayout.LayoutParams buttonParams = new FrameLayout.LayoutParams(dp(36), dp(34),
-                Gravity.TOP | Gravity.END);
-        buttonParams.setMargins(0, dp(1), dp(5), 0);
-        glassRoot.addView(emojiButton, buttonParams);
-        emojiButton.setContentDescription("Deschide emoji avansate");
-        emojiButton.setOnClickListener(v -> showEmoji());
         updateGlassBackground();
-        return glassRoot;
+        return outer;
     }
 
     @Override
@@ -83,6 +113,7 @@ public final class GlassIME extends LatinIME {
         int percentage = Math.max(0, Math.min(100, prefOpacity()));
         int alpha = (percentage * 255) / 100;
         applyBackgroundOnly(originalKeyboard, alpha);
+        if (toolbar != null) toolbar.setBackgroundColor(Color.argb(alpha, 36, 42, 55));
         try {
             Window w = getWindow().getWindow();
             if (w != null) {
@@ -136,14 +167,18 @@ public final class GlassIME extends LatinIME {
         emojiPane = picker.makeView();
         glassRoot.addView(emojiPane, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        emojiButton.bringToFront();
-        emojiButton.setVisibility(View.GONE);
+        if (emojiButton != null) emojiButton.setText("✕ Închide");
     }
 
     private void closeEmoji() {
         if (glassRoot != null && emojiPane != null) glassRoot.removeView(emojiPane);
         emojiPane = null;
         picker = null;
-        if (emojiButton != null) emojiButton.setVisibility(View.VISIBLE);
+        if (emojiButton != null) {
+            emojiButton.setText("☺ Emoji");
+            boolean enabled = getSharedPreferences("s24_glass", Context.MODE_PRIVATE)
+                    .getBoolean("advanced_emoji", true);
+            emojiButton.setVisibility(enabled ? View.VISIBLE : View.GONE);
+        }
     }
 }
