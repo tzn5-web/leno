@@ -1,6 +1,7 @@
 package com.android.inputmethod.latin;
 
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.ColorDrawable;
@@ -63,6 +64,16 @@ public final class GlassIME extends LatinIME {
         emojiButton.setOnClickListener(v -> {
             if (emojiPane == null) showEmoji();
             else closeEmoji();
+        });
+        // OEM picker may hide settings gears for third-party input methods.
+        // A long press is a discoverable fallback without an extra visible key.
+        emojiButton.setOnLongClickListener(v -> {
+            Intent settings = new Intent();
+            settings.setClassName(getPackageName(),
+                    "com.android.inputmethod.latin.setup.GlassActivity");
+            settings.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(settings);
+            return true;
         });
         outer.addView(toolbar, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(34)));
