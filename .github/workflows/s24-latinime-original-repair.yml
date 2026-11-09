@@ -1,0 +1,80 @@
+name: Repair Original Xiaomi LatinIME for S24
+on:
+  workflow_dispatch:
+    inputs:
+      apk_url:
+        description: "Direct HTTPS URL to original LatinIME.apk downloadable by the GitHub runner"
+        type: string
+        required: true
+      sha256:
+        description: "Optional original APK SHA256"
+        type: string
+        required: false
+permissions:
+  contents: read
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Download original APK
+        env:
+          SOURCE_URL: ${{ inputs.apk_url }}
+          EXPECTED_SHA: ${{ inputs.sha256 }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_URL" == https://* ]] || { echo "HTTPS required"; exit 1; }
+          curl --fail --location --retry 2 --max-time 300 --output LatinIME.apk "$SOURCE_URL"
+          unzip -tq LatinIME.apk
+          if [ -n "$EXPECTED_SHA" ]; then
+            echo "$EXPECTED_SHA  LatinIME.apk" | sha256sum --check
+          fi
+      - name: Preserve original keyboard UI and repack 64-bit library
+        run: python3 projects/s24-latinime-original/prepare_original.py LatinIME.apk unsigned.apk
+      - name: Install Android build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(command -v sdkmanager || true)"
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -1)"
+          fi
+          "$SDKMANAGER" "build-tools;35.0.0"
+      - name: Zipalign and sign candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools/35.0.0"
+          "$BUILD_TOOLS/zipalign" -f -p 4 unsigned.apk aligned.apk
+          keytool -genkeypair -noprompt -keystore test.keystore -storepass changeit \
+            -alias latinime-test -keypass changeit -keyalg RSA -keysize 3072 \
+            -validity 3650 -dname 'CN=LatinIME S24 Test' >/dev/null 2>&1
+          "$BUILD_TOOLS/apksigner" sign --min-sdk-version 30 \
+            --ks test.keystore --ks-key-alias latinime-test \
+            --ks-pass pass:changeit --key-pass pass:changeit \
+            --out LatinIME_S24_OriginalUI_Test.apk aligned.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs LatinIME_S24_OriginalUI_Test.apk
+      - name: Verify original resources and DEX unchanged
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('LatinIME.apk') as a, zipfile.ZipFile('LatinIME_S24_OriginalUI_Test.apk') as b:
+              checked = 0
+              for name in a.namelist():
+                  if name == 'AndroidManifest.xml' or name.startswith('META-INF/'):
+                      continue
+                  assert a.read(name) == b.read(name), 'Unexpected modification: '+name
+                  checked += 1
+              assert b.read('lib/arm64-v8a/libjni_latinimegoogle.so')[:4] == b'\x7fELF'
+              print('PASS: preserved', checked, 'original APK entries')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LatinIME-S24-original-ui-test
+          path: LatinIME_S24_OriginalUI_Test.apk
+          if-no-files-found: error
