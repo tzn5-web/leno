@@ -60,6 +60,13 @@ jobs:
           mkdir -p build/rebind-fixture build/rebind-output
           "$SDK/build-tools/35.0.0/d8" --min-api 30             --lib "$SDK/platforms/android-35/android.jar"             --output build/rebind-fixture             build/stubs/com/android/inputmethod/latin/LatinIME.class
           gradle --no-daemon -p projects/s24-latinime-glass/dex-rebind run             --args="$PWD/build/rebind-fixture/classes.dex $PWD/build/dex/classes.dex $PWD/build/rebind-output/base.dex $PWD/build/rebind-output/addon.dex"
+      - name: Package DEX rebind utility for real original APK validation
+        run: gradle --no-daemon -p projects/s24-latinime-glass/dex-rebind installDist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: S24-DEX-Rebind-Tool
+          path: projects/s24-latinime-glass/dex-rebind/build/install/latinime-service-rebind/
+          if-no-files-found: error
       - name: Source privacy gate (only appearance preferences)
         run: |
           python3 - <<'PY'
