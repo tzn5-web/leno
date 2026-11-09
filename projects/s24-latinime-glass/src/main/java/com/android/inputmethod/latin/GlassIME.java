@@ -66,11 +66,19 @@ public final class GlassIME extends LatinIME {
             super.setInputView(view);
             return;
         }
+        // KeyboardSwitcher may hand us the same original view again. Never
+        // detach and re-wrap it: doing so causes flicker and lost handlers.
+        if (view == originalKeyboard && outerRoot != null) {
+            super.setInputView(outerRoot);
+            return;
+        }
         View wrapped = wrapOriginal(view);
         super.setInputView(wrapped);
     }
 
     private View wrapOriginal(View view) {
+        if (view == outerRoot) return view;
+        if (view == originalKeyboard && outerRoot != null) return outerRoot;
         closeEmoji();
         originalKeyboard = view;
         backgroundLayers.clear();
