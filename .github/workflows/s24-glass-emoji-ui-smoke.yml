@@ -118,7 +118,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           script: |
-            set -euo pipefail
+            set -eu
             adb install -r build/ui/smoke.apk
             adb shell settings put secure show_ime_with_hard_keyboard 1
             adb shell ime enable dev.tzn5.glassuitest/com.android.inputmethod.latin.GlassIME
