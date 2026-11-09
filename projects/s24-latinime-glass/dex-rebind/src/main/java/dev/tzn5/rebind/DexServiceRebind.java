@@ -34,7 +34,7 @@ public final class DexServiceRebind {
                     return value;
                 };
             }
-        }).rewriteDexFile(src);
+        }).getDexFileRewriter().rewrite(src);
     }
 
     private static ClassDef requireClass(DexFile file, String name) {
