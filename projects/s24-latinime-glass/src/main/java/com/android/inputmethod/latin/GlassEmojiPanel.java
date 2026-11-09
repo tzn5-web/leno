@@ -6,13 +6,14 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.InputConnection;
-import android.widget.FrameLayout;
-import android.widget.GridLayout;
+import android.widget.BaseAdapter;
+import android.widget.GridView;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import java.util.Locale;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Entirely local emoji browser. Search is typed with an embedded search pad;
@@ -23,7 +24,21 @@ public final class GlassEmojiPanel {
     private final GlassIME host;
     private final Runnable exit;
     private LinearLayout body;
-    private GridLayout grid;
+    private GridView grid;
+    private BaseAdapter adapter;
+    private final List<EmojiEntry> all = new ArrayList<>();
+    private final List<EmojiEntry> filtered = new ArrayList<>();
+
+    private static final class EmojiEntry {
+        final String emoji;
+        final String name;
+        final int group;
+        EmojiEntry(String emoji, String name, int group) {
+            this.emoji = emoji;
+            this.name = name.toLowerCase(Locale.ROOT);
+            this.group = group;
+        }
+    }
     private TextView queryLabel;
     private LinearLayout searchPad;
     private int category = 0;
@@ -48,6 +63,13 @@ public final class GlassEmojiPanel {
     public GlassEmojiPanel(GlassIME host, Runnable exit) {
         this.host = host;
         this.exit = exit;
+        for (int group = 0; group < CATALOG.length; group++) {
+            for (String item : CATALOG[group].split(";")) {
+                int eq = item.indexOf('=');
+                if (eq > 0) all.add(new EmojiEntry(
+                        item.substring(0, eq), item.substring(eq + 1), group + 1));
+            }
+        }
     }
 
     private int dp(int n) {
@@ -112,12 +134,40 @@ public final class GlassEmojiPanel {
         scrollCategories.addView(tabs);
         body.addView(scrollCategories);
 
-        ScrollView results = new ScrollView(host);
-        results.setFillViewport(false);
-        grid = new GridLayout(host);
-        grid.setColumnCount(7);
-        results.addView(grid);
-        body.addView(results, new LinearLayout.LayoutParams(
+        // Virtualized grid: reuses only visible emoji cells while scrolling.
+        grid = new GridView(host);
+        grid.setNumColumns(7);
+        grid.setColumnWidth(dp(43));
+        grid.setHorizontalSpacing(dp(2));
+        grid.setVerticalSpacing(dp(1));
+        grid.setStretchMode(GridView.STRETCH_COLUMN_WIDTH);
+        grid.setSmoothScrollbarEnabled(false);
+        grid.setCacheColorHint(Color.TRANSPARENT);
+        adapter = new BaseAdapter() {
+            @Override public int getCount() { return filtered.size(); }
+            @Override public Object getItem(int position) { return filtered.get(position); }
+            @Override public long getItemId(int position) { return position; }
+            @Override public View getView(int position, View reused, ViewGroup parent) {
+                TextView icon = reused instanceof TextView ? (TextView) reused : new TextView(host);
+                if (reused == null) {
+                    icon.setTextSize(25);
+                    icon.setGravity(Gravity.CENTER);
+                    icon.setLayoutParams(new android.widget.AbsListView.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT, dp(44)));
+                }
+                EmojiEntry entry = filtered.get(position);
+                icon.setText(entry.emoji);
+                icon.setContentDescription(entry.name);
+                return icon;
+            }
+        };
+        grid.setAdapter(adapter);
+        grid.setOnItemClickListener((parent, view, position, id) -> {
+            if (position >= filtered.size()) return;
+            InputConnection connection = host.getCurrentInputConnection();
+            if (connection != null) connection.commitText(filtered.get(position).emoji, 1);
+        });
+        body.addView(grid, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
 
         searchPad = new LinearLayout(host);
@@ -157,41 +207,15 @@ public final class GlassEmojiPanel {
 
     private void displayEmojis() {
         if (grid == null) return;
-        grid.removeAllViews();
         String needle = query.toLowerCase(Locale.ROOT);
-        int matches = 0;
-        for (int group = 0; group < CATALOG.length; group++) {
-            if (category != 0 && category != group + 1) continue;
-            for (String item : CATALOG[group].split(";")) {
-                int eq = item.indexOf('=');
-                if (eq <= 0) continue;
-                String emoji = item.substring(0, eq);
-                String names = item.substring(eq + 1);
-                if (!needle.isEmpty() && !names.toLowerCase(Locale.ROOT).contains(needle)
-                        && !emoji.contains(needle)) continue;
-                TextView button = new TextView(host);
-                button.setText(emoji);
-                button.setTextSize(25);
-                button.setGravity(Gravity.CENTER);
-                button.setContentDescription(names);
-                GridLayout.LayoutParams lp = new GridLayout.LayoutParams();
-                lp.width = dp(44);
-                lp.height = dp(42);
-                grid.addView(button, lp);
-                button.setOnClickListener(v -> {
-                    InputConnection connection = host.getCurrentInputConnection();
-                    if (connection != null) connection.commitText(emoji, 1);
-                });
-                matches++;
-                if (matches >= 350) return;
-            }
+        filtered.clear();
+        for (EmojiEntry entry : all) {
+            if (category != 0 && category != entry.group) continue;
+            if (!needle.isEmpty() && !entry.name.contains(needle)
+                    && !entry.emoji.contains(needle)) continue;
+            filtered.add(entry);
         }
-        if (matches == 0) {
-            TextView empty = chip("Niciun emoji găsit", 14);
-            GridLayout.LayoutParams lp = new GridLayout.LayoutParams();
-            lp.width = dp(310);
-            lp.height = dp(45);
-            grid.addView(empty, lp);
-        }
+        adapter.notifyDataSetChanged();
+        grid.setSelection(0);
     }
 }
