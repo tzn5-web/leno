@@ -3,9 +3,9 @@ on:
   workflow_dispatch:
   push:
     branches: [feature/s24-glass-emoji-20261109]
-    paths: ['.github/workflows/s24-glass-emoji-ui-smoke.yml']
+    paths: ['.github/workflows/s24-glass-emoji-ui-smoke.yml', 'projects/s24-latinime-glass/sign_and_verify_update.sh', 'projects/s24-latinime-glass/src/main/java/**']
   pull_request:
-    paths: ['.github/workflows/s24-glass-emoji-ui-smoke.yml']
+    paths: ['.github/workflows/s24-glass-emoji-ui-smoke.yml', 'projects/s24-latinime-glass/sign_and_verify_update.sh', 'projects/s24-latinime-glass/src/main/java/**']
 permissions:
   contents: read
 jobs:
@@ -330,6 +330,35 @@ jobs:
           change=sum(ImageStat.Stat(diff).mean)/3
           assert change>2, f'Glass opacity did not visibly change IME pixels (mean={change:.2f})'
           print(f'PASS: Glass opacity changed actual rendered keyboard background (pixel delta {change:.2f})')
+          PY
+
+          # Repeatedly hide/show the real Android IME view. Missing input
+          # windows or an extension crash fail this performance stability gate.
+          python3 - <<'PY'
+          import subprocess,time
+          def adb(*args):
+              return subprocess.check_output(['adb','shell',*map(str,args)],
+                  stderr=subprocess.STDOUT).decode('utf-8',errors='replace')
+          adb('am','start','--activity-clear-top','-n',
+              'dev.tzn5.glassuitest/harness.DemoActivity')
+          adb('input','tap','180','900')
+          time.sleep(1)
+          adb('logcat','-c')
+          for i in range(12):
+              adb('input','keyevent','4')
+              time.sleep(.3)
+              adb('input','tap','180','900')
+              visible=False
+              for retry in range(4):
+                  time.sleep(.35)
+                  if 'mInputShown=true' in adb('dumpsys','input_method'):
+                      visible=True
+                      break
+              assert visible, f'IME failed to reappear on open/close cycle {i+1}'
+          log=adb('logcat','-d','-v','brief')
+          assert 'Process: dev.tzn5.glassuitest' not in log, (
+              'Glass/Emoji IME crashed during hide/show cycles')
+          print('PASS: 12 consecutive IME hide/show cycles without lost view or app crash')
           PY
 
           SMOKE_SCRIPT
