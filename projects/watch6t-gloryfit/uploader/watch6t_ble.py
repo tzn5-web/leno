@@ -13,7 +13,10 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
-from protocol import DialCaps, DialFile, ProtocolError, choose_chunk_size, section, status
+from protocol import (
+    DialCaps, DialFile, ProtocolError, choose_chunk_size, section, status,
+    is_prepare_ack, is_final_ack,
+)
 
 SERVICE = "000055ff-0000-1000-8000-00805f9b34fb"
 COMMAND = "000033f1-0000-1000-8000-00805f9b34fb"
@@ -131,8 +134,8 @@ class WatchLink:
             raise ProtocolError("Bluetooth disconnected")
         if payload.startswith(b"\x01\xe3"):
             raise ProtocolError("Actions/JX 01 E3 protocol not implemented; no guesswork")
-        if payload[:2] not in (b"\x26\x01", b"\x26\x02"):
-            raise ProtocolError(f"Command blocked: {payload.hex()}")
+        if payload not in (b"\x26\x01", b"\x26\x02", b"\x26\x03\x00"):
+            raise ProtocolError(f"Unsupported 33F1 control command: {payload.hex()}")
         # Watch6T reports MTU 247 but its Windows GATT write limit is 20 bytes.
         # Follow the actual characteristic limit; never rely on the MTU alone.
         if len(payload) > self.max_write:
@@ -215,18 +218,14 @@ class WatchLink:
             raise ProtocolError(f"HOLO size {face.size} bytes exceeds watch slot limit {caps.max_data_size}")
         if face.file_id != 189801:
             raise ProtocolError("Unexpected native dial identifier; refusing to overwrite a slot")
+        # This is the currently displayed online face ID, NOT the target file ID.
+        # Actual GloryFit OnlineDialUtil.getDialNumber() explicitly interprets
+        # FFFFFFFF as "no currently displayed online dial", not a damaged slot.
         if caps.dial_number == 0xFFFFFFFF:
-            raise ProtocolError(
-                "Watch returned dial ID FFFFFFFF, unlike the original 0002E569. "
-                "The custom dial slot may be unassigned/erased after the earlier 26 02 "
-                "attempt. No write will be sent. Recover a known-good face through "
-                "official GloryFit before considering any other direct upload."
-            )
-        if caps.dial_number != face.file_id:
-            raise ProtocolError(
-                f"Watch reported dial ID {caps.dial_number:08X}, "
-                f"BIN identifies {face.file_id:08X}; no slot write."
-            )
+            print("No online watchface currently displayed (vendor-defined FFFFFFFF).")
+        elif caps.dial_number != face.file_id:
+            print(f"Currently displayed dial ID {caps.dial_number:08X}; "
+                  f"target BIN ID {face.file_id:08X} (different IDs are permitted).")
         if caps.compatibility_level is not None and caps.compatibility_level > 2:
             print(f"Note: compatibility level {caps.compatibility_level} is not specifically validated")
         if caps.compatibility_level is None:
@@ -255,40 +254,64 @@ class WatchLink:
             "Read-only GATT profile is available; watchface transfer is disabled "
             "until the device-specific 33F1/34F1 handshake is confirmed."
         )
+
+    async def transfer_after_vendor_ready(self, face: DialFile, ready_reply: bytes) -> None:
+        """Transfer only AFTER an actual 26 02 reply.
+
+        Kept separately testable in offline simulation. Production install
+        intentionally does not call this while prepare behavior is uncertain.
+        """
+        if not is_prepare_ack(ready_reply):
+            raise ProtocolError(
+                "No 26 02 prepare acknowledgment. Refusing all data writes."
+            )
+        if self.ble5_max_write is None:
+            raise ProtocolError("34F1 data channel missing; transfer refused")
+        chunk_bytes = choose_chunk_size(self.ble5_max_write, self.mtu)
         data = face.path.read_bytes()
+        if len(data) != face.size:
+            raise ProtocolError("BIN changed after integrity check")
         offset, index, next_boundary = 0, 0, 4096
+        resumes = 0
         while offset < len(data):
             block = data[offset:offset + chunk_bytes]
-            await self.send_section(index, block)
+            await self.send_section(index, block)  # APK-confirmed channel 34F1
             offset += len(block)
             index += 1
-            # Avoid overflowing the host's BLE TX queue on Windows.
             if index % 12 == 0:
                 await asyncio.sleep(0.006)
             if offset >= next_boundary and offset < len(data):
                 ack = await self.response(
-                    lambda p: p.startswith(b"\x26\x03\x04") or p.startswith(b"\x26\x03\x03"),
+                    lambda p: p.startswith((b"\x26\x03\x04", b"\x26\x03\x03")),
                     timeout=25,
+                    stage=f"26 03 block ACK at {offset}/{face.size}",
                 )
                 if ack.startswith(b"\x26\x03\x03"):
                     if len(ack) < 5:
-                        raise ProtocolError("Invalid resume request; refusing to guess offset")
-                    resume = int.from_bytes(ack[3:5], "big")
-                    if resume > index:
-                        raise ProtocolError("Watch requested a section that was never sent")
-                    index = resume
-                    offset = min(resume * chunk_bytes, len(data))
+                        raise ProtocolError("Invalid resume packet length")
+                    resume_index = int.from_bytes(ack[3:5], "big")
+                    if resume_index > index:
+                        raise ProtocolError("Watch requested unsent section index")
+                    resumes += 1
+                    if resumes > 5:
+                        raise ProtocolError("Too many resume requests; abort")
+                    index = resume_index
+                    offset = min(index * chunk_bytes, len(data))
                     next_boundary = ((offset // 4096) + 1) * 4096
                 else:
                     next_boundary += 4096
-                    print(f"Confirmed transfer progress: {offset}/{face.size} bytes")
-        # The firmware sends 26 03 00 when finished; do NOT invent an OTA finish.
-        # An extra 26 03 04 (block-ready) is not a final acceptance.
-        # Only a 26 03 00 status confirms that the watch accepted the dial.
-        confirmation = await self.response(lambda p: status(p) == "success", timeout=45)
-        if status(confirmation) != "success":
-            raise ProtocolError(f"Watch did not confirm a successful dial: {confirmation.hex()}")
-        print("WATCH ACK: watchface upload accepted; inspect display to confirm visual correctness.")
+                    print(f"Watch confirmed data block: {offset}/{face.size} bytes")
+        # Confirmed in user's com.yc.gloryfit classes6.dex:
+        # WriteCommandToBLE.sendOnlineDialDataFinish sends 26 03 00 on 33F1.
+        print("All 34F1 data sections sent; sending required 26 03 00 finish on 33F1")
+        await self.command(b"\x26\x03\x00")
+        await self.response(
+            is_final_ack,
+            timeout=45,
+            stage="26 03 00 final watch acceptance",
+        )
+        print("WATCH ACK: dial transfer completed; verify image and live fields.")
+
 
 
 async def main(args):
@@ -310,11 +333,10 @@ async def main(args):
         caps = await link.capabilities()
         print("Watchface capabilities:", json.dumps(asdict(caps), sort_keys=True))
         if caps.dial_number == 0xFFFFFFFF:
-            print("WARNING: custom dial ID is FFFFFFFF (previously 0002E569). "
-                  "This may mean no registered custom dial after the interrupted prepare. "
-                  "Do not repeat 26 02 or guess a new slot identifier.")
+            print("Current online dial: NONE (FFFFFFFF per vendor OnlineDialUtil). "
+                  "This does not establish that the slot is erased.")
         else:
-            print(f"Dial identifier: {caps.dial_number:08X} ({caps.slot_state})")
+            print(f"Currently displayed online dial ID: {caps.dial_number:08X} ({caps.slot_state})")
         if args.mode == "probe":
             print("READ-ONLY GATE PASSED. No watchface bytes uploaded.")
             return
