@@ -1,5 +1,21 @@
 # Watch6T native HOLO BLE uploader — V1
 
+## IMPORTANT — upload halted after real 26 02 timeout (2026-11-10)
+
+The user's last actual Watch6T run reached the 26 02 prepare stage, then returned an empty BLOCKED message. It did **not** log a single 27 data section. The custom-face slot may have been erased. **DO NOT repeat the install launcher.** `install` is now explicitly blocked BEFORE sending another 26 02, pending confirmation of the proper device ready/ACK sequence.
+
+Reading the user's actual GloryFit classes6.dex reveals **26 01 and 26 02 go to 33F1; 27 data sections go to 34F1**. The previous uploader used 33F1 for all sections and would have been wrong even if 26 02 succeeded. Current code discovers 34F1, validates its properties and implements `send_section` on the correct characteristic. This route is not yet physically tested.
+
+Read-only discovery without clearing the slot:
+
+    call PREGATESTE.cmd
+    py -3 watch6t_ble.py probe --name Watch6T
+
+This does not upload a BIN or send 26 02. The current Windows bundle's install script still displays a warning/prompt, but its downloaded Python code refuses to perform another write; use `probe` instead.
+
+See [BLE-DEX-INVESTIGATION-2026-11-10.md](BLE-DEX-INVESTIGATION-2026-11-10.md).
+
+
 **Status:** the uploader is implemented. The native BIN parser and simulated 26/27 transfer sequence have tests. It has **NOT** been verified against a physical iHunt Watch6T (firmware RB235DCEV004137). This does NOT install a PNG wallpaper, and it does NOT use the watch firmware/OTA channel.
 
 ## Răspunsul real al Watch6T — 10 noiembrie 2026
