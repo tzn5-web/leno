@@ -66,16 +66,19 @@ public final class GlassActivity extends Activity {
             @Override public void onProgressChanged(SeekBar bar, int value, boolean fromUser) {
                 indicator.setText("Opacitate fundal: " + value + "%  ·  Transparență: "
                         + (100 - value) + "%");
-                if (fromUser) preferences.edit().putInt("opacity", value).apply();
+                // Update the preview immediately; persist only when dragging
+                // finishes, avoiding dozens of disk writes per gesture.
             }
             @Override public void onStartTrackingTouch(SeekBar bar) { }
-            @Override public void onStopTrackingTouch(SeekBar bar) { }
+            @Override public void onStopTrackingTouch(SeekBar bar) {
+                preferences.edit().putInt("opacity", bar.getProgress()).apply();
+            }
         });
 
         CheckBox blur = new CheckBox(this);
         blur.setText("Efect de estompare Glass, dacă este suportat de telefon");
         blur.setTextColor(Color.WHITE);
-        blur.setChecked(preferences.getBoolean("blur", true));
+        blur.setChecked(preferences.getBoolean("blur", false));
         blur.setOnCheckedChangeListener((view, enabled) ->
                 preferences.edit().putBoolean("blur", enabled).apply());
         root.addView(blur);
