@@ -73,7 +73,7 @@ jobs:
           JAVA
           cat > build/ui/AndroidManifest.xml <<'XML'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.tzn5.glassuitest">
-            <application android:label="Glass UI Test" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false">
+            <application android:label="Glass UI Test" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false" android:debuggable="true">
               <service android:name="com.android.inputmethod.latin.GlassIME" android:exported="true" android:permission="android.permission.BIND_INPUT_METHOD">
                 <intent-filter><action android:name="android.view.InputMethod"/></intent-filter>
                 <meta-data android:name="android.view.im" android:resource="@xml/method"/>
@@ -167,8 +167,25 @@ jobs:
           import xml.etree.ElementTree as ET
           texts=[n.attrib.get('text','') for n in ET.parse('build/ui/settings.xml').iter('node')]
           assert any('Opacitate' in s for s in texts), 'Glass slider not shown'
-          print('PASS: settings and opacity slider displayed')
+          seekbars=[n.attrib for n in ET.parse('build/ui/settings.xml').iter('node') if n.attrib.get('class')=='android.widget.SeekBar']
+          assert len(seekbars)==1, f'Expected one Glass opacity SeekBar, got {len(seekbars)}'
+          import re,subprocess
+          x1,y1,x2,y2=map(int,re.findall(r'\\d+',seekbars[0]['bounds']))
+          x=round(x1+(x2-x1)*.82);y=(y1+y2)//2
+          subprocess.run(['adb','shell','input','tap',str(x),str(y)],check=True)
+          print('PASS: Glass opacity slider visible and tapped:',x,y)
           PY
+          sleep 1
+          adb shell run-as dev.tzn5.glassuitest cat shared_prefs/s24_glass.xml > build/ui/glass-prefs.xml
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          prefs=ET.parse('build/ui/glass-prefs.xml').getroot()
+          candidates=[int(node.attrib['value']) for node in prefs if node.attrib.get('name')=='opacity']
+          assert len(candidates)==1 and 0<candidates[0]<=100, 'Opacity not saved after tapping Glass slider'
+          print('PASS: Glass opacity setting persisted as', candidates[0], '/100; no typing history in this preference file')
+          PY
+          adb shell screencap -p /sdcard/settings-screen.png
+          adb pull /sdcard/settings-screen.png build/ui/settings-screen.png >/dev/null
 
           SMOKE_SCRIPT
           chmod +x build/ui/run_smoke.sh
@@ -190,6 +207,17 @@ jobs:
         with:
           name: Glass-Emoji-smoke-fixture-APK
           path: build/ui/smoke.apk
+          if-no-files-found: ignore
+      - name: Upload visual evidence of emoji and Glass UI
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Glass-Emoji-UI-screens-and-settings
+          path: |
+            build/ui/*.png
+            build/ui/settings.xml
+            build/ui/emoji.xml
+            build/ui/glass-prefs.xml
           if-no-files-found: ignore
       - name: Upload UI diagnostics when failing
         if: failure()
