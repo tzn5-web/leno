@@ -39,7 +39,7 @@ The extension's GitHub Actions job compiles against Android API 35 and checks th
 
 ## Privacy hardening for the original Xiaomi engine
 
-In addition to removing Android app permissions and disabling backup, `PrivacyNoHistoryPatch` applies a fail-closed DEX modification to the **original** LatinIME engine. It replaces eight identified dynamic vocabulary write/flush paths with single-return implementations: `DictionaryFacilitatorImpl.addToUserHistory`, `addWordToUserHistory`, `ExpandableBinaryDictionary.updateEntriesForWord`, `updateEntriesForInputEvents`, `asyncFlushBinaryDictionary`, `addUnigramLocked`, `addNgramEntryLocked`, and `UserHistoryDictionary.addToDictionary`. It retains read-only dictionary lookup and the visual keyboard.
+In addition to removing Android app permissions and disabling backup, `PrivacyNoHistoryPatch` applies a fail-closed DEX modification to the **original** LatinIME engine. It blocks eight identified dynamic vocabulary write/flush paths. Seven methods become no-ops; `updateEntriesForInputEvents` skips writing but still invokes its `onFinished()` callback, preventing pending completion handlers from being stranded: `DictionaryFacilitatorImpl.addToUserHistory`, `addWordToUserHistory`, `ExpandableBinaryDictionary.updateEntriesForWord`, `updateEntriesForInputEvents`, `asyncFlushBinaryDictionary`, `addUnigramLocked`, `addNgramEntryLocked`, and `UserHistoryDictionary.addToDictionary`. It retains read-only dictionary lookup and the visual keyboard.
 
 A one-time cleanup also attempts `PersonalizationHelper.removeAllUserHistoryDictionaries(Context)` before the original keyboard initializes, so histories created by earlier installs can be removed. Only a boolean cleanup marker is stored.
 
