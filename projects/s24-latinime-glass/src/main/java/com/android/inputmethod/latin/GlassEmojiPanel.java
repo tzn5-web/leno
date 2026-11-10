@@ -93,7 +93,9 @@ public final class GlassEmojiPanel {
     public View makeView() {
         body = new LinearLayout(host);
         body.setOrientation(LinearLayout.VERTICAL);
-        body.setPadding(dp(3), dp(5), dp(3), dp(5));
+        // Reserve a bottom touch-safe area for Android's gesture/navigation bar.
+        // Emoji remain scrollable instead of being trapped under system icons.
+        body.setPadding(dp(3), dp(5), dp(3), dp(28));
         body.setBackgroundColor(Color.argb(238, 24, 29, 42));
 
         LinearLayout header = new LinearLayout(host);
