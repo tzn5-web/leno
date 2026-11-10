@@ -61,3 +61,18 @@ To build the privacy-hardened version, first run `DexServiceRebind original.dex 
 
 
 **Native ABI inventory:** The source Xiaomi APK bundles `assets/lib/libjni_latinimegoogle.so` (ELF32, machine 40 / ARMv7, 943,652 bytes) and `assets/lib64/libjni_latinimegoogle.so` (ELF64, machine 183 / AArch64, 1,112,352 bytes). Neither can run on x86_64 without supported ARM translation. Android 16 emulator: `ro.product.cpu.abilist=x86_64`, `ro.dalvik.vm.native.bridge=0`, API 36. Android 15 translation probe is separate and cannot be presumed successful until it reports properties from the booted emulator.
+
+
+## Android 15 real ARM64 JNI execution verification
+
+[GitHub Actions run 42869630009](https://github.com/tzn5-web/leno/actions/runs/42869630009) **PASS**. The public CI workflow `s24-android35-native-bridge-probe.yml` compiled a minimal ARM64 JNI shared library in the Android NDK, embedded it in a test-only APK, installed it on a Google APIs Android 15 x86_64 emulator, and invoked the exported native method from Java. Runtime log confirmed `ARM64_JNI_RESULT=4242`.
+
+Detected runtime:
+- `ro.build.version.sdk=35`
+- `ro.product.cpu.abilist=x86_64,arm64-v8a`
+- `ro.dalvik.vm.native.bridge=libndk_translation.so`
+- Translation version `0.2.3`.
+
+The original Xiaomi JNI libraries require `libc.so`, `libm.so`, `libstdc++.so` and `libdl.so`. Translation of a minimal custom ARM64 JNI library does **not** prove the original Xiaomi dictionary native code is fully compatible. The private complete-Xiaomi APK workflow now defaults to API 35. It remains blocked until a **private HTTPS source URL and SHA256** for the user's unsigned full QA APK are available in GitHub Actions; the file and signing key must not be published in this public repository.
+
+**Still blocked for release:** full original Xiaomi LatinIME JNI and UI runtime test, physical Samsung One UI validation, verified absence of native text retention, and access to the in-place update's matching signing private key.
