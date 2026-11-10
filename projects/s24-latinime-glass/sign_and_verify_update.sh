@@ -30,9 +30,11 @@ trap 'rm -rf "$tmp"' EXIT
 baseline="$("$APKSIGNER" verify --verbose --print-certs "$BASE")" || {
   echo "Previous working APK signature is invalid" >&2; exit 3;
 }
-oldcert="$(printf '%s\n' "$baseline" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)"
+oldcert="$(printf '%s\n' "$baseline" | grep -Eo '[[:xdigit:]]{64}' | head -1 || true)"
 [[ "$oldcert" =~ ^[[:xdigit:]]{64}$ ]] || {
-  echo "Unable to extract baseline signing certificate SHA256" >&2; exit 3;
+  echo "Unable to extract baseline signing certificate SHA256" >&2
+  printf '%s\n' "$baseline" | grep -Ei 'signer|certificate|SHA-256' >&2 || true
+  exit 3;
 }
 
 "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$tmp/aligned.apk"
@@ -40,7 +42,7 @@ oldcert="$(printf '%s\n' "$baseline" | sed -n 's/^Signer #1 certificate SHA-256 
   --ks-pass env:S24_APK_KS_PASSWORD --key-pass env:S24_APK_KEY_PASSWORD \
   --out "$tmp/signed.apk" "$tmp/aligned.apk"
 newcert="$("$APKSIGNER" verify --verbose --print-certs "$tmp/signed.apk" |
-  sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)"
+  grep -Eo '[[:xdigit:]]{64}' | head -1 || true)"
 if [[ "$oldcert" != "$newcert" ]]; then
   echo "BLOCKED: certificate mismatch — this would not update the installed keyboard" >&2
   echo "Current certificate SHA256: $oldcert" >&2
