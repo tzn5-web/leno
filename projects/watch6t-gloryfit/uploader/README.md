@@ -2,6 +2,20 @@
 
 **Status:** the uploader is implemented. The native BIN parser and simulated 26/27 transfer sequence have tests. It has **NOT** been verified against a physical iHunt Watch6T (firmware RB235DCEV004137). This does NOT install a PNG wallpaper, and it does NOT use the watch firmware/OTA channel.
 
+## Răspunsul real al Watch6T — 10 noiembrie 2026
+
+Ceasul a răspuns la interogarea 26 01 cu cei 15 octeți:
+
+    26 01 0002E569 00F0 00F0 00 00100000
+
+Decodificare: identificator 189801, ecran 240×240, tip ecran 0, dimensiune maximă 1.048.576 octeți. Câmpurile de compatibilitate și unghi sunt opționale și lipsesc din acest răspuns. Parserul le păstrează ca None, fără să respingă mesajul.
+
+Prima încercare s-a oprit înainte de comanda 26 02: nu a șters slotul și nu a trimis BIN-ul.
+
+Bluetooth-ul PC-ului a raportat ATT MTU 247, dar dimensiunea maximă GATT write-without-response este 20. Codul nou limitează pachetele la maximum 20 de octeți. La 16 octeți utili și 3 octeți antet, HOLO V6 (421.238 octeți) cere 26.328 fragmente. Confirmările de transfer nu au fost testate încă pe ceas.
+
+Important: pachetul privat existent include PREGATESTE.cmd, care descarcă automat versiunile curente protocol.py și watch6t_ble.py din această ramură. Nu este nevoie de alt ZIP pentru corectarea parserului.
+
 ## Features
 
 - Finds an iHunt Watch6T BLE peripheral, with explicit selection for multiple matches.
