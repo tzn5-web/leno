@@ -9,7 +9,10 @@ import zlib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from protocol import DialCaps, DialFile, ProtocolError, section, status, choose_chunk_size
+from protocol import (
+    DialCaps, DialFile, ProtocolError, section, status, choose_chunk_size,
+    is_prepare_ack, is_final_ack,
+)
 from watch6t_ble import WatchLink, BLE5_COMMAND, COMMAND
 
 
@@ -46,7 +49,14 @@ class DialTests(unittest.TestCase):
         caps = DialCaps.parse(bytes.fromhex("2601ffffffff00f000f00000100000"))
         self.assertEqual(caps.dial_number, 0xFFFFFFFF)
         self.assertEqual(caps.max_data_size, 1048576)
-        self.assertIn("unassigned-or-erased", caps.slot_state)
+        self.assertEqual(caps.slot_state, "no-online-dial-displayed")
+
+    def test_vendor_ready_and_finish_are_distinct(self):
+        self.assertTrue(is_prepare_ack(b"\x26\x02"))
+        self.assertTrue(is_prepare_ack(b"\x26\x02\x00"))
+        self.assertFalse(is_prepare_ack(b"\x26\x03\x04"))
+        self.assertTrue(is_final_ack(b"\x26\x03\x00"))
+        self.assertFalse(is_final_ack(b"\x26\x03\x04"))
 
     def test_extended_capabilities_18_byte_reply(self):
         caps = DialCaps.parse(bytes.fromhex("26010002e56900f000f0000010000001002a"))
@@ -119,7 +129,11 @@ class FakeClient:
         elif payload == b"\x26\x02":
             self.prepare_count += 1
             if not self.no_ack:
-                self.notify(None, b"\x26\x03\x04")
+                # Official SDK's prepare handler accepts an incoming 26 02.
+                self.notify(None, b"\x26\x02")
+        elif payload == b"\x26\x03\x00":
+            # Final ACK follows explicit phone-side finish command.
+            self.notify(None, b"\x26\x03\x00")
         elif payload[:1] == b"\x27":
             self.packet_count += 1
             self.total += len(payload) - 3
@@ -128,8 +142,7 @@ class FakeClient:
                 return
             if self.total % 4096 == 0 and self.total < self.target_bytes:
                 self.notify(None, b"\x26\x03\x04")
-            if self.total >= self.target_bytes:
-                self.notify(None, b"\x26\x03\x00")
+            # Final success is only emitted AFTER the phone sends 26 03 00.
 
 
 class UploaderTests(unittest.IsolatedAsyncioTestCase):
@@ -204,7 +217,7 @@ class UploaderTests(unittest.IsolatedAsyncioTestCase):
                 await link.install(face, caps)
             self.assertEqual(device.packet_count, 0)
 
-    async def test_unassigned_dial_rejected_without_prepare(self):
+    async def test_no_online_dial_report_does_not_bypass_safety_gate(self):
         with tempfile.TemporaryDirectory() as d:
             face = native_fixture(Path(d) / "original-shape.bin")
             device = FakeClient(face.size)
@@ -214,7 +227,7 @@ class UploaderTests(unittest.IsolatedAsyncioTestCase):
             link.ble5_response = False
             link.ble5_max_write = 244
             caps = DialCaps.parse(bytes.fromhex("2601ffffffff00f000f00000100000"))
-            with self.assertRaisesRegex(ProtocolError, "FFFFFFFF"):
+            with self.assertRaisesRegex(ProtocolError, "PREPARE UNSAFE"):
                 await link.install(face, caps)
             self.assertEqual(device.prepare_count, 0)
             self.assertEqual(device.packet_count, 0)
@@ -237,6 +250,42 @@ class UploaderTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(device.packet_count, 0)
             self.assertTrue(all(device.write_modes))
             self.assertLessEqual(max(device.frame_sizes), 20)
+
+    async def test_offline_transfer_after_vendor_ready_writes_finish(self):
+        # Simulates actual 34F1 streaming, 4KB flow-control and explicit
+        # 33F1 26 03 00; production install still blocks at prepare.
+        with tempfile.TemporaryDirectory() as d:
+            face = native_fixture(Path(d) / "test.bin")
+            device = FakeClient(face.size)
+            link = WatchLink(device)
+            device.notify = link.on_notify
+            link.ble5_command = BLE5_COMMAND
+            link.ble5_response = False
+            link.ble5_max_write = 244
+            link.max_write = 20
+            link.mtu = 247
+            await link.transfer_after_vendor_ready(face, b"\x26\x02")
+            self.assertEqual(device.total, face.size)
+            self.assertGreater(device.packet_count, 50)
+            self.assertTrue(
+                all(ch == BLE5_COMMAND for ch, p, _ in device.writes if p[:1] == b"\x27")
+            )
+            self.assertEqual(device.writes[-1], (COMMAND, b"\x26\x03\x00", False))
+            self.assertEqual(device.prepare_count, 0)
+
+    async def test_offline_transfer_requires_real_prepare_ack(self):
+        with tempfile.TemporaryDirectory() as d:
+            face = native_fixture(Path(d) / "test.bin")
+            device = FakeClient(face.size)
+            link = WatchLink(device)
+            device.notify = link.on_notify
+            link.ble5_command = BLE5_COMMAND
+            link.ble5_response = False
+            link.ble5_max_write = 244
+            link.mtu = 247
+            with self.assertRaisesRegex(ProtocolError, "No 26 02"):
+                await link.transfer_after_vendor_ready(face, b"\x26\x03\x04")
+            self.assertEqual(device.writes, [])
 
     async def test_vendor_apk_requires_34f1_for_27_data(self):
         device = FakeClient(16)
