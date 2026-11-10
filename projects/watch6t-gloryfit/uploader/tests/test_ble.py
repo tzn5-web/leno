@@ -155,6 +155,30 @@ class UploaderTests(unittest.IsolatedAsyncioTestCase):
     async def test_no_erase_ready_ack(self):
         await self.transfer(no_ack=True)
 
+    async def test_mismatched_face_id_never_sends_erase(self):
+        with tempfile.TemporaryDirectory() as d:
+            face = native_fixture(Path(d) / 'synthetic.bin')
+            device = FakeClient(face.size)
+            link = WatchLink(device)
+            device.notify = link.on_notify
+            link.mtu = 247
+            link.max_write = 20
+            caps = await link.capabilities()
+            from dataclasses import replace
+            caps = replace(caps, dial_number=face.file_id + 1)
+            with self.assertRaises(ProtocolError):
+                await link.install(face, caps)
+            self.assertEqual(device.packet_count, 0)
+
+    async def test_single_gatt_packet_must_not_exceed_reported_20_bytes(self):
+        device = FakeClient(10000)
+        link = WatchLink(device)
+        link.mtu = 247
+        link.max_write = 20
+        with self.assertRaises(ProtocolError):
+            await link.command(section(0, b'A' * 18))
+        self.assertEqual(device.packet_count, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
