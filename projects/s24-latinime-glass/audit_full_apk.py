@@ -126,6 +126,34 @@ def check(original_apk, rebuilt_apk):
         core = output.read('classes.dex')
         assert addon.startswith(b'dex\n') and core.startswith(b'dex\n')
         assert len(addon) > 8000, 'Glass/Emoji addon DEX unexpectedly small'
+        # Validate the target ABI and native JNI registration contracts.
+        # Merely finding a .so in the ZIP does not prove the ARM64 loader
+        # can use it; a wrong 32-bit ELF will crash after install.
+        native_name = 'lib/arm64-v8a/libjni_latinimegoogle.so'
+        assert native_name in output.namelist(), 'ARM64 LatinIME JNI binary missing'
+        native = output.read(native_name)
+        assert len(native) >= 8192 and native[:4] == b'\\x7fELF', (
+            'ARM64 library is missing or not an ELF file')
+        assert native[4] == 2 and native[5] == 1, (
+            'ARM64 ELF must be 64-bit little endian')
+        assert struct.unpack_from('<H', native, 18)[0] == 183, (
+            'JNI ELF e_machine must be AArch64 (183)')
+        assert b'JNI_OnLoad' in native and (
+            b'com/android/inputmethod/latin/BinaryDictionary' in native), (
+            'JNI registration symbols missing — keyboard dictionary may crash')
+        assert b'XiaomiIMECore' in core and b'LatinIME' in addon, (
+            'Glass extension does not expose original Android IME identity')
+        assert b'GlassIME;' not in addon, (
+            'Stale unrewritten service class in the addon DEX')
+        manifest_permissions = [attrs.get('name') for tag,attrs in manifest
+                                if tag.startswith('uses-permission')]
+        assert not manifest_permissions, (
+            'Keyboard still requests permissions: ' + str(manifest_permissions))
+        app = [attrs for tag,attrs in manifest if tag == 'application']
+        assert len(app) == 1 and app[0].get('allowBackup') == 0, (
+            'Keyboard backup must be explicitly disabled')
+        print('PASS: 64-bit AArch64 JNI ELF and native dictionary registration present')
+        print('PASS: no requested Android permissions and backup disabled')
 
         fixed_assets = [
             name for name in origin_names if name.startswith(('assets/','res/','lib/'))
