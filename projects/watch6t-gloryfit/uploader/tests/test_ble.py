@@ -78,9 +78,9 @@ class DialTests(unittest.TestCase):
 
     def test_chunk_and_status(self):
         self.assertEqual(section(258, b"AB"), b"\x27\x01\x02AB")
-        self.assertEqual(choose_chunk_size(20, 23), 16)
-        self.assertEqual(choose_chunk_size(20, 247), 16)  # actual Windows Watch6T write cap
-        self.assertEqual(choose_chunk_size(244, 247), 128)
+        self.assertEqual(choose_chunk_size(20, 23), 17)
+        self.assertEqual(choose_chunk_size(20, 247), 17)
+        self.assertEqual(choose_chunk_size(244, 247), 241)  # actual 34F1 hardware
         self.assertEqual(status(b"\x26\x03\x00"), "success")
         self.assertEqual(status(b"\x26\x03\x01"), "failure")
         with self.assertRaises(ProtocolError):
@@ -115,6 +115,7 @@ class FakeClient:
         self.total = 0
         self.packet_count = 0
         self.prepare_count = 0
+        self.next_block_ack = 4096
         self.write_modes = []
         self.frame_sizes = []
         self.writes = []
@@ -140,120 +141,95 @@ class FakeClient:
             if self.reject and self.total >= 4096:
                 self.notify(None, b"\x26\x03\x01")
                 return
-            if self.total % 4096 == 0 and self.total < self.target_bytes:
+            if self.total >= self.next_block_ack:
                 self.notify(None, b"\x26\x03\x04")
+                self.next_block_ack += 4096
             # Final success is only emitted AFTER the phone sends 26 03 00.
 
 
 class UploaderTests(unittest.IsolatedAsyncioTestCase):
-    async def transfer(self, *, reject=False, no_ack=False):
+    async def transfer(self, *, reject=False, no_ack=False, displayed_id=None):
         with tempfile.TemporaryDirectory() as d:
             face = native_fixture(Path(d) / "synthetic.bin")
             device = FakeClient(face.size, reject=reject, no_ack=no_ack)
             link = WatchLink(device)
             device.notify = link.on_notify
             link.mtu = 247
-            link.max_write = 20  # actual watch reports this despite MTU=247
+            link.write_response = True
+            link.max_write = 20
+            link.ble5_command = BLE5_COMMAND
+            link.ble5_response = False
+            link.ble5_max_write = 244
             caps = await link.capabilities()
-            if reject:
-                with self.assertRaises(ProtocolError):
-                    await link.install(face, caps)
-            elif no_ack:
-                # Test no-ack behavior without waiting 25s: inject timeout at queue layer.
-                async def always_timeout(predicate, timeout=15):
-                    if timeout == 25:
-                        raise ProtocolError("simulated timeout")
-                    return await original_response(predicate, timeout)
+            if displayed_id is not None:
+                from dataclasses import replace
+                caps = replace(caps, dial_number=displayed_id)
+            if no_ack:
                 original_response = link.response
-                link.response = always_timeout
-                with self.assertRaises(ProtocolError):
+                async def immediate_timeout(predicate, timeout=15, stage="response"):
+                    if "prepare ACK" in stage:
+                        raise ProtocolError("simulated 26 02 ACK timeout")
+                    return await original_response(predicate, timeout=timeout, stage=stage)
+                link.response = immediate_timeout
+                with self.assertRaisesRegex(ProtocolError, "simulated 26 02 ACK timeout"):
                     await link.install(face, caps)
+                self.assertEqual(device.prepare_count, 1)
                 self.assertEqual(device.packet_count, 0)
+            elif reject:
+                with self.assertRaisesRegex(ProtocolError, "Watch reports error"):
+                    await link.install(face, caps)
+                self.assertEqual(device.prepare_count, 1)
+                self.assertGreater(device.packet_count, 0)
             else:
                 await link.install(face, caps)
                 self.assertEqual(device.total, face.size)
-                self.assertGreater(device.packet_count, 1)
+                self.assertEqual(device.prepare_count, 1)
+                self.assertTrue(any(p == b"\x26\x03\x00" for _,p,_ in device.writes))
+                self.assertTrue(all(ch==BLE5_COMMAND for ch,p,_ in device.writes if p[:1]==b"\x27"))
+                self.assertLessEqual(max(device.frame_sizes), 244)
+                self.assertEqual([w[2] for w in device.writes if w[0]==COMMAND], [True,True,True])
 
-    async def test_install_paused_before_erase_even_if_simulator_would_ack(self):
-        with tempfile.TemporaryDirectory() as d:
-            face = native_fixture(Path(d) / "synthetic.bin")
-            device = FakeClient(face.size)
-            link = WatchLink(device)
-            device.notify = link.on_notify
-            link.max_write = 20
-            link.mtu = 247
-            caps = await link.capabilities()
-            with self.assertRaisesRegex(ProtocolError, "PREPARE UNSAFE"):
-                await link.install(face, caps)
-            self.assertEqual(device.prepare_count, 0)
-            self.assertEqual(device.packet_count, 0)
+    async def test_actual_vendor_ready_allows_transfer(self):
+        await self.transfer()
 
-    async def test_install_paused_before_erase_when_ack_missing(self):
-        with tempfile.TemporaryDirectory() as d:
-            face = native_fixture(Path(d) / "synthetic.bin")
-            device = FakeClient(face.size, no_ack=True)
-            link = WatchLink(device)
-            device.notify = link.on_notify
-            link.max_write = 20
-            link.mtu = 247
-            caps = await link.capabilities()
-            with self.assertRaisesRegex(ProtocolError, "PREPARE UNSAFE"):
-                await link.install(face, caps)
-            self.assertEqual(device.prepare_count, 0)
-            self.assertEqual(device.packet_count, 0)
+    async def test_no_ready_ack_fails_without_data(self):
+        await self.transfer(no_ack=True)
 
-    async def test_mismatched_face_id_never_sends_erase(self):
+    async def test_watch_rejection_aborts_transfer(self):
+        await self.transfer(reject=True)
+
+    async def test_display_id_mismatch_is_not_target_id_error(self):
+        # The 26 01 dialNumber is currently DISPLAYED face, not target file ID.
+        await self.transfer(displayed_id=123456)
+
+    async def test_no_online_face_ffffffff_still_uploads_when_ready(self):
+        await self.transfer(displayed_id=0xFFFFFFFF)
+
+    async def test_wrong_bin_identifier_refused_before_erase(self):
         with tempfile.TemporaryDirectory() as d:
-            face = native_fixture(Path(d) / 'synthetic.bin')
-            device = FakeClient(face.size)
-            link = WatchLink(device)
-            device.notify = link.on_notify
-            link.mtu = 247
-            link.max_write = 20
-            caps = await link.capabilities()
+            face = native_fixture(Path(d) / "fixture.bin")
             from dataclasses import replace
-            caps = replace(caps, dial_number=face.file_id + 1)
-            with self.assertRaises(ProtocolError):
-                await link.install(face, caps)
-            self.assertEqual(device.packet_count, 0)
-
-    async def test_no_online_dial_report_does_not_bypass_safety_gate(self):
-        with tempfile.TemporaryDirectory() as d:
-            face = native_fixture(Path(d) / "original-shape.bin")
+            face = replace(face, file_id=17)
             device = FakeClient(face.size)
             link = WatchLink(device)
             device.notify = link.on_notify
             link.ble5_command = BLE5_COMMAND
             link.ble5_response = False
             link.ble5_max_write = 244
-            caps = DialCaps.parse(bytes.fromhex("2601ffffffff00f000f00000100000"))
-            with self.assertRaisesRegex(ProtocolError, "PREPARE UNSAFE"):
-                await link.install(face, caps)
-            self.assertEqual(device.prepare_count, 0)
-            self.assertEqual(device.packet_count, 0)
-            self.assertEqual(device.writes, [])
-
-    async def test_gatt_write_with_response_upload_20_byte_hardware_limit(self):
-        # Actual Watch6T 33F1 supports WRITE only; 26 01 already succeeded that way.
-        with tempfile.TemporaryDirectory() as d:
-            face = native_fixture(Path(d) / "synthetic.bin")
-            device = FakeClient(face.size)
-            link = WatchLink(device)
-            device.notify = link.on_notify
-            link.write_response = True
             link.mtu = 247
             link.max_write = 20
             caps = await link.capabilities()
-            with self.assertRaisesRegex(ProtocolError, "PREPARE UNSAFE"):
+            with self.assertRaisesRegex(ProtocolError, "Unexpected native dial identifier"):
                 await link.install(face, caps)
             self.assertEqual(device.prepare_count, 0)
             self.assertEqual(device.packet_count, 0)
-            self.assertTrue(all(device.write_modes))
-            self.assertLessEqual(max(device.frame_sizes), 20)
+
+    async def test_gatt_with_response_control_and_34f1_without_response(self):
+        await self.transfer()
 
     async def test_offline_transfer_after_vendor_ready_writes_finish(self):
-        # Simulates actual 34F1 streaming, 4KB flow-control and explicit
-        # 33F1 26 03 00; production install still blocks at prepare.
+        # Simulates real 34F1 streaming, 4KiB flow control, explicit
+        # 33F1 26 03 00 finish, without an actual destructive 26 02.
         with tempfile.TemporaryDirectory() as d:
             face = native_fixture(Path(d) / "test.bin")
             device = FakeClient(face.size)
@@ -266,7 +242,7 @@ class UploaderTests(unittest.IsolatedAsyncioTestCase):
             link.mtu = 247
             await link.transfer_after_vendor_ready(face, b"\x26\x02")
             self.assertEqual(device.total, face.size)
-            self.assertGreater(device.packet_count, 50)
+            self.assertGreater(device.packet_count, 30)
             self.assertTrue(
                 all(ch == BLE5_COMMAND for ch, p, _ in device.writes if p[:1] == b"\x27")
             )
