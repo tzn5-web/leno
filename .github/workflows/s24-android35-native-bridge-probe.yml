@@ -130,15 +130,17 @@ jobs:
             echo "IS_ARM64_TRANSLATED=$(adb shell getprop ro.dalvik.vm.isa.arm64 | tr -d '\015')"
             echo "TRANSLATION_VERSION=$(adb shell getprop ro.ndk_translation.version | tr -d '\015')"
           } | tee build/native-bridge/abi.txt
-          grep -q '^API=35
-          if grep -Eq '^ABI_LIST=.*(arm64-v8a|armeabi-v7a)' build/native-bridge/abi.txt; then
-            echo 'POSSIBLE: ARM ABI advertised. Full original Xiaomi JNI still needs a runtime test.' | tee -a build/native-bridge/abi.txt
-          elif ! grep -q '^NATIVE_BRIDGE=0$' build/native-bridge/abi.txt &&
-              grep -Eq '^NATIVE_BRIDGE=.{2,}' build/native-bridge/abi.txt; then
-            echo 'POSSIBLE: nonzero native bridge. A real ARM JNI load test is still mandatory.' | tee -a build/native-bridge/abi.txt
-          else
-            echo 'BLOCKED: no ARM ABI or native bridge. Cannot execute original Xiaomi JNI here.' | tee -a build/native-bridge/abi.txt
+          grep -q '^API=35$' build/native-bridge/abi.txt
+          adb install -r build/native-bridge/probe.apk | tee build/native-bridge/install.txt
+          adb logcat -c
+          adb shell am start -n dev.tzn5.nativebridge/.ProbeActivity
+          sleep 4
+          adb logcat -d -v brief -s BRIDGEPROBE:I '*:S' | tee build/native-bridge/jni-result.txt
+          if ! grep -q 'ARM64_JNI_RESULT=4242' build/native-bridge/jni-result.txt; then
+            echo 'BLOCKED: ARM64 library did not execute under Android 15 native bridge' >&2
+            exit 89
           fi
+          echo 'PASS: Android 15 x86 emulator loaded and executed a real ARM64 JNI library' | tee -a build/native-bridge/abi.txt
           PROBE
           chmod +x build/native-bridge/probe.sh
       - uses: reactivecircus/android-emulator-runner@v2
@@ -158,40 +160,4 @@ jobs:
             build/native-bridge/abi.txt
             build/native-bridge/install.txt
             build/native-bridge/jni-result.txt
-          if-no-files-found: ignore
- build/native-bridge/abi.txt
-          adb install -r build/native-bridge/probe.apk | tee build/native-bridge/install.txt
-          adb logcat -c
-          adb shell am start -n dev.tzn5.nativebridge/.ProbeActivity
-          sleep 4
-          adb logcat -d -v brief -s BRIDGEPROBE:I '*:S' | tee build/native-bridge/jni-result.txt
-          grep -q 'ARM64_JNI_RESULT=4242' build/native-bridge/jni-result.txt || {
-            echo 'BLOCKED: ARM64 library did not execute successfully under emulator native bridge' >&2
-            exit 89
-          }
-          echo 'PASS: the Android 15 x86 emulator loaded and executed a real ARM64 JNI library' | tee -a build/native-bridge/abi.txt
-          if grep -Eq '^ABI_LIST=.*(arm64-v8a|armeabi-v7a)' build/native-bridge/abi.txt; then
-            echo 'POSSIBLE: ARM ABI advertised. Full original Xiaomi JNI still needs a runtime test.' | tee -a build/native-bridge/abi.txt
-          elif ! grep -q '^NATIVE_BRIDGE=0$' build/native-bridge/abi.txt &&
-              grep -Eq '^NATIVE_BRIDGE=.{2,}' build/native-bridge/abi.txt; then
-            echo 'POSSIBLE: nonzero native bridge. A real ARM JNI load test is still mandatory.' | tee -a build/native-bridge/abi.txt
-          else
-            echo 'BLOCKED: no ARM ABI or native bridge. Cannot execute original Xiaomi JNI here.' | tee -a build/native-bridge/abi.txt
-          fi
-          PROBE
-          chmod +x build/native-bridge/probe.sh
-      - uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          target: google_apis
-          profile: pixel_4
-          disable-animations: true
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-metrics
-          script: bash build/native-bridge/probe.sh
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: S24-Android35-native-bridge-report
-          path: build/native-bridge/abi.txt
           if-no-files-found: ignore
