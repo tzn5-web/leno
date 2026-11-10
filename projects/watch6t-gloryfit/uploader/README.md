@@ -100,3 +100,18 @@ Uploader revision:
 To load this fix, run the EXISTING Windows `2_INSTALEAZA_HOLO_BLE_EXPERIMENTAL.cmd`: `PREGATESTE.cmd` always retrieves the latest `watch6t_ble.py` and `protocol.py` from the GitHub branch.
 
 **Risk:** the next run may actually reach destructive `26 02`. A failed or interrupted transfer can leave the custom face slot empty. The presence of the original BIN in the archive is not proof of hardware recovery. Only proceed if willing to accept that risk.
+
+## Read-only Watch6T follow-up — FF FF FF FF after interrupted preparation
+
+2026-11-10: the user ran `probe` and supplied:
+
+    GloryFit BIN data 34F1: properties=['read', 'write-without-response']; max_write=244; mode=without-response
+    BLE DIAL NOTIFY: 2601ffffffff00f000f00000100000
+
+Compared with the earlier `26010002e56900f000f00000100000`, only the 4-byte dial ID changed, from `0002E569` (189801) to `FFFFFFFF` (4294967295); the 240×240 resolution, screen type, and 1 MB capacity are unchanged.
+
+The change happened after the previous program attempted `26 02` and then stopped without delivering any `27` data fragments. `FFFFFFFF` plausibly indicates an unassigned/erased custom slot, **but its exact device-specific semantic remains unverified**. The source does not prove that the watch is damaged or that a factory face was deleted.
+
+The uploader now records this slot state as `unassigned-or-erased` and refuses all upload attempts before another `26 02`. It can continue doing read-only capability probes, but rerunning them provides no new installation path.
+
+Next actual recovery step: if the watch face is missing or blank, use official GloryFit to install a known-good **official** watch face and confirm it works. This is recovery only, not the final HOLO design, and must not use the Firmware Upgrade / OTA page. To implement HOLO upload independently, the developer must reproduce the vendor's device-specific prepare ACK/flow-control sequence from actual application traffic rather than guessing the meaning of `FFFFFFFF`.
