@@ -1,4 +1,4 @@
-name: S24 Glass + Emoji UI Smoke
+name: S24 Glass + Emoji UI Smoke Android 16
 on:
   workflow_dispatch:
   push:
@@ -273,7 +273,7 @@ jobs:
         run: if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
       - uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 36
           arch: x86_64
           target: default
           profile: pixel_4
