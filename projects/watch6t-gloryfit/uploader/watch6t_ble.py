@@ -91,7 +91,9 @@ class WatchLink:
                 await self.client.start_notify(DATA_NOTIFY, self.on_notify)
             except Exception:
                 pass
-        print(f"Normal GloryFit service: OK; ATT MTU={self.mtu}; max GATT write={self.max_write}")
+        print(f"Normal GloryFit service: OK; ATT MTU={self.mtu}; "
+              f"max GATT write={self.max_write}; "
+              f"mode={'with-response' if self.write_response else 'without-response'}")
 
     async def command(self, payload: bytes):
         if not self.client.is_connected:
@@ -106,6 +108,8 @@ class WatchLink:
             raise ProtocolError(
                 f"GATT frame {len(payload)} bytes exceeds reported write limit {self.max_write}"
             )
+        # A write-with-response ACK only confirms GATT delivery, not storage of
+        # the watch face; final acceptance still requires 26 03 00 from the watch.
         await self.client.write_gatt_char(COMMAND, payload, response=self.write_response)
 
     async def response(self, predicate, timeout=15.0) -> bytes:
@@ -143,10 +147,14 @@ class WatchLink:
             print(f"Note: compatibility level {caps.compatibility_level} is not specifically validated")
         if caps.compatibility_level is None:
             print("Watch6T short capability reply: optional compatibility/corner fields unavailable")
+        # iHunt Watch6T exposes 33F1 as WRITE (with response), not WRITE-WITHOUT-RESPONSE.
+        # The read-only 26 01 query succeeded with this same write mode on the real watch.
+        # GATT-confirmed writes are slower but valid; do not force response=False or
+        # exceed 20 bytes merely because the ATT MTU reports 247.
         if self.write_response:
-            # Strictly use the characteristic's documented write type;
-            # some watches don't support high-speed transfers this way.
-            raise ProtocolError("33F1 lacks write-without-response; unsupported high-throughput upload")
+            print("Watch6T GATT write WITH response: sending acknowledged <=20-byte frames")
+        else:
+            print("GATT write WITHOUT response: waiting for watch's explicit dial ACKs")
         chunk_bytes = choose_chunk_size(self.max_write, self.mtu)
         packet_count = (face.size + chunk_bytes - 1) // chunk_bytes
         if packet_count > 65536:
