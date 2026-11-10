@@ -17,6 +17,9 @@ import org.jf.dexlib2.iface.instruction.Instruction;
 import org.jf.dexlib2.immutable.ImmutableMethod;
 import org.jf.dexlib2.immutable.ImmutableMethodImplementation;
 import org.jf.dexlib2.immutable.instruction.ImmutableInstruction10x;
+import org.jf.dexlib2.immutable.instruction.ImmutableInstruction21t;
+import org.jf.dexlib2.immutable.instruction.ImmutableInstruction35c;
+import org.jf.dexlib2.immutable.reference.ImmutableMethodReference;
 import org.jf.dexlib2.rewriter.DexRewriter;
 import org.jf.dexlib2.rewriter.MethodRewriter;
 import org.jf.dexlib2.rewriter.Rewriter;
@@ -37,6 +40,9 @@ public final class PrivacyNoHistoryPatch {
     private static final String FAC = "Lcom/android/inputmethod/latin/DictionaryFacilitatorImpl;";
     private static final String EXP = "Lcom/android/inputmethod/latin/ExpandableBinaryDictionary;";
     private static final String HIST = "Lcom/android/inputmethod/latin/personalization/UserHistoryDictionary;";
+    private static final String CALLBACK_METHOD = EXP + "->updateEntriesForInputEvents";
+    private static final String CALLBACK_TYPE =
+            "Lcom/android/inputmethod/latin/ExpandableBinaryDictionary$UpdateEntriesForInputEventsCallback;";
     private static final Set<String> TARGETS = new HashSet<>(Arrays.asList(
         FAC + "->addToUserHistory",
         FAC + "->addWordToUserHistory",
@@ -56,6 +62,13 @@ public final class PrivacyNoHistoryPatch {
                 if (!TARGETS.contains(id)) continue;
                 if (!"V".equals(method.getReturnType()) || method.getImplementation() == null) {
                     throw new IllegalStateException("Unexpected target signature: " + id);
+                }
+                if (CALLBACK_METHOD.equals(id)) {
+                    if (method.getParameters().size() != 2
+                            || !CALLBACK_TYPE.equals(method.getParameters().get(1).getType())
+                            || method.getImplementation().getRegisterCount() > 16) {
+                        throw new IllegalStateException("Unexpected completion callback signature: " + id);
+                    }
                 }
                 found.add(id);
             }
@@ -82,6 +95,24 @@ public final class PrivacyNoHistoryPatch {
                     String id = rewritten.getDefiningClass() + "->" + rewritten.getName();
                     if (!TARGETS.contains(id)) return rewritten;
                     int registers = rewritten.getImplementation().getRegisterCount();
+                    // Never write input events; still tell the original engine
+                    // the operation completed. Dropping the callback could
+                    // leave a future/pending update waiting indefinitely.
+                    java.util.List<? extends Instruction> noWriteInstructions;
+                    if (CALLBACK_METHOD.equals(id)) {
+                        int callbackReg = registers - 1;
+                        noWriteInstructions = Arrays.asList(
+                            new ImmutableInstruction21t(Opcode.IF_EQZ, callbackReg, 5),
+                            new ImmutableInstruction35c(
+                                Opcode.INVOKE_INTERFACE, 1, callbackReg, 0, 0, 0, 0,
+                                new ImmutableMethodReference(
+                                    CALLBACK_TYPE, "onFinished", Collections.emptyList(), "V")),
+                            new ImmutableInstruction10x(Opcode.RETURN_VOID)
+                        );
+                    } else {
+                        noWriteInstructions = Collections.singletonList(
+                                new ImmutableInstruction10x(Opcode.RETURN_VOID));
+                    }
                     return new ImmutableMethod(
                         rewritten.getDefiningClass(),
                         rewritten.getName(),
@@ -92,7 +123,7 @@ public final class PrivacyNoHistoryPatch {
                         rewritten.getHiddenApiRestrictions(),
                         new ImmutableMethodImplementation(
                             registers,
-                            Collections.singletonList(new ImmutableInstruction10x(Opcode.RETURN_VOID)),
+                            noWriteInstructions,
                             Collections.emptyList(),
                             Collections.emptyList()
                         )
@@ -113,8 +144,15 @@ public final class PrivacyNoHistoryPatch {
                 if (!TARGETS.contains(id)) continue;
                 Iterator<? extends Instruction> instructions =
                     method.getImplementation().getInstructions().iterator();
-                if (!instructions.hasNext() || instructions.next().getOpcode() != Opcode.RETURN_VOID
-                        || instructions.hasNext()) {
+                if (CALLBACK_METHOD.equals(id)) {
+                    if (!instructions.hasNext() || instructions.next().getOpcode() != Opcode.IF_EQZ
+                            || !instructions.hasNext() || instructions.next().getOpcode() != Opcode.INVOKE_INTERFACE
+                            || !instructions.hasNext() || instructions.next().getOpcode() != Opcode.RETURN_VOID
+                            || instructions.hasNext()) {
+                        throw new IllegalStateException("No-write callback was not preserved: " + id);
+                    }
+                } else if (!instructions.hasNext()
+                        || instructions.next().getOpcode() != Opcode.RETURN_VOID || instructions.hasNext()) {
                     throw new IllegalStateException("Word history method still active: " + id);
                 }
                 System.out.println("BLOCKED " + id);
@@ -122,7 +160,7 @@ public final class PrivacyNoHistoryPatch {
             }
         }
         if (disabled != TARGETS.size()) throw new IllegalStateException("Missing privacy rewrites");
-        System.out.println("PASS: eight known Java history/update/flush methods disabled");
+        System.out.println("PASS: eight original write paths blocked; completion callback preserved for input-events");
         System.out.println("NOT VERIFIED: all potential native/third-party retention paths");
     }
 }
