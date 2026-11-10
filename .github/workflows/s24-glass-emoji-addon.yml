@@ -80,7 +80,12 @@ jobs:
           package com.android.inputmethod.latin;
           public class ExpandableBinaryDictionary {
             public void updateEntriesForWord() { System.out.println("unsafe"); }
-            public void updateEntriesForInputEvents() { System.out.println("unsafe"); }
+            public interface UpdateEntriesForInputEventsCallback { void onFinished(); }
+            public void updateEntriesForInputEvents(
+                    java.util.ArrayList<?> events, UpdateEntriesForInputEventsCallback callback) {
+              System.out.println("unsafe");
+              if (callback != null) callback.onFinished();
+            }
             public void asyncFlushBinaryDictionary() { System.out.println("unsafe"); }
             protected void addUnigramLocked() { System.out.println("unsafe"); }
             protected void addNgramEntryLocked() { System.out.println("unsafe"); }
@@ -99,7 +104,7 @@ jobs:
           java -cp "$PWD/projects/s24-latinime-glass/dex-rebind/build/install/latinime-service-rebind/lib/*" \
             dev.tzn5.rebind.PrivacyNoHistoryPatch "$FIX/dex/classes.dex" "$FIX/privacy-disabled.dex"
           test -s "$FIX/privacy-disabled.dex"
-          echo "PASS: privacy DEX fail-closed target rewriting and serialization"
+          echo "PASS: privacy DEX eight write-path guards and completion callback preserved"
       - uses: actions/upload-artifact@v4
         with:
           name: S24-DEX-Rebind-Tool
