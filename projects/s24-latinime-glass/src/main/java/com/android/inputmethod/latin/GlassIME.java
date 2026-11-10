@@ -61,6 +61,11 @@ public final class GlassIME extends LatinIME {
     private View emojiPane;
     private GlassEmojiPanel picker;
     private final List<Drawable> backgroundLayers = new ArrayList<>();
+    // The Xiaomi KeyboardView draws into a cached bitmap. Background
+    // alpha changes need its original invalidateAllKeys() to refresh that
+    // bitmap, without altering individual key/letter drawables.
+    private final List<View> cachedKeyboardViews = new ArrayList<>();
+    private int appliedBackgroundAlpha = -1;
     private boolean windowConfigured;
     private Boolean previousBlur;
 
@@ -105,6 +110,8 @@ public final class GlassIME extends LatinIME {
         closeEmoji();
         originalKeyboard = view;
         backgroundLayers.clear();
+        cachedKeyboardViews.clear();
+        appliedBackgroundAlpha = -1;
 
         // Move only the original root view, not any internal key views.
         ViewParent oldParent = view.getParent();
@@ -182,6 +189,10 @@ public final class GlassIME extends LatinIME {
 
     private void collectBackgrounds(View view, boolean root) {
         String name = view.getClass().getName();
+        if (name.equals("com.android.inputmethod.keyboard.MainKeyboardView")
+                || name.equals("com.android.inputmethod.keyboard.KeyboardView")) {
+            cachedKeyboardViews.add(view);
+        }
         boolean container = root
                 || name.contains("InputView")
                 || name.contains("MainKeyboardFrame")
@@ -209,8 +220,21 @@ public final class GlassIME extends LatinIME {
 
     private void updateGlassBackground() {
         int alpha = Math.round(Math.max(0, Math.min(100, prefOpacity())) * 2.55f);
-        for (Drawable background : backgroundLayers) {
-            background.setAlpha(alpha);
+        if (alpha != appliedBackgroundAlpha) {
+            for (Drawable background : backgroundLayers) {
+                background.setAlpha(alpha);
+            }
+            // The original Xiaomi KeyboardView renders into a private cache.
+            // Its public invalidateAllKeys() marks that cache dirty; View
+            // invalidate() alone may merely replay the old bitmap.
+            for (View keyboard : cachedKeyboardViews) {
+                try {
+                    keyboard.getClass().getMethod("invalidateAllKeys").invoke(keyboard);
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    keyboard.invalidate();
+                }
+            }
+            appliedBackgroundAlpha = alpha;
         }
         if (toolbar != null) {
             toolbar.setBackgroundColor(Color.argb(alpha, 36, 42, 55));
