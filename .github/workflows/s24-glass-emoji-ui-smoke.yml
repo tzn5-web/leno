@@ -107,6 +107,25 @@ jobs:
           "$SDK/build-tools/35.0.0/apksigner" sign --ks build/ui/test.jks --ks-key-alias test \
              --ks-pass pass:changeit --key-pass pass:changeit --out build/ui/smoke.apk build/ui/aligned.apk
           "$SDK/build-tools/35.0.0/apksigner" verify build/ui/smoke.apk
+      - name: Verify release signing gate rejects a mismatched update certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          P="projects/s24-latinime-glass/sign_and_verify_update.sh"
+          export S24_APK_KS_PASSWORD="changeit" S24_APK_KEY_PASSWORD="changeit"
+          bash "$P" build/ui/smoke.apk build/ui/aligned.apk \
+            build/ui/test.jks test build/ui/re-signed-with-original.apk
+          test -s build/ui/re-signed-with-original.apk
+          keytool -genkeypair -noprompt -keystore build/ui/mismatch.jks \
+            -storepass changeit -alias test -keypass changeit -keyalg RSA \
+            -keysize 2048 -validity 30 -dname "CN=Different Test Certificate" >/dev/null 2>&1
+          if bash "$P" build/ui/smoke.apk build/ui/aligned.apk \
+               build/ui/mismatch.jks test build/ui/should-not-exist.apk; then
+            echo "FAIL: released an APK signed with the wrong certificate" >&2
+            exit 1
+          fi
+          test ! -e build/ui/should-not-exist.apk
+          echo "PASS: matching certificate can update; mismatched signer is blocked"
       - name: Write one Bash emulator test script
         shell: bash
         run: |
