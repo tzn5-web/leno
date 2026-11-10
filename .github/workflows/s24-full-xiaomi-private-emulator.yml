@@ -118,7 +118,12 @@ jobs:
             --min-sdk-version 30 --target-sdk-version 35
           (cd build/full/probe-dex && zip -q ../probe-raw.apk classes.dex)
           "$TOOLS/zipalign" -f -p 4 build/full/probe-raw.apk build/full/probe-aligned.apk
-          "$TOOLS/zipalign" -f -p 4 build/full/original-unsigned.apk build/full/xiaomi-aligned.apk
+          # The real app package conflicts with AOSP's preinstalled LatinIME.
+          # Isolate ONLY the disposable emulator QA copy; never change the
+          # user-facing original package or the original DEX/keyboard assets.
+          python3 projects/s24-latinime-glass/make_qa_package_alias.py \
+            build/full/original-unsigned.apk build/full/xiaomi-aliased-unsigned.apk
+          "$TOOLS/zipalign" -f -p 4 build/full/xiaomi-aliased-unsigned.apk build/full/xiaomi-aligned.apk
           keytool -genkeypair -noprompt -keystore build/full/emulator-only.jks \
             -storepass changeit -alias only-emulator -keypass changeit -keyalg RSA \
             -keysize 3072 -validity 5 -dname 'CN=Temporary Android Emulator QA' >/dev/null 2>&1
