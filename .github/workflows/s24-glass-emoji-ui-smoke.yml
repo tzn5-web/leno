@@ -135,6 +135,11 @@ jobs:
           cat > build/ui/run_smoke.sh <<'SMOKE_SCRIPT'
           set -euo pipefail
           set -eu
+          # Ground the full-Xiaomi JNI feasibility against the *running*
+          # Android 16 emulator (the UI fixture itself has no native JNI).
+          echo "EMULATOR_SUPPORTED_ABIS=$(adb shell getprop ro.product.cpu.abilist | tr -d '\\r')"
+          echo "EMULATOR_NATIVE_BRIDGE=$(adb shell getprop ro.dalvik.vm.native.bridge | tr -d '\\r')"
+          echo "EMULATOR_ANDROID_API=$(adb shell getprop ro.build.version.sdk | tr -d '\\r')"
           adb install -r build/ui/smoke.apk
           adb shell pm path dev.tzn5.glassuitest
           echo "Registered input methods:"
