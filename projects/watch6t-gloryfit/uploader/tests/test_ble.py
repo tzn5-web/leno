@@ -29,13 +29,31 @@ def native_fixture(path: Path):
 
 
 class DialTests(unittest.TestCase):
-    def test_capabilities(self):
-        reply = bytes.fromhex("26010000000100f000f00100100000010000")
+    def test_capabilities_real_watch6t_15_byte_reply(self):
+        # Captured from user's iHunt Watch6T-D123 on 2026-11-10.
+        reply = bytes.fromhex("26010002e56900f000f00000100000")
+        self.assertEqual(len(reply), 15)
         caps = DialCaps.parse(reply)
+        self.assertEqual(caps.dial_number, 189801)
         self.assertEqual((caps.width, caps.height), (240, 240))
         self.assertEqual(caps.max_data_size, 1048576)
+        self.assertEqual(caps.screen_type, 0)
+        self.assertIsNone(caps.compatibility_level)
+        self.assertIsNone(caps.corner_angle)
+
+    def test_extended_capabilities_18_byte_reply(self):
+        caps = DialCaps.parse(bytes.fromhex("26010002e56900f000f0000010000001002a"))
+        self.assertEqual(caps.compatibility_level, 1)
+        self.assertEqual(caps.corner_angle, 42)
+
+    def test_partial_extension_16_byte_reply(self):
+        caps = DialCaps.parse(bytes.fromhex("26010002e56900f000f0000010000001"))
+        self.assertEqual(caps.compatibility_level, 1)
+        self.assertIsNone(caps.corner_angle)
 
     def test_bad_capabilities(self):
+        with self.assertRaises(ProtocolError):
+            DialCaps.parse(bytes.fromhex("26010002e56900f000f000001000"))
         with self.assertRaises(ProtocolError):
             DialCaps.parse(bytes.fromhex("2601"))
         with self.assertRaises(ProtocolError):
@@ -44,6 +62,7 @@ class DialTests(unittest.TestCase):
     def test_chunk_and_status(self):
         self.assertEqual(section(258, b"AB"), b"\x27\x01\x02AB")
         self.assertEqual(choose_chunk_size(20, 23), 16)
+        self.assertEqual(choose_chunk_size(20, 247), 16)  # actual Windows Watch6T write cap
         self.assertEqual(choose_chunk_size(244, 247), 128)
         self.assertEqual(status(b"\x26\x03\x00"), "success")
         self.assertEqual(status(b"\x26\x03\x01"), "failure")
@@ -82,7 +101,7 @@ class FakeClient:
 
     async def write_gatt_char(self, characteristic, payload, response):
         if payload == b"\x26\x01":
-            self.notify(None, bytes.fromhex("26010000000100f000f00100100000010000"))
+            self.notify(None, bytes.fromhex("26010002e56900f000f00000100000"))
         elif payload == b"\x26\x02":
             if not self.no_ack:
                 self.notify(None, b"\x26\x03\x04")
@@ -106,7 +125,7 @@ class UploaderTests(unittest.IsolatedAsyncioTestCase):
             link = WatchLink(device)
             device.notify = link.on_notify
             link.mtu = 247
-            link.max_write = 244
+            link.max_write = 20  # actual watch reports this despite MTU=247
             caps = await link.capabilities()
             if reject:
                 with self.assertRaises(ProtocolError):
