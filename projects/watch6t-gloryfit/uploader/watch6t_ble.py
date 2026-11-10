@@ -64,6 +64,8 @@ class WatchLink:
         self.mtu = 23
         self.ble5_command = None
         self.ble5_notify = None
+        self.ble5_response = None
+        self.ble5_max_write = None
         self.last_dial_notification = None
 
     def on_notify(self, characteristic, payload: bytearray):
@@ -100,10 +102,20 @@ class WatchLink:
         self.ble5_command = services.get_characteristic(BLE5_COMMAND)
         self.ble5_notify = services.get_characteristic(DATA_NOTIFY)
         if self.ble5_command is not None:
-            print(f"Alternate 34F1 exists; properties={list(self.ble5_command.properties)}, "
-                  f"max_write_without_response={getattr(self.ble5_command, 'max_write_without_response_size', 'unknown')}")
+            transfer_props = {x.lower() for x in self.ble5_command.properties}
+            if "write-without-response" in transfer_props:
+                self.ble5_response = False
+                self.ble5_max_write = max(20, int(getattr(
+                    self.ble5_command, "max_write_without_response_size", 20
+                )))
+            elif "write" in transfer_props:
+                self.ble5_response = True
+                self.ble5_max_write = 20
+            print(f"GloryFit BIN data 34F1: properties={list(self.ble5_command.properties)}; "
+                  f"max_write={self.ble5_max_write}; "
+                  f"mode={'with-response' if self.ble5_response else 'without-response'}")
         else:
-            print("Alternate 34F1 not present (no BLE5 high-throughput path discovered)")
+            print("GloryFit BIN data 34F1: NOT PRESENT (upload cannot use vendor route)")
         await self.client.start_notify(NOTIFY, self.on_notify)
         if services.get_characteristic(DATA_NOTIFY):
             try:
@@ -119,7 +131,7 @@ class WatchLink:
             raise ProtocolError("Bluetooth disconnected")
         if payload.startswith(b"\x01\xe3"):
             raise ProtocolError("Actions/JX 01 E3 protocol not implemented; no guesswork")
-        if payload[:2] not in (b"\x26\x01", b"\x26\x02") and payload[:1] != b"\x27":
+        if payload[:2] not in (b"\x26\x01", b"\x26\x02"):
             raise ProtocolError(f"Command blocked: {payload.hex()}")
         # Watch6T reports MTU 247 but its Windows GATT write limit is 20 bytes.
         # Follow the actual characteristic limit; never rely on the MTU alone.
@@ -143,6 +155,30 @@ class WatchLink:
             raise ProtocolError(
                 f"GATT WRITE failed, command={payload[:3].hex()}, "
                 f"error={type(exc).__name__}: {exc!s}"
+            ) from exc
+
+    async def send_section(self, index: int, data: bytes):
+        """Transport a 27 section on 34F1 (vendor APK writeCharaBle5Gps).
+
+        Not called while prepare/ACK compatibility remains unverified.
+        """
+        if self.ble5_command is None or self.ble5_response is None:
+            raise ProtocolError("34F1 data characteristic is unavailable/has no supported write property")
+        packet = section(index, data)
+        if len(packet) > self.ble5_max_write:
+            raise ProtocolError(f"34F1 packet {len(packet)} exceeds safe limit {self.ble5_max_write}")
+        if not self.client.is_connected:
+            raise ProtocolError("BLE disconnected during 34F1 transfer")
+        try:
+            await asyncio.wait_for(
+                self.client.write_gatt_char(BLE5_COMMAND, packet, response=self.ble5_response),
+                timeout=15,
+            )
+        except asyncio.TimeoutError as exc:
+            raise ProtocolError(f"34F1 section {index}: GATT write timeout (15s)") from exc
+        except Exception as exc:
+            raise ProtocolError(
+                f"34F1 section {index}: {type(exc).__name__}: {exc!s}"
             ) from exc
 
     async def response(self, predicate, timeout=15.0, stage="response") -> bytes:
@@ -195,7 +231,9 @@ class WatchLink:
             print("Watch6T GATT write WITH response: sending acknowledged <=20-byte frames")
         else:
             print("GATT write WITHOUT response: waiting for watch's explicit dial ACKs")
-        chunk_bytes = choose_chunk_size(self.max_write, self.mtu)
+        if self.ble5_max_write is None:
+            raise ProtocolError("34F1 unavailable: cannot send native 27 sections")
+        chunk_bytes = choose_chunk_size(self.ble5_max_write, self.mtu)
         packet_count = (face.size + chunk_bytes - 1) // chunk_bytes
         if packet_count > 65536:
             raise ProtocolError("Binary is too large for 16-bit section indices at negotiated MTU")
@@ -213,7 +251,7 @@ class WatchLink:
         offset, index, next_boundary = 0, 0, 4096
         while offset < len(data):
             block = data[offset:offset + chunk_bytes]
-            await self.command(section(index, block))
+            await self.send_section(index, block)
             offset += len(block)
             index += 1
             # Avoid overflowing the host's BLE TX queue on Windows.
