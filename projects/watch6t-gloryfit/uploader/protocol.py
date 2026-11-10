@@ -15,7 +15,7 @@ HEADER = struct.Struct("<IIIHHII")
 ITEM = struct.Struct("<HHIHHHHBBH4s")
 MAX_ELEMENTS = 100
 WATCH_SIZE = (240, 240)
-UNASSIGNED_DIAL_ID = 0xFFFFFFFF  # Seen after interrupted 26 02 on iHunt Watch6T; interpretation unverified
+NO_ONLINE_DIAL_ID = 0xFFFFFFFF  # GloryFit OnlineDialUtil.getDialNumber: no currently displayed online face
 
 
 class ProtocolError(ValueError):
@@ -36,10 +36,10 @@ class DialCaps:
 
     @property
     def slot_state(self) -> str:
-        """An informational hint; never infer a safe-to-write slot from it."""
-        if self.dial_number == UNASSIGNED_DIAL_ID:
-            return "unassigned-or-erased (not independently confirmed)"
-        return "reported-dial-id"
+        """The app reports display selection, NOT whether the flash slot is erased."""
+        if self.dial_number == NO_ONLINE_DIAL_ID:
+            return "no-online-dial-displayed"
+        return "current-online-dial-reported"
 
     @classmethod
     def parse(cls, response: bytes) -> "DialCaps":
@@ -120,6 +120,21 @@ def choose_chunk_size(max_without_response: int, mtu: int) -> int:
     if limit < 16:
         raise ProtocolError(f"BLE MTU/write length too small for index+payload: {limit}")
     return max(c for c in (16, 32, 64, 128) if c <= limit)
+
+
+
+def is_prepare_ack(packet: bytes) -> bool:
+    """GloryFit's BluetoothLeService deals with incoming 26 02 as ready-to-send.
+
+    Some firmware replies with exactly two bytes, without a trailing 00.
+    Unlike 26 03 04, this opcode belongs to the initial preparation stage.
+    """
+    return len(packet) >= 2 and packet[:2] == b"\x26\x02"
+
+
+def is_final_ack(packet: bytes) -> bool:
+    """After the phone sends 26 03 00, its echo from watch is a completion ACK."""
+    return len(packet) >= 3 and packet[:3] == b"\x26\x03\x00"
 
 
 def section(index: int, payload: bytes) -> bytes:
