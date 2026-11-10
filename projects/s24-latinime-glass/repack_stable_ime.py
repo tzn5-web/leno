@@ -34,6 +34,18 @@ def manifest_stable(blob):
         raise RuntimeError("No original LatinIME component in manifest")
     if GLASS in pool(blob)[0]:
         raise RuntimeError("Old GlassIME component was not removed")
+
+    manifest_nodes = list(start_elements(blob))
+    if not any(
+        tag == "activity" and attrs.get("name") == GEAR
+        for tag, attrs in manifest_nodes
+    ):
+        raise RuntimeError("Source APK has no GlassActivity; use the prepared GEAR base APK")
+    if any(tag.startswith("uses-permission") for tag, _ in manifest_nodes):
+        raise RuntimeError("Source APK still requests permissions: refusing privacy build")
+    applications = [attrs for tag, attrs in manifest_nodes if tag == "application"]
+    if len(applications) != 1 or applications[0].get("allowBackup") != 0:
+        raise RuntimeError("Backup must be explicitly disabled in source manifest")
     # AXML string pools retain unused strings even after a launcher category
     # element is removed. Test actual start elements, not mere string presence.
     # This makes rebuilding from the user's previous GEAR APK idempotent.
