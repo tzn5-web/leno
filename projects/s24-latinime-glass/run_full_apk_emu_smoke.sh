@@ -24,12 +24,14 @@ native_bridge="$(adb shell getprop ro.dalvik.vm.native.bridge | tr -d '\r')"
 available_abis="$(adb shell getprop ro.product.cpu.abilist | tr -d '\r')"
 echo "Native bridge: $native_bridge"
 echo "Existing package (if system-preinstalled):"
-# The actual Xiaomi dictionary JNI library is only ARM64. AOSP x86_64
-# without native translation cannot load it regardless of Java test results.
+# The real Xiaomi APK has both ARMv7 (ELF machine 40) and ARM64
+# (ELF machine 183) JNI binaries. Neither is x86. Only proceed if the
+# running Android system advertises a matching ARM ABI or a native bridge.
 if [[ "$available_abis" != *arm64-v8a* &&
+      "$available_abis" != *armeabi-v7a* &&
       ( -z "$native_bridge" || "$native_bridge" == "0" ) ]]; then
-  echo "BLOCKED: emulator cannot execute the original ARM64 Xiaomi JNI library." >&2
-  echo "Use an Android image exposing arm64-v8a or a native-bridge library." >&2
+  echo "BLOCKED: emulator cannot execute Xiaomi's ARMv7/ARM64 JNI libraries." >&2
+  echo "Use an Android image exposing ARM support or a working native bridge." >&2
   exit 88
 fi
 adb shell pm path "$pkg" || true
@@ -46,8 +48,8 @@ if [[ -n "$installed_before" ]]; then
 fi
 
 # Android 16 x86_64 AOSP images may lack ARM translation. The original
-# Xiaomi JNI is AArch64-only, so a generic x86 emulator is not sufficient.
-echo "Installing the real signed ARM64-only Xiaomi APK."
+# Xiaomi JNI is ARM-only, so generic x86 without translation is insufficient.
+echo "Installing full Xiaomi APK with original ARMv7 and ARM64 JNI libraries."
 if ! adb install -r "$ap" > "$OUT/install-result.txt" 2>&1; then
   cat "$OUT/install-result.txt"
   echo "BLOCKED: installation failed, likely NO_MATCHING_ABIS or package policy." >&2
