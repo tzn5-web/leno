@@ -62,6 +62,44 @@ jobs:
           gradle --no-daemon -p projects/s24-latinime-glass/dex-rebind run             --args="$PWD/build/rebind-fixture/classes.dex $PWD/build/dex/classes.dex $PWD/build/rebind-output/base.dex $PWD/build/rebind-output/addon.dex"
       - name: Package DEX rebind utility for real original APK validation
         run: gradle --no-daemon -p projects/s24-latinime-glass/dex-rebind installDist
+      - name: Verify strict privacy patch disables eight DEX write entrypoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          FIX="build/privacy-fixture"
+          mkdir -p "$FIX/src/com/android/inputmethod/latin/personalization" "$FIX/classes" "$FIX/dex"
+          cat > "$FIX/src/com/android/inputmethod/latin/DictionaryFacilitatorImpl.java" <<'JAVA'
+          package com.android.inputmethod.latin;
+          public class DictionaryFacilitatorImpl {
+            public void addToUserHistory() { System.out.println("unsafe"); }
+            private void addWordToUserHistory() { System.out.println("unsafe"); }
+          }
+          JAVA
+          cat > "$FIX/src/com/android/inputmethod/latin/ExpandableBinaryDictionary.java" <<'JAVA'
+          package com.android.inputmethod.latin;
+          public class ExpandableBinaryDictionary {
+            public void updateEntriesForWord() { System.out.println("unsafe"); }
+            public void updateEntriesForInputEvents() { System.out.println("unsafe"); }
+            public void asyncFlushBinaryDictionary() { System.out.println("unsafe"); }
+            protected void addUnigramLocked() { System.out.println("unsafe"); }
+            protected void addNgramEntryLocked() { System.out.println("unsafe"); }
+          }
+          JAVA
+          cat > "$FIX/src/com/android/inputmethod/latin/personalization/UserHistoryDictionary.java" <<'JAVA'
+          package com.android.inputmethod.latin.personalization;
+          public class UserHistoryDictionary {
+            public static void addToDictionary() { System.out.println("unsafe"); }
+          }
+          JAVA
+          javac -encoding UTF-8 -d "$FIX/classes" $(find "$FIX/src" -name '*.java' | sort)
+          "$SDK/build-tools/35.0.0/d8" --min-api 30 \
+            --lib "$SDK/platforms/android-35/android.jar" \
+            --output "$FIX/dex" $(find "$FIX/classes" -name '*.class' | sort)
+          java -cp "$PWD/projects/s24-latinime-glass/dex-rebind/build/install/latinime-service-rebind/lib/*" \
+            dev.tzn5.rebind.PrivacyNoHistoryPatch "$FIX/dex/classes.dex" "$FIX/privacy-disabled.dex"
+          test -s "$FIX/privacy-disabled.dex"
+          echo "PASS: privacy DEX fail-closed target rewriting and serialization"
       - uses: actions/upload-artifact@v4
         with:
           name: S24-DEX-Rebind-Tool
