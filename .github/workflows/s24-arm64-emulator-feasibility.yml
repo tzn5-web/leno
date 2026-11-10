@@ -1,13 +1,6 @@
 name: S24 ARM64 Native Android Emulator Feasibility
 on:
   workflow_dispatch:
-  push:
-    branches: [feature/s24-glass-emoji-20261109]
-    paths:
-      - .github/workflows/s24-arm64-emulator-feasibility.yml
-  pull_request:
-    paths:
-      - .github/workflows/s24-arm64-emulator-feasibility.yml
 permissions:
   contents: read
 jobs:
