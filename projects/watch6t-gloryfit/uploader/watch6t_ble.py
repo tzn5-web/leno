@@ -104,9 +104,9 @@ class WatchLink:
             raise ProtocolError(f"Command blocked: {payload.hex()}")
         # Watch6T reports MTU 247 but its Windows GATT write limit is 20 bytes.
         # Follow the actual characteristic limit; never rely on the MTU alone.
-        if not self.write_response and len(payload) > self.max_write:
+        if len(payload) > self.max_write:
             raise ProtocolError(
-                f"GATT frame {len(payload)} bytes exceeds reported write limit {self.max_write}"
+                f"GATT frame {len(payload)} bytes exceeds conservative write limit {self.max_write}"
             )
         # A write-with-response ACK only confirms GATT delivery, not storage of
         # the watch face; final acceptance still requires 26 03 00 from the watch.
@@ -196,7 +196,9 @@ class WatchLink:
                     next_boundary += 4096
                     print(f"Confirmed transfer progress: {offset}/{face.size} bytes")
         # The firmware sends 26 03 00 when finished; do NOT invent an OTA finish.
-        confirmation = await self.response(lambda p: p.startswith(b"\x26\x03"), timeout=45)
+        # An extra 26 03 04 (block-ready) is not a final acceptance.
+        # Only a 26 03 00 status confirms that the watch accepted the dial.
+        confirmation = await self.response(lambda p: status(p) == "success", timeout=45)
         if status(confirmation) != "success":
             raise ProtocolError(f"Watch did not confirm a successful dial: {confirmation.hex()}")
         print("WATCH ACK: watchface upload accepted; inspect display to confirm visual correctness.")
