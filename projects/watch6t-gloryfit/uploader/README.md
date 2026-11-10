@@ -115,3 +115,17 @@ The change happened after the previous program attempted `26 02` and then stoppe
 The uploader now records this slot state as `unassigned-or-erased` and refuses all upload attempts before another `26 02`. It can continue doing read-only capability probes, but rerunning them provides no new installation path.
 
 Next actual recovery step: if the watch face is missing or blank, use official GloryFit to install a known-good **official** watch face and confirm it works. This is recovery only, not the final HOLO design, and must not use the Firmware Upgrade / OTA page. To implement HOLO upload independently, the developer must reproduce the vendor's device-specific prepare ACK/flow-control sequence from actual application traffic rather than guessing the meaning of `FFFFFFFF`.
+
+## DEX protocol confirmation (continuation, 2026-11-10)
+
+Inspecting the user's installed `com.yc.gloryfit` `classes6.dex` gives three corrections to earlier assumptions:
+
+1. `OnlineDialUtil.getDialNumber()` checks for literal `FFFFFFFF` and documents it as **currently no online dial being displayed** (`表示当前没有显示的在线表盘`). It does not diagnose flash erasure or a damaged custom-face slot. A displayed-face ID is not necessarily the target BIN ID. Any earlier assertion that `FFFFFFFF` proves an erased slot was unsupported.
+2. `BluetoothLeService.dealWithOnlineDial()` dispatches incoming **`26 02`** as the watch's preparation event. The earlier uploader incorrectly waited for `26 03 04` immediately after prepare; `26 03 04` is the later block-flow ACK. A reply of exactly `26 02` is relevant for readiness. We have **not** captured that reply on the user's Watch6T, so automatically retrying `26 02` is still blocked.
+3. `WriteCommandToBLE.sendOnlineDialDataFinish()` builds **`26 03 00` and writes it to `33F1`** once the file sections are sent. The previous uploader waited passively for a final success without sending the finish command. This is corrected in `transfer_after_vendor_ready()`, an offline-testable method.
+
+Data sections (`27 + 16-bit index + data`) use **`34F1`**, while 26 control commands use **`33F1`**. The user's real BLE scan found `34F1` with `write-without-response`, 244-byte maximum payload. The 240×240 native BIN fits the watch's 1 MB reported capacity. These are confirmed transport prerequisites, **not evidence that the face was installed**.
+
+Current hardware safety: `install` is still halted with `PREPARE UNSAFE` before any repeated `26 02`, because the previous prepare attempt had an unclassified failure. Offline tests exercise the remaining `34F1` sections, 4K block ACKs, final `33F1` command and completion reply without touching the watch.
+
+Do not attempt firmware OTA/DFU. No custom-dial installer is production-ready until a real prepared/ACK exchange and a complete official transfer are captured.
