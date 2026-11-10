@@ -28,11 +28,11 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           {
-            echo "API=$(adb shell getprop ro.build.version.sdk | tr -d '\\r')"
-            echo "ABI_LIST=$(adb shell getprop ro.product.cpu.abilist | tr -d '\\r')"
-            echo "NATIVE_BRIDGE=$(adb shell getprop ro.dalvik.vm.native.bridge | tr -d '\\r')"
-            echo "IS_ARM64_TRANSLATED=$(adb shell getprop ro.dalvik.vm.isa.arm64 | tr -d '\\r')"
-            echo "TRANSLATION_VERSION=$(adb shell getprop ro.ndk_translation.version | tr -d '\\r')"
+            echo "API=$(adb shell getprop ro.build.version.sdk | tr -d '\015')"
+            echo "ABI_LIST=$(adb shell getprop ro.product.cpu.abilist | tr -d '\015')"
+            echo "NATIVE_BRIDGE=$(adb shell getprop ro.dalvik.vm.native.bridge | tr -d '\015')"
+            echo "IS_ARM64_TRANSLATED=$(adb shell getprop ro.dalvik.vm.isa.arm64 | tr -d '\015')"
+            echo "TRANSLATION_VERSION=$(adb shell getprop ro.ndk_translation.version | tr -d '\015')"
           } | tee build/native-bridge/abi.txt
           grep -q '^API=35$' build/native-bridge/abi.txt
           if grep -Eq '^ABI_LIST=.*(arm64-v8a|armeabi-v7a)' build/native-bridge/abi.txt; then
