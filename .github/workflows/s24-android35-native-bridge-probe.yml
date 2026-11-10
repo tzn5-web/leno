@@ -20,6 +20,102 @@ jobs:
       - name: Grant KVM access
         run: |
           if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Build test-only ARM64 JNI APK (no Xiaomi content)
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(command -v sdkmanager || true)"
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$SDK/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -1)"
+          fi
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
+          NDK="$(find "$SDK/ndk" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -V | tail -1 || true)"
+          if [ -z "$NDK" ]; then
+            "$SDKMANAGER" "ndk;26.3.11579264"
+            NDK="$SDK/ndk/26.3.11579264"
+          fi
+          CC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android30-clang"
+          test -x "$CC"
+          mkdir -p build/native-bridge/src/dev/tzn5/nativebridge build/native-bridge/classes \
+                   build/native-bridge/dex build/native-bridge/lib/arm64-v8a
+          cat > build/native-bridge/bridge.c <<'C'
+          #include <jni.h>
+          JNIEXPORT jint JNICALL
+          Java_dev_tzn5_nativebridge_ProbeActivity_nativeAnswer(JNIEnv *env, jobject self) {
+              return 4242;
+          }
+          C
+          "$CC" -O2 -fPIC -shared -o build/native-bridge/lib/arm64-v8a/libbridgeprobe.so \
+             build/native-bridge/bridge.c
+          file build/native-bridge/lib/arm64-v8a/libbridgeprobe.so
+          cat > build/native-bridge/src/dev/tzn5/nativebridge/ProbeActivity.java <<'JAVA'
+          package dev.tzn5.nativebridge;
+          import android.app.Activity;
+          import android.os.Bundle;
+          import android.util.Log;
+          import android.widget.TextView;
+          public final class ProbeActivity extends Activity {
+              private native int nativeAnswer();
+              @Override public void onCreate(Bundle state) {
+                  super.onCreate(state);
+                  int result = -1;
+                  try {
+                      System.loadLibrary("bridgeprobe");
+                      result = nativeAnswer();
+                  } catch (Throwable t) {
+                      Log.e("BRIDGEPROBE", "ARM64_JNI_LOAD_FAILED", t);
+                  }
+                  Log.i("BRIDGEPROBE", "ARM64_JNI_RESULT=" + result);
+                  TextView v = new TextView(this);
+                  v.setText("ARM64 JNI RESULT: " + result);
+                  v.setTextSize(24);
+                  setContentView(v);
+              }
+          }
+          JAVA
+          cat > build/native-bridge/AndroidManifest.xml <<'XML'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.tzn5.nativebridge">
+            <application android:label="ARM64 JNI Probe" android:allowBackup="false"
+                android:extractNativeLibs="true" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+              <activity android:name="dev.tzn5.nativebridge.ProbeActivity" android:exported="true">
+                <intent-filter>
+                  <action android:name="android.intent.action.MAIN"/>
+                  <category android:name="android.intent.category.LAUNCHER"/>
+                </intent-filter>
+              </activity>
+            </application>
+          </manifest>
+          XML
+          JAR="$SDK/platforms/android-35/android.jar"
+          javac -encoding UTF-8 -source 8 -target 8 -cp "$JAR" \
+              -d build/native-bridge/classes build/native-bridge/src/dev/tzn5/nativebridge/ProbeActivity.java
+          "$SDK/build-tools/35.0.0/d8" --min-api 30 --lib "$JAR" \
+              --output build/native-bridge/dex build/native-bridge/classes/dev/tzn5/nativebridge/ProbeActivity.class
+          "$SDK/build-tools/35.0.0/aapt2" link -o build/native-bridge/raw.apk \
+              -I "$JAR" --manifest build/native-bridge/AndroidManifest.xml \
+              --min-sdk-version 30 --target-sdk-version 35
+          (cd build/native-bridge && zip -q raw.apk dex/classes.dex lib/arm64-v8a/libbridgeprobe.so)
+          # DEX must be at APK root, not under dex/.
+          python3 - <<'PY'
+          import zipfile
+          p='build/native-bridge/raw.apk'
+          with zipfile.ZipFile(p) as src:
+              content=[(name,src.read(name)) for name in src.namelist()]
+          with zipfile.ZipFile('build/native-bridge/flat.apk','w') as dst:
+              for name,data in content:
+                  dst.writestr('classes.dex' if name=='dex/classes.dex' else name,data)
+          PY
+          "$SDK/build-tools/35.0.0/zipalign" -f 4 \
+              build/native-bridge/flat.apk build/native-bridge/aligned.apk
+          keytool -genkeypair -noprompt -keystore build/native-bridge/temporary-test.jks \
+              -storepass changeit -alias probe -keypass changeit -keyalg RSA -keysize 2048 \
+              -validity 1 -dname "CN=Temporary JNI CI Probe" >/dev/null 2>&1
+          "$SDK/build-tools/35.0.0/apksigner" sign --ks build/native-bridge/temporary-test.jks \
+              --ks-key-alias probe --ks-pass pass:changeit --key-pass pass:changeit \
+              --out build/native-bridge/probe.apk build/native-bridge/aligned.apk
+          "$SDK/build-tools/35.0.0/apksigner" verify build/native-bridge/probe.apk
       - name: Write native bridge probe script for emulator
         shell: bash
         run: |
@@ -34,7 +130,46 @@ jobs:
             echo "IS_ARM64_TRANSLATED=$(adb shell getprop ro.dalvik.vm.isa.arm64 | tr -d '\015')"
             echo "TRANSLATION_VERSION=$(adb shell getprop ro.ndk_translation.version | tr -d '\015')"
           } | tee build/native-bridge/abi.txt
-          grep -q '^API=35$' build/native-bridge/abi.txt
+          grep -q '^API=35
+          if grep -Eq '^ABI_LIST=.*(arm64-v8a|armeabi-v7a)' build/native-bridge/abi.txt; then
+            echo 'POSSIBLE: ARM ABI advertised. Full original Xiaomi JNI still needs a runtime test.' | tee -a build/native-bridge/abi.txt
+          elif ! grep -q '^NATIVE_BRIDGE=0$' build/native-bridge/abi.txt &&
+              grep -Eq '^NATIVE_BRIDGE=.{2,}' build/native-bridge/abi.txt; then
+            echo 'POSSIBLE: nonzero native bridge. A real ARM JNI load test is still mandatory.' | tee -a build/native-bridge/abi.txt
+          else
+            echo 'BLOCKED: no ARM ABI or native bridge. Cannot execute original Xiaomi JNI here.' | tee -a build/native-bridge/abi.txt
+          fi
+          PROBE
+          chmod +x build/native-bridge/probe.sh
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_4
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-metrics
+          script: bash build/native-bridge/probe.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: S24-Android35-native-bridge-report
+          path: |
+            build/native-bridge/abi.txt
+            build/native-bridge/install.txt
+            build/native-bridge/jni-result.txt
+          if-no-files-found: ignore
+ build/native-bridge/abi.txt
+          adb install -r build/native-bridge/probe.apk | tee build/native-bridge/install.txt
+          adb logcat -c
+          adb shell am start -n dev.tzn5.nativebridge/.ProbeActivity
+          sleep 4
+          adb logcat -d -v brief -s BRIDGEPROBE:I '*:S' | tee build/native-bridge/jni-result.txt
+          grep -q 'ARM64_JNI_RESULT=4242' build/native-bridge/jni-result.txt || {
+            echo 'BLOCKED: ARM64 library did not execute successfully under emulator native bridge' >&2
+            exit 89
+          }
+          echo 'PASS: the Android 15 x86 emulator loaded and executed a real ARM64 JNI library' | tee -a build/native-bridge/abi.txt
           if grep -Eq '^ABI_LIST=.*(arm64-v8a|armeabi-v7a)' build/native-bridge/abi.txt; then
             echo 'POSSIBLE: ARM ABI advertised. Full original Xiaomi JNI still needs a runtime test.' | tee -a build/native-bridge/abi.txt
           elif ! grep -q '^NATIVE_BRIDGE=0$' build/native-bridge/abi.txt &&
