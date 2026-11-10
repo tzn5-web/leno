@@ -115,11 +115,16 @@ class DialFile:
 
 
 def choose_chunk_size(max_without_response: int, mtu: int) -> int:
-    """Choose a power-of-two data size, respecting 3-byte 27+index prefix and ATT."""
-    limit = min(max_without_response, mtu - 3, 247) - 3
-    if limit < 16:
-        raise ProtocolError(f"BLE MTU/write length too small for index+payload: {limit}")
-    return max(c for c in (16, 32, 64, 128) if c <= limit)
+    """Use the maximum safe 27 data section supported by BLE5 / ATT.
+
+    The actual Watch6T reports MTU=247 and write-without-response max=244.
+    The 27 opcode + two-byte index takes 3 GATT payload bytes, leaving
+    241 BIN bytes. The old power-of-two cap at 128 slowed transfers.
+    """
+    frame_limit = min(max_without_response, mtu - 3)
+    if frame_limit < 4:
+        raise ProtocolError(f"BLE write length too small for 27 frame: {frame_limit}")
+    return frame_limit - 3
 
 
 
