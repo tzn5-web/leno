@@ -7,10 +7,10 @@ on:
         type: string
         required: true
       android_api:
-        description: "Android API level; 36 is closest to One UI 8.5; 35 can offer ARM translation fallback"
+        description: "Android API 35 (verified ARM64 JNI translation) preferred; API 36 image lacks native bridge"
         type: choice
-        options: ["36", "35"]
-        default: "36"
+        options: ["35", "36"]
+        default: "35"
         required: true
 permissions:
   contents: read
@@ -27,7 +27,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Android SDK
+      - name: Android SDK for API 35/36 native Xiaomi testing
         shell: bash
         run: |
           set -euo pipefail
@@ -134,7 +134,7 @@ jobs:
             "$TOOLS/apksigner" verify --verbose "build/full/$which-test.apk"
           done
           echo "PASS: ephemeral emulator-only signed complete APK + editable test app"
-      - name: Run actual complete Xiaomi keyboard on Android 16
+      - name: Run actual complete Xiaomi keyboard on hardware-compatible Android API
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ inputs.android_api }}
