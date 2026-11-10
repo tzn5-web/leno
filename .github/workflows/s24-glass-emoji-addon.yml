@@ -117,6 +117,25 @@ jobs:
           name: S24-DEX-Rebind-Tool
           path: projects/s24-latinime-glass/dex-rebind/build/install/latinime-service-rebind/
           if-no-files-found: error
+      - name: Verify private full-APK test tools are syntactically valid
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            projects/s24-latinime-glass/audit_full_apk.py \
+            projects/s24-latinime-glass/audit_standalone_apk.py
+          bash -n projects/s24-latinime-glass/run_full_apk_emu_smoke.sh
+          bash -n projects/s24-latinime-glass/sign_and_verify_update.sh
+          python3 - <<'PY'
+          import pathlib, yaml
+          path=pathlib.Path(".github/workflows/s24-full-xiaomi-private-emulator.yml")
+          text=path.read_text()
+          assert "S24_PRIVATE_QA_APK_URL" in text, "Private URL secret missing"
+          assert "actions/upload-artifact" in text, "Evidence upload missing"
+          for forbidden in ("upload-original-apk", "public_url", "release:"):
+              assert forbidden not in text
+          print("PASS: private full-APK runner preflight syntax and no binary publication")
+          PY
       - name: Source privacy gate (only appearance preferences)
         run: |
           python3 - <<'PY'
