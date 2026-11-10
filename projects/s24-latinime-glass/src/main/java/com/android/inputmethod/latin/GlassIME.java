@@ -122,6 +122,14 @@ public final class GlassIME extends LatinIME {
         TextView newEmojiButton = new TextView(this);
         newEmojiButton.setText("☺ Emoji");
         newEmojiButton.setTextColor(Color.WHITE);
+        // Keep the new Emoji control readable above light applications
+        // even when the keyboard background is 100% transparent.
+        // Original Xiaomi keys/borders/labels are never changed.
+        android.graphics.drawable.GradientDrawable emojiChip =
+                new android.graphics.drawable.GradientDrawable();
+        emojiChip.setColor(Color.argb(220, 35, 43, 58));
+        emojiChip.setCornerRadius(dp(9));
+        newEmojiButton.setBackground(emojiChip);
         newEmojiButton.setTextSize(15);
         newEmojiButton.setGravity(Gravity.CENTER);
         newEmojiButton.setContentDescription("Emoji avansate, apasare lunga pentru setari Glass");
