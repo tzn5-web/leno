@@ -16,6 +16,7 @@ import zipfile
 from pathlib import Path
 
 from patch_picker_gear import pool, update_ime_settings, hide_icon
+from audit_full_apk import start_elements
 
 ORIGINAL = "com.android.inputmethod.latin.LatinIME"
 GLASS = "com.android.inputmethod.latin.GlassIME"
@@ -33,8 +34,19 @@ def manifest_stable(blob):
         raise RuntimeError("No original LatinIME component in manifest")
     if GLASS in pool(blob)[0]:
         raise RuntimeError("Old GlassIME component was not removed")
-    if "android.intent.category.LAUNCHER" in pool(blob)[0]:
+    # AXML string pools retain unused strings even after a launcher category
+    # element is removed. Test actual start elements, not mere string presence.
+    # This makes rebuilding from the user's previous GEAR APK idempotent.
+    active_launcher = any(
+        element == "category" and attributes.get("name") == "android.intent.category.LAUNCHER"
+        for element, attributes in start_elements(blob)
+    )
+    if active_launcher:
         blob = hide_icon(blob)
+    assert not any(
+        element == "category" and attributes.get("name") == "android.intent.category.LAUNCHER"
+        for element, attributes in start_elements(blob)
+    ), "Launcher category must remain disabled"
     return blob
 
 def method_with_gear(blob):
