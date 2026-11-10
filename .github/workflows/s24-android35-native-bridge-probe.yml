@@ -1,0 +1,55 @@
+name: S24 Android 15 Native ARM Bridge Probe
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/s24-glass-emoji-20261109]
+    paths:
+      - .github/workflows/s24-android35-native-bridge-probe.yml
+  pull_request:
+    paths:
+      - .github/workflows/s24-android35-native-bridge-probe.yml
+permissions:
+  contents: read
+jobs:
+  android35-arm-translation:
+    name: Check Android 15 x86 emulator for ARM64 JNI translation
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Grant KVM access
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_4
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-metrics
+          script: |
+            set -eu
+            mkdir -p build/native-bridge
+            {
+              echo "API=$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
+              echo "ABI_LIST=$(adb shell getprop ro.product.cpu.abilist | tr -d '\r')"
+              echo "NATIVE_BRIDGE=$(adb shell getprop ro.dalvik.vm.native.bridge | tr -d '\r')"
+              echo "IS_ARM64_TRANSLATED=$(adb shell getprop ro.dalvik.vm.isa.arm64 | tr -d '\r')"
+              echo "TRANSLATION_VERSION=$(adb shell getprop ro.ndk_translation.version | tr -d '\r')"
+            } | tee build/native-bridge/abi.txt
+            grep -q '^API=35$' build/native-bridge/abi.txt
+            if grep -q '^ABI_LIST=.*arm64-v8a' build/native-bridge/abi.txt; then
+              echo 'POSSIBLE: arm64-v8a advertised by Android 15 emulator' | tee -a build/native-bridge/abi.txt
+            elif ! grep -q '^NATIVE_BRIDGE=0$' build/native-bridge/abi.txt &&
+                  grep -Eq '^NATIVE_BRIDGE=.{2,}' build/native-bridge/abi.txt; then
+              echo 'POSSIBLE: nonzero native bridge detected; a real ARM64 JNI load test is still mandatory' | tee -a build/native-bridge/abi.txt
+            else
+              echo 'BLOCKED: no advertised ARM64 ABI or native bridge; do not test original Xiaomi JNI here' | tee -a build/native-bridge/abi.txt
+            fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: S24-Android35-native-bridge-report
+          path: build/native-bridge/abi.txt
+          if-no-files-found: ignore
