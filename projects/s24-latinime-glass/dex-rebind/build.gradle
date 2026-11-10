@@ -3,6 +3,7 @@ plugins {
     id 'application'
 }
 repositories { mavenCentral() }
-dependencies { implementation 'org.smali:dexlib2:2.5.2' }
+dependencies { implementation 'org.smali:dexlib2:2.5.2'
+    implementation 'com.google.guava:guava:27.1-android' }
 application { mainClass = 'dev.tzn5.rebind.DexServiceRebind' }
 java { toolchain { languageVersion = JavaLanguageVersion.of(17) } }
