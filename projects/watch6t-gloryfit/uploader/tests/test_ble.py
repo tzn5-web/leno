@@ -97,6 +97,7 @@ class FakeClient:
         self.no_ack = no_ack
         self.total = 0
         self.packet_count = 0
+        self.prepare_count = 0
         self.write_modes = []
         self.frame_sizes = []
         self.notify = lambda *args: None
@@ -107,6 +108,7 @@ class FakeClient:
         if payload == b"\x26\x01":
             self.notify(None, bytes.fromhex("26010002e56900f000f00000100000"))
         elif payload == b"\x26\x02":
+            self.prepare_count += 1
             if not self.no_ack:
                 self.notify(None, b"\x26\x03\x04")
         elif payload[:1] == b"\x27":
@@ -150,14 +152,33 @@ class UploaderTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(device.total, face.size)
                 self.assertGreater(device.packet_count, 1)
 
-    async def test_acknowledged_upload(self):
-        await self.transfer()
+    async def test_install_paused_before_erase_even_if_simulator_would_ack(self):
+        with tempfile.TemporaryDirectory() as d:
+            face = native_fixture(Path(d) / "synthetic.bin")
+            device = FakeClient(face.size)
+            link = WatchLink(device)
+            device.notify = link.on_notify
+            link.max_write = 20
+            link.mtu = 247
+            caps = await link.capabilities()
+            with self.assertRaisesRegex(ProtocolError, "PREPARE UNSAFE"):
+                await link.install(face, caps)
+            self.assertEqual(device.prepare_count, 0)
+            self.assertEqual(device.packet_count, 0)
 
-    async def test_rejected_upload(self):
-        await self.transfer(reject=True)
-
-    async def test_no_erase_ready_ack(self):
-        await self.transfer(no_ack=True)
+    async def test_install_paused_before_erase_when_ack_missing(self):
+        with tempfile.TemporaryDirectory() as d:
+            face = native_fixture(Path(d) / "synthetic.bin")
+            device = FakeClient(face.size, no_ack=True)
+            link = WatchLink(device)
+            device.notify = link.on_notify
+            link.max_write = 20
+            link.mtu = 247
+            caps = await link.capabilities()
+            with self.assertRaisesRegex(ProtocolError, "PREPARE UNSAFE"):
+                await link.install(face, caps)
+            self.assertEqual(device.prepare_count, 0)
+            self.assertEqual(device.packet_count, 0)
 
     async def test_mismatched_face_id_never_sends_erase(self):
         with tempfile.TemporaryDirectory() as d:
@@ -185,11 +206,12 @@ class UploaderTests(unittest.IsolatedAsyncioTestCase):
             link.mtu = 247
             link.max_write = 20
             caps = await link.capabilities()
-            await link.install(face, caps)
-            self.assertEqual(device.total, face.size)
+            with self.assertRaisesRegex(ProtocolError, "PREPARE UNSAFE"):
+                await link.install(face, caps)
+            self.assertEqual(device.prepare_count, 0)
+            self.assertEqual(device.packet_count, 0)
             self.assertTrue(all(device.write_modes))
             self.assertLessEqual(max(device.frame_sizes), 20)
-            self.assertGreater(device.packet_count, 500)
 
     async def test_single_gatt_packet_must_not_exceed_reported_20_bytes(self):
         device = FakeClient(10000)
