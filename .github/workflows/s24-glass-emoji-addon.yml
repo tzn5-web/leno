@@ -127,7 +127,7 @@ jobs:
           bash -n projects/s24-latinime-glass/run_full_apk_emu_smoke.sh
           bash -n projects/s24-latinime-glass/sign_and_verify_update.sh
           python3 - <<'PY'
-          import pathlib, yaml
+          import pathlib
           path=pathlib.Path(".github/workflows/s24-full-xiaomi-private-emulator.yml")
           text=path.read_text()
           assert "S24_PRIVATE_QA_APK_URL" in text, "Private URL secret missing"
