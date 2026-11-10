@@ -9,8 +9,10 @@ mkdir -p "$OUT"
 touch "$OUT/test-result.txt"
 exec > >(tee -a "$OUT/test-result.txt") 2>&1
 
-pkg="com.android.inputmethod.latin"
-svc="$pkg/.LatinIME"
+# This is a TEST-ONLY alias package: the Java IME class name stays original.
+# It coexists with the system LatinIME and avoids overwriting Android's IME.
+pkg="com.android.inputmethod.s24qa"
+svc="$pkg/com.android.inputmethod.latin.LatinIME"
 ap="$OUT/xiaomi-test.apk"
 probe="$OUT/probe-test.apk"
 [[ -f "$ap" && -f "$probe" ]] || {
@@ -26,10 +28,10 @@ adb shell pm path "$pkg" || true
 # under the SAME Android package name. Never erase it silently.
 installed_before="$(adb shell pm path "$pkg" || true)"
 if [[ -n "$installed_before" ]]; then
-  echo "BLOCKED: this emulator already has system package $pkg." >&2
-  echo "A different signer cannot overwrite its system APK. Choose an" >&2
-  echo "image without that package or a throwaway emulator configured for" >&2
-  echo "private-package testing. No system keyboard was uninstalled." >&2
+  echo "BLOCKED: private QA alias $pkg is already installed; refusing overwrite." >&2
+  echo "A different signer cannot overwrite an existing QA app. Choose an" >&2
+  echo "empty throwaway emulator with a clean QA alias." >&2
+  echo "No system keyboard was uninstalled." >&2
   exit 81
 fi
 
@@ -63,10 +65,10 @@ if ! grep -q "mInputShown=true" "$OUT/ime-state.txt"; then
 fi
 adb shell screencap -p /sdcard/full-ime-open.png
 adb pull /sdcard/full-ime-open.png "$OUT/ime-open.png" >/dev/null
-echo "PASS: full original Xiaomi core loaded and IME window visible."
+echo "PASS: full original Xiaomi core loaded under test-only alias and IME window visible."
 
 # The actual GlassActivity must be launchable from the full APK.
-adb shell am start -n "$pkg/$pkg.setup.GlassActivity"
+adb shell am start -n "$pkg/com.android.inputmethod.latin.setup.GlassActivity"
 sleep 2
 adb shell uiautomator dump /sdcard/glass-settings.xml >/dev/null
 adb pull /sdcard/glass-settings.xml "$OUT/glass-settings.xml" >/dev/null
@@ -91,9 +93,9 @@ for i in $(seq 1 12); do
     exit 86
   fi
 done
-adb logcat -d -v brief | grep -E 'Process: com.android.inputmethod.latin|FATAL EXCEPTION' \
+adb logcat -d -v brief | grep -E 'Process: com.android.inputmethod.s24qa|FATAL EXCEPTION' \
   > "$OUT/fatal-summary.txt" || true
-if grep -q "Process: com.android.inputmethod.latin" "$OUT/fatal-summary.txt"; then
+if grep -q "Process: com.android.inputmethod.s24qa" "$OUT/fatal-summary.txt"; then
   echo "FAIL: complete Xiaomi IME crashed on Android 16" >&2
   exit 87
 fi
