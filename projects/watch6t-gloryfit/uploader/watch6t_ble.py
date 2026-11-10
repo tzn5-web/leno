@@ -17,6 +17,7 @@ from protocol import DialCaps, DialFile, ProtocolError, choose_chunk_size, secti
 
 SERVICE = "000055ff-0000-1000-8000-00805f9b34fb"
 COMMAND = "000033f1-0000-1000-8000-00805f9b34fb"
+BLE5_COMMAND = "000034f1-0000-1000-8000-00805f9b34fb"
 NOTIFY = "000033f2-0000-1000-8000-00805f9b34fb"
 DATA_NOTIFY = "000034f2-0000-1000-8000-00805f9b34fb"
 OTA_SHORT_UUIDS = ("fef5", "d0ff", "6287", "ffd3")
@@ -61,11 +62,20 @@ class WatchLink:
         self.write_response = False
         self.max_write = 20
         self.mtu = 23
+        self.ble5_command = None
+        self.ble5_notify = None
+        self.last_dial_notification = None
 
-    def on_notify(self, _characteristic, payload: bytearray):
+    def on_notify(self, characteristic, payload: bytearray):
         packet = bytes(payload)
-        if packet and packet[0] == 0x26:
-            self.notifications.put_nowait(packet)
+        if packet and packet[0] in (0x26, 0x27):
+            self.last_dial_notification = packet.hex()
+            print(f"BLE DIAL NOTIFY: {packet.hex()}", flush=True)
+            if packet[0] == 0x26:
+                self.notifications.put_nowait(packet)
+        elif packet:
+            # Do not dump other potentially private notifications such as health measurements.
+            print(f"BLE OTHER NOTIFY: {len(packet)} bytes, prefix=0x{packet[0]:02x}", flush=True)
 
     async def setup(self):
         # BLE GATT service discovery does not send watchface payload data.
@@ -85,6 +95,15 @@ class WatchLink:
         self.write_response = "write-without-response" not in props
         self.max_write = command.max_write_without_response_size if not self.write_response else 20
         self.mtu = max(23, self.client.mtu_size)
+        # 34F1 is the BLE5 data channel used by some GloryFit implementations.
+        # Discovery is read-only; NEVER assume it is safe to send 26 02 or 27 there.
+        self.ble5_command = services.get_characteristic(BLE5_COMMAND)
+        self.ble5_notify = services.get_characteristic(DATA_NOTIFY)
+        if self.ble5_command is not None:
+            print(f"Alternate 34F1 exists; properties={list(self.ble5_command.properties)}, "
+                  f"max_write_without_response={getattr(self.ble5_command, 'max_write_without_response_size', 'unknown')}")
+        else:
+            print("Alternate 34F1 not present (no BLE5 high-throughput path discovered)")
         await self.client.start_notify(NOTIFY, self.on_notify)
         if services.get_characteristic(DATA_NOTIFY):
             try:
@@ -110,15 +129,36 @@ class WatchLink:
             )
         # A write-with-response ACK only confirms GATT delivery, not storage of
         # the watch face; final acceptance still requires 26 03 00 from the watch.
-        await self.client.write_gatt_char(COMMAND, payload, response=self.write_response)
+        try:
+            await asyncio.wait_for(
+                self.client.write_gatt_char(COMMAND, payload, response=self.write_response),
+                timeout=15.0,
+            )
+        except asyncio.TimeoutError as exc:
+            raise ProtocolError(
+                f"GATT WRITE timeout (15s), command={payload[:3].hex()}, mode="
+                f"{'with-response' if self.write_response else 'without-response'}"
+            ) from exc
+        except Exception as exc:
+            raise ProtocolError(
+                f"GATT WRITE failed, command={payload[:3].hex()}, "
+                f"error={type(exc).__name__}: {exc!s}"
+            ) from exc
 
-    async def response(self, predicate, timeout=15.0) -> bytes:
+    async def response(self, predicate, timeout=15.0, stage="response") -> bytes:
         end = asyncio.get_running_loop().time() + timeout
         while True:
             remaining = end - asyncio.get_running_loop().time()
             if remaining <= 0:
                 raise ProtocolError("No expected BLE reply before timeout; transfer stopped")
-            packet = await asyncio.wait_for(self.notifications.get(), remaining)
+            try:
+                packet = await asyncio.wait_for(self.notifications.get(), remaining)
+            except asyncio.TimeoutError as exc:
+                raise ProtocolError(
+                    f"{stage}: no matching dial notification within {timeout:g}s; "
+                    f"connected={self.client.is_connected}; "
+                    f"last_dial_notify={self.last_dial_notification or 'none'}"
+                ) from exc
             if packet.startswith(b"\x26\x03"):
                 code = status(packet)
                 if code in ("failure", "crc-failure", "unexpected"):
@@ -129,7 +169,7 @@ class WatchLink:
     async def capabilities(self) -> DialCaps:
         # This is the documented read-only capability query, not 26 02 (slot erase).
         await self.command(b"\x26\x01")
-        response = await self.response(lambda p: p.startswith(b"\x26\x01"), timeout=12)
+        response = await self.response(lambda p: p.startswith(b"\x26\x01"), timeout=12, stage="26 01 capability query")
         return DialCaps.parse(response)
 
     async def install(self, face: DialFile, caps: DialCaps):
@@ -161,12 +201,13 @@ class WatchLink:
             raise ProtocolError("Binary is too large for 16-bit section indices at negotiated MTU")
         print(f"Validated watch capacity {caps.max_data_size} bytes, face {face.size}, "
               f"payload per section {chunk_bytes}, sections {packet_count}")
-        print("Starting transfer changes the watch's custom-face slot. Original faces may be needed to recover.")
-        # CRITICAL: 26 02 can erase the custom-face slot.
-        await self.command(b"\x26\x02")
-        await self.response(
-            lambda p: p == b"\x26\x03\x04" or p.startswith(b"\x26\x02\x00"),
-            timeout=25,
+        # Previous Watch6T attempt reached this stage and timed out. 26 02 may
+        # erase a custom-face slot. Until the genuine 33F1/34F1 vendor transfer
+        # path is confirmed, do not repeat this potentially destructive command.
+        raise ProtocolError(
+            "PREPARE UNSAFE: the last 26 02 attempt received no proven ready ACK. "
+            "Read-only GATT profile is available; watchface transfer is disabled "
+            "until the device-specific 33F1/34F1 handshake is confirmed."
         )
         data = face.path.read_bytes()
         offset, index, next_boundary = 0, 0, 4096
@@ -244,7 +285,8 @@ if __name__ == "__main__":
     try:
         asyncio.run(main(parse_args()))
     except (ProtocolError, TimeoutError, asyncio.TimeoutError) as e:
-        print("BLOCKED:", e, file=sys.stderr)
+        detail = str(e) or f"{type(e).__name__} (no message)"
+        print("BLOCKED:", detail, file=sys.stderr)
         sys.exit(2)
     except KeyboardInterrupt:
         print("Cancelled")
