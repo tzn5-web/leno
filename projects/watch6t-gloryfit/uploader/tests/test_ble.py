@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from protocol import DialCaps, DialFile, ProtocolError, section, status, choose_chunk_size
-from watch6t_ble import WatchLink
+from watch6t_ble import WatchLink, BLE5_COMMAND, COMMAND
 
 
 def native_fixture(path: Path):
@@ -100,11 +100,13 @@ class FakeClient:
         self.prepare_count = 0
         self.write_modes = []
         self.frame_sizes = []
+        self.writes = []
         self.notify = lambda *args: None
 
     async def write_gatt_char(self, characteristic, payload, response):
         self.write_modes.append(response)
         self.frame_sizes.append(len(payload))
+        self.writes.append((characteristic, bytes(payload), response))
         if payload == b"\x26\x01":
             self.notify(None, bytes.fromhex("26010002e56900f000f00000100000"))
         elif payload == b"\x26\x02":
@@ -212,6 +214,35 @@ class UploaderTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(device.packet_count, 0)
             self.assertTrue(all(device.write_modes))
             self.assertLessEqual(max(device.frame_sizes), 20)
+
+    async def test_vendor_apk_requires_34f1_for_27_data(self):
+        device = FakeClient(16)
+        link = WatchLink(device)
+        link.ble5_command = BLE5_COMMAND
+        link.ble5_response = False
+        link.ble5_max_write = 20
+        await link.send_section(0, b"A" * 16)
+        self.assertEqual(device.writes[-1][0], BLE5_COMMAND)
+        self.assertEqual(device.writes[-1][1], b"\x27\x00\x00" + b"A" * 16)
+        self.assertEqual(device.packet_count, 1)
+        self.assertFalse(device.writes[-1][2])
+
+    async def test_34f1_data_missing_refuses_any_section_write(self):
+        device = FakeClient(1000)
+        link = WatchLink(device)
+        with self.assertRaisesRegex(ProtocolError, "34F1"):
+            await link.send_section(0, b"A" * 16)
+        self.assertEqual(device.writes, [])
+
+    async def test_34f1_data_oversize_rejected_before_write(self):
+        device = FakeClient(1000)
+        link = WatchLink(device)
+        link.ble5_command = BLE5_COMMAND
+        link.ble5_response = False
+        link.ble5_max_write = 20
+        with self.assertRaisesRegex(ProtocolError, "exceeds safe limit"):
+            await link.send_section(0, b"A" * 18)
+        self.assertEqual(device.writes, [])
 
     async def test_single_gatt_packet_must_not_exceed_reported_20_bytes(self):
         device = FakeClient(10000)
