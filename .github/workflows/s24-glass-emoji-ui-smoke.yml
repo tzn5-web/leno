@@ -203,6 +203,27 @@ jobs:
           assert any('😀' in x for x in edits), f'Emoji tap did not insert into EditText: {edits}'
           print('PASS: tapping advanced emoji inserts Unicode text into the app InputConnection')
           PY
+          # Exercise the actual user-facing fallback: short tap closes
+          # the emoji panel, long-press on its toolbar button opens Glass settings.
+          python3 - <<'PY'
+          import struct,subprocess
+          png=open('build/ui/emoji-screen.png','rb').read()
+          width,height=struct.unpack('>II',png[16:24])
+          x,y=round(width*.84),round(height*.885)
+          subprocess.run(['adb','shell','input','tap',str(x),str(y)],check=True)
+          subprocess.run(['adb','shell','input','swipe',str(x),str(y),str(x),str(y),'1150'],check=True)
+          print('Triggered long-press settings action at',x,y)
+          PY
+          sleep 2
+          adb shell uiautomator dump /sdcard/longpress-settings.xml >/dev/null
+          adb pull /sdcard/longpress-settings.xml build/ui/longpress-settings.xml >/dev/null
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          nodes=[x.attrib.get('text','') for x in ET.parse('build/ui/longpress-settings.xml').iter('node')]
+          assert any('Opacitate fundal' in s for s in nodes), (
+              'Long-press Emoji did not open the Glass settings screen')
+          print('PASS: long-press Emoji opens Glass settings without launcher icon')
+          PY
           adb shell am start -n dev.tzn5.glassuitest/com.android.inputmethod.latin.setup.GlassActivity
           sleep 2
           adb shell uiautomator dump /sdcard/settings.xml >/dev/null
