@@ -222,11 +222,27 @@ jobs:
               subprocess.run(['adb','shell','am','start','-n',
                   'dev.tzn5.glassuitest/com.android.inputmethod.latin.setup.GlassActivity'],check=True,stdout=subprocess.DEVNULL)
               subprocess.run(['adb','shell','input','tap',str(x),str(y)],check=True)
-              subprocess.run(['adb','shell','input','keyevent','4'],check=True)
+              import time;time.sleep(.4)
+              xml=subprocess.check_output(['adb','shell','run-as','dev.tzn5.glassuitest',
+                  'cat','shared_prefs/s24_glass.xml']).decode('utf8')
+              import re
+              saved=re.search(r'name="opacity" value="(\d+)"',xml)
+              assert saved and abs(int(saved.group(1))-amount)<=10, (
+                  f'Glass SeekBar failed to persist {amount}%: {xml}')
+              # Explicitly STOP settings activity before resuming demo. Android's
+              # am start may leave GlassActivity top and produce false snapshots.
+              subprocess.run(['adb','shell','am','force-stop','dev.tzn5.glassuitest'],check=True)
               subprocess.run(['adb','shell','am','start','-n',
                   'dev.tzn5.glassuitest/harness.DemoActivity'],check=True,stdout=subprocess.DEVNULL)
+              subprocess.run(['adb','shell','ime','set',
+                  'dev.tzn5.glassuitest/com.android.inputmethod.latin.GlassIME'],check=True)
+              time.sleep(2)
               subprocess.run(['adb','shell','input','tap','170','180'],check=True)
-              import time;time.sleep(2)
+              time.sleep(2)
+              state=subprocess.check_output(['adb','shell','dumpsys','activity','activities']).decode('utf8')
+              assert 'harness.DemoActivity' in state and (
+                  'mResumedActivity' in state or 'topResumedActivity' in state), (
+                  'DemoActivity not resumed after changing opacity')
               subprocess.run(['adb','shell','screencap','-p','/sdcard/'+filename],check=True)
               subprocess.run(['adb','pull','/sdcard/'+filename,'build/ui/'+filename],check=True,stdout=subprocess.DEVNULL)
               print('Captured real Glass UI at opacity setting',amount)
