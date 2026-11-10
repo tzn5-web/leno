@@ -62,6 +62,13 @@ jobs:
           gradle --no-daemon -p projects/s24-latinime-glass/dex-rebind run             --args="$PWD/build/rebind-fixture/classes.dex $PWD/build/dex/classes.dex $PWD/build/rebind-output/base.dex $PWD/build/rebind-output/addon.dex"
       - name: Package DEX rebind utility for real original APK validation
         run: gradle --no-daemon -p projects/s24-latinime-glass/dex-rebind installDist
+      - name: Verify serialized multi-DEX service linkage and override ABI
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -cp "$PWD/projects/s24-latinime-glass/dex-rebind/build/install/latinime-service-rebind/lib/*" \
+            dev.tzn5.rebind.VerifyImeLinkage \
+            build/rebind-output/base.dex build/rebind-output/addon.dex
       - name: Verify strict privacy patch disables eight DEX write entrypoints
         shell: bash
         run: |
