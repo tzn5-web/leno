@@ -97,9 +97,13 @@ class FakeClient:
         self.no_ack = no_ack
         self.total = 0
         self.packet_count = 0
+        self.write_modes = []
+        self.frame_sizes = []
         self.notify = lambda *args: None
 
     async def write_gatt_char(self, characteristic, payload, response):
+        self.write_modes.append(response)
+        self.frame_sizes.append(len(payload))
         if payload == b"\x26\x01":
             self.notify(None, bytes.fromhex("26010002e56900f000f00000100000"))
         elif payload == b"\x26\x02":
@@ -169,6 +173,23 @@ class UploaderTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(ProtocolError):
                 await link.install(face, caps)
             self.assertEqual(device.packet_count, 0)
+
+    async def test_gatt_write_with_response_upload_20_byte_hardware_limit(self):
+        # Actual Watch6T 33F1 supports WRITE only; 26 01 already succeeded that way.
+        with tempfile.TemporaryDirectory() as d:
+            face = native_fixture(Path(d) / "synthetic.bin")
+            device = FakeClient(face.size)
+            link = WatchLink(device)
+            device.notify = link.on_notify
+            link.write_response = True
+            link.mtu = 247
+            link.max_write = 20
+            caps = await link.capabilities()
+            await link.install(face, caps)
+            self.assertEqual(device.total, face.size)
+            self.assertTrue(all(device.write_modes))
+            self.assertLessEqual(max(device.frame_sizes), 20)
+            self.assertGreater(device.packet_count, 500)
 
     async def test_single_gatt_packet_must_not_exceed_reported_20_bytes(self):
         device = FakeClient(10000)
