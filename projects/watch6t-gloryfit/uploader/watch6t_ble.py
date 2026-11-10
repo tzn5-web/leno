@@ -246,14 +246,23 @@ class WatchLink:
             raise ProtocolError("Binary is too large for 16-bit section indices at negotiated MTU")
         print(f"Validated watch capacity {caps.max_data_size} bytes, face {face.size}, "
               f"payload per section {chunk_bytes}, sections {packet_count}")
-        # Previous Watch6T attempt reached this stage and timed out. 26 02 may
-        # erase a custom-face slot. Until the genuine 33F1/34F1 vendor transfer
-        # path is confirmed, do not repeat this potentially destructive command.
-        raise ProtocolError(
-            "PREPARE UNSAFE: the last 26 02 attempt received no proven ready ACK. "
-            "Read-only GATT profile is available; watchface transfer is disabled "
-            "until the device-specific 33F1/34F1 handshake is confirmed."
+        # Owner's sanitized 2026-11-10 GloryFit log confirms one real
+        # PREPARE_ACK_FROM_WATCH and 89 26 03 04 block acknowledgements,
+        # followed by a final status. The older deadlock incorrectly waited
+        # for 26 03 04 immediately after 26 02; actual readiness is 26 02.
+        # This still changes the custom-face slot. The CLI requires explicit
+        # --confirm ERASE-DIAL-SLOT and there is no automatic retry.
+        print("Preparing custom dial slot (26 02 on 33F1); existing custom face may be replaced.")
+        while not self.notifications.empty():
+            self.notifications.get_nowait()  # discard stale read-only replies
+        await self.command(b"\x26\x02")
+        ready = await self.response(
+            is_prepare_ack,
+            timeout=25,
+            stage="26 02 prepare ACK (watch must reply 26 02, not 26 03 04)",
         )
+        print("WATCH PREPARE ACK:", ready.hex())
+        await self.transfer_after_vendor_ready(face, ready)
 
     async def transfer_after_vendor_ready(self, face: DialFile, ready_reply: bytes) -> None:
         """Transfer only AFTER an actual 26 02 reply.
@@ -271,6 +280,9 @@ class WatchLink:
         data = face.path.read_bytes()
         if len(data) != face.size:
             raise ProtocolError("BIN changed after integrity check")
+        import hashlib
+        if hashlib.sha256(data).hexdigest() != face.sha256:
+            raise ProtocolError("BIN SHA256 changed after initial validation")
         offset, index, next_boundary = 0, 0, 4096
         resumes = 0
         while offset < len(data):
@@ -278,9 +290,12 @@ class WatchLink:
             await self.send_section(index, block)  # APK-confirmed channel 34F1
             offset += len(block)
             index += 1
-            if index % 12 == 0:
-                await asyncio.sleep(0.006)
-            if offset >= next_boundary and offset < len(data):
+            # Official GloryFit capture: ~89 blocks in ~21s, roughly 0.23s
+            # per 4KiB. Pace ~10ms per 241-byte 34F1 section so the Windows
+            # BLE notification/write queues do not overflow; block ACK is
+            # the authoritative flow-control gate.
+            await asyncio.sleep(0.010)
+            if offset >= next_boundary:
                 ack = await self.response(
                     lambda p: p.startswith((b"\x26\x03\x04", b"\x26\x03\x03")),
                     timeout=25,
