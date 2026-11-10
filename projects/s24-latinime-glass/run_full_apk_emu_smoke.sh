@@ -20,8 +20,18 @@ probe="$OUT/probe-test.apk"
 }
 echo "Android image: $(adb shell getprop ro.build.version.release)"
 echo "Available device ABIs: $(adb shell getprop ro.product.cpu.abilist)"
-echo "Native bridge: $(adb shell getprop ro.dalvik.vm.native.bridge)"
+native_bridge="$(adb shell getprop ro.dalvik.vm.native.bridge | tr -d '\r')"
+available_abis="$(adb shell getprop ro.product.cpu.abilist | tr -d '\r')"
+echo "Native bridge: $native_bridge"
 echo "Existing package (if system-preinstalled):"
+# The actual Xiaomi dictionary JNI library is only ARM64. AOSP x86_64
+# without native translation cannot load it regardless of Java test results.
+if [[ "$available_abis" != *arm64-v8a* &&
+      ( -z "$native_bridge" || "$native_bridge" == "0" ) ]]; then
+  echo "BLOCKED: emulator cannot execute the original ARM64 Xiaomi JNI library." >&2
+  echo "Use an Android image exposing arm64-v8a or a native-bridge library." >&2
+  exit 88
+fi
 adb shell pm path "$pkg" || true
 
 # AOSP emulators frequently contain a different system-signed AOSP LatinIME
