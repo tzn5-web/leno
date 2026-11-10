@@ -1,10 +1,16 @@
-name: S24 Full Xiaomi APK Private Android 16 Verification
+name: S24 Full Xiaomi APK Private ARM-ABI Verification
 on:
   workflow_dispatch:
     inputs:
       expected_sha256:
         description: "SHA256 of private unsigned Xiaomi Glass QA APK"
         type: string
+        required: true
+      android_api:
+        description: "Android API level; 36 is closest to One UI 8.5; 35 can offer ARM translation fallback"
+        type: choice
+        options: ["36", "35"]
+        default: "36"
         required: true
 permissions:
   contents: read
@@ -126,9 +132,9 @@ jobs:
       - name: Run actual complete Xiaomi keyboard on Android 16
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 36
+          api-level: ${{ inputs.android_api }}
           arch: x86_64
-          target: default
+          target: google_apis
           profile: pixel_4
           cores: 4
           ram-size: 4096M
