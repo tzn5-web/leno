@@ -1,6 +1,7 @@
 package com.android.inputmethod.latin;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
@@ -30,6 +31,28 @@ import java.util.List;
  * history is kept by this extension.
  */
 public final class GlassIME extends LatinIME {
+
+    @Override
+    public void onCreate() {
+        // One-time local cleanup of user-history files created by earlier
+        // original LatinIME installations. No upload and no typed-text logging.
+        // Invoke before original engine loads dictionaries into memory.
+        try {
+            SharedPreferences p = getSharedPreferences("s24_glass", Context.MODE_PRIVATE);
+            if (!p.getBoolean("history_purge_v1", false)) {
+                Class<?> helper = Class.forName(
+                        "com.android.inputmethod.latin.personalization.PersonalizationHelper");
+                java.lang.reflect.Method purge = helper.getDeclaredMethod(
+                        "removeAllUserHistoryDictionaries", Context.class);
+                purge.invoke(null, this);
+                p.edit().putBoolean("history_purge_v1", true).apply();
+            }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            // Version-dependent cleanup: no crash or data transmission.
+            // The strict DEX privacy patch independently blocks new writes.
+        }
+        super.onCreate();
+    }
     private LinearLayout outerRoot;
     private FrameLayout glassRoot;
     private LinearLayout toolbar;
