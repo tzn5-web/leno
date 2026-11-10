@@ -1,4 +1,32 @@
-# Watch6T native HOLO BLE uploader — V1
+# Watch6T native HOLO BLE uploader — V2
+
+## STATUS NOW — 2026-11-10 verified GloryFit transfer capture
+
+The owner provided `Watch6T_VENDOR_FLOW_20261110_152957.txt`, a sanitized timeline from a real **official GloryFit watch-face synchronization** on their iHunt Watch6T-D123.
+
+- One `PREPARE_ACK_FROM_WATCH` at 15:32:59.950.
+- 89 `WAIT_4KB_BLOCK_ACK` events, each matched by a `BLOCK_ACK_260304`.
+- The last block ACK was at 15:33:21.610.
+- A later `FINAL_STATUS` event appears at 15:33:22.768. **The sanitizer removed the actual status code**, so the log alone cannot prove that firmware accepted the transfer successfully.
+- The report contains **no raw 27 packet lengths or full finish status**, so the exact native packet rhythm remains to be verified on the PC.
+
+This confirms that the REAL device uses the same `26 02` prepare and `26 03 04` per-4KiB flow ACK path identified in the user's APK DEX, resolving the previous false timeout (the old uploader waited for `26 03 04` immediately after `26 02`, instead of accepting the `26 02` readiness event).
+
+The experimental installer is **enabled again**, but only after `--confirm ERASE-DIAL-SLOT`. It:
+
+1. Probes 240×240 and 1MiB capacity over `33F1`.
+2. Validates BIN length/CRC32/ID/SHA256 before writing.
+3. Sends `26 02` over `33F1`; requires the real `26 02` readiness response, not a stale `26 03 04`.
+4. Streams `27 + sequence + payload` on `34F1` (244-byte GATT frames containing up to **241 bytes** of BIN data at MTU247), paced at least 10ms per section. Blocks on `26 03 04` after each full 4096 bytes; accepts bounded `26 03 03` resume.
+5. Explicitly sends `26 03 00` finish on `33F1` and REQUIRES matching final watch reply to report acceptance.
+6. **Never auto-retries `26 02` after any timeout**.
+
+With the 421,238-byte HOLO V6 file, this requires approximately **1,748 sections**, **102 complete 4KiB block checkpoints** and a final partial block. The official capture's 89 ACKs correspond to the *official face synchronized during capture*, not the HOLO V6 binary.
+
+**Risk:** 26 02 can erase/replace the custom dial slot and an interrupted upload may leave it blank; the original factory-bin backup is kept in the private ZIP. The current V6 BIN is a *beta* and visual/live-widget behavior has NOT been validated. It is not a firmware OTA.
+
+Before any physical attempt, run the offline unittest suite. The private V2 package provides `TESTE_OFFLINE.cmd`, which prevents running the installer unless the source tests pass locally. This README is source protocol guidance, not proof of successful watch installation.
+
 
 ## IMPORTANT — upload halted after real 26 02 timeout (2026-11-10)
 
@@ -16,7 +44,7 @@ This does not upload a BIN or send 26 02. The current Windows bundle's install s
 See [BLE-DEX-INVESTIGATION-2026-11-10.md](BLE-DEX-INVESTIGATION-2026-11-10.md).
 
 
-**Status:** the uploader is implemented. The native BIN parser and simulated 26/27 transfer sequence have tests. It has **NOT** been verified against a physical iHunt Watch6T (firmware RB235DCEV004137). This does NOT install a PNG wallpaper, and it does NOT use the watch firmware/OTA channel.
+**Status:** native dial transfer is experimentally enabled after a real official GloryFit ACK capture. The custom HOLO BIN has NOT been uploaded or visually verified on the watch. No wallpaper or OTA is used.
 
 ## Răspunsul real al Watch6T — 10 noiembrie 2026
 
