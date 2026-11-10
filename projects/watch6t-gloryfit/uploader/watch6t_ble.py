@@ -215,9 +215,17 @@ class WatchLink:
             raise ProtocolError(f"HOLO size {face.size} bytes exceeds watch slot limit {caps.max_data_size}")
         if face.file_id != 189801:
             raise ProtocolError("Unexpected native dial identifier; refusing to overwrite a slot")
+        if caps.dial_number == 0xFFFFFFFF:
+            raise ProtocolError(
+                "Watch returned dial ID FFFFFFFF, unlike the original 0002E569. "
+                "The custom dial slot may be unassigned/erased after the earlier 26 02 "
+                "attempt. No write will be sent. Recover a known-good face through "
+                "official GloryFit before considering any other direct upload."
+            )
         if caps.dial_number != face.file_id:
             raise ProtocolError(
-                f"Watch reported face ID {caps.dial_number}, but BIN is {face.file_id}; no slot write"
+                f"Watch reported dial ID {caps.dial_number:08X}, "
+                f"BIN identifies {face.file_id:08X}; no slot write."
             )
         if caps.compatibility_level is not None and caps.compatibility_level > 2:
             print(f"Note: compatibility level {caps.compatibility_level} is not specifically validated")
@@ -301,6 +309,12 @@ async def main(args):
         await link.setup()
         caps = await link.capabilities()
         print("Watchface capabilities:", json.dumps(asdict(caps), sort_keys=True))
+        if caps.dial_number == 0xFFFFFFFF:
+            print("WARNING: custom dial ID is FFFFFFFF (previously 0002E569). "
+                  "This may mean no registered custom dial after the interrupted prepare. "
+                  "Do not repeat 26 02 or guess a new slot identifier.")
+        else:
+            print(f"Dial identifier: {caps.dial_number:08X} ({caps.slot_state})")
         if args.mode == "probe":
             print("READ-ONLY GATE PASSED. No watchface bytes uploaded.")
             return
