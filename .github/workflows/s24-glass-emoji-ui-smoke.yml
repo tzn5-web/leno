@@ -125,9 +125,33 @@ jobs:
           adb shell ime enable dev.tzn5.glassuitest/com.android.inputmethod.latin.GlassIME
           adb shell ime set dev.tzn5.glassuitest/com.android.inputmethod.latin.GlassIME
           adb shell am start -n dev.tzn5.glassuitest/harness.DemoActivity
-          sleep 6
+          sleep 8
           adb shell input tap 170 180
           sleep 3
+          # System launcher ANR is a frequent Android 15 emulator-only issue
+          # and intercepts taps. Detect it from SystemUI, close it, and reopen
+          # our test activity before taking either UI snapshot.
+          for attempt in 1 2 3; do
+            adb shell uiautomator dump /sdcard/dialog-guard.xml >/dev/null || true
+            adb pull /sdcard/dialog-guard.xml build/ui/dialog-guard.xml >/dev/null || true
+            if grep -qE 'isn.t responding|not responding' build/ui/dialog-guard.xml; then
+              echo "RECOVER: system launcher ANR overlay, attempt $attempt"
+              adb shell input tap 500 1110
+              adb shell am force-stop com.android.launcher3 || true
+              adb shell am start -n dev.tzn5.glassuitest/harness.DemoActivity
+              sleep 4
+              adb shell input tap 170 180
+              sleep 3
+            else
+              break
+            fi
+          done
+          adb shell uiautomator dump /sdcard/dialog-guard.xml >/dev/null
+          adb pull /sdcard/dialog-guard.xml build/ui/dialog-guard.xml >/dev/null
+          if grep -qE 'isn.t responding|not responding' build/ui/dialog-guard.xml; then
+            echo 'BLOCKED: emulator launcher ANR persists after 3 recoveries' >&2
+            exit 86
+          fi
           adb shell dumpsys input_method > build/ui/ime-state.txt || true
           adb shell dumpsys window windows > build/ui/window-state.txt || true
           adb logcat -d -v time > build/ui/logcat.txt || true
@@ -197,6 +221,8 @@ jobs:
           arch: x86_64
           target: default
           profile: pixel_4
+          cores: 4
+          ram-size: 4096M
           disable-animations: true
           disable-spellchecker: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-metrics
