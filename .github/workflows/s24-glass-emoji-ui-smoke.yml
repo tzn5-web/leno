@@ -333,6 +333,14 @@ jobs:
           change=sum(ImageStat.Stat(diff).mean)/3
           assert change>2, f'Glass opacity did not visibly change IME pixels (mean={change:.2f})'
           print(f'PASS: Glass opacity changed actual rendered keyboard background (pixel delta {change:.2f})')
+          # At 5% opacity, the Emoji control must remain legible over a
+          # nearly-white app. Compare its own pill, not the Xiaomi keycaps.
+          chip=b.crop((int(w*.77),int(h*.865),int(w*.965),int(h*.904)))
+          chip_luma=sum(ImageStat.Stat(chip).mean)/3
+          assert chip_luma<180, (
+              f'Emoji button invisible on bright app at full Glass transparency: '
+              f'average RGB {chip_luma:.1f}')
+          print(f'PASS: contrast-safe Emoji pill remains visible (luma={chip_luma:.1f})')
           PY
 
           # Repeatedly hide/show the real Android IME view. Missing input
