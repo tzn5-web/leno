@@ -3,9 +3,9 @@ on:
   workflow_dispatch:
   push:
     branches: [feature/s24-glass-emoji-20261109]
-    paths: ['.github/workflows/s24-glass-emoji-ui-smoke.yml', 'projects/s24-latinime-glass/sign_and_verify_update.sh', 'projects/s24-latinime-glass/src/main/java/**']
+    paths: ['.github/workflows/s24-glass-emoji-ui-smoke.yml', 'projects/s24-latinime-glass/sign_and_verify_update.sh', 'projects/s24-latinime-glass/check_apk_signer_cert.py', 'projects/s24-latinime-glass/src/main/java/**']
   pull_request:
-    paths: ['.github/workflows/s24-glass-emoji-ui-smoke.yml', 'projects/s24-latinime-glass/sign_and_verify_update.sh', 'projects/s24-latinime-glass/src/main/java/**']
+    paths: ['.github/workflows/s24-glass-emoji-ui-smoke.yml', 'projects/s24-latinime-glass/sign_and_verify_update.sh', 'projects/s24-latinime-glass/check_apk_signer_cert.py', 'projects/s24-latinime-glass/src/main/java/**']
 permissions:
   contents: read
 jobs:
@@ -126,6 +126,9 @@ jobs:
           fi
           test ! -e build/ui/should-not-exist.apk
           echo "PASS: matching certificate can update; mismatched signer is blocked"
+          python3 projects/s24-latinime-glass/check_apk_signer_cert.py \
+            build/ui/smoke.apk --baseline build/ui/re-signed-with-original.apk
+          echo "PASS: independently parsed v2/v3 signer certificate agrees across APK update"
       - name: Write one Bash emulator test script
         shell: bash
         run: |
