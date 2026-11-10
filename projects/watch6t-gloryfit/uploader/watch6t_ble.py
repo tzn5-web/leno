@@ -100,6 +100,12 @@ class WatchLink:
             raise ProtocolError("Actions/JX 01 E3 protocol not implemented; no guesswork")
         if payload[:2] not in (b"\x26\x01", b"\x26\x02") and payload[:1] != b"\x27":
             raise ProtocolError(f"Command blocked: {payload.hex()}")
+        # Watch6T reports MTU 247 but its Windows GATT write limit is 20 bytes.
+        # Follow the actual characteristic limit; never rely on the MTU alone.
+        if not self.write_response and len(payload) > self.max_write:
+            raise ProtocolError(
+                f"GATT frame {len(payload)} bytes exceeds reported write limit {self.max_write}"
+            )
         await self.client.write_gatt_char(COMMAND, payload, response=self.write_response)
 
     async def response(self, predicate, timeout=15.0) -> bytes:
@@ -129,8 +135,14 @@ class WatchLink:
             raise ProtocolError(f"HOLO size {face.size} bytes exceeds watch slot limit {caps.max_data_size}")
         if face.file_id != 189801:
             raise ProtocolError("Unexpected native dial identifier; refusing to overwrite a slot")
-        if caps.compatibility_level > 2:
+        if caps.dial_number != face.file_id:
+            raise ProtocolError(
+                f"Watch reported face ID {caps.dial_number}, but BIN is {face.file_id}; no slot write"
+            )
+        if caps.compatibility_level is not None and caps.compatibility_level > 2:
             print(f"Note: compatibility level {caps.compatibility_level} is not specifically validated")
+        if caps.compatibility_level is None:
+            print("Watch6T short capability reply: optional compatibility/corner fields unavailable")
         if self.write_response:
             # Strictly use the characteristic's documented write type;
             # some watches don't support high-speed transfers this way.
