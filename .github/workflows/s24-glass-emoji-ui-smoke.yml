@@ -210,6 +210,41 @@ jobs:
           PY
           adb shell screencap -p /sdcard/settings-screen.png
           adb pull /sdcard/settings-screen.png build/ui/settings-screen.png >/dev/null
+          # Measure actual visual change at different background opacity values.
+          # Settings are manipulated through the real SeekBar, not injected via prefs.
+          python3 - <<'PY'
+          import subprocess,xml.etree.ElementTree as ET,re
+          node=next(n.attrib for n in ET.parse('build/ui/settings.xml').iter('node')
+                    if n.attrib.get('class')=='android.widget.SeekBar')
+          x1,y1,x2,y2=map(int,re.findall(r'\d+',node['bounds']))
+          for amount,filename in [(95,'glass-opaque.png'),(5,'glass-transparent.png')]:
+              x=round(x1+(x2-x1)*amount/100);y=(y1+y2)//2
+              subprocess.run(['adb','shell','am','start','-n',
+                  'dev.tzn5.glassuitest/com.android.inputmethod.latin.setup.GlassActivity'],check=True,stdout=subprocess.DEVNULL)
+              subprocess.run(['adb','shell','input','tap',str(x),str(y)],check=True)
+              subprocess.run(['adb','shell','input','keyevent','4'],check=True)
+              subprocess.run(['adb','shell','am','start','-n',
+                  'dev.tzn5.glassuitest/harness.DemoActivity'],check=True,stdout=subprocess.DEVNULL)
+              subprocess.run(['adb','shell','input','tap','170','180'],check=True)
+              import time;time.sleep(2)
+              subprocess.run(['adb','shell','screencap','-p','/sdcard/'+filename],check=True)
+              subprocess.run(['adb','pull','/sdcard/'+filename,'build/ui/'+filename],check=True,stdout=subprocess.DEVNULL)
+              print('Captured real Glass UI at opacity setting',amount)
+          PY
+          python3 -m pip install --disable-pip-version-check --quiet "Pillow==11.3.0"
+          python3 - <<'PY'
+          from PIL import Image,ImageChops,ImageStat
+          a=Image.open('build/ui/glass-opaque.png').convert('RGB')
+          b=Image.open('build/ui/glass-transparent.png').convert('RGB')
+          assert a.size==b.size
+          w,h=a.size
+          # Bottom 28% covers the input method; top of app should be stable.
+          rect=(0,int(h*.72),w,h)
+          diff=ImageChops.difference(a.crop(rect),b.crop(rect))
+          change=sum(ImageStat.Stat(diff).mean)/3
+          assert change>2, f'Glass opacity did not visibly change IME pixels (mean={change:.2f})'
+          print(f'PASS: Glass opacity changed actual rendered keyboard background (pixel delta {change:.2f})')
+          PY
 
           SMOKE_SCRIPT
           chmod +x build/ui/run_smoke.sh
