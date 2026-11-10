@@ -41,6 +41,13 @@ class DialTests(unittest.TestCase):
         self.assertIsNone(caps.compatibility_level)
         self.assertIsNone(caps.corner_angle)
 
+    def test_new_watch6t_unassigned_dial_id_reply(self):
+        # Real, read-only reply after failed 26 02 attempt (2026-11-10).
+        caps = DialCaps.parse(bytes.fromhex("2601ffffffff00f000f00000100000"))
+        self.assertEqual(caps.dial_number, 0xFFFFFFFF)
+        self.assertEqual(caps.max_data_size, 1048576)
+        self.assertIn("unassigned-or-erased", caps.slot_state)
+
     def test_extended_capabilities_18_byte_reply(self):
         caps = DialCaps.parse(bytes.fromhex("26010002e56900f000f0000010000001002a"))
         self.assertEqual(caps.compatibility_level, 1)
@@ -196,6 +203,22 @@ class UploaderTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(ProtocolError):
                 await link.install(face, caps)
             self.assertEqual(device.packet_count, 0)
+
+    async def test_unassigned_dial_rejected_without_prepare(self):
+        with tempfile.TemporaryDirectory() as d:
+            face = native_fixture(Path(d) / "original-shape.bin")
+            device = FakeClient(face.size)
+            link = WatchLink(device)
+            device.notify = link.on_notify
+            link.ble5_command = BLE5_COMMAND
+            link.ble5_response = False
+            link.ble5_max_write = 244
+            caps = DialCaps.parse(bytes.fromhex("2601ffffffff00f000f00000100000"))
+            with self.assertRaisesRegex(ProtocolError, "FFFFFFFF"):
+                await link.install(face, caps)
+            self.assertEqual(device.prepare_count, 0)
+            self.assertEqual(device.packet_count, 0)
+            self.assertEqual(device.writes, [])
 
     async def test_gatt_write_with_response_upload_20_byte_hardware_limit(self):
         # Actual Watch6T 33F1 supports WRITE only; 26 01 already succeeded that way.
