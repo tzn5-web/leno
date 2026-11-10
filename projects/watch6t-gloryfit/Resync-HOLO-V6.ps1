@@ -1,3 +1,7 @@
+# DEPRECATED 2026-11-10: Cache replacement did not change the face on the user's iHunt Watch6T.
+# Disabled to prevent repeated writes; investigate BLE upload protocol instead.
+throw 'Metoda cache HOLO V6 nu a functionat pe Watch6T. Script dezactivat; nu scrie pe telefon sau ceas.'
+
 # GloryFit HOLO V6 cache stage and re-sync assistant; not a firmware update.
 # Only modifies the specific known cached watchface, and only if its original hash matches.
 [CmdletBinding()] param([switch]$Restore)
