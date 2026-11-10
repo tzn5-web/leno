@@ -1,116 +1,140 @@
-"""Offline tests: native watchface validation, BLE status and ACK-driven upload.
-
-Never connects to a real watch. Execute: python -m unittest discover -s tests -v
-"""
+"""Offline Watch6T uploader tests. Does not require a Bluetooth adapter or a watch."""
 from __future__ import annotations
-
 import asyncio
-import io
-import json
+import struct
+import sys
 import tempfile
 import unittest
-import zipfile
+import zlib
 from pathlib import Path
-import sys
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from protocol import DialCaps, DialFile, ProtocolError, section, status, choose_chunk_size
 from watch6t_ble import WatchLink
 
 
+def native_fixture(path: Path):
+    # 2 native 48x48 RGB565 resources (9.2kB), 24-byte table, 2-byte sentinel.
+    table_end = 24 + 2 * 24 + 2
+    pixel_bytes = b"\x7c\x00" * (48 * 48)
+    records = (
+        struct.pack("<HHIHHHHBBH4s", 10, 48, table_end, 48, 0, 0, 0, 1, 0, 0, b"\0"*4)
+        + struct.pack("<HHIHHHHBBH4s", 17, 48, table_end + len(pixel_bytes), 48, 75, 75, 0, 1, 0, 0, b"\0"*4)
+        + b"\0\0"
+    )
+    data = records + pixel_bytes * 2
+    header = struct.pack("<IIIHHII", 189801, len(data), zlib.crc32(data) & 0xFFFFFFFF, 240, 240, 0, 0)
+    path.write_bytes(header + data)
+    return DialFile.validate(path)
+
+
 class DialTests(unittest.TestCase):
     def test_capabilities(self):
-        raw = bytes.fromhex("26010000000100f000f00100100000010000")
-        c = DialCaps.parse(raw)
-        self.assertEqual((c.width, c.height), (240, 240))
-        self.assertEqual(c.max_data_size, 0x100000)
+        reply = bytes.fromhex("26010000000100f000f00100100000010000")
+        caps = DialCaps.parse(reply)
+        self.assertEqual((caps.width, caps.height), (240, 240))
+        self.assertEqual(caps.max_data_size, 1048576)
 
-    def test_wrong_capabilities_rejected(self):
+    def test_bad_capabilities(self):
         with self.assertRaises(ProtocolError):
-            DialCaps.parse(bytes.fromhex("260100"))
+            DialCaps.parse(bytes.fromhex("2601"))
         with self.assertRaises(ProtocolError):
             DialCaps.parse(bytes.fromhex("260100000001000000000100000000010000"))
 
-    def test_sections(self):
+    def test_chunk_and_status(self):
         self.assertEqual(section(258, b"AB"), b"\x27\x01\x02AB")
         self.assertEqual(choose_chunk_size(20, 23), 16)
         self.assertEqual(choose_chunk_size(244, 247), 128)
         self.assertEqual(status(b"\x26\x03\x00"), "success")
-        self.assertEqual(status(b"\x26\x03\x03\x00\x13"), "resume")
+        self.assertEqual(status(b"\x26\x03\x01"), "failure")
         with self.assertRaises(ProtocolError):
-            section(65536, b"a")
+            section(65536, b"hello")
 
-    def test_real_bin(self):
-        path = Path(__file__).resolve().parents[1] / "D1898001_HOLO_V6_BETA_UNTESTED.bin"
-        if not path.exists():
-            self.skipTest("Private BIN not checked into public GitHub; present in private ZIP")
-        info = DialFile.validate(path)
-        self.assertEqual(info.items, 22)
-        self.assertEqual(info.size, 421238)
-        self.assertEqual(info.file_id, 189801)
+    def test_synthetic_and_corrupt_bin(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "fixture.bin"
+            f = native_fixture(p)
+            self.assertEqual(f.items, 2)
+            corrupted = bytearray(p.read_bytes())
+            corrupted[-1] ^= 0x40
+            p.write_bytes(corrupted)
+            with self.assertRaises(ProtocolError):
+                DialFile.validate(p)
+
+    def test_real_holo_bin_if_available(self):
+        p = Path(__file__).resolve().parents[1] / "D1898001_HOLO_V6_BETA_UNTESTED.bin"
+        if not p.exists():
+            self.skipTest("Private V6 BIN not committed to GitHub")
+        f = DialFile.validate(p)
+        self.assertEqual((f.items, f.file_id, f.size), (22, 189801, 421238))
 
 
 class FakeClient:
-    """Models an RK normal-command BLE peripheral, strictly for simulator tests."""
-    def __init__(self, *, reject=False):
+    def __init__(self, target_bytes: int, *, reject: bool = False, no_ack: bool = False):
         self.is_connected = True
         self.mtu_size = 247
-        self.packet_count = 0
-        self.total = 0
-        self.target_bytes = 0
-        self.notify_cb = None
+        self.target_bytes = target_bytes
         self.reject = reject
+        self.no_ack = no_ack
+        self.total = 0
+        self.packet_count = 0
+        self.notify = lambda *args: None
 
-    async def write_gatt_char(self, uuid, payload, response):
-        assert uuid.lower().endswith("0000-1000-8000-00805f9b34fb")
+    async def write_gatt_char(self, characteristic, payload, response):
         if payload == b"\x26\x01":
-            self.notify_cb(None, bytes.fromhex("26010000000100f000f00100100000010000"))
+            self.notify(None, bytes.fromhex("26010000000100f000f00100100000010000"))
         elif payload == b"\x26\x02":
-            self.notify_cb(None, b"\x26\x03\x04")
-        elif payload[0] == 0x27:
+            if not self.no_ack:
+                self.notify(None, b"\x26\x03\x04")
+        elif payload[:1] == b"\x27":
             self.packet_count += 1
             self.total += len(payload) - 3
             if self.reject and self.total >= 4096:
-                self.notify_cb(None, b"\x26\x03\x01")
+                self.notify(None, b"\x26\x03\x01")
                 return
             if self.total % 4096 == 0 and self.total < self.target_bytes:
-                self.notify_cb(None, b"\x26\x03\x04")
+                self.notify(None, b"\x26\x03\x04")
             if self.total >= self.target_bytes:
-                self.notify_cb(None, b"\x26\x03\x00")
+                self.notify(None, b"\x26\x03\x00")
 
-class AsyncTests(unittest.IsolatedAsyncioTestCase):
-    async def test_transfer_waits_for_real_acks(self):
-        p = Path(__file__).resolve().parents[1] / "D1898001_HOLO_V6_BETA_UNTESTED.bin"
-        if not p.exists():
-            self.skipTest("Private BIN only, not included in public source")
-        face = DialFile.validate(p)
-        client = FakeClient()
-        client.target_bytes = face.size
-        link = WatchLink(client)
-        client.notify_cb = link.on_notify
-        link.write_response = False
-        link.mtu = 247
-        link.max_write = 244
-        caps = await link.capabilities()
-        await link.install(face, caps)
-        self.assertEqual(client.total, face.size)
-        self.assertGreater(client.packet_count, 3000)
 
-    async def test_abort_on_watch_error(self):
-        p = Path(__file__).resolve().parents[1] / "D1898001_HOLO_V6_BETA_UNTESTED.bin"
-        if not p.exists():
-            self.skipTest("Private BIN only, not included in public source")
-        face = DialFile.validate(p)
-        client = FakeClient(reject=True)
-        client.target_bytes = face.size
-        link = WatchLink(client)
-        client.notify_cb = link.on_notify
-        link.write_response = False
-        link.mtu = 247
-        link.max_write = 244
-        caps = await link.capabilities()
-        with self.assertRaises(ProtocolError):
-            await link.install(face, caps)
+class UploaderTests(unittest.IsolatedAsyncioTestCase):
+    async def transfer(self, *, reject=False, no_ack=False):
+        with tempfile.TemporaryDirectory() as d:
+            face = native_fixture(Path(d) / "synthetic.bin")
+            device = FakeClient(face.size, reject=reject, no_ack=no_ack)
+            link = WatchLink(device)
+            device.notify = link.on_notify
+            link.mtu = 247
+            link.max_write = 244
+            caps = await link.capabilities()
+            if reject:
+                with self.assertRaises(ProtocolError):
+                    await link.install(face, caps)
+            elif no_ack:
+                # Test no-ack behavior without waiting 25s: inject timeout at queue layer.
+                async def always_timeout(predicate, timeout=15):
+                    if timeout == 25:
+                        raise ProtocolError("simulated timeout")
+                    return await original_response(predicate, timeout)
+                original_response = link.response
+                link.response = always_timeout
+                with self.assertRaises(ProtocolError):
+                    await link.install(face, caps)
+                self.assertEqual(device.packet_count, 0)
+            else:
+                await link.install(face, caps)
+                self.assertEqual(device.total, face.size)
+                self.assertGreater(device.packet_count, 1)
+
+    async def test_acknowledged_upload(self):
+        await self.transfer()
+
+    async def test_rejected_upload(self):
+        await self.transfer(reject=True)
+
+    async def test_no_erase_ready_ack(self):
+        await self.transfer(no_ack=True)
 
 
 if __name__ == "__main__":
