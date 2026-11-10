@@ -183,6 +183,26 @@ jobs:
           assert hashlib.sha256(before).digest()!=hashlib.sha256(after).digest(), 'Emoji tap did not change the screen'
           print('PASS: emoji tap changed Android emulator screen; review screenshot artifact for visual confirmation')
           PY
+          # First grid cell is 😀. Verify it is committed to the focused
+          # EditText, not only shown visually in the picker.
+          python3 - <<'PY'
+          import struct,subprocess
+          raw=open('build/ui/emoji-screen.png','rb').read()
+          w,h=struct.unpack('>II',raw[16:24])
+          x=round(w*.058);y=round(h*.83)
+          subprocess.run(['adb','shell','input','tap',str(x),str(y)],check=True)
+          print('Tapped first emoji at',x,y)
+          PY
+          sleep 1
+          adb shell uiautomator dump /sdcard/emoji-insert.xml >/dev/null
+          adb pull /sdcard/emoji-insert.xml build/ui/emoji-insert.xml >/dev/null
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          nodes=[x.attrib for x in ET.parse('build/ui/emoji-insert.xml').iter('node')]
+          edits=[n.get('text','') for n in nodes if n.get('class','').endswith('EditText')]
+          assert any('😀' in x for x in edits), f'Emoji tap did not insert into EditText: {edits}'
+          print('PASS: tapping advanced emoji inserts Unicode text into the app InputConnection')
+          PY
           adb shell am start -n dev.tzn5.glassuitest/com.android.inputmethod.latin.setup.GlassActivity
           sleep 2
           adb shell uiautomator dump /sdcard/settings.xml >/dev/null
