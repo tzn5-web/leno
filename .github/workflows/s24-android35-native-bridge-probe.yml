@@ -20,6 +20,31 @@ jobs:
       - name: Grant KVM access
         run: |
           if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Write native bridge probe script for emulator
+        shell: bash
+        run: |
+          mkdir -p build/native-bridge
+          cat > build/native-bridge/probe.sh <<'PROBE'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          {
+            echo "API=$(adb shell getprop ro.build.version.sdk | tr -d '\\r')"
+            echo "ABI_LIST=$(adb shell getprop ro.product.cpu.abilist | tr -d '\\r')"
+            echo "NATIVE_BRIDGE=$(adb shell getprop ro.dalvik.vm.native.bridge | tr -d '\\r')"
+            echo "IS_ARM64_TRANSLATED=$(adb shell getprop ro.dalvik.vm.isa.arm64 | tr -d '\\r')"
+            echo "TRANSLATION_VERSION=$(adb shell getprop ro.ndk_translation.version | tr -d '\\r')"
+          } | tee build/native-bridge/abi.txt
+          grep -q '^API=35$' build/native-bridge/abi.txt
+          if grep -Eq '^ABI_LIST=.*(arm64-v8a|armeabi-v7a)' build/native-bridge/abi.txt; then
+            echo 'POSSIBLE: ARM ABI advertised. Full original Xiaomi JNI still needs a runtime test.' | tee -a build/native-bridge/abi.txt
+          elif ! grep -q '^NATIVE_BRIDGE=0$' build/native-bridge/abi.txt &&
+              grep -Eq '^NATIVE_BRIDGE=.{2,}' build/native-bridge/abi.txt; then
+            echo 'POSSIBLE: nonzero native bridge. A real ARM JNI load test is still mandatory.' | tee -a build/native-bridge/abi.txt
+          else
+            echo 'BLOCKED: no ARM ABI or native bridge. Cannot execute original Xiaomi JNI here.' | tee -a build/native-bridge/abi.txt
+          fi
+          PROBE
+          chmod +x build/native-bridge/probe.sh
       - uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -28,25 +53,7 @@ jobs:
           profile: pixel_4
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-metrics
-          script: |
-            set -eu
-            mkdir -p build/native-bridge
-            {
-              echo "API=$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
-              echo "ABI_LIST=$(adb shell getprop ro.product.cpu.abilist | tr -d '\r')"
-              echo "NATIVE_BRIDGE=$(adb shell getprop ro.dalvik.vm.native.bridge | tr -d '\r')"
-              echo "IS_ARM64_TRANSLATED=$(adb shell getprop ro.dalvik.vm.isa.arm64 | tr -d '\r')"
-              echo "TRANSLATION_VERSION=$(adb shell getprop ro.ndk_translation.version | tr -d '\r')"
-            } | tee build/native-bridge/abi.txt
-            grep -q '^API=35$' build/native-bridge/abi.txt
-            if grep -q '^ABI_LIST=.*arm64-v8a' build/native-bridge/abi.txt; then
-              echo 'POSSIBLE: arm64-v8a advertised by Android 15 emulator' | tee -a build/native-bridge/abi.txt
-            elif ! grep -q '^NATIVE_BRIDGE=0$' build/native-bridge/abi.txt &&
-                  grep -Eq '^NATIVE_BRIDGE=.{2,}' build/native-bridge/abi.txt; then
-              echo 'POSSIBLE: nonzero native bridge detected; a real ARM64 JNI load test is still mandatory' | tee -a build/native-bridge/abi.txt
-            else
-              echo 'BLOCKED: no advertised ARM64 ABI or native bridge; do not test original Xiaomi JNI here' | tee -a build/native-bridge/abi.txt
-            fi
+          script: bash build/native-bridge/probe.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
