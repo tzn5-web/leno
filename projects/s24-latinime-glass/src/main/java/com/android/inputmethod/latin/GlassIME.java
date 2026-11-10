@@ -220,10 +220,17 @@ public final class GlassIME extends LatinIME {
 
     private void showEmoji() {
         if (glassRoot == null || emojiPane != null) return;
+        // The previous MATCH_PARENT overlay enlarged a WRAP_CONTENT IME root
+        // to almost the entire screen. Keep the emoji panel at keyboard height.
+        int actualKeyboardHeight = originalKeyboard == null ? 0 : originalKeyboard.getHeight();
+        int screenHeight = getResources().getDisplayMetrics().heightPixels;
+        int maxEmojiHeight = Math.round(screenHeight * 0.46f);
+        int panelHeight = Math.min(maxEmojiHeight, Math.max(dp(245), actualKeyboardHeight));
         picker = new GlassEmojiPanel(this, this::closeEmoji);
         emojiPane = picker.makeView();
+        if (originalKeyboard != null) originalKeyboard.setVisibility(View.INVISIBLE);
         glassRoot.addView(emojiPane, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                ViewGroup.LayoutParams.MATCH_PARENT, panelHeight, Gravity.BOTTOM));
         if (emojiButton != null) emojiButton.setText("✕ Închide");
     }
 
@@ -231,6 +238,7 @@ public final class GlassIME extends LatinIME {
         if (glassRoot != null && emojiPane != null) glassRoot.removeView(emojiPane);
         emojiPane = null;
         picker = null;
+        if (originalKeyboard != null) originalKeyboard.setVisibility(View.VISIBLE);
         if (emojiButton != null) emojiButton.setText("☺ Emoji");
     }
 }
