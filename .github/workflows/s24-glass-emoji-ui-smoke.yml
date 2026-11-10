@@ -209,10 +209,15 @@ jobs:
           import struct,subprocess
           png=open('build/ui/emoji-screen.png','rb').read()
           width,height=struct.unpack('>II',png[16:24])
-          x,y=round(width*.84),round(height*.885)
-          subprocess.run(['adb','shell','input','tap',str(x),str(y)],check=True)
-          subprocess.run(['adb','shell','input','swipe',str(x),str(y),str(x),str(y),'1150'],check=True)
-          print('Triggered long-press settings action at',x,y)
+          x=round(width*.84)
+          # Opening the emoji grid increases the IME height, moving the
+          # toolbar upward. Close at the OPEN-panel toolbar position first.
+          close_y=round(height*.685)
+          long_y=round(height*.885)
+          subprocess.run(['adb','shell','input','tap',str(x),str(close_y)],check=True)
+          import time;time.sleep(.7)
+          subprocess.run(['adb','shell','input','swipe',str(x),str(long_y),str(x),str(long_y),'1150'],check=True)
+          print('Closed emoji at',x,close_y,'and long-pressed settings at',x,long_y)
           PY
           sleep 2
           adb shell uiautomator dump /sdcard/longpress-settings.xml >/dev/null
