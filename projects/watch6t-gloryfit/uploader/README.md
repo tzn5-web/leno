@@ -67,3 +67,20 @@ If a private D1898001_HOLO_V6_BETA_UNTESTED.bin is placed next to the code, test
 - BIN data format: https://github.com/janaboy74/wfeditormk66
 
 These references concern related GloryFit devices and are **not proof of compatibility** with the user's watch. APK sources and proprietary art must remain private.
+## Update: native BLE write-with-response on Watch6T (2026-11-10)
+
+The second owner run passed the 15-byte dial capability response and rejected upload before 26 02 because `33F1` advertises `write` (with-response) but not `write-without-response`.
+
+This software guard was wrong for this hardware: read-only 26 01 had already succeeded over the same GATT write-with-response transport.
+
+Uploader revision:
+
+- Allows `write` / with-response mode; each GATT fragment is acknowledged at the ATT layer.
+- Uses 16 payload bytes + a 3-byte 27/index header, which stays below the conservative 20-byte write limit even with MTU 247.
+- Checks `26 03 04` block ACKs, and requires `26 03 00` (not a generic 26 03) for actual upload success.
+- Preserves the CRC, size, 240×240 and face-ID checks before preparing the custom dial slot.
+- Added a simulated with-response upload test. CI success and hardware upload remain unverified.
+
+To load this fix, run the EXISTING Windows `2_INSTALEAZA_HOLO_BLE_EXPERIMENTAL.cmd`: `PREGATESTE.cmd` always retrieves the latest `watch6t_ble.py` and `protocol.py` from the GitHub branch.
+
+**Risk:** the next run may actually reach destructive `26 02`. A failed or interrupted transfer can leave the custom face slot empty. The presence of the original BIN in the archive is not proof of hardware recovery. Only proceed if willing to accept that risk.
