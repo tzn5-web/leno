@@ -28,14 +28,20 @@ class DialCaps:
     height: int
     screen_type: int
     max_data_size: int
-    compatibility_level: int
-    corner_angle: int
+    # On Watch6T the 26 01 response ends after the 4-byte capacity (15 bytes total).
+    # Other GloryFit variants append compatibility and corner information.
+    compatibility_level: int | None
+    corner_angle: int | None
 
     @classmethod
     def parse(cls, response: bytes) -> "DialCaps":
         # GloryFit classic / RK reply, from the OnlineDialUtil response layout.
         # response[0:2]=26 01; 2:6=dial number; 6:10=width/height.
-        if len(response) < 18 or response[:2] != b"\x26\x01":
+        # Actual iHunt Watch6T packet recorded on 2026-11-10:
+        # 26 01 | 00 02 e5 69 | 00 f0 | 00 f0 | 00 | 00 10 00 00
+        # It has **15** bytes, not the 18 bytes used by some GloryFit models.
+        # The optional compatibility byte is at offset 15, corner byte at 17.
+        if len(response) < 15 or response[:2] != b"\x26\x01":
             raise ProtocolError(f"Not a complete dial capabilities reply: {response.hex()}")
         caps = cls(
             int.from_bytes(response[2:6], "big"),
@@ -43,9 +49,11 @@ class DialCaps:
             int.from_bytes(response[8:10], "big"),
             response[10],
             int.from_bytes(response[11:15], "big"),
-            response[15],
-            response[17],
+            response[15] if len(response) >= 16 else None,
+            response[17] if len(response) >= 18 else None,
         )
+        if caps.dial_number == 0:
+            raise ProtocolError("Empty reported face identifier")
         if not 50 <= caps.width <= 1000 or not 50 <= caps.height <= 1000:
             raise ProtocolError("Implausible reply resolution; wrong GloryFit protocol?")
         if not 4096 <= caps.max_data_size <= 16 * 1024 * 1024:
