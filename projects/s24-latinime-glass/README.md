@@ -36,3 +36,13 @@ The extension's GitHub Actions job compiles against Android API 35 and checks th
 - GitHub Actions compiles and checks the addon, but the completed APK is signed locally using the same development certificate as the user's working test installation; the signing key is never committed.
 
 **Settings UX:** A short press on the dedicated emoji key opens categories/search; long press opens Glass appearance settings. No separate settings button is displayed. The system IME metadata points to the same GlassActivity, subject to One UI rendering the settings gear.
+
+## Privacy hardening for the original Xiaomi engine
+
+In addition to removing Android app permissions and disabling backup, `PrivacyNoHistoryPatch` applies a fail-closed DEX modification to the **original** LatinIME engine. It replaces eight identified dynamic vocabulary write/flush paths with single-return implementations: `DictionaryFacilitatorImpl.addToUserHistory`, `addWordToUserHistory`, `ExpandableBinaryDictionary.updateEntriesForWord`, `updateEntriesForInputEvents`, `asyncFlushBinaryDictionary`, `addUnigramLocked`, `addNgramEntryLocked`, and `UserHistoryDictionary.addToDictionary`. It retains read-only dictionary lookup and the visual keyboard.
+
+A one-time cleanup also attempts `PersonalizationHelper.removeAllUserHistoryDictionaries(Context)` before the original keyboard initializes, so histories created by earlier installs can be removed. Only a boolean cleanup marker is stored.
+
+To build the privacy-hardened version, first run `DexServiceRebind original.dex glass-addon.dex rebound-original.dex rebound-addon.dex`, then `PrivacyNoHistoryPatch rebound-original.dex privacy-rebound-original.dex`. Supply `privacy-rebound-original.dex` to `repack_stable_ime.py` in place of `rebound-original.dex`. The CI workflow tests the patch against eight synthetic write methods and verifies the rewritten DEX reopens.
+
+**Security limitation:** the original native ARM64 library and all possible storage paths have not been dynamically audited on Samsung. Blocking these eight methods and removing INTERNET permission materially reduces risk but cannot be represented as an absolute guarantee of no data retention. Do not treat this build as independently security-certified.
