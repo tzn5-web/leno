@@ -96,6 +96,18 @@ public final class GlassEmojiPanel {
         // Reserve a bottom touch-safe area for Android's gesture/navigation bar.
         // Emoji remain scrollable instead of being trapped under system icons.
         body.setPadding(dp(3), dp(5), dp(3), dp(28));
+        // Some Samsung/Android 15+ IME windows draw edge-to-edge. Honor the
+        // real navigation-bar inset without repeatedly changing the layout.
+        body.setOnApplyWindowInsetsListener((view, insets) -> {
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                int safeBottom = Math.max(dp(28),
+                        insets.getInsets(android.view.WindowInsets.Type.navigationBars()).bottom);
+                if (view.getPaddingBottom() != safeBottom) {
+                    view.setPadding(dp(3), dp(5), dp(3), safeBottom);
+                }
+            }
+            return insets;
+        });
         body.setBackgroundColor(Color.argb(238, 24, 29, 42));
 
         LinearLayout header = new LinearLayout(host);
