@@ -15,6 +15,7 @@ HEADER = struct.Struct("<IIIHHII")
 ITEM = struct.Struct("<HHIHHHHBBH4s")
 MAX_ELEMENTS = 100
 WATCH_SIZE = (240, 240)
+UNASSIGNED_DIAL_ID = 0xFFFFFFFF  # Seen after interrupted 26 02 on iHunt Watch6T; interpretation unverified
 
 
 class ProtocolError(ValueError):
@@ -32,6 +33,13 @@ class DialCaps:
     # Other GloryFit variants append compatibility and corner information.
     compatibility_level: int | None
     corner_angle: int | None
+
+    @property
+    def slot_state(self) -> str:
+        """An informational hint; never infer a safe-to-write slot from it."""
+        if self.dial_number == UNASSIGNED_DIAL_ID:
+            return "unassigned-or-erased (not independently confirmed)"
+        return "reported-dial-id"
 
     @classmethod
     def parse(cls, response: bytes) -> "DialCaps":
