@@ -1,31 +1,19 @@
-# S24 Private Keyboard — Android / Samsung One UI 8.5
+# S24 Glass Keyboard — One UI 8.5
 
-A self-contained, **newly implemented** Android input method for Galaxy S24/S24+/S24 Ultra. It is not the Xiaomi APK and does not reproduce all of LatinIME's features. The original Xiaomi archive is deliberately **not** committed to GitHub.
+This is a reimplementation built from the GitHub IME source, not an exact Xiaomi APK repack.
 
-## Functional scope (v0.1)
+## Implemented v0.9
+- Offline English/Romanian QWERTY, ă â î ș ț, numeric/symbol mode, shift, caps lock, long-press accents, repeat delete and editor actions.
+- Settings gear inside the keyboard and Settings activity from launcher.
+- Glass background transparency, key opacity, key height, rounding, spacing, three palettes (Smoke, Ruby black/red, Ice).
+- Optional Android 12+ system blur (device-dependent), optional haptic typing feedback.
+- Eight categorized Unicode emoji groups, with long-press tone choices for hand gestures.
+- No Internet permission, telemetry, network, clipboard reads, text history, or personal dictionary. Only appearance preferences persist.
 
-- Android InputMethodService; QWERTY, Romanian diacritics, Shift, delete, space, punctuation, numeric/symbol mode and editor actions.
-- No native binaries or JNI, so no ABI dependency; usable on ARM64-only devices.
-- No prediction, word learning, cloud sync, clipboard reads, personal dictionary, typing history or telemetry.
-- No `<uses-permission>` entries (not even `INTERNET`). InputMethodService is protected by Android's required `BIND_INPUT_METHOD` service permission; this is **not** a permission requested by the app.
-- `allowBackup=false`, cleartext traffic disabled, no network SDK or third-party runtime library.
-- Text is delivered solely through Android's `InputConnection` to the focused application. The receiving application and Android OS may process it; this app cannot control those systems.
+## APK
+CI: https://github.com/tzn5-web/leno/actions/workflows/s24-private-keyboard.yml
+Direct APK is published at https://github.com/tzn5-web/leno/releases/download/s24-glass-keyboard-v0.9/S24-Glass-Keyboard.apk when the release step succeeds.
+GitHub Actions artifact is the backup. The debug certificate can change between hosted-runner builds; upgrading prior debug installs can require uninstalling.
 
-## Build in GitHub Actions
-
-Open **Actions → Build S24 Private Keyboard → Run workflow**, or open the pull request. Download the uploaded artifact `S24PrivateKeyboard-debug` and install `app-debug.apk` on the phone.
-
-The CI build runs a source-level privacy gate. Passing this check does not replace device testing or full security review.
-
-## Install
-
-1. Install the debug APK and open **S24 Private Keyboard**.
-2. Tap **Enable keyboard** to activate it in Samsung's keyboard settings.
-3. Tap **Select keyboard**, then choose **S24 Private Keyboard**.
-4. Test ordinary text, Romanian characters, password fields, numbers and editor action keys.
-
-This build installs under `dev.tzn5.privatekeyboard` alongside the Xiaomi original; no vendor signature conflicts.
-
-## Known limitations
-
-This is a privacy-first **functional MVP**, not a byte-for-byte port of Xiaomi LatinIME. Gesture typing, voice input, advanced autocorrect, adaptive layouts, multilingual prediction and theme editor are not implemented. A successful CI build is not proof of stability on the user's specific One UI 8.5 device.
+## Limitations
+Not a byte-for-byte port of Xiaomi, no prediction/gesture typing, no Xiaomi-native theme editor. Successful CI compilation is not proof of stability or exact visuals on an S24+ with One UI 8.5. Device checks remain necessary.

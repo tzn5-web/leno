@@ -24,7 +24,7 @@ public final class SetupActivity extends Activity {
         root.setPadding(dp(24), dp(24), dp(24), dp(24));
 
         TextView info = new TextView(this);
-        info.setText("S24 Private Keyboard\n\nA local-only keyboard with English, Romanian letters and symbols. It does not request network access, store keystrokes, collect analytics, or use external SDKs.\n\nThe text you type is sent only to the app you are using through Android's normal input connection.");
+        info.setText("S24 Glass Keyboard\n\nA local-only keyboard with English, Romanian letters and symbols. It does not request network access, store keystrokes, collect analytics, or use external SDKs.\n\nThe text you type is sent only to the app you are using through Android's normal input connection.");
         info.setTextSize(17);
         root.addView(info);
 
@@ -40,6 +40,11 @@ public final class SetupActivity extends Activity {
             if (manager != null) manager.showInputMethodPicker();
         });
         root.addView(choose);
+        Button customize = new Button(this);
+        customize.setText("3. Personalizare Glass și emoji");
+        customize.setAllCaps(false);
+        customize.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
+        root.addView(customize);
         setContentView(root);
     }
 }

@@ -1,4 +1,4 @@
-name: Build S24 Private Keyboard
+name: Build S24 Glass Keyboard
 on:
   workflow_dispatch:
   push:
@@ -12,7 +12,7 @@ on:
       - 'projects/s24-private-keyboard/**'
       - '.github/workflows/s24-private-keyboard.yml'
 permissions:
-  contents: read
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -43,6 +43,20 @@ jobs:
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:
-          name: S24PrivateKeyboard-debug
+          name: S24GlassKeyboard-debug
           path: projects/s24-private-keyboard/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Publish single APK to GitHub prerelease
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG=s24-glass-keyboard-v0.9
+          cp projects/s24-private-keyboard/app/build/outputs/apk/debug/app-debug.apk S24-Glass-Keyboard.apk
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" S24-Glass-Keyboard.apk --clobber
+          else
+            gh release create "$TAG" S24-Glass-Keyboard.apk --target "$GITHUB_SHA" --title "S24 Glass Keyboard v0.9" --notes "Offline Android Glass keyboard with adjustable opacity, settings and categorized emoji. Debug signed; device testing pending." --prerelease
+          fi

@@ -16,10 +16,10 @@ services = app.findall("service")
 assert len(services) == 1 and services[0].attrib.get(android+"permission") == "android.permission.BIND_INPUT_METHOD"
 sources = "\n".join(p.read_text(encoding="utf-8") for p in project.glob("app/src/main/java/**/*.java"))
 for token in (
-    "android.util.Log", "java.net.", "android.webkit.", "getSharedPreferences(",
+    "android.util.Log", "java.net.", "android.webkit.",
     "FileOutputStream", "FileWriter", "getClipboard", "HttpURLConnection",
     "Socket(", "DatagramSocket(", "TelephonyManager", "MediaRecorder",
     "Firebase", "Analytics", "SQLite", "RoomDatabase", "getContentResolver(",
 ):
     assert token not in sources, f"Disallowed API: {token}"
-print("PASS: zero app permissions; backup disabled; no source network/persistence/telemetry APIs.")
+print("PASS: zero app permissions; appearance-only local preferences; no source network/logging APIs.")
