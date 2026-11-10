@@ -221,8 +221,12 @@ jobs:
               x=round(x1+(x2-x1)*amount/100);y=(y1+y2)//2
               subprocess.run(['adb','shell','am','start','-n',
                   'dev.tzn5.glassuitest/com.android.inputmethod.latin.setup.GlassActivity'],check=True,stdout=subprocess.DEVNULL)
+              import time;time.sleep(1.5)
+              # Wait for settings window to become top before interacting.
+              focused=subprocess.check_output(['adb','shell','dumpsys','window']).decode('utf8',errors='replace')
+              assert 'GlassActivity' in focused, 'Glass settings did not open before test tap'
               subprocess.run(['adb','shell','input','tap',str(x),str(y)],check=True)
-              import time;time.sleep(.4)
+              time.sleep(.6)
               xml=subprocess.check_output(['adb','shell','run-as','dev.tzn5.glassuitest',
                   'cat','shared_prefs/s24_glass.xml']).decode('utf8')
               import re
