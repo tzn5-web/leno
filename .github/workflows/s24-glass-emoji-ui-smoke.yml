@@ -170,7 +170,7 @@ jobs:
           seekbars=[n.attrib for n in ET.parse('build/ui/settings.xml').iter('node') if n.attrib.get('class')=='android.widget.SeekBar']
           assert len(seekbars)==1, f'Expected one Glass opacity SeekBar, got {len(seekbars)}'
           import re,subprocess
-          x1,y1,x2,y2=map(int,re.findall(r'\\d+',seekbars[0]['bounds']))
+          x1,y1,x2,y2=map(int,re.findall(r'\d+',seekbars[0]['bounds']))
           x=round(x1+(x2-x1)*.82);y=(y1+y2)//2
           subprocess.run(['adb','shell','input','tap',str(x),str(y)],check=True)
           print('PASS: Glass opacity slider visible and tapped:',x,y)
