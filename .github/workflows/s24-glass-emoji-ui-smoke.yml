@@ -233,20 +233,21 @@ jobs:
               saved=re.search(r'name="opacity" value="(\d+)"',xml)
               assert saved and abs(int(saved.group(1))-amount)<=10, (
                   f'Glass SeekBar failed to persist {amount}%: {xml}')
-              # Explicitly STOP settings activity before resuming demo. Android's
-              # am start may leave GlassActivity top and produce false snapshots.
-              subprocess.run(['adb','shell','am','force-stop','dev.tzn5.glassuitest'],check=True)
-              subprocess.run(['adb','shell','am','start','-n',
+              # CLEAR_TOP closes the Glass settings activity but keeps the
+              # already-running IME service alive. Force-stopping the package
+              # also kills the keyboard and invalidates visual comparisons.
+              subprocess.run(['adb','shell','am','start','--activity-clear-top','-n',
                   'dev.tzn5.glassuitest/harness.DemoActivity'],check=True,stdout=subprocess.DEVNULL)
-              subprocess.run(['adb','shell','ime','set',
-                  'dev.tzn5.glassuitest/com.android.inputmethod.latin.GlassIME'],check=True)
               time.sleep(2)
-              subprocess.run(['adb','shell','input','tap','170','180'],check=True)
+              subprocess.run(['adb','shell','input','tap','180','900'],check=True)
               time.sleep(2)
-              state=subprocess.check_output(['adb','shell','dumpsys','activity','activities']).decode('utf8')
-              assert 'harness.DemoActivity' in state and (
-                  'mResumedActivity' in state or 'topResumedActivity' in state), (
-                  'DemoActivity not resumed after changing opacity')
+              state=subprocess.check_output(['adb','shell','dumpsys','input_method']).decode('utf8',errors='replace')
+              if 'mInputShown=true' not in state and 'mShowRequested=true' not in state:
+                  subprocess.run(['adb','shell','input','tap','180','900'],check=True)
+                  time.sleep(2)
+                  state=subprocess.check_output(['adb','shell','dumpsys','input_method']).decode('utf8',errors='replace')
+              assert 'mInputShown=true' in state, (
+                  'Keyboard not visible after returning from Glass settings; no visual alpha comparison possible')
               subprocess.run(['adb','shell','screencap','-p','/sdcard/'+filename],check=True)
               subprocess.run(['adb','pull','/sdcard/'+filename,'build/ui/'+filename],check=True,stdout=subprocess.DEVNULL)
               print('Captured real Glass UI at opacity setting',amount)
