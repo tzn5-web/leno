@@ -17,10 +17,10 @@ function Invoke-Adb([string[]] $Arguments){
  try { $lines=@(& $adbPath @Arguments 2>&1 | ForEach-Object { [string]$_ });$exitCode=$LASTEXITCODE }
  finally { $ErrorActionPreference=$old }
  if($exitCode -ne 0){throw ('ADB '+$exitCode+': '+($lines -join ' '))}
- return ($lines -join "\`n")
+ return ($lines -join "`n")
 }
 $devices=Invoke-Adb -Arguments @('devices')
-if(@($devices -split "\`n" | Where-Object {$_ -match '^\S+\s+device\s*$'}).Count -ne 1){throw ('Este necesar un singur telefon autorizat ADB: '+$devices)}
+if(@($devices -split "`n" | Where-Object {$_ -match '^\S+\s+device\s*$'}).Count -ne 1){throw ('Este necesar un singur telefon autorizat ADB: '+$devices)}
 $pkg='com.yc.gloryfit'
 if((Invoke-Adb -Arguments @('shell','pm','path',$pkg)) -notmatch 'package:'){throw 'GloryFit nu e instalat pe telefon.'}
 $manifest=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'MANIFEST_V6.json') -Raw | ConvertFrom-Json
