@@ -17,9 +17,12 @@ import org.jf.dexlib2.iface.instruction.Instruction;
 import org.jf.dexlib2.immutable.ImmutableMethod;
 import org.jf.dexlib2.immutable.ImmutableMethodImplementation;
 import org.jf.dexlib2.immutable.instruction.ImmutableInstruction10x;
+import org.jf.dexlib2.immutable.instruction.ImmutableInstruction11x;
+import org.jf.dexlib2.immutable.instruction.ImmutableInstruction21c;
 import org.jf.dexlib2.immutable.instruction.ImmutableInstruction21t;
 import org.jf.dexlib2.immutable.instruction.ImmutableInstruction35c;
 import org.jf.dexlib2.immutable.reference.ImmutableMethodReference;
+import org.jf.dexlib2.immutable.reference.ImmutableStringReference;
 import org.jf.dexlib2.rewriter.DexRewriter;
 import org.jf.dexlib2.rewriter.MethodRewriter;
 import org.jf.dexlib2.rewriter.Rewriter;
@@ -40,6 +43,8 @@ public final class PrivacyNoHistoryPatch {
     private static final String FAC = "Lcom/android/inputmethod/latin/DictionaryFacilitatorImpl;";
     private static final String EXP = "Lcom/android/inputmethod/latin/ExpandableBinaryDictionary;";
     private static final String HIST = "Lcom/android/inputmethod/latin/personalization/UserHistoryDictionary;";
+    private static final String SETTINGS = "Lcom/android/inputmethod/latin/settings/Settings;";
+    private static final String READ_RECENT_EMOJI = SETTINGS + "->readEmojiRecentKeys";
     private static final String CALLBACK_METHOD = EXP + "->updateEntriesForInputEvents";
     private static final String CALLBACK_TYPE =
             "Lcom/android/inputmethod/latin/ExpandableBinaryDictionary$UpdateEntriesForInputEventsCallback;";
@@ -51,7 +56,9 @@ public final class PrivacyNoHistoryPatch {
         EXP + "->asyncFlushBinaryDictionary",
         EXP + "->addUnigramLocked",
         EXP + "->addNgramEntryLocked",
-        HIST + "->addToDictionary"
+        HIST + "->addToDictionary",
+        SETTINGS + "->writeEmojiRecentKeys",
+        READ_RECENT_EMOJI
     ));
 
     private static void validateTargets(DexFile dex) {
@@ -60,8 +67,14 @@ public final class PrivacyNoHistoryPatch {
             for (Method method : cls.getMethods()) {
                 String id = cls.getType() + "->" + method.getName();
                 if (!TARGETS.contains(id)) continue;
-                if (!"V".equals(method.getReturnType()) || method.getImplementation() == null) {
+                String expectedReturn = READ_RECENT_EMOJI.equals(id) ? "Ljava/lang/String;" : "V";
+                if (!expectedReturn.equals(method.getReturnType()) || method.getImplementation() == null) {
                     throw new IllegalStateException("Unexpected target signature: " + id);
+                }
+                if (READ_RECENT_EMOJI.equals(id) &&
+                    (method.getParameters().size() != 1
+                     || method.getImplementation().getRegisterCount() < 1)) {
+                    throw new IllegalStateException("Unexpected emoji recents getter signature: " + id);
                 }
                 if (CALLBACK_METHOD.equals(id)) {
                     if (method.getParameters().size() != 2
@@ -99,7 +112,15 @@ public final class PrivacyNoHistoryPatch {
                     // the operation completed. Dropping the callback could
                     // leave a future/pending update waiting indefinitely.
                     java.util.List<? extends Instruction> noWriteInstructions;
-                    if (CALLBACK_METHOD.equals(id)) {
+                    if (READ_RECENT_EMOJI.equals(id)) {
+                        // Never expose already-persisted emoji history from old versions.
+                        // This returns a fixed empty string; no disk read or write.
+                        noWriteInstructions = Arrays.asList(
+                            new ImmutableInstruction21c(Opcode.CONST_STRING, 0,
+                                new ImmutableStringReference("")),
+                            new ImmutableInstruction11x(Opcode.RETURN_OBJECT, 0)
+                        );
+                    } else if (CALLBACK_METHOD.equals(id)) {
                         int callbackReg = registers - 1;
                         noWriteInstructions = Arrays.asList(
                             new ImmutableInstruction21t(Opcode.IF_EQZ, callbackReg, 5),
@@ -144,7 +165,13 @@ public final class PrivacyNoHistoryPatch {
                 if (!TARGETS.contains(id)) continue;
                 Iterator<? extends Instruction> instructions =
                     method.getImplementation().getInstructions().iterator();
-                if (CALLBACK_METHOD.equals(id)) {
+                if (READ_RECENT_EMOJI.equals(id)) {
+                    if (!instructions.hasNext() || instructions.next().getOpcode() != Opcode.CONST_STRING
+                            || !instructions.hasNext() || instructions.next().getOpcode() != Opcode.RETURN_OBJECT
+                            || instructions.hasNext()) {
+                        throw new IllegalStateException("Emoji recent keys getter still reads history: " + id);
+                    }
+                } else if (CALLBACK_METHOD.equals(id)) {
                     if (!instructions.hasNext() || instructions.next().getOpcode() != Opcode.IF_EQZ
                             || !instructions.hasNext() || instructions.next().getOpcode() != Opcode.INVOKE_INTERFACE
                             || !instructions.hasNext() || instructions.next().getOpcode() != Opcode.RETURN_VOID
@@ -160,7 +187,7 @@ public final class PrivacyNoHistoryPatch {
             }
         }
         if (disabled != TARGETS.size()) throw new IllegalStateException("Missing privacy rewrites");
-        System.out.println("PASS: eight original write paths blocked; completion callback preserved for input-events");
+        System.out.println("PASS: eight vocabulary writers plus emoji recents read/write blocked; completion callback preserved");
         System.out.println("NOT VERIFIED: all potential native/third-party retention paths");
     }
 }
