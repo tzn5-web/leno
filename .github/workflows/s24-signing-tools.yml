@@ -1,0 +1,32 @@
+name: S24 Android signing tools for private local build
+on:
+  push:
+    branches: [feature/s24-signer-tools-20261111]
+    paths: ['.github/workflows/s24-signing-tools.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package-tools:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get Android SDK signing jar
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(command -v sdkmanager || true)"
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -1)"
+          fi
+          "$SDKMANAGER" "build-tools;35.0.0"
+          ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools/35.0.0"
+          mkdir -p tools
+          cp "$ROOT/lib/apksigner.jar" tools/apksigner.jar
+          cp "$ROOT/zipalign" tools/zipalign
+          sha256sum tools/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: S24-Android35-ApkSigner-Tools
+          path: tools/
+          if-no-files-found: error
