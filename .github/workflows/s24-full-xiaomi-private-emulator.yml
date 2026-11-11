@@ -1,0 +1,160 @@
+name: S24 Full Xiaomi APK Private ARM-ABI Verification
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha256:
+        description: "SHA256 of private unsigned Xiaomi Glass QA APK"
+        type: string
+        required: true
+      android_api:
+        description: "Android API 35 (verified ARM64 JNI translation) preferred; API 36 image lacks native bridge"
+        type: choice
+        options: ["35", "36"]
+        default: "35"
+        required: true
+permissions:
+  contents: read
+
+# The binary is downloaded only from a private URL in Actions secrets.
+# Never upload the user's proprietary full Xiaomi APK to public GitHub.
+jobs:
+  complete-apk-emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK for API 35/36 native Xiaomi testing
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(command -v sdkmanager || true)"
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -1)"
+          fi
+          "$SDKMANAGER" "platforms;android-36" "build-tools;35.0.0"
+      - name: Privately retrieve and audit complete original Xiaomi-derived APK
+        shell: bash
+        env:
+          PRIVATE_URL: ${{ secrets.S24_PRIVATE_QA_APK_URL }}
+          EXPECTED_SHA: ${{ inputs.expected_sha256 }}
+        run: |
+          set -euo pipefail
+          if [ -z "$PRIVATE_URL" ]; then
+            echo "BLOCKED: GitHub Actions secret S24_PRIVATE_QA_APK_URL is not configured" >&2
+            exit 71
+          fi
+          if ! [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{64}$ ]]; then
+            echo "BLOCKED: expected_sha256 must be the exact 64-character SHA256" >&2
+            exit 72
+          fi
+          [[ "$PRIVATE_URL" == https://* ]] || {
+            echo "BLOCKED: HTTPS is mandatory for private APK retrieval" >&2
+            exit 73
+          }
+          mkdir -p build/full
+          curl --fail --location --retry 2 --silent --show-error \
+            --max-time 300 --output build/full/original-unsigned.apk "$PRIVATE_URL"
+          echo "$EXPECTED_SHA  build/full/original-unsigned.apk" | sha256sum -c
+          unzip -tq build/full/original-unsigned.apk
+          python3 projects/s24-latinime-glass/audit_standalone_apk.py \
+            build/full/original-unsigned.apk
+          echo "PASS: real Xiaomi-derived APK checked in private runner"
+      - name: Test-only signing and build isolated editable probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          TOOLS="$SDK/build-tools/35.0.0"
+          mkdir -p build/full/probe-classes build/full/probe-dex
+          cat > build/full/ProbeActivity.java <<'JAVA'
+          package dev.tzn5.xiaomitest;
+          import android.app.Activity;
+          import android.os.Bundle;
+          import android.content.Context;
+          import android.view.inputmethod.InputMethodManager;
+          import android.widget.EditText;
+          public final class ProbeActivity extends Activity {
+              @Override public void onCreate(Bundle state) {
+                  super.onCreate(state);
+                  EditText input = new EditText(this);
+                  input.setSingleLine(true);
+                  input.setTextSize(24);
+                  input.setHint("Xiaomi keyboard full-APK validation");
+                  input.setId(100);
+                  setContentView(input);
+                  input.requestFocus();
+                  input.postDelayed(() -> {
+                      InputMethodManager im = (InputMethodManager)
+                          getSystemService(Context.INPUT_METHOD_SERVICE);
+                      if (im != null) im.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT);
+                  }, 750);
+              }
+          }
+          JAVA
+          cat > build/full/probe-manifest.xml <<'XML'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.tzn5.xiaomitest">
+            <application android:label="Xiaomi IME test" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+              <activity android:name="dev.tzn5.xiaomitest.ProbeActivity" android:exported="true"
+                android:windowSoftInputMode="stateAlwaysVisible|adjustResize">
+                <intent-filter>
+                  <action android:name="android.intent.action.MAIN"/>
+                  <category android:name="android.intent.category.LAUNCHER"/>
+                </intent-filter>
+              </activity>
+            </application>
+          </manifest>
+          XML
+          javac -encoding UTF-8 -source 8 -target 8 -cp "$SDK/platforms/android-36/android.jar" \
+            -d build/full/probe-classes build/full/ProbeActivity.java
+          "$TOOLS/d8" --min-api 30 --lib "$SDK/platforms/android-36/android.jar" \
+            --output build/full/probe-dex build/full/probe-classes/dev/tzn5/xiaomitest/ProbeActivity.class
+          "$TOOLS/aapt2" link -o build/full/probe-raw.apk \
+            -I "$SDK/platforms/android-36/android.jar" \
+            --manifest build/full/probe-manifest.xml \
+            --min-sdk-version 30 --target-sdk-version 35
+          (cd build/full/probe-dex && zip -q ../probe-raw.apk classes.dex)
+          "$TOOLS/zipalign" -f -p 4 build/full/probe-raw.apk build/full/probe-aligned.apk
+          # The real app package conflicts with AOSP's preinstalled LatinIME.
+          # Isolate ONLY the disposable emulator QA copy; never change the
+          # user-facing original package or the original DEX/keyboard assets.
+          python3 projects/s24-latinime-glass/make_qa_package_alias.py \
+            build/full/original-unsigned.apk build/full/xiaomi-aliased-unsigned.apk
+          "$TOOLS/zipalign" -f -p 4 build/full/xiaomi-aliased-unsigned.apk build/full/xiaomi-aligned.apk
+          keytool -genkeypair -noprompt -keystore build/full/emulator-only.jks \
+            -storepass changeit -alias only-emulator -keypass changeit -keyalg RSA \
+            -keysize 3072 -validity 5 -dname 'CN=Temporary Android Emulator QA' >/dev/null 2>&1
+          for which in xiaomi probe; do
+            "$TOOLS/apksigner" sign --ks build/full/emulator-only.jks \
+              --ks-key-alias only-emulator --ks-pass pass:changeit --key-pass pass:changeit \
+              --out "build/full/$which-test.apk" "build/full/$which-aligned.apk"
+            "$TOOLS/apksigner" verify --verbose "build/full/$which-test.apk"
+          done
+          echo "PASS: ephemeral emulator-only signed complete APK + editable test app"
+      - name: Run actual complete Xiaomi keyboard on hardware-compatible Android API
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ inputs.android_api }}
+          arch: x86_64
+          target: google_apis
+          profile: pixel_4
+          cores: 4
+          ram-size: 4096M
+          disable-animations: true
+          disable-spellchecker: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-metrics
+          script: bash projects/s24-latinime-glass/run_full_apk_emu_smoke.sh
+      - name: Upload only evidence, never the proprietary APK or signing key
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-Xiaomi-Android16-smoke-evidence
+          path: |
+            build/full/ime-open.png
+            build/full/glass-settings.xml
+            build/full/ime-state.txt
+            build/full/test-result.txt
+          if-no-files-found: ignore

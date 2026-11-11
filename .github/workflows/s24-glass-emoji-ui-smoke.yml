@@ -1,0 +1,449 @@
+name: S24 Glass + Emoji UI Smoke Android 16
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/s24-glass-emoji-20261109]
+    paths: ['.github/workflows/s24-glass-emoji-ui-smoke.yml', 'projects/s24-latinime-glass/sign_and_verify_update.sh', 'projects/s24-latinime-glass/check_apk_signer_cert.py', 'projects/s24-latinime-glass/src/main/java/**']
+  pull_request:
+    paths: ['.github/workflows/s24-glass-emoji-ui-smoke.yml', 'projects/s24-latinime-glass/sign_and_verify_update.sh', 'projects/s24-latinime-glass/check_apk_signer_cert.py', 'projects/s24-latinime-glass/src/main/java/**']
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(command -v sdkmanager || true)"
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -1)"
+          fi
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
+      - name: Compile test-only IME with real Glass and Emoji source
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          JAR="$SDK/platforms/android-35/android.jar"
+          P="projects/s24-latinime-glass/src/main/java"
+          mkdir -p build/ui/src/com/android/inputmethod/latin \
+                   build/ui/src/harness build/ui/res/xml build/ui/stubs build/ui/classes build/ui/dex
+          cat > build/ui/src/com/android/inputmethod/latin/LatinIME.java <<'JAVA'
+          package com.android.inputmethod.latin;
+          import android.inputmethodservice.InputMethodService;
+          import android.view.View;
+          import android.widget.TextView;
+          public class LatinIME extends InputMethodService {
+            @Override public View onCreateInputView() {
+              TextView view = new TextView(this);
+              view.setText("Original keyboard UI fixture");
+              view.setBackgroundColor(0xff242d38);
+              view.setTextColor(-1);
+              view.setHeight(220);
+              return view;
+            }
+          }
+          JAVA
+          cat > build/ui/src/harness/DemoActivity.java <<'JAVA'
+          package harness;
+          import android.app.Activity;
+          import android.os.Bundle;
+          import android.content.Context;
+          import android.view.inputmethod.InputMethodManager;
+          import android.widget.EditText;
+          public class DemoActivity extends Activity {
+            public void onCreate(Bundle b) {
+              super.onCreate(b);
+              EditText e=new EditText(this);
+              e.setHint("Glass emoji tester");
+              e.setSingleLine(true);
+              setContentView(e);
+              e.requestFocus();
+              e.postDelayed(()->((InputMethodManager)getSystemService(
+                Context.INPUT_METHOD_SERVICE)).showSoftInput(e,0),800);
+            }
+          }
+          JAVA
+          cat > build/ui/AndroidManifest.xml <<'XML'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.tzn5.glassuitest">
+            <application android:label="Glass UI Test" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false" android:debuggable="true">
+              <service android:name="com.android.inputmethod.latin.GlassIME" android:exported="true" android:permission="android.permission.BIND_INPUT_METHOD">
+                <intent-filter><action android:name="android.view.InputMethod"/></intent-filter>
+                <meta-data android:name="android.view.im" android:resource="@xml/method"/>
+              </service>
+              <activity android:name="com.android.inputmethod.latin.setup.GlassActivity" android:exported="true"/>
+              <activity android:name="harness.DemoActivity" android:exported="true" android:windowSoftInputMode="stateAlwaysVisible|adjustResize">
+                <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+              </activity>
+            </application>
+          </manifest>
+          XML
+          cat > build/ui/res/xml/method.xml <<'XML'
+          <input-method xmlns:android="http://schemas.android.com/apk/res/android"
+            android:settingsActivity="com.android.inputmethod.latin.setup.GlassActivity"/>
+          XML
+          javac -encoding UTF-8 -cp "$JAR" -d build/ui/stubs build/ui/src/com/android/inputmethod/latin/LatinIME.java
+          javac -encoding UTF-8 -cp "$JAR:build/ui/stubs" -d build/ui/classes \
+            "$P/com/android/inputmethod/latin/GlassIME.java" \
+            "$P/com/android/inputmethod/latin/GlassEmojiPanel.java" \
+            "$P/com/android/inputmethod/latin/setup/GlassActivity.java" \
+            build/ui/src/harness/DemoActivity.java
+          "$SDK/build-tools/35.0.0/d8" --min-api 30 --lib "$JAR" --output build/ui/dex \
+             $(find build/ui/stubs build/ui/classes -name '*.class' | sort)
+          "$SDK/build-tools/35.0.0/aapt2" compile -o build/ui/resources.zip build/ui/res/xml/method.xml
+          "$SDK/build-tools/35.0.0/aapt2" link -o build/ui/raw.apk -I "$JAR" --manifest build/ui/AndroidManifest.xml \
+            --min-sdk-version 30 --target-sdk-version 35 build/ui/resources.zip
+          (cd build/ui/dex && zip -q ../raw.apk classes.dex)
+          "$SDK/build-tools/35.0.0/zipalign" -f 4 build/ui/raw.apk build/ui/aligned.apk
+          keytool -genkeypair -noprompt -keystore build/ui/test.jks -storepass changeit \
+             -alias test -keypass changeit -keyalg RSA -keysize 2048 -validity 30 -dname 'CN=UI Test' >/dev/null 2>&1
+          "$SDK/build-tools/35.0.0/apksigner" sign --ks build/ui/test.jks --ks-key-alias test \
+             --ks-pass pass:changeit --key-pass pass:changeit --out build/ui/smoke.apk build/ui/aligned.apk
+          "$SDK/build-tools/35.0.0/apksigner" verify build/ui/smoke.apk
+      - name: Verify release signing gate rejects a mismatched update certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          P="projects/s24-latinime-glass/sign_and_verify_update.sh"
+          export S24_APK_KS_PASSWORD="changeit" S24_APK_KEY_PASSWORD="changeit"
+          bash "$P" build/ui/smoke.apk build/ui/aligned.apk \
+            build/ui/test.jks test build/ui/re-signed-with-original.apk
+          test -s build/ui/re-signed-with-original.apk
+          keytool -genkeypair -noprompt -keystore build/ui/mismatch.jks \
+            -storepass changeit -alias test -keypass changeit -keyalg RSA \
+            -keysize 2048 -validity 30 -dname "CN=Different Test Certificate" >/dev/null 2>&1
+          if bash "$P" build/ui/smoke.apk build/ui/aligned.apk \
+               build/ui/mismatch.jks test build/ui/should-not-exist.apk; then
+            echo "FAIL: released an APK signed with the wrong certificate" >&2
+            exit 1
+          fi
+          test ! -e build/ui/should-not-exist.apk
+          echo "PASS: matching certificate can update; mismatched signer is blocked"
+          python3 projects/s24-latinime-glass/check_apk_signer_cert.py \
+            build/ui/smoke.apk --baseline build/ui/re-signed-with-original.apk
+          echo "PASS: independently parsed v2/v3 signer certificate agrees across APK update"
+      - name: Write one Bash emulator test script
+        shell: bash
+        run: |
+          cat > build/ui/run_smoke.sh <<'SMOKE_SCRIPT'
+          set -euo pipefail
+          set -eu
+          # Ground the full-Xiaomi JNI feasibility against the *running*
+          # Android 16 emulator (the UI fixture itself has no native JNI).
+          echo "EMULATOR_SUPPORTED_ABIS=$(adb shell getprop ro.product.cpu.abilist | tr -d '\\r')"
+          echo "EMULATOR_NATIVE_BRIDGE=$(adb shell getprop ro.dalvik.vm.native.bridge | tr -d '\\r')"
+          echo "EMULATOR_ANDROID_API=$(adb shell getprop ro.build.version.sdk | tr -d '\\r')"
+          adb install -r build/ui/smoke.apk
+          adb shell pm path dev.tzn5.glassuitest
+          echo "Registered input methods:"
+          adb shell ime list -a -s || true
+          echo "Package declaration for GlassIME:"
+          adb shell dumpsys package dev.tzn5.glassuitest | grep -A 5 -B 3 GlassIME || true
+          sleep 5
+          adb shell ime list -a -s || true
+          adb shell settings put secure show_ime_with_hard_keyboard 1
+          adb shell ime enable dev.tzn5.glassuitest/com.android.inputmethod.latin.GlassIME
+          adb shell ime set dev.tzn5.glassuitest/com.android.inputmethod.latin.GlassIME
+          adb shell am start -n dev.tzn5.glassuitest/harness.DemoActivity
+          sleep 8
+          adb shell input tap 170 180
+          sleep 3
+          # System launcher ANR is a frequent Android 15 emulator-only issue
+          # and intercepts taps. Detect it from SystemUI, close it, and reopen
+          # our test activity before taking either UI snapshot.
+          for attempt in 1 2 3; do
+            adb shell uiautomator dump /sdcard/dialog-guard.xml >/dev/null || true
+            adb pull /sdcard/dialog-guard.xml build/ui/dialog-guard.xml >/dev/null || true
+            if grep -qE 'isn.t responding|not responding' build/ui/dialog-guard.xml; then
+              echo "RECOVER: system launcher ANR overlay, attempt $attempt"
+              adb shell input tap 500 1110
+              adb shell am force-stop com.android.launcher3 || true
+              adb shell am start -n dev.tzn5.glassuitest/harness.DemoActivity
+              sleep 4
+              adb shell input tap 170 180
+              sleep 3
+            else
+              break
+            fi
+          done
+          adb shell uiautomator dump /sdcard/dialog-guard.xml >/dev/null
+          adb pull /sdcard/dialog-guard.xml build/ui/dialog-guard.xml >/dev/null
+          if grep -qE 'isn.t responding|not responding' build/ui/dialog-guard.xml; then
+            echo 'BLOCKED: emulator launcher ANR persists after 3 recoveries' >&2
+            exit 86
+          fi
+          adb shell dumpsys input_method > build/ui/ime-state.txt || true
+          adb shell dumpsys window windows > build/ui/window-state.txt || true
+          adb logcat -d -v time > build/ui/logcat.txt || true
+          adb shell screencap -p /sdcard/keyboard-screen.png
+          adb pull /sdcard/keyboard-screen.png build/ui/keyboard-screen.png >/dev/null
+          adb shell uiautomator dump /sdcard/ui.xml >/dev/null
+          adb pull /sdcard/ui.xml build/ui/open.xml >/dev/null
+          python3 - <<'PY'
+          import struct,subprocess
+          # Android 15 UIAutomator may omit IME windows. Tap the emulator's
+          # dedicated Emoji toolbar using a percentage of captured screen.
+          png=open('build/ui/keyboard-screen.png','rb').read()
+          assert png[:8]==b'\x89PNG\r\n\x1a\n', 'Screenshot missing'
+          width,height=struct.unpack('>II',png[16:24])
+          assert width>=720 and height>=1200
+          x,y=round(width*.84),round(height*.885)
+          subprocess.run(['adb','shell','input','tap',str(x),str(y)],check=True)
+          print('Tapped Emoji at',x,y,'on',width,height,'emulator')
+          PY
+          sleep 2
+          adb shell screencap -p /sdcard/emoji-screen.png
+          adb pull /sdcard/emoji-screen.png build/ui/emoji-screen.png >/dev/null
+          adb shell uiautomator dump /sdcard/emoji.xml >/dev/null
+          adb pull /sdcard/emoji.xml build/ui/emoji.xml >/dev/null
+          python3 - <<'PY'
+          import hashlib
+          before=open('build/ui/keyboard-screen.png','rb').read()
+          after=open('build/ui/emoji-screen.png','rb').read()
+          assert hashlib.sha256(before).digest()!=hashlib.sha256(after).digest(), 'Emoji tap did not change the screen'
+          print('PASS: emoji tap changed Android emulator screen; review screenshot artifact for visual confirmation')
+          PY
+          # First grid cell is 😀. Verify it is committed to the focused
+          # EditText, not only shown visually in the picker.
+          python3 - <<'PY'
+          import struct,subprocess
+          raw=open('build/ui/emoji-screen.png','rb').read()
+          w,h=struct.unpack('>II',raw[16:24])
+          x=round(w*.058);y=round(h*.83)
+          subprocess.run(['adb','shell','input','tap',str(x),str(y)],check=True)
+          print('Tapped first emoji at',x,y)
+          PY
+          sleep 1
+          adb shell uiautomator dump /sdcard/emoji-insert.xml >/dev/null
+          adb pull /sdcard/emoji-insert.xml build/ui/emoji-insert.xml >/dev/null
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          nodes=[x.attrib for x in ET.parse('build/ui/emoji-insert.xml').iter('node')]
+          edits=[n.get('text','') for n in nodes if n.get('class','').endswith('EditText')]
+          assert any('😀' in x for x in edits), f'Emoji tap did not insert into EditText: {edits}'
+          print('PASS: tapping advanced emoji inserts Unicode text into the app InputConnection')
+          PY
+          # Exercise the actual user-facing fallback: short tap closes
+          # the emoji panel, long-press on its toolbar button opens Glass settings.
+          python3 - <<'PY'
+          import struct,subprocess
+          png=open('build/ui/emoji-screen.png','rb').read()
+          width,height=struct.unpack('>II',png[16:24])
+          x=round(width*.84)
+          # Opening the emoji grid increases the IME height, moving the
+          # toolbar upward. Close at the OPEN-panel toolbar position first.
+          close_y=round(height*.685)
+          long_y=round(height*.885)
+          subprocess.run(['adb','shell','input','tap',str(x),str(close_y)],check=True)
+          import time;time.sleep(.7)
+          subprocess.run(['adb','shell','input','swipe',str(x),str(long_y),str(x),str(long_y),'1150'],check=True)
+          print('Closed emoji at',x,close_y,'and long-pressed settings at',x,long_y)
+          PY
+          sleep 2
+          adb shell uiautomator dump /sdcard/longpress-settings.xml >/dev/null
+          adb pull /sdcard/longpress-settings.xml build/ui/longpress-settings.xml >/dev/null
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          nodes=[x.attrib.get('text','') for x in ET.parse('build/ui/longpress-settings.xml').iter('node')]
+          assert any('Opacitate fundal' in s for s in nodes), (
+              'Long-press Emoji did not open the Glass settings screen')
+          print('PASS: long-press Emoji opens Glass settings without launcher icon')
+          PY
+          # Verify the directly visible gear icon above Xiaomi's original key
+          # area, not only the long-press fallback or Android settings metadata.
+          adb shell input keyevent 4
+          sleep 1
+          adb shell input tap 180 900
+          sleep 2
+          python3 - <<'PY'
+          import struct,subprocess
+          png=open('build/ui/keyboard-screen.png','rb').read()
+          w,h=struct.unpack('>II',png[16:24])
+          # Rightmost 42dp of the dedicated 34dp toolbar is the gear;
+          # .84 remains within the Emoji chip on a 1080px/360dp emulator.
+          x,y=round(w*.94),round(h*.885)
+          subprocess.run(['adb','shell','input','tap',str(x),str(y)],check=True)
+          print('Tapped visible keyboard settings gear at',x,y)
+          PY
+          sleep 2
+          adb shell uiautomator dump /sdcard/gear-settings.xml >/dev/null
+          adb pull /sdcard/gear-settings.xml build/ui/gear-settings.xml >/dev/null
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          texts=[n.attrib.get('text','') for n in ET.parse('build/ui/gear-settings.xml').iter('node')]
+          assert any('Opacitate fundal' in t for t in texts), (
+              'Direct in-keyboard settings gear did not open GlassActivity')
+          print('PASS: direct in-keyboard settings gear opens Glass customization')
+          PY
+          adb shell am start -n dev.tzn5.glassuitest/com.android.inputmethod.latin.setup.GlassActivity
+          sleep 2
+          adb shell uiautomator dump /sdcard/settings.xml >/dev/null
+          adb pull /sdcard/settings.xml build/ui/settings.xml >/dev/null
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          texts=[n.attrib.get('text','') for n in ET.parse('build/ui/settings.xml').iter('node')]
+          assert any('Opacitate' in s for s in texts), 'Glass slider not shown'
+          seekbars=[n.attrib for n in ET.parse('build/ui/settings.xml').iter('node') if n.attrib.get('class')=='android.widget.SeekBar']
+          assert len(seekbars)==1, f'Expected one Glass opacity SeekBar, got {len(seekbars)}'
+          import re,subprocess
+          x1,y1,x2,y2=map(int,re.findall(r'\d+',seekbars[0]['bounds']))
+          x=round(x1+(x2-x1)*.82);y=(y1+y2)//2
+          subprocess.run(['adb','shell','input','tap',str(x),str(y)],check=True)
+          print('PASS: Glass opacity slider visible and tapped:',x,y)
+          PY
+          sleep 1
+          adb shell run-as dev.tzn5.glassuitest cat shared_prefs/s24_glass.xml > build/ui/glass-prefs.xml
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          prefs=ET.parse('build/ui/glass-prefs.xml').getroot()
+          candidates=[int(node.attrib['value']) for node in prefs if node.attrib.get('name')=='opacity']
+          assert len(candidates)==1 and 0<candidates[0]<=100, 'Opacity not saved after tapping Glass slider'
+          print('PASS: Glass opacity setting persisted as', candidates[0], '/100; no typing history in this preference file')
+          PY
+          adb shell screencap -p /sdcard/settings-screen.png
+          adb pull /sdcard/settings-screen.png build/ui/settings-screen.png >/dev/null
+          # Measure actual visual change at different background opacity values.
+          # Settings are manipulated through the real SeekBar, not injected via prefs.
+          python3 - <<'PY'
+          import subprocess,xml.etree.ElementTree as ET,re
+          node=next(n.attrib for n in ET.parse('build/ui/settings.xml').iter('node')
+                    if n.attrib.get('class')=='android.widget.SeekBar')
+          x1,y1,x2,y2=map(int,re.findall(r'\d+',node['bounds']))
+          for amount,filename in [(95,'glass-opaque.png'),(5,'glass-transparent.png')]:
+              x=round(x1+(x2-x1)*amount/100);y=(y1+y2)//2
+              subprocess.run(['adb','shell','am','start','-n',
+                  'dev.tzn5.glassuitest/com.android.inputmethod.latin.setup.GlassActivity'],check=True,stdout=subprocess.DEVNULL)
+              import time;time.sleep(1.5)
+              # Wait for settings window to become top before interacting.
+              focused=subprocess.check_output(['adb','shell','dumpsys','window']).decode('utf8',errors='replace')
+              assert 'GlassActivity' in focused, 'Glass settings did not open before test tap'
+              subprocess.run(['adb','shell','input','tap',str(x),str(y)],check=True)
+              time.sleep(.6)
+              xml=subprocess.check_output(['adb','shell','run-as','dev.tzn5.glassuitest',
+                  'cat','shared_prefs/s24_glass.xml']).decode('utf8')
+              import re
+              saved=re.search(r'name="opacity" value="(\d+)"',xml)
+              assert saved and abs(int(saved.group(1))-amount)<=10, (
+                  f'Glass SeekBar failed to persist {amount}%: {xml}')
+              # CLEAR_TOP closes the Glass settings activity but keeps the
+              # already-running IME service alive. Force-stopping the package
+              # also kills the keyboard and invalidates visual comparisons.
+              subprocess.run(['adb','shell','am','start','--activity-clear-top','-n',
+                  'dev.tzn5.glassuitest/harness.DemoActivity'],check=True,stdout=subprocess.DEVNULL)
+              time.sleep(2)
+              subprocess.run(['adb','shell','input','tap','180','900'],check=True)
+              time.sleep(2)
+              state=subprocess.check_output(['adb','shell','dumpsys','input_method']).decode('utf8',errors='replace')
+              if 'mInputShown=true' not in state and 'mShowRequested=true' not in state:
+                  subprocess.run(['adb','shell','input','tap','180','900'],check=True)
+                  time.sleep(2)
+                  state=subprocess.check_output(['adb','shell','dumpsys','input_method']).decode('utf8',errors='replace')
+              assert 'mInputShown=true' in state, (
+                  'Keyboard not visible after returning from Glass settings; no visual alpha comparison possible')
+              subprocess.run(['adb','shell','screencap','-p','/sdcard/'+filename],check=True)
+              subprocess.run(['adb','pull','/sdcard/'+filename,'build/ui/'+filename],check=True,stdout=subprocess.DEVNULL)
+              print('Captured real Glass UI at opacity setting',amount)
+          PY
+          python3 -m pip install --disable-pip-version-check --quiet "Pillow==11.3.0"
+          python3 - <<'PY'
+          from PIL import Image,ImageChops,ImageStat
+          a=Image.open('build/ui/glass-opaque.png').convert('RGB')
+          b=Image.open('build/ui/glass-transparent.png').convert('RGB')
+          assert a.size==b.size
+          w,h=a.size
+          # Bottom 28% covers the input method; top of app should be stable.
+          rect=(0,int(h*.72),w,h)
+          diff=ImageChops.difference(a.crop(rect),b.crop(rect))
+          change=sum(ImageStat.Stat(diff).mean)/3
+          assert change>2, f'Glass opacity did not visibly change IME pixels (mean={change:.2f})'
+          print(f'PASS: Glass opacity changed actual rendered keyboard background (pixel delta {change:.2f})')
+          # At 5% opacity, the Emoji control must remain legible over a
+          # nearly-white app. Compare its own pill, not the Xiaomi keycaps.
+          chip=b.crop((int(w*.77),int(h*.865),int(w*.965),int(h*.904)))
+          chip_luma=sum(ImageStat.Stat(chip).mean)/3
+          assert chip_luma<180, (
+              f'Emoji button invisible on bright app at full Glass transparency: '
+              f'average RGB {chip_luma:.1f}')
+          print(f'PASS: contrast-safe Emoji pill remains visible (luma={chip_luma:.1f})')
+          PY
+
+          # Repeatedly hide/show the real Android IME view. Missing input
+          # windows or an extension crash fail this performance stability gate.
+          python3 - <<'PY'
+          import subprocess,time
+          def adb(*args):
+              return subprocess.check_output(['adb','shell',*map(str,args)],
+                  stderr=subprocess.STDOUT).decode('utf-8',errors='replace')
+          adb('am','start','--activity-clear-top','-n',
+              'dev.tzn5.glassuitest/harness.DemoActivity')
+          adb('input','tap','180','900')
+          time.sleep(1)
+          adb('logcat','-c')
+          for i in range(12):
+              adb('input','keyevent','4')
+              time.sleep(.3)
+              adb('input','tap','180','900')
+              visible=False
+              for retry in range(4):
+                  time.sleep(.35)
+                  if 'mInputShown=true' in adb('dumpsys','input_method'):
+                      visible=True
+                      break
+              assert visible, f'IME failed to reappear on open/close cycle {i+1}'
+          log=adb('logcat','-d','-v','brief')
+          assert 'Process: dev.tzn5.glassuitest' not in log, (
+              'Glass/Emoji IME crashed during hide/show cycles')
+          print('PASS: 12 consecutive IME hide/show cycles without lost view or app crash')
+          PY
+
+          SMOKE_SCRIPT
+          chmod +x build/ui/run_smoke.sh
+      - name: Enable KVM
+        run: if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          target: default
+          profile: pixel_4
+          cores: 4
+          ram-size: 4096M
+          disable-animations: true
+          disable-spellchecker: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-metrics
+          script: bash build/ui/run_smoke.sh
+      - name: Upload smoke APK for manifest inspection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Glass-Emoji-smoke-fixture-APK
+          path: build/ui/smoke.apk
+          if-no-files-found: ignore
+      - name: Upload visual evidence of emoji and Glass UI
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Glass-Emoji-UI-screens-and-settings
+          path: |
+            build/ui/*.png
+            build/ui/settings.xml
+            build/ui/emoji.xml
+            build/ui/glass-prefs.xml
+          if-no-files-found: ignore
+      - name: Upload UI diagnostics when failing
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Glass-Emoji-UI-smoke-debug
+          path: |
+            build/ui/*.xml
+            build/ui/*.txt
+            build/ui/*.png
+          if-no-files-found: ignore

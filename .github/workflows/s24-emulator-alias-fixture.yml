@@ -1,0 +1,99 @@
+name: S24 Xiaomi Emulator-Only Package Alias Gate
+on:
+  push:
+    branches: [feature/s24-glass-emoji-20261109]
+    paths:
+      - "projects/s24-latinime-glass/make_qa_package_alias.py"
+      - ".github/workflows/s24-emulator-alias-fixture.yml"
+  pull_request:
+    paths:
+      - "projects/s24-latinime-glass/make_qa_package_alias.py"
+      - ".github/workflows/s24-emulator-alias-fixture.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  alias-fixture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Android SDK test tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SM="$(command -v sdkmanager || true)"
+          if [[ -z "$SM" ]]; then
+            SM="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools" -path "*/bin/sdkmanager" -type f | sort -V | tail -1)"
+          fi
+          "$SM" "platforms;android-35" "build-tools;35.0.0"
+      - name: Compile synthetic Android manifest with providers and dictionary authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          AAPT="$SDK/build-tools/35.0.0/aapt2"
+          JAR="$SDK/platforms/android-35/android.jar"
+          mkdir -p build/alias-fixture/res/values
+          cat > build/alias-fixture/AndroidManifest.xml <<'XML'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+            package="com.android.inputmethod.latin">
+            <permission android:name="com.android.inputmethod.latin.HIDE_SOFT_INPUT"
+              android:protectionLevel="signature"/>
+            <permission android:name="com.android.inputmethod.latin.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+              android:protectionLevel="signature"/>
+            <application android:allowBackup="false">
+              <service android:name="com.android.inputmethod.latin.LatinIME"
+                android:exported="true" android:permission="android.permission.BIND_INPUT_METHOD">
+                <intent-filter><action android:name="android.view.InputMethod"/></intent-filter>
+              </service>
+              <provider android:name="androidx.startup.InitializationProvider"
+                android:exported="false"
+                android:authorities="com.android.inputmethod.latin.androidx-startup"/>
+              <provider android:name="com.android.inputmethod.dictionarypack.DictionaryProvider"
+                android:exported="false" android:authorities="@string/dictionary_authority"/>
+            </application>
+          </manifest>
+          XML
+          cat > build/alias-fixture/res/values/strings.xml <<'XML'
+          <resources>
+            <string name="dictionary_authority">com.android.inputmethod.latin</string>
+          </resources>
+          XML
+          "$AAPT" compile -o build/alias-fixture/resource-compiled.zip \
+            build/alias-fixture/res/values/strings.xml
+          "$AAPT" link -o build/alias-fixture/original.apk -I "$JAR" \
+            --manifest build/alias-fixture/AndroidManifest.xml \
+            --min-sdk-version 30 --target-sdk-version 35 \
+            build/alias-fixture/resource-compiled.zip
+          python3 - <<'PY'
+          import zipfile
+          p="build/alias-fixture/original.apk"
+          with zipfile.ZipFile(p,"a") as f:
+              f.writestr("classes.dex", b"dex\nFAKE_FIXTURE_ONLY")
+              f.writestr("classes2.dex", b"dex\nFAKE_FIXTURE_ONLY")
+          PY
+      - name: Isolate package without changing service class or original resources
+        run: |
+          set -euo pipefail
+          python3 projects/s24-latinime-glass/make_qa_package_alias.py \
+            build/alias-fixture/original.apk build/alias-fixture/alias.apk
+          python3 - <<'PY'
+          import sys,zipfile
+          sys.path.insert(0,"projects/s24-latinime-glass")
+          from make_qa_package_alias import elements,ORIGINAL,ALIAS
+          with zipfile.ZipFile("build/alias-fixture/alias.apk") as f:
+              e=list(elements(f.read("AndroidManifest.xml")))
+              assert [a["package"] for tag,a in e if tag=="manifest"]==[ALIAS]
+              providers=[a.get("authorities") for tag,a in e if tag=="provider"]
+              assert ALIAS+".androidx-startup" in providers
+              r=f.read("resources.arsc")
+              assert ALIAS.encode("utf8") in r and ORIGINAL.encode("utf8") not in r
+              assert ALIAS.encode("utf-16le") in r and ORIGINAL.encode("utf-16le") not in r
+              classes=[a.get("name") for tag,a in e if tag=="service"]
+              assert ORIGINAL+".LatinIME" in classes
+              assert f.testzip() is None
+          print("PASS: isolated package, provider identities, DEX unchanged")
+          PY
+          "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools/35.0.0/aapt2" dump badging build/alias-fixture/alias.apk | \
+            grep "^package: name='com.android.inputmethod.s24qa'"
+          echo "PASS: Android package manager reads the isolated test-only identity"

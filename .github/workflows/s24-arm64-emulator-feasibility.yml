@@ -1,0 +1,62 @@
+name: S24 ARM64 Native Android Emulator Feasibility
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check-android-arm:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Probe ARM64 host and Android SDK capabilities (no user APK uploaded)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/arm64-probe
+          {
+            echo "Machine architecture: $(uname -m)"
+            echo "Host kernel: $(uname -s)"
+            echo "KVM device: $(test -c /dev/kvm && echo available || echo unavailable)"
+            echo "Java: $(java -version 2>&1 | head -1)"
+            echo "ANDROID_HOME: ${ANDROID_HOME:-unset}"
+          } | tee build/arm64-probe/capabilities.txt
+          test "$(uname -m)" = "aarch64"
+
+          TOOL="$(command -v emulator || true)"
+          if [ -z "$TOOL" ]; then
+            TOOL="$(find /usr/local/lib/android /opt/android /opt/hostedtoolcache -path '*/emulator/emulator' -type f 2>/dev/null | head -1 || true)"
+          fi
+          if [ -n "$TOOL" ]; then
+            echo "ANDROID_EMULATOR_PATH=$TOOL" | tee -a build/arm64-probe/capabilities.txt
+            file "$TOOL" | tee -a build/arm64-probe/capabilities.txt
+            if "$TOOL" -version > build/arm64-probe/emulator-version.txt 2>&1; then
+              echo "PASS: emulator executable starts on native ARM64 host" | tee -a build/arm64-probe/capabilities.txt
+            else
+              echo "BLOCKED: installed Android emulator cannot execute on ARM64 host" | tee -a build/arm64-probe/capabilities.txt
+            fi
+          else
+            echo "BLOCKED: no Android emulator installed on ARM64 host" | tee -a build/arm64-probe/capabilities.txt
+          fi
+          SDKMANAGER="$(command -v sdkmanager || true)"
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find /usr/local/lib/android /opt/android -path '*/bin/sdkmanager' -type f 2>/dev/null | head -1 || true)"
+          fi
+          if [ -n "$SDKMANAGER" ]; then
+            echo "SDK manager: $SDKMANAGER" | tee -a build/arm64-probe/capabilities.txt
+            timeout 90 "$SDKMANAGER" --list --channel=0 > build/arm64-probe/sdk-packages.txt 2>&1 || true
+            grep -E 'system-images;android-(35|36);[^ ]*;arm64-v8a' build/arm64-probe/sdk-packages.txt |
+              head -10 | tee -a build/arm64-probe/capabilities.txt || true
+          else
+            echo "BLOCKED: Android sdkmanager unavailable on ARM64 runner" | tee -a build/arm64-probe/capabilities.txt
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: s24-arm64-host-probe-report
+          path: build/arm64-probe/
+          if-no-files-found: ignore

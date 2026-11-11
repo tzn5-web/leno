@@ -1,0 +1,169 @@
+name: S24 Xiaomi LatinIME Glass + Emoji addon
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/s24-glass-emoji-20261109
+    paths:
+      - "projects/s24-latinime-glass/**"
+      - ".github/workflows/s24-glass-emoji-addon.yml"
+  pull_request:
+    paths:
+      - "projects/s24-latinime-glass/**"
+      - ".github/workflows/s24-glass-emoji-addon.yml"
+permissions:
+  contents: read
+jobs:
+  build-addon:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Android SDK build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(command -v sdkmanager || true)"
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -1)"
+          fi
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
+      - name: Compile GlassIME and advanced emoji without altering original LatinIME
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          ANDROID_JAR="$SDK/platforms/android-35/android.jar"
+          SOURCE="projects/s24-latinime-glass"
+          mkdir -p build/stubs build/classes build/dex
+          javac -encoding UTF-8 -source 8 -target 8 \
+            -cp "$ANDROID_JAR" -d build/stubs \
+            "$SOURCE/src/stub/com/android/inputmethod/latin/LatinIME.java"
+          find "$SOURCE/src/main/java" -name '*.java' -print0 | \
+            xargs -0 javac -encoding UTF-8 -source 8 -target 8 \
+              -cp "$ANDROID_JAR:build/stubs" -d build/classes
+          "$SDK/build-tools/35.0.0/d8" --min-api 30 \
+            --lib "$ANDROID_JAR" \
+            --output build/dex $(find build/classes -name '*.class' | sort)
+          test -s build/dex/classes.dex
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Rebind test keeps the original LatinIME service identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          mkdir -p build/rebind-fixture build/rebind-output
+          "$SDK/build-tools/35.0.0/d8" --min-api 30             --lib "$SDK/platforms/android-35/android.jar"             --output build/rebind-fixture             build/stubs/com/android/inputmethod/latin/LatinIME.class
+          gradle --no-daemon -p projects/s24-latinime-glass/dex-rebind run             --args="$PWD/build/rebind-fixture/classes.dex $PWD/build/dex/classes.dex $PWD/build/rebind-output/base.dex $PWD/build/rebind-output/addon.dex"
+      - name: Package DEX rebind utility for real original APK validation
+        run: gradle --no-daemon -p projects/s24-latinime-glass/dex-rebind installDist
+      - name: Verify serialized multi-DEX service linkage and override ABI
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -cp "$PWD/projects/s24-latinime-glass/dex-rebind/build/install/latinime-service-rebind/lib/*" \
+            dev.tzn5.rebind.VerifyImeLinkage \
+            build/rebind-output/base.dex build/rebind-output/addon.dex
+      - name: Verify strict privacy patch disables vocabulary writes and emoji recent history
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          FIX="build/privacy-fixture"
+          mkdir -p "$FIX/src/com/android/inputmethod/latin/personalization" "$FIX/classes" "$FIX/dex"
+          cat > "$FIX/src/com/android/inputmethod/latin/DictionaryFacilitatorImpl.java" <<'JAVA'
+          package com.android.inputmethod.latin;
+          public class DictionaryFacilitatorImpl {
+            public void addToUserHistory() { System.out.println("unsafe"); }
+            private void addWordToUserHistory() { System.out.println("unsafe"); }
+          }
+          JAVA
+          cat > "$FIX/src/com/android/inputmethod/latin/ExpandableBinaryDictionary.java" <<'JAVA'
+          package com.android.inputmethod.latin;
+          public class ExpandableBinaryDictionary {
+            public void updateEntriesForWord() { System.out.println("unsafe"); }
+            public interface UpdateEntriesForInputEventsCallback { void onFinished(); }
+            public void updateEntriesForInputEvents(
+                    java.util.ArrayList<?> events, UpdateEntriesForInputEventsCallback callback) {
+              System.out.println("unsafe");
+              if (callback != null) callback.onFinished();
+            }
+            public void asyncFlushBinaryDictionary() { System.out.println("unsafe"); }
+            protected void addUnigramLocked() { System.out.println("unsafe"); }
+            protected void addNgramEntryLocked() { System.out.println("unsafe"); }
+          }
+          JAVA
+          cat > "$FIX/src/com/android/inputmethod/latin/personalization/UserHistoryDictionary.java" <<'JAVA'
+          package com.android.inputmethod.latin.personalization;
+          public class UserHistoryDictionary {
+            public static void addToDictionary() { System.out.println("unsafe"); }
+          }
+          JAVA
+          mkdir -p "$FIX/src/com/android/inputmethod/latin/settings"
+          cat > "$FIX/src/com/android/inputmethod/latin/settings/Settings.java" <<'JAVA'
+          package com.android.inputmethod.latin.settings;
+          import android.content.SharedPreferences;
+          public class Settings {
+            public static String readEmojiRecentKeys(SharedPreferences prefs) {
+              return prefs.getString("emoji_recent_keys", "old-private-data");
+            }
+            public static void writeEmojiRecentKeys(SharedPreferences prefs, String keys) {
+              prefs.edit().putString("emoji_recent_keys", keys).apply();
+            }
+          }
+          JAVA
+          javac -encoding UTF-8 -cp "$SDK/platforms/android-35/android.jar" -d "$FIX/classes" $(find "$FIX/src" -name '*.java' | sort)
+          "$SDK/build-tools/35.0.0/d8" --min-api 30 \
+            --lib "$SDK/platforms/android-35/android.jar" \
+            --output "$FIX/dex" $(find "$FIX/classes" -name '*.class' | sort)
+          java -cp "$PWD/projects/s24-latinime-glass/dex-rebind/build/install/latinime-service-rebind/lib/*" \
+            dev.tzn5.rebind.PrivacyNoHistoryPatch "$FIX/dex/classes.dex" "$FIX/privacy-disabled.dex"
+          test -s "$FIX/privacy-disabled.dex"
+          echo "PASS: privacy DEX vocabulary writers, emoji recents getter/setter disabled; callback preserved"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: S24-DEX-Rebind-Tool
+          path: projects/s24-latinime-glass/dex-rebind/build/install/latinime-service-rebind/
+          if-no-files-found: error
+      - name: Verify private full-APK test tools are syntactically valid
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            projects/s24-latinime-glass/audit_full_apk.py \
+            projects/s24-latinime-glass/audit_standalone_apk.py
+          bash -n projects/s24-latinime-glass/run_full_apk_emu_smoke.sh
+          bash -n projects/s24-latinime-glass/sign_and_verify_update.sh
+          python3 - <<'PY'
+          import pathlib
+          path=pathlib.Path(".github/workflows/s24-full-xiaomi-private-emulator.yml")
+          text=path.read_text()
+          assert "S24_PRIVATE_QA_APK_URL" in text, "Private URL secret missing"
+          assert "actions/upload-artifact" in text, "Evidence upload missing"
+          for forbidden in ("upload-original-apk", "public_url", "release:"):
+              assert forbidden not in text
+          print("PASS: private full-APK runner preflight syntax and no binary publication")
+          PY
+      - name: Source privacy gate (only appearance preferences)
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("projects/s24-latinime-glass/src/main/java")
+          text="\n".join(f.read_text() for f in p.rglob("*.java"))
+          for forbidden in ["java.net.", "HttpURLConnection", "FileOutputStream", "FileWriter",
+                            "android.util.Log", "getClipboard", "Firebase", "Analytics",
+                            "android.permission.INTERNET"]:
+              assert forbidden not in text, forbidden
+          assert '"s24_glass"' in text
+          print("PASS: no network, telemetry, clipboard or keystroke file recording in addon")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: S24-LatinIME-Glass-Emoji-DEX
+          path: build/dex/classes.dex
+          if-no-files-found: error
