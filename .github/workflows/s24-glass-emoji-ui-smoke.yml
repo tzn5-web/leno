@@ -256,6 +256,32 @@ jobs:
               'Long-press Emoji did not open the Glass settings screen')
           print('PASS: long-press Emoji opens Glass settings without launcher icon')
           PY
+          # Verify the directly visible gear icon above Xiaomi's original key
+          # area, not only the long-press fallback or Android settings metadata.
+          adb shell input keyevent 4
+          sleep 1
+          adb shell input tap 180 900
+          sleep 2
+          python3 - <<'PY'
+          import struct,subprocess
+          png=open('build/ui/keyboard-screen.png','rb').read()
+          w,h=struct.unpack('>II',png[16:24])
+          # Rightmost 42dp of the dedicated 34dp toolbar is the gear;
+          # .84 remains within the Emoji chip on a 1080px/360dp emulator.
+          x,y=round(w*.94),round(h*.885)
+          subprocess.run(['adb','shell','input','tap',str(x),str(y)],check=True)
+          print('Tapped visible keyboard settings gear at',x,y)
+          PY
+          sleep 2
+          adb shell uiautomator dump /sdcard/gear-settings.xml >/dev/null
+          adb pull /sdcard/gear-settings.xml build/ui/gear-settings.xml >/dev/null
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          texts=[n.attrib.get('text','') for n in ET.parse('build/ui/gear-settings.xml').iter('node')]
+          assert any('Opacitate fundal' in t for t in texts), (
+              'Direct in-keyboard settings gear did not open GlassActivity')
+          print('PASS: direct in-keyboard settings gear opens Glass customization')
+          PY
           adb shell am start -n dev.tzn5.glassuitest/com.android.inputmethod.latin.setup.GlassActivity
           sleep 2
           adb shell uiautomator dump /sdcard/settings.xml >/dev/null
