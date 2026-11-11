@@ -58,6 +58,7 @@ public final class GlassIME extends LatinIME {
     private LinearLayout toolbar;
     private View originalKeyboard;
     private TextView emojiButton;
+    private TextView settingsButton;
     private View emojiPane;
     private GlassEmojiPanel picker;
     private final List<Drawable> backgroundLayers = new ArrayList<>();
@@ -141,6 +142,25 @@ public final class GlassIME extends LatinIME {
         newEmojiButton.setGravity(Gravity.CENTER);
         newEmojiButton.setContentDescription("Emoji avansate, apasare lunga pentru setari Glass");
         newToolbar.addView(newEmojiButton, new LinearLayout.LayoutParams(dp(88), dp(34)));
+        // Samsung-style settings control, independent of One UI's optional
+        // system settings gear. This is an additive toolbar control only:
+        // original Xiaomi key geometry, legends and themes remain untouched.
+        TextView newSettingsButton = new TextView(this);
+        newSettingsButton.setText("\u2699\uFE0E");
+        newSettingsButton.setTextColor(Color.WHITE);
+        newSettingsButton.setTextSize(23);
+        newSettingsButton.setGravity(Gravity.CENTER);
+        newSettingsButton.setContentDescription("Setări tastatură Glass");
+        android.graphics.drawable.GradientDrawable settingsChip =
+                new android.graphics.drawable.GradientDrawable();
+        settingsChip.setColor(Color.argb(220, 35, 43, 58));
+        settingsChip.setCornerRadius(dp(9));
+        newSettingsButton.setBackground(settingsChip);
+        LinearLayout.LayoutParams settingsParams =
+                new LinearLayout.LayoutParams(dp(42), dp(34));
+        settingsParams.leftMargin = dp(4);
+        newToolbar.addView(newSettingsButton, settingsParams);
+        newSettingsButton.setOnClickListener(v -> openGlassSettings());
         newOuter.addView(newToolbar, new LinearLayout.LayoutParams(-1, dp(34)));
 
         FrameLayout newGlassRoot = new FrameLayout(this);
@@ -153,17 +173,14 @@ public final class GlassIME extends LatinIME {
         glassRoot = newGlassRoot;
         toolbar = newToolbar;
         emojiButton = newEmojiButton;
+        settingsButton = newSettingsButton;
 
         newEmojiButton.setOnClickListener(v -> {
             if (emojiPane == null) showEmoji();
             else closeEmoji();
         });
         newEmojiButton.setOnLongClickListener(v -> {
-            Intent settings = new Intent();
-            settings.setClassName(getPackageName(),
-                    "com.android.inputmethod.latin.setup.GlassActivity");
-            settings.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(settings);
+            openGlassSettings();
             return true;
         });
 
@@ -172,6 +189,18 @@ public final class GlassIME extends LatinIME {
         collectBackgrounds(view, true);
         updateGlassBackground();
         return newOuter;
+    }
+
+    private void openGlassSettings() {
+        Intent settings = new Intent();
+        settings.setClassName(getPackageName(),
+                "com.android.inputmethod.latin.setup.GlassActivity");
+        settings.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            startActivity(settings);
+        } catch (RuntimeException ignored) {
+            // Never interrupt input when an OEM restricts IME activity launch.
+        }
     }
 
     @Override
